@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     environment: EnvironmentType = EnvironmentType.LOCAL
 
     # API SETTINGS
-    api_name: str = f"open-wearables API"
+    api_name: str = f"Open Wearables API"
     api_v1: str = "/api/v1"
     api_latest: str = api_v1
     paging_limit: int = 100
@@ -40,7 +40,6 @@ class Settings(BaseSettings):
     db_user: str = "user"
     db_password: SecretStr = SecretStr("password")
 
-
     # CELERY SETTINGS
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
@@ -50,6 +49,12 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
+
+    # AUTH0 SETTINGS
+    auth0_domain: str = ""
+    auth0_audience: str = ""
+    auth0_issuer: str = ""
+    auth0_algorithms: list[str] = ["RS256"]
 
     @field_validator("cors_origins", mode="after")
     @classmethod
@@ -78,6 +83,10 @@ class Settings(BaseSettings):
             f"{self.db_user}:{self.db_password.get_secret_value()}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
+
+    @property
+    def auth0_issuer_url(self) -> str:
+        return f"https://{self.auth0_domain}/"
 
     # 0. pytest ini_options
     # 1. environment variables

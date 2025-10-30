@@ -18,6 +18,9 @@ dependencies = [
     "flower>=2.0.1",
     "redis>=7.0.1",
     "sentry-sdk[fastapi]>=2.42.1",
+    "python-multipart>=0.0.20",
+    "python-jose[cryptography]>=3.5.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]

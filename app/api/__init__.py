@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.routes.v1.user import router as user_router_v1
+from app.api.routes.v1 import v1_router
+from app.config import settings
 
 head_router = APIRouter()
+head_router.include_router(v1_router, prefix=settings.api_v1)
 
-head_router.include_router(user_router_v1, prefix="/users", tags=["users"])
-
-__all__ = ["head_router"]
+__all__ = [
+    "head_router",
+]
