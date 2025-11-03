@@ -10,14 +10,15 @@ from pydantic import BaseModel
 class RecordCreate(BaseModel):
     """Schema for creating a record."""
 
-    id: int | None = None
+    id: UUID
+    provider_id: UUID | None = None
     user_id: UUID
-    type: str
+    type: str | None = None
     startDate: datetime
     endDate: datetime
     unit: str
     value: Decimal
-    sourceName: str
+    sourceName: str | None = None
 
 
 class RecordUpdate(BaseModel):

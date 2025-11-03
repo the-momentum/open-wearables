@@ -27,8 +27,9 @@ class RecordBase(BaseModel):
 class RecordIn(RecordBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int | None = None
-    user_id: UUID | None = None
+    id: UUID
+    provider_id: UUID | None = None
+    user_id: str | None = None
     recordMetadata: list[MetadataEntryIn] | None = None
 
 
@@ -36,12 +37,12 @@ class RecordJSON(BaseModel):
     """Schema for JSON import format from HealthKit."""
     uuid: str | None = None
     user_id: str | None = None
-    type: str
+    type: str | None = None
     startDate: datetime
     endDate: datetime
     unit: str
     value: Decimal
-    sourceName: str
+    sourceName: str | None = None
     recordMetadata: list[dict[str, Any]] | None = None
 
 

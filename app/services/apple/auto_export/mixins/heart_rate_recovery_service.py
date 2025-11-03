@@ -8,7 +8,7 @@ from app.schemas import (
     AEHeartRateRecoveryCreate,
     AEHeartRateRecoveryUpdate
 )
-from app.services import AppService
+from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
 

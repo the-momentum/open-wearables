@@ -5,12 +5,10 @@ from typing import Iterable
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.services import (
-    hk_workout_service as workout_service,
-    hk_workout_statistic_service as workout_statistic_service,
-    hk_record_service as record_service,
-    # hk_metadata_entry_service as metadata_entry_service,
-)
+from app.services.apple.healthkit.workout_service import workout_service
+from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
+from app.services.apple.healthkit.record_service import record_service
+# from app.services.apple.healthkit.metadata_entry_service import metadata_entry_service
 from app.schemas import (
     HKRootJSON,
     HKWorkoutJSON,
@@ -46,7 +44,7 @@ class ImportService:
             wjson = HKWorkoutJSON(**w)
 
             # prioritize id from json
-            wid = wjson.uuid if wjson.uuid else uuid4()
+            provider_id = wjson.uuid if wjson.uuid else uuid4()
             # first user_id from token -> json -> default to None
             user_id = user_id if user_id else (wjson.user_id if wjson.user_id else None)
 
@@ -54,7 +52,7 @@ class ImportService:
 
             workout_row = HKWorkoutIn(
                 id=uuid4(),
-                provider_id=wid,
+                provider_id=provider_id,
                 user_id=user_id,
                 type=wjson.type,
                 startDate=wjson.startDate,
@@ -83,28 +81,28 @@ class ImportService:
         for r in records_raw:
             rjson = HKRecordJSON(**r)
             
-            # prioritize id from json
-            rid = rjson.uuid if rjson.uuid else uuid4()
+            provider_id = UUID(rjson.uuid) if rjson.uuid else None
             # first user_id from token -> json -> default to None
             user_id = user_id if user_id else (rjson.user_id if rjson.user_id else None)
             
             record_row = HKRecordIn(
                 id=uuid4(),
-                provider_id=rid,
+                provider_id=provider_id,
                 user_id=user_id,
                 type=rjson.type,
                 startDate=rjson.startDate,
                 endDate=rjson.endDate,
-                unit=rjson.unit,
+                unit=rjson.unit, 
                 value=rjson.value,
+                sourceName=rjson.sourceName,
             )
             
             record_metadata = []
             if rjson.recordMetadata is not None:
                 for metadata in rjson.recordMetadata:
                     metadata_in = HKMetadataEntryIn(
-                        type=metadata.type,
-                        value=metadata.value,
+                        key=metadata.get("key", ""),
+                        value=Decimal(str(metadata.get("value", 0))),
                     )
                     record_metadata.append(metadata_in)
                     

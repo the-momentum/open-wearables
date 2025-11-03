@@ -15,7 +15,7 @@ from app.schemas import (
     HKWorkoutMeta,
     HKDateRange,
 )
-from app.services import AppService
+from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
 

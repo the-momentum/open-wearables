@@ -18,7 +18,7 @@ from app.schemas import (
     AEIntensityValue,
     AEDateRange,
 )
-from app.services import AppService
+from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
 
