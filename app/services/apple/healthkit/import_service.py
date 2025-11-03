@@ -5,8 +5,12 @@ from typing import Iterable
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.services.apple.healthkit.workout_service import workout_service
-from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
+from app.services import (
+    hk_workout_service as workout_service,
+    hk_workout_statistic_service as workout_statistic_service,
+    hk_record_service as record_service,
+    # hk_metadata_entry_service as metadata_entry_service,
+)
 from app.schemas import (
     HKRootJSON,
     HKWorkoutJSON,
@@ -14,6 +18,11 @@ from app.schemas import (
     HKWorkoutCreate,
     HKWorkoutStatisticCreate,
     HKWorkoutStatisticIn,
+    HKRecordJSON,
+    HKRecordIn,
+    HKMetadataEntryIn,
+    HKRecordCreate,
+    # HKMetadataEntryCreate,
     UploadDataResponse,
 )
 
@@ -23,8 +32,10 @@ class ImportService:
         self.log = log
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
-
-    def _build_import_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
+        self.record_service = record_service
+        # self.metadata_entry_service = metadata_entry_service
+        
+    def _build_workout_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundle(s)
         ready to insert into your ORM session.
@@ -65,9 +76,42 @@ class ImportService:
                     workout_statistics.append(stat_in)
 
             yield workout_row, workout_statistics
+            
+    def _build_record_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKRecordIn, list[HKMetadataEntryIn]]]:
+        root = HKRootJSON(**raw)
+        records_raw = root.data.get("records", [])
+        for r in records_raw:
+            rjson = HKRecordJSON(**r)
+            
+            # prioritize id from json
+            rid = rjson.uuid if rjson.uuid else uuid4()
+            # first user_id from token -> json -> default to None
+            user_id = user_id if user_id else (rjson.user_id if rjson.user_id else None)
+            
+            record_row = HKRecordIn(
+                id=uuid4(),
+                provider_id=rid,
+                user_id=user_id,
+                type=rjson.type,
+                startDate=rjson.startDate,
+                endDate=rjson.endDate,
+                unit=rjson.unit,
+                value=rjson.value,
+            )
+            
+            record_metadata = []
+            if rjson.recordMetadata is not None:
+                for metadata in rjson.recordMetadata:
+                    metadata_in = HKMetadataEntryIn(
+                        type=metadata.type,
+                        value=metadata.value,
+                    )
+                    record_metadata.append(metadata_in)
+                    
+            yield record_row, record_metadata
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str = None) -> bool:
-        for workout_row, workout_statistics in self._build_import_bundles(raw, user_id):
+        for workout_row, workout_statistics in self._build_workout_bundles(raw, user_id):
             workout_data = workout_row.model_dump()
             if user_id:
                 workout_data['user_id'] = UUID(user_id)
@@ -84,6 +128,23 @@ class ImportService:
                     unit=stat_in.unit
                 )
                 self.workout_statistic_service.create(db_session, stat_create)
+
+        for record_row, record_metadata in self._build_record_bundles(raw, user_id):
+            record_data = record_row.model_dump()
+            if user_id:
+                record_data['user_id'] = UUID(user_id)
+            record_create = HKRecordCreate(**record_data)
+            created_record = self.record_service.create(db_session, record_create)
+            
+            # # Create record metadata
+            # for metadata_in in record_metadata:
+            #     metadata_create = HKMetadataEntryCreate(
+            #         user_id=created_record.user_id,
+            #         record_id=created_record.id,
+            #         type=metadata_in.type,
+            #         value=metadata_in.value,
+            #     )
+            #     self.metadata_entry_service.create(db_session, metadata_create)
 
         return True
 
