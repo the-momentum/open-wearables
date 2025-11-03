@@ -69,6 +69,24 @@ from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
     RootJSON as HKRootJSON,
 )
+from .apple.healthkit.record_crud import (
+    RecordCreate as HKRecordCreate,
+    RecordUpdate as HKRecordUpdate,
+)
+from .apple.healthkit.record_queries import (
+    RecordQueryParams as HKRecordQueryParams,
+)
+from .apple.healthkit.record_responses import (
+    RecordResponse as HKRecordResponse,
+    RecordListResponse as HKRecordListResponse,
+    RecordMeta as HKRecordMeta,
+    MetadataEntryResponse as HKMetadataEntryResponse,
+)
+from .apple.healthkit.record_import import (
+    RecordIn as HKRecordIn,
+    RecordJSON as HKRecordJSON,
+    MetadataEntryIn as HKMetadataEntryIn,
+)
 from .apple.workout_statistics import (
     WorkoutStatisticCreate as HKWorkoutStatisticCreate,
     WorkoutStatisticUpdate as HKWorkoutStatisticUpdate,
@@ -152,11 +170,21 @@ __all__ = [
     
     "HKRootJSON",
     "HKWorkoutJSON",
-    "HKNewWorkoutJSON",
     
     "HKWorkoutStatisticCreate",
     "HKWorkoutStatisticUpdate",
     "HKWorkoutStatisticJSON",
     "HKWorkoutStatisticResponse",
     "HKWorkoutStatisticIn",
+    
+    "HKRecordCreate",
+    "HKRecordUpdate",
+    "HKRecordQueryParams",
+    "HKRecordResponse",
+    "HKRecordListResponse",
+    "HKRecordMeta",
+    "HKMetadataEntryResponse",
+    "HKRecordIn",
+    "HKRecordJSON",
+    "HKMetadataEntryIn",
 ]

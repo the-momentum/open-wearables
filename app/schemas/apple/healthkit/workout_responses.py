@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.apple.common import DateRange
+
 
 class WorkoutSummary(BaseModel):
     """HealthKit workout summary with statistics."""
@@ -31,14 +33,6 @@ class WorkoutResponse(BaseModel):
     sourceName: str | None = None
     user_id: UUID
     summary: WorkoutSummary
-
-
-class DateRange(BaseModel):
-    """Date range information."""
-
-    start: str
-    end: str
-    duration_days: int
 
 
 class WorkoutMeta(BaseModel):

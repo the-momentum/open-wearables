@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -31,3 +31,16 @@ class BaseResponse(BaseModel):
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+
+class RootJSON(BaseModel):
+    """Root JSON schema for record imports."""
+    data: dict[str, Any]
+    
+    
+class DateRange(BaseModel):
+    """Date range information."""
+
+    start: str
+    end: str
+    duration_days: int
