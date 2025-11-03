@@ -53,8 +53,8 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
 
     @handle_exceptions
     async def _get_workout_with_summary(
-        self, 
-        db_session: DbSession, 
+        self,
+        db_session: DbSession,
         workout_id: UUID
     ) -> tuple[Workout | None, dict]:
         """
@@ -71,8 +71,8 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
 
     @handle_exceptions
     async def get_workouts_response(
-        self, 
-        db_session: DbSession, 
+        self,
+        db_session: DbSession,
         query_params: HKWorkoutQueryParams,
         user_id: str
     ) -> HKWorkoutListResponse:
