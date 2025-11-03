@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -19,7 +20,7 @@ class MetadataEntryResponse(BaseModel):
 class RecordResponse(BaseModel):
     """Individual HealthKit record response model - matches unified database model."""
 
-    id: int
+    id: UUID
     type: str
     sourceName: str
     startDate: datetime
