@@ -9,7 +9,7 @@ from app.services.apple.healthkit.workout_service import workout_service
 from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
 from app.schemas import (
     HKRootJSON,
-    HKNewWorkoutJSON,
+    HKWorkoutJSON,
     HKWorkoutIn,
     HKWorkoutCreate,
     HKWorkoutStatisticCreate,
@@ -24,7 +24,7 @@ class ImportService:
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
 
-    def _build_import_bundles(self, raw: dict) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
+    def _build_import_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundle(s)
         ready to insert into your ORM session.
@@ -32,16 +32,19 @@ class ImportService:
         root = HKRootJSON(**raw)
         workouts_raw = root.data.get("workouts", [])
         for w in workouts_raw:
-            wjson = HKNewWorkoutJSON(**w)
+            wjson = HKWorkoutJSON(**w)
 
-            # Always generate a new UUID for workouts to avoid conflicts between users
-            wid = uuid4()
+            # prioritize id from json
+            wid = UUID(wjson.uuid) if wjson.uuid else uuid4()
+            # first user_id from token -> json -> default to None
+            user_id = UUID(user_id) if user_id else (wjson.user_id if wjson.user_id else None)
 
             duration = (wjson.endDate - wjson.startDate).total_seconds() / 60
 
             workout_row = HKWorkoutIn(
-                id=wid,
-                user_id=wjson.user_id,
+                uuid=uuid4(),
+                provider_id=wid,
+                user_id=user_id,
                 type=wjson.type,
                 startDate=wjson.startDate,
                 endDate=wjson.endDate,
@@ -64,7 +67,7 @@ class ImportService:
             yield workout_row, workout_statistics
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str = None) -> bool:
-        for workout_row, workout_statistics in self._build_import_bundles(raw):
+        for workout_row, workout_statistics in self._build_import_bundles(raw, user_id):
             workout_data = workout_row.model_dump()
             if user_id:
                 workout_data['user_id'] = UUID(user_id)

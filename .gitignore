@@ -157,3 +157,5 @@ volumes
 
 # Streamlit secrets
 .streamlit/
+
+*.json

@@ -23,13 +23,14 @@ class WorkoutBase(BaseModel):
 class WorkoutIn(WorkoutBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    uuid: UUID | None = None
+    provider_id: UUID | None = None
     user_id: str | None = None
     workoutStatistics: list[WorkoutStatisticIn] | None = None
 
 
 class WorkoutJSON(BaseModel):
-    id: str | None = None
+    uuid: str | None = None
     user_id: str | None = None
     type: str | None = None
     startDate: datetime
@@ -40,13 +41,3 @@ class WorkoutJSON(BaseModel):
 
 class RootJSON(BaseModel):
     data: dict[str, Any]
-
-
-class NewWorkoutJSON(BaseModel):
-    """Schema for parsing NewWorkout from JSON import."""
-    user_id: str
-    type: str
-    startDate: datetime
-    endDate: datetime
-    sourceName: str
-    workoutStatistics: list[WorkoutStatisticIn] | None = None
