@@ -23,7 +23,7 @@ class WorkoutBase(BaseModel):
 class WorkoutIn(WorkoutBase):
     model_config = ConfigDict(from_attributes=True)
 
-    uuid: UUID | None = None
+    id: UUID | None = None
     provider_id: UUID | None = None
     user_id: str | None = None
     workoutStatistics: list[WorkoutStatisticIn] | None = None

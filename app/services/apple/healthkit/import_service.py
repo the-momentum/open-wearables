@@ -35,14 +35,14 @@ class ImportService:
             wjson = HKWorkoutJSON(**w)
 
             # prioritize id from json
-            wid = UUID(wjson.uuid) if wjson.uuid else uuid4()
+            wid = wjson.uuid if wjson.uuid else uuid4()
             # first user_id from token -> json -> default to None
-            user_id = UUID(user_id) if user_id else (wjson.user_id if wjson.user_id else None)
+            user_id = user_id if user_id else (wjson.user_id if wjson.user_id else None)
 
             duration = (wjson.endDate - wjson.startDate).total_seconds() / 60
 
             workout_row = HKWorkoutIn(
-                uuid=uuid4(),
+                id=uuid4(),
                 provider_id=wid,
                 user_id=user_id,
                 type=wjson.type,

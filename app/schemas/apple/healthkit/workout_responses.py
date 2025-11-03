@@ -30,8 +30,6 @@ class WorkoutResponse(BaseModel):
     durationUnit: str
     sourceName: str | None = None
     user_id: UUID
-    created_at: datetime
-    updated_at: datetime
     summary: WorkoutSummary
 
 

@@ -22,8 +22,8 @@ class WorkoutQueryParams(BaseQueryParams):
     max_duration: int | None = Field(
         None, description="Maximum duration in seconds"
     )
-    duration_unit: Literal["s", "min", "h"] | None = Field(
-        None, description="Duration unit filter"
+    duration_unit: str | None = Field(
+        None, description="Duration unit (e.g., 'min', 'hr', 'sec')"
     )
     sort_by: Literal["startDate", "endDate", "duration", "type", "sourceName"] | None = Field(
         "startDate", description="Sort field"

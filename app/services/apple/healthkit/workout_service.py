@@ -97,8 +97,6 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
                 durationUnit=workout.durationUnit,
                 sourceName=workout.sourceName,
                 user_id=workout.user_id,
-                created_at=workout.created_at,
-                updated_at=workout.updated_at,
                 summary=HKWorkoutSummary(**summary_data),
             )
             workout_responses.append(workout_response)
