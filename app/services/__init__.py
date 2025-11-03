@@ -8,6 +8,7 @@ from .apple.auto_export.active_energy_service import active_energy_service as ae
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .apple.healthkit.workout_service import workout_service as hk_workout_service
 from .apple.healthkit.workout_statistic_service import workout_statistic_service as hk_workout_statistic_service
+from .apple.healthkit.record_service import record_service as hk_record_service
 
 __all__ = [
     "AppService",
@@ -22,4 +23,5 @@ __all__ = [
     "hk_import_service",
     "hk_workout_service",
     "hk_workout_statistic_service",
+    "hk_record_service",
 ]
