@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "open-wearables"
-    db_user: str = "user"
-    db_password: SecretStr = SecretStr("password")
+    db_user: str = "open-wearables"
+    db_password: SecretStr = SecretStr("open-wearables")
 
     # CELERY SETTINGS
     CELERY_BROKER_URL: str
@@ -73,8 +73,6 @@ class Settings(BaseSettings):
         if isinstance(v, EncryptedField):
             return v.get_decrypted_value(validation_info.data["fernet_decryptor"])
         return v
-
-
 
     @property
     def db_uri(self) -> str:

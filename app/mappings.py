@@ -5,14 +5,16 @@ from uuid import UUID
 
 from pydantic import EmailStr
 from sqlalchemy import DateTime, ForeignKey, Numeric, String
-from sqlalchemy.orm import mapped_column, relationship
+from sqlalchemy.orm import mapped_column
 
 T = TypeVar("T")
 
 # Pre-defined indexes
 Indexed = Annotated[T, mapped_column(index=True)]
 PrimaryKey = Annotated[T, mapped_column(primary_key=True)]
-PKAutoIncrement = Annotated[T, mapped_column(primary_key=True, autoincrement=True)] # use for composite integer primary keys (single PK int will have it auto enabled)
+PKAutoIncrement = Annotated[
+    T, mapped_column(primary_key=True, autoincrement=True)
+]  # use for composite integer primary keys (single PK int will have it auto enabled)
 Unique = Annotated[T, mapped_column(unique=True)]
 UniqueIndex = Annotated[T, mapped_column(index=True, unique=True)]
 
@@ -33,16 +35,7 @@ numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]
 numeric_15_5 = Annotated[Decimal, mapped_column(Numeric(15, 5))]
 
-# Custom foreign key
+# Custom foreign keys
 FKUser = Annotated[UUID, mapped_column(ForeignKey("user.id", ondelete="CASCADE"))]
-
-# Relationship helper functions
-def rel_attr(back_populates: str) -> relationship:
-    return relationship(back_populates=back_populates)
-
-def rel_attr_cascade(back_populates: str) -> relationship:
-    return relationship(
-        back_populates=back_populates,
-        cascade="all, delete-orphan",
-        passive_deletes=True
-    )
+FKWorkout = Annotated[UUID, mapped_column(ForeignKey("workout.id", ondelete="CASCADE"))]
+FKRecord = Annotated[UUID, mapped_column(ForeignKey("record.id", ondelete="CASCADE"))]

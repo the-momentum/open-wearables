@@ -1,0 +1,31 @@
+{
+	"data": {
+		"workouts": [
+			{
+				"id": "b3e1c7e2-1234-4c5a-8e2a-123456789abc",
+				"user_id": "b3e1c7e2-1234-4c5a-8e2a-123456789abc",
+				"type": "HKWorkoutActivityTypeRunning",
+				"startDate": "2025-10-21T13:25:00.000Z",
+				"endDate": "2025-10-21T14:25:00.000Z",
+				"duration": 60,
+				"durationUnit": "min",
+				"sourceName": "zegarek zbycha",
+				"workoutStatistics": [
+					{
+						"type": "active_energy_burned",
+						"startDate": "2025-10-21T13:25:00.000Z",
+						"endDate": "2025-10-21T14:25:00.000Z",
+						"value": 13.37,
+						"unit": "Cal"
+					}
+				],
+				"metadataEntries": [
+					{
+						"key": "HKWeatherTemperature",
+						"value": "42.8 degF"
+					}
+				]
+			}
+		]
+	}
+}

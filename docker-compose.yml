@@ -1,15 +1,15 @@
 services:
   db:
     image: postgres:18
-    container_name: api-postgres
+    container_name: postgres__open-wearables
     environment:
       POSTGRES_DB: open-wearables
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: open-wearables
+      POSTGRES_PASSWORD: open-wearables
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d open-wearables"]
+      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +20,8 @@ services:
     build:
         context: .
         dockerfile: Dockerfile
-    container_name: open-wearables-app
+    container_name: backend__open-wearables
+    image: open-wearables-platform:latest
     command: scripts/start/app.sh
     env_file:
       - ./config/.env
@@ -41,8 +42,8 @@ services:
     restart: on-failure
 
   celery-worker:
-    container_name: celery-worker
-    image: open-wearables-app:latest
+    container_name: celery-worker__open-wearables
+    image: open-wearables-platform:latest
     command: scripts/start/worker.sh
     volumes:
       - .:/root_project
@@ -51,11 +52,11 @@ services:
       - config/.env
     depends_on:
       - redis
-      - postgres
+      - db
 
   celery-beat:
-    container_name: celery-beat
-    image: open-wearables-app:latest
+    container_name: celery-beat__open-wearables
+    image: open-wearables-platform:latest
     command: scripts/start/beat.sh
     volumes:
       - .:/root_project
@@ -64,11 +65,11 @@ services:
       - config/.env
     depends_on:
       - redis
-      - postgres
+      - db
 
   flower:
-    container_name: flower
-    image: open-wearables-app:latest
+    container_name: flower__open-wearables
+    image: open-wearables-platform:latest
     command: scripts/start/flower.sh
     volumes:
       - .:/root_project
@@ -79,10 +80,11 @@ services:
       - 5555:5555
     depends_on:
       - redis
-      - postgres
+      - db
 
   redis:
-    image: redis:7
+    container_name: redis__open-wearables
+    image: redis:8
     volumes:
       - redis_data:/var/lib/redis/data
 

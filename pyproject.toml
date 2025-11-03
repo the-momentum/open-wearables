@@ -11,7 +11,7 @@ dependencies = [
     "email-validator>=2.2.0",
     "psycopg>=3.2.9",
     "sqlalchemy>=2.0.43",
-    "fastapi>=0.116.1",
+    "fastapi>=0.120.4",
     "fastapi-cli>=0.0.8",
     "sqladmin[full]>=0.21.0",
     "celery>=5.5.3",
@@ -21,16 +21,16 @@ dependencies = [
     "python-multipart>=0.0.20",
     "python-jose[cryptography]>=3.5.0",
     "httpx>=0.28.1",
+    "alembic>=1.17.1",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.3.0",
-    "ruff>=0.12.10",
-    "ty>=0.0.1a19",
+    "ruff>=0.14.3",
+    "ty>=0.0.1a25",
 ]
 dev = [
-    "alembic>=1.16.4",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
