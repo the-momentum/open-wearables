@@ -21,7 +21,7 @@ class Record(BaseDbModel):
     user_id: Mapped[FKUser]
 
     type: Mapped[str_50 | None] = None
-    sourceName: Mapped[str_100 | None] = None
+    sourceName: Mapped[str_100]
     startDate: Mapped[datetime_tz]
     endDate: Mapped[datetime_tz]
     unit: Mapped[str_10]

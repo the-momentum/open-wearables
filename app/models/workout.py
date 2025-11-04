@@ -22,12 +22,12 @@ class Workout(BaseDbModel):
     user_id: Mapped[FKUser]
 
     type: Mapped[str_50 | None] = None
-    duration: Mapped[numeric_10_2 | None] = None
-    durationUnit: Mapped[str_10 | None] = None
-    sourceName: Mapped[str_100 | None] = None
+    duration: Mapped[numeric_10_2]
+    durationUnit: Mapped[str_10]
+    sourceName: Mapped[str_100]
 
-    startDate: Mapped[datetime_tz | None] = None
-    endDate: Mapped[datetime_tz | None] = None
+    startDate: Mapped[datetime_tz]
+    endDate: Mapped[datetime_tz]
 
     user: Mapped[ManyToOne["User"]]
 
