@@ -1,15 +1,11 @@
-from uuid import UUID
-
+from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import OneToMany, PrimaryKey, Unique, datetime_tz, email
+from app.mappings import OneToMany, datetime_tz
 
 
-class User(BaseDbModel):
-    id: Mapped[PrimaryKey[UUID]]
-    auth0_id: Mapped[Unique[str]]
-    email: Mapped[Unique[email]]
+class User(SQLAlchemyBaseUserTableUUID, BaseDbModel):
     created_at: Mapped[datetime_tz]
     updated_at: Mapped[datetime_tz]
 
@@ -17,3 +13,4 @@ class User(BaseDbModel):
     heart_rate_data: Mapped[OneToMany["HeartRateData"]]
     heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
     active_energy: Mapped[OneToMany["ActiveEnergy"]]
+    api_keys: Mapped[OneToMany["APIKey"]]

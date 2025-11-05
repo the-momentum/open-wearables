@@ -50,11 +50,15 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
 
-    # AUTH0 SETTINGS
+    # AUTH0 SETTINGS (deprecated, will be removed)
     auth0_domain: str = ""
     auth0_audience: str = ""
     auth0_issuer: str = ""
     auth0_algorithms: list[str] = ["RS256"]
+
+    # AUTH SETTINGS
+    secret_key: str
+    token_lifetime: int = 3600
 
     @field_validator("cors_origins", mode="after")
     @classmethod

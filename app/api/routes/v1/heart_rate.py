@@ -2,10 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.utils.auth_dependencies import get_current_user_id
 from app.database import DbSession
 from app.schemas import AEHeartRateListResponse, AEHeartRateQueryParams
-from app.services import ae_heart_rate_service
+from app.services import ae_heart_rate_service, get_current_user_id
 
 router = APIRouter()
 

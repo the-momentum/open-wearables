@@ -1,5 +1,5 @@
 from .services import AppService
-from .user_service import user_service
+from .user_service import user_service, api_key_backend, get_current_user_id
 from .apple.auto_export.heart_rate_service import heart_rate_service as ae_heart_rate_service
 from .apple.auto_export.import_service import import_service as ae_import_service
 from .auth_service import auth0_service
@@ -13,13 +13,13 @@ from .apple.healthkit.record_service import record_service as hk_record_service
 __all__ = [
     "AppService",
     "user_service",
+    "api_key_backend",
+    "get_current_user_id",
     "auth0_service",
-    
     "ae_heart_rate_service",
     "ae_import_service",
     "ae_workout_service",
     "ae_active_energy_service",
-    
     "hk_import_service",
     "hk_workout_service",
     "hk_workout_statistic_service",

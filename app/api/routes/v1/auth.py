@@ -1,20 +1,24 @@
-from typing import Annotated
+from fastapi import APIRouter
 
-from fastapi import APIRouter, Depends
-
-from app.utils.auth_dependencies import get_current_user
-from app.schemas import UserInfo, UserResponse
+from app.services import user_service, api_key_backend
+from app.schemas import UserRead, UserCreate, UserUpdate
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
-    current_user: Annotated[UserInfo, Depends(get_current_user)]
-) -> UserResponse:
-    return UserResponse(
-        user_id=current_user.user_id,
-        auth0_id=current_user.auth0_id,
-        email=current_user.email,
-        permissions=current_user.permissions
-    )
+router.include_router(
+    user_service.get_auth_router(api_key_backend),
+    prefix="/auth",  # /login  /logout
+)
+router.include_router(
+    user_service.get_register_router(UserRead, UserCreate),
+    prefix="/auth",  # /register
+)
+router.include_router(
+    user_service.get_reset_password_router(),
+    prefix="/auth",  # /forgot-password. /reset-password
+)
+router.include_router(
+    user_service.get_users_router(UserRead, UserUpdate),
+    prefix="/users",  # /me  /{user_id}
+)
