@@ -1,20 +1,24 @@
-from .user import User
-from .workout import Workout
-from .record import Record
-from .workout_statistic import WorkoutStatistic
-from .metadata_entry import MetadataEntry
+from .active_energy import ActiveEnergy
+from .api_key import ApiKey
+from .developer import Developer
 from .heart_rate_data import HeartRateData
 from .heart_rate_recovery import HeartRateRecovery
-from .active_energy import ActiveEnergy
+from .metadata_entry import MetadataEntry
+from .record import Record
+from .user import User
+from .workout import Workout
+from .workout_statistic import WorkoutStatistic
 
 
 __all__ = [
-    "User",
-    "Record",
-    "MetadataEntry",
-    "Workout",
-    "WorkoutStatistic",
+    "ActiveEnergy",
+    "ApiKey",
+    "Developer",
     "HeartRateData",
     "HeartRateRecovery",
-    "ActiveEnergy",
+    "MetadataEntry",
+    "Record",
+    "User",
+    "Workout",
+    "WorkoutStatistic",
 ]

@@ -3,15 +3,14 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import OneToMany, PrimaryKey, Unique, datetime_tz, email
+from app.mappings import PrimaryKey, OneToMany, datetime_tz
 
 
 class User(BaseDbModel):
+    """Data owner model"""
+
     id: Mapped[PrimaryKey[UUID]]
-    auth0_id: Mapped[Unique[str]]
-    email: Mapped[Unique[email]]
     created_at: Mapped[datetime_tz]
-    updated_at: Mapped[datetime_tz]
 
     workouts: Mapped[OneToMany["Workout"]]
     heart_rate_data: Mapped[OneToMany["HeartRateData"]]

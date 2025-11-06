@@ -6,8 +6,8 @@ from app.database import DbSession
 from app.models import Workout
 from app.repositories import AEWorkoutRepository
 from app.schemas import (
-    AEWorkoutQueryParams, 
-    AEWorkoutCreate, 
+    AEWorkoutQueryParams,
+    AEWorkoutCreate,
     AEWorkoutUpdate,
     AEWorkoutListResponse,
     AEWorkoutResponse,
@@ -26,74 +26,57 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
     """Service for workout-related business logic."""
 
     def __init__(self, log: Logger, **kwargs):
-        super().__init__(
-            crud_model=AEWorkoutRepository,
-            model=Workout,
-            log=log,
-            **kwargs
-        )
+        super().__init__(crud_model=AEWorkoutRepository, model=Workout, log=log, **kwargs)
 
     @handle_exceptions
     async def _get_workouts_with_filters(
-        self, 
-        db_session: DbSession, 
-        query_params: AEWorkoutQueryParams,
-        user_id: str
+        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
     ) -> tuple[list[Workout], int]:
         """
         Get workouts with filtering, sorting, and pagination.
         Includes business logic and logging.
         """
         self.logger.debug(f"Fetching workouts with filters: {query_params.model_dump()}")
-        
-        workouts, total_count = self.crud.get_workouts_with_filters(
-            db_session, query_params, user_id
-        )
-        
+
+        workouts, total_count = self.crud.get_workouts_with_filters(db_session, query_params, user_id)
+
         self.logger.debug(f"Retrieved {len(workouts)} workouts out of {total_count} total")
-        
+
         return workouts, total_count
 
     @handle_exceptions
-    async def _get_workout_with_summary(
-        self, 
-        db_session: DbSession, 
-        workout_id: UUID
-    ) -> tuple[Workout | None, dict]:
+    async def _get_workout_with_summary(self, db_session: DbSession, workout_id: UUID) -> tuple[Workout | None, dict]:
         """
         Get a single workout with its summary statistics.
         """
         self.logger.debug(f"Fetching workout {workout_id} with summary")
-        
+
         workout = self.get(db_session, workout_id, raise_404=True)
         summary = self.crud.get_workout_summary(db_session, workout_id)
-        
+
         self.logger.debug(f"Retrieved workout {workout_id} with summary data")
-        
+
         return workout, summary
 
     @handle_exceptions
     async def get_workouts_response(
-        self, 
-        db_session: DbSession, 
-        query_params: AEWorkoutQueryParams,
-        user_id: str
+        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
     ) -> AEWorkoutListResponse:
         """
         Get workouts formatted as API response.
-        
+
         Returns:
             WorkoutListResponse ready for API
         """
         # Get raw data
         workouts, total_count = await self._get_workouts_with_filters(db_session, query_params, user_id)
-        
+
         # Convert workouts to response format
         workout_responses = []
         for workout in workouts:
             # Get summary data
             _, summary_data = await self._get_workout_with_summary(db_session, workout.id)
-            
+
             # Build response object
             workout_response = AEWorkoutResponse(
                 id=workout.id,
@@ -123,11 +106,11 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
 
         start_date_str = query_params.start_date or "1900-01-01T00:00:00Z"
         end_date_str = query_params.end_date or datetime.now().isoformat() + "Z"
-        
+
         start_date = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
         end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
         duration_days = (end_date - start_date).days
-        
+
         meta = AEWorkoutMeta(
             requested_at=datetime.now().isoformat() + "Z",
             filters=query_params.model_dump(exclude_none=True),

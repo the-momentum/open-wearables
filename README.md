@@ -21,13 +21,13 @@ A FastAPI application with PostgreSQL database support, containerized with Docke
 
 ```bash
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # Create migration
-docker-compose exec app uv run alembic revision --autogenerate -m "Description"
+docker compose exec app uv run alembic revision --autogenerate -m "Description"
 
 # Run migrations
-docker-compose exec app uv run alembic upgrade head
+docker compose exec app uv run alembic upgrade head
 ```
 
 ### Local Development

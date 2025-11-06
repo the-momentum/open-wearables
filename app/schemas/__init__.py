@@ -1,5 +1,3 @@
-# Auto Export schemas
-
 from .apple.auto_export.workout_queries import WorkoutQueryParams as AEWorkoutQueryParams
 from .apple.auto_export.workout_values import (
     DistanceValue as AEDistanceValue,
@@ -32,7 +30,10 @@ from .apple.auto_export.heart_rate import (
     HeartRateMeta as AEMeta,
     HeartRateValue as AEHeartRateValue,
 )
-from .apple.auto_export.active_energy import ActiveEnergyCreate as AEActiveEnergyCreate, ActiveEnergyUpdate as AEActiveEnergyUpdate
+from .apple.auto_export.active_energy import (
+    ActiveEnergyCreate as AEActiveEnergyCreate,
+    ActiveEnergyUpdate as AEActiveEnergyUpdate,
+)
 from .apple.auto_export.import_schemas import (
     WorkoutIn as AEWorkoutIn,
     HeartRateDataIn as AEHeartRateDataIn,
@@ -98,29 +99,34 @@ from .apple.workout_statistics import (
 # Common schemas
 
 from .filter_params import FilterParams
-from .user import UserInfo, UserResponse, UserCreate, UserUpdate
+from .user import UserRead, UserCreate, UserUpdate
+from .developer import DeveloperRead, DeveloperCreate, DeveloperUpdate
+from .api_key import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
 from .error_codes import ErrorCode
 from .response import UploadDataResponse
 
 __all__ = [
     # Common schemas
     "FilterParams",
-    "UserInfo",
-    "UserResponse",
+    "UserRead",
     "UserCreate",
     "UserUpdate",
+    "DeveloperRead",
+    "DeveloperCreate",
+    "DeveloperUpdate",
+    "ApiKeyCreate",
+    "ApiKeyRead",
+    "ApiKeyUpdate",
     "ErrorCode",
     "UploadDataResponse",
-    
     # Auto Export schemas
     "AEWorkoutCreate",
-    "AEWorkoutUpdate", 
+    "AEWorkoutUpdate",
     "AEWorkoutQueryParams",
     "AEWorkoutResponse",
     "AEWorkoutListResponse",
     "AEWorkoutSummary",
     "AEWorkoutMeta",
-    
     "AESummary",
     "AEMeta",
     "AEDistanceValue",
@@ -129,7 +135,6 @@ __all__ = [
     "AETemperatureValue",
     "AEHumidityValue",
     "AEDateRange",
-    
     "AEHeartRateDataCreate",
     "AEHeartRateDataUpdate",
     "AEHeartRateRecoveryCreate",
@@ -139,23 +144,18 @@ __all__ = [
     "AEHeartRateRecoveryResponse",
     "AEHeartRateListResponse",
     "AEHeartRateValue",
-    
     "AEActiveEnergyCreate",
     "AEActiveEnergyUpdate",
-    
     "AEWorkoutIn",
     "AEHeartRateDataIn",
     "AEHeartRateRecoveryIn",
     "AEActiveEnergyIn",
-    
     "AEQuantityJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",
     "AEWorkoutJSON",
     "AERootJSON",
-    
     "AEImportBundle",
-
     # HealthKit schemas
     "HKWorkoutCreate",
     "HKWorkoutUpdate",
@@ -165,18 +165,14 @@ __all__ = [
     "HKWorkoutSummary",
     "HKWorkoutMeta",
     "HKDateRange",
-    
     "HKWorkoutIn",
-    
     "HKRootJSON",
     "HKWorkoutJSON",
-    
     "HKWorkoutStatisticCreate",
     "HKWorkoutStatisticUpdate",
     "HKWorkoutStatisticJSON",
     "HKWorkoutStatisticResponse",
     "HKWorkoutStatisticIn",
-    
     "HKRecordCreate",
     "HKRecordUpdate",
     "HKRecordQueryParams",
