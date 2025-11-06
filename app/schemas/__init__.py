@@ -98,12 +98,21 @@ from .apple.workout_statistics import (
 
 # Common schemas
 
-from .filter_params import FilterParams
-from .user import UserRead, UserCreate, UserUpdate
-from .developer import DeveloperRead, DeveloperCreate, DeveloperUpdate
 from .api_key import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
+from .developer import DeveloperCreate, DeveloperRead, DeveloperUpdate
 from .error_codes import ErrorCode
+from .filter_params import FilterParams
+from .oauth import (
+    AuthorizationURLResponse,
+    OAuthState,
+    OAuthTokenResponse,
+    ProviderConfig,
+    UserConnectionCreate,
+    UserConnectionRead,
+    UserConnectionUpdate,
+)
 from .response import UploadDataResponse
+from .user import UserCreate, UserRead, UserUpdate
 
 __all__ = [
     # Common schemas
@@ -119,6 +128,14 @@ __all__ = [
     "ApiKeyUpdate",
     "ErrorCode",
     "UploadDataResponse",
+    # OAuth schemas
+    "OAuthState",
+    "OAuthTokenResponse",
+    "ProviderConfig",
+    "UserConnectionCreate",
+    "UserConnectionRead",
+    "UserConnectionUpdate",
+    "AuthorizationURLResponse",
     # Auto Export schemas
     "AEWorkoutCreate",
     "AEWorkoutUpdate",

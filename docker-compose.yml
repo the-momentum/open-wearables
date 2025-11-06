@@ -27,11 +27,14 @@ services:
       - ./config/.env
     environment:
       - DB_HOST=db
+      - REDIS_HOST=redis
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./app:/root_project/app
       - type: bind
@@ -85,6 +88,8 @@ services:
   redis:
     container_name: redis__open-wearables
     image: redis:8
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/var/lib/redis/data
 

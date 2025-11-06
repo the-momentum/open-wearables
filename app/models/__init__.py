@@ -6,6 +6,7 @@ from .heart_rate_recovery import HeartRateRecovery
 from .metadata_entry import MetadataEntry
 from .record import Record
 from .user import User
+from .user_connection import UserConnection
 from .workout import Workout
 from .workout_statistic import WorkoutStatistic
 
@@ -19,6 +20,7 @@ __all__ = [
     "MetadataEntry",
     "Record",
     "User",
+    "UserConnection",
     "Workout",
     "WorkoutStatistic",
 ]
