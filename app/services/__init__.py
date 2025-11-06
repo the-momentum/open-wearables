@@ -1,5 +1,10 @@
-from .api_key_service import api_key_service, ApiKeyDep
-from .developer_service import developer_auth_backend, developer_service, DeveloperDep
+from .api_key_service import ApiKeyDep, api_key_service
+from .developer_service import (
+    DeveloperDep,
+    current_active_user_optional,
+    developer_auth_backend,
+    developer_service,
+)
 from .services import AppService
 from .user_service import user_service
 from .apple.auto_export.heart_rate_service import heart_rate_service as ae_heart_rate_service

@@ -46,5 +46,6 @@ developer_service = FastAPIUsers[Developer, UUID](
 )
 
 current_active_user = developer_service.current_user(active=True)
+current_active_user_optional = developer_service.current_user(active=True, optional=True)
 
 DeveloperDep = Annotated[Developer, Depends(current_active_user)]

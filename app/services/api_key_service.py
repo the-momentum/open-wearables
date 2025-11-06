@@ -6,10 +6,11 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException
 
 from app.database import DbSession
-from app.models import ApiKey
+from app.models import ApiKey, Developer
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
+from app.services.developer_service import current_active_user_optional
 
 
 class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpdate]):
@@ -57,10 +58,14 @@ api_key_service = ApiKeyService(log=getLogger(__name__))
 
 async def _require_api_key(
     db: DbSession,
-    x_open_wearables_api_key: str = Header(..., alias="X-Open-Wearables-API-Key"),
+    developer: Developer | None = Depends(current_active_user_optional),
+    x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
 ) -> str:
-    """Dependency to validate API key from X-Open-Wearables-API-Key header."""
-    return api_key_service.validate_api_key(db, x_open_wearables_api_key).id
+    if developer:
+        return str(developer.id)
+    if x_open_wearables_api_key:
+        return api_key_service.validate_api_key(db, x_open_wearables_api_key).id
+    raise HTTPException(status_code=401, detail="Authentication required: provide JWT token or API key")
 
 
 ApiKeyDep = Annotated[str, Depends(_require_api_key)]
