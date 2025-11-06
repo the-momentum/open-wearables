@@ -1,5 +1,5 @@
-from .repositories import CrudRepository
 from .user_repository import UserRepository
+from .api_key_repository import ApiKeyRepository
 from .apple.auto_export.workout_repository import WorkoutRepository as AEWorkoutRepository
 from .apple.healthkit.workout_repository import WorkoutRepository as HKWorkoutRepository
 from .apple.healthkit.workout_statistic_repository import WorkoutStatisticRepository
@@ -10,8 +10,8 @@ from .apple.auto_export.base_heart_rate_repository import BaseHeartRateRepositor
 from .apple.auto_export.active_energy_repository import ActiveEnergyRepository
 
 __all__ = [
-    "CrudRepository",
-    "UserRepository", 
+    "UserRepository",
+    "ApiKeyRepository",
     "AEWorkoutRepository",
     "HKWorkoutRepository",
     "WorkoutStatisticRepository",

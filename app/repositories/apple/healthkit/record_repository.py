@@ -7,7 +7,7 @@ from sqlalchemy.orm import Query
 
 from app.database import DbSession
 from app.models import Record
-from app.repositories import CrudRepository
+from app.repositories.repositories import CrudRepository
 from app.schemas import HKRecordQueryParams, HKRecordCreate, HKRecordUpdate
 
 
@@ -16,10 +16,7 @@ class RecordRepository(CrudRepository[Record, HKRecordCreate, HKRecordUpdate]):
         super().__init__(model)
 
     def get_records_with_filters(
-        self,
-        db_session: DbSession,
-        query_params: HKRecordQueryParams,
-        user_id: str
+        self, db_session: DbSession, query_params: HKRecordQueryParams, user_id: str
     ) -> tuple[list[Record], int]:
         query: Query = db_session.query(Record)
 
@@ -31,9 +28,7 @@ class RecordRepository(CrudRepository[Record, HKRecordCreate, HKRecordUpdate]):
 
         # Date range filters
         if query_params.start_date:
-            start_dt = datetime.fromisoformat(
-                query_params.start_date.replace("Z", "+00:00")
-            )
+            start_dt = datetime.fromisoformat(query_params.start_date.replace("Z", "+00:00"))
             filters.append(Record.startDate >= start_dt)
 
         if query_params.end_date:

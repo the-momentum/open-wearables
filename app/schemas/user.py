@@ -1,18 +1,18 @@
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi_users.schemas import BaseUser, BaseUserCreate, BaseUserUpdate
-from pydantic import Field
-
-
-class UserRead(BaseUser[UUID]):
-    pass
+from pydantic import BaseModel, Field
 
 
-class UserCreate(BaseUserCreate):
+class UserRead(BaseModel):
+    id: UUID
+    created_at: datetime
+
+
+class UserCreate(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class UserUpdate(BaseUserUpdate):
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class UserUpdate(BaseModel):
+    pass

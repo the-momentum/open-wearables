@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import func  # noqa: I001
 
 from app.database import DbSession
 from app.models import HeartRateData, HeartRateRecovery
@@ -6,13 +6,13 @@ from app.repositories.apple.auto_export.base_heart_rate_repository import BaseHe
 from app.repositories.apple.auto_export.heart_rate_data_repository import HeartRateDataRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import AEHeartRateQueryParams
-from app.schemas import (
-    AEHeartRateRecoveryCreate,
-    AEHeartRateRecoveryUpdate
-)
+from app.schemas import AEHeartRateRecoveryCreate, AEHeartRateRecoveryUpdate
 
 
-class HeartRateRecoveryRepository(CrudRepository[HeartRateRecovery, AEHeartRateRecoveryCreate, AEHeartRateRecoveryUpdate], BaseHeartRateRepository[HeartRateRecovery]):
+class HeartRateRecoveryRepository(
+    CrudRepository[HeartRateRecovery, AEHeartRateRecoveryCreate, AEHeartRateRecoveryUpdate],
+    BaseHeartRateRepository[HeartRateRecovery],
+):
     """Repository for heart rate recovery database operations."""
 
     def __init__(self, model: type[HeartRateRecovery]):
@@ -20,10 +20,7 @@ class HeartRateRecoveryRepository(CrudRepository[HeartRateRecovery, AEHeartRateR
         BaseHeartRateRepository.__init__(self, model)
 
     def get_heart_rate_recovery_with_filters(
-        self, 
-        db_session: DbSession, 
-        query_params: AEHeartRateQueryParams,
-        user_id: str
+        self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str
     ) -> tuple[list[HeartRateRecovery], int]:
         """
         Get heart rate recovery data with filtering, sorting, and pagination.
@@ -33,22 +30,17 @@ class HeartRateRecoveryRepository(CrudRepository[HeartRateRecovery, AEHeartRateR
         """
         return self.get_heart_rate_with_filters(db_session, query_params, user_id)
 
-    def get_heart_rate_summary(
-        self, 
-        db_session: DbSession, 
-        query_params: AEHeartRateQueryParams,
-        user_id: str
-    ) -> dict:
+    def get_heart_rate_summary(self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str) -> dict:
         """
         Get summary statistics for heart rate data.
         """
         # Create temporary repositories for filtering
         hr_data_repo = HeartRateDataRepository(HeartRateData)
-        
+
         # Apply common filters to both queries
         hr_query = db_session.query(HeartRateData)
         hr_recovery_query = db_session.query(HeartRateRecovery)
-        
+
         # Use base class filtering logic
         hr_query = hr_data_repo._apply_common_filters(hr_query, query_params, user_id)
         hr_recovery_query = self._apply_common_filters(hr_recovery_query, query_params, user_id)

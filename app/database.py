@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import Engine, UUID as SqlUUID, Text, create_engine, inspect
+from sqlalchemy import Engine, UUID as SqlUUID, Text, String, create_engine, inspect
 from sqlalchemy.orm import (
     DeclarativeBase,
     Session,
@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import settings
+from app.mappings import str_64
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -56,6 +57,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
     type_annotation_map = {
         str: Text,
         UUID: SqlUUID,
+        str_64: String(64),
     }
 
 

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.services import ae_import_service, hk_import_service, get_current_user_id
+from app.services import ae_import_service, hk_import_service, ApiKeyDep
 from app.schemas import UploadDataResponse
 from app.database import DbSession
+from typing import Annotated
 
 
 router = APIRouter()
@@ -25,27 +26,27 @@ async def get_content_type(request: Request) -> tuple[str, str]:
     return content_str, content_type
 
 
-@router.post("/import/apple/auto-health-export")
+@router.post("/users/{user_id}/import/apple/auto-health-export")
 async def import_data_auto_health_export(
+    user_id: str,
     request: Request,
     db: DbSession,
-    user_id: str = Depends(get_current_user_id),
-    content: tuple[str, str] = Depends(get_content_type),
+    _api_key: ApiKeyDep,
+    content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
     """Import health data from file upload or JSON."""
-
     content_str, content_type = content[0], content[1]
     return await ae_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
 
-@router.post("/import/apple/healthion")
+@router.post("/users/{user_id}/import/apple/healthion")
 async def import_data_healthion(
+    user_id: str,
     request: Request,
     db: DbSession,
-    user_id: str = Depends(get_current_user_id),
-    content: tuple[str, str] = Depends(get_content_type),
+    _api_key: ApiKeyDep,
+    content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
     """Import health data from file upload or JSON."""
-
     content_str, content_type = content[0], content[1]
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)

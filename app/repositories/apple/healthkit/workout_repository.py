@@ -7,7 +7,7 @@ from sqlalchemy.orm import Query
 
 from app.database import DbSession
 from app.models import Workout
-from app.repositories import CrudRepository
+from app.repositories.repositories import CrudRepository
 from app.schemas import HKWorkoutQueryParams, HKWorkoutCreate, HKWorkoutUpdate
 
 
@@ -16,10 +16,7 @@ class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate
         super().__init__(model)
 
     def get_workouts_with_filters(
-        self,
-        db_session: DbSession,
-        query_params: HKWorkoutQueryParams,
-        user_id: str
+        self, db_session: DbSession, query_params: HKWorkoutQueryParams, user_id: str
     ) -> tuple[list[Workout], int]:
         query: Query = db_session.query(Workout)
 
@@ -31,9 +28,7 @@ class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate
 
         # Date range filters
         if query_params.start_date:
-            start_dt = datetime.fromisoformat(
-                query_params.start_date.replace("Z", "+00:00")
-            )
+            start_dt = datetime.fromisoformat(query_params.start_date.replace("Z", "+00:00"))
             filters.append(Workout.startDate >= start_dt)
 
         if query_params.end_date:

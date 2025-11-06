@@ -1,5 +1,3 @@
-# Auto Export schemas
-
 from .apple.auto_export.workout_queries import WorkoutQueryParams as AEWorkoutQueryParams
 from .apple.auto_export.workout_values import (
     DistanceValue as AEDistanceValue,
@@ -102,6 +100,8 @@ from .apple.workout_statistics import (
 
 from .filter_params import FilterParams
 from .user import UserRead, UserCreate, UserUpdate
+from .developer import DeveloperRead, DeveloperCreate, DeveloperUpdate
+from .api_key import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
 from .error_codes import ErrorCode
 from .response import UploadDataResponse
 
@@ -111,6 +111,12 @@ __all__ = [
     "UserRead",
     "UserCreate",
     "UserUpdate",
+    "DeveloperRead",
+    "DeveloperCreate",
+    "DeveloperUpdate",
+    "ApiKeyCreate",
+    "ApiKeyRead",
+    "ApiKeyUpdate",
     "ErrorCode",
     "UploadDataResponse",
     # Auto Export schemas
