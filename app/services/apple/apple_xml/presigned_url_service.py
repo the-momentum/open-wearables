@@ -95,3 +95,5 @@ class ImportService:
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+import_service = ImportService(getLogger(__name__))

@@ -23,6 +23,8 @@ dependencies = [
     "httpx>=0.28.1",
     "alembic>=1.17.1",
     "fastapi-users[sqlalchemy]>=15.0.1",
+    "pandas>=2.3.3",
+    "boto3>=1.40.67",
 ]
 
 [dependency-groups]

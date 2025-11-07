@@ -1,9 +1,11 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Request
 
-from app.services import ae_import_service, hk_import_service, ApiKeyDep
-from app.schemas import UploadDataResponse
+from app.services import ae_import_service, hk_import_service, pre_url_service, ApiKeyDep
+from app.schemas import UploadDataResponse, PresignedURLRequest, PresignedURLResponse
 from app.database import DbSession
-from typing import Annotated
+from app.tasks import process_uploaded_file
 
 
 router = APIRouter()
@@ -52,20 +54,18 @@ async def import_data_healthion(
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
 
-@router.post("/import/apple/xml", response_model=PresignedURLResponse)
+@router.post("/users/{user_id}/import/apple/xml", response_model=PresignedURLResponse)
 async def import_xml(
-    request_body: PresignedURLRequest,
-    user_id: str = Depends(get_current_user_id),
+    user_id: str,
+    request: PresignedURLRequest,
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
-    
-    import_service = ImportService(log=getLogger(__name__))
-    presigned_response = import_service.create_presigned_url(request_body)
+    presigned_response = pre_url_service.create_presigned_url(request)
     
     process_uploaded_file.delay(
         bucket_name=presigned_response.bucket,
         object_key=presigned_response.file_key,
-        user_id=request_body.user_id,
+        user_id=user_id,
     )
     
     return presigned_response

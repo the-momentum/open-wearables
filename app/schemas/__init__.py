@@ -95,7 +95,7 @@ from .apple.workout_statistics import (
     WorkoutStatisticResponse as HKWorkoutStatisticResponse,
     WorkoutStatisticIn as HKWorkoutStatisticIn,
 )
-
+from .apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
 # Common schemas
 
 from .filter_params import FilterParams
@@ -183,4 +183,6 @@ __all__ = [
     "HKRecordIn",
     "HKRecordJSON",
     "HKMetadataEntryIn",
+    "PresignedURLRequest",
+    "PresignedURLResponse",
 ]

@@ -6,7 +6,7 @@ from xml.etree import ElementTree as ET
 
 import pandas as pd
 
-from app.schemas import HKWorkoutStatisticCreate, HKWorkoutCreate
+from app.schemas import HKWorkoutStatisticCreate, HKWorkoutCreate, HKRecordCreate
 
 
 class XMLService:
@@ -68,9 +68,17 @@ class XMLService:
                 document[field] = datetime.strptime(document[field], "%Y-%m-%d %H:%M:%S %z")
 
         if kind == "record":
-            return None
+            return HKRecordCreate(
+                id=uuid4(),
+                user_id=document["user_id"],
+                type=document["type"],
+                startDate=document["startDate"],
+                endDate=document["endDate"],
+                unit=document["unit"],
+                value=document["value"],
+            )
 
-        elif kind == "workout":
+        if kind == "workout":
             document["type"] = document.pop("workoutActivityType")
 
             return HKWorkoutCreate(
@@ -84,7 +92,7 @@ class XMLService:
                 endDate=document["endDate"],
             )
 
-        elif kind == "stat":
+        if kind == "stat":
             statistics: list[HKWorkoutStatisticCreate] = []
             for field in ['sum', 'average', 'maximum', 'minimum']:
                 if field in document:
@@ -104,13 +112,19 @@ class XMLService:
         Parses the XML file and yields pandas dataframes of specified chunk_size.
         Extracts attributes from each Record element.
         """
-        # records: list[HKRecordCreate] = []
+        records: list[HKRecordCreate] = []
         workouts: list[HKWorkoutCreate] = []
         statistics: list[list[HKWorkoutStatisticCreate]] = []
         
         for event, elem in ET.iterparse(self.xml_path, events=("start",)):
             if elem.tag == "Record" and event == "start":
-                continue # for now
+                if len(records) >= self.chunk_size:
+                    yield zip(records, [])
+                    records = []
+                record: dict[str, Any] = elem.attrib.copy()
+                record_create = self.update_record("record", record)
+                if record_create:
+                    records.append(record_create)
 
             elif elem.tag == "Workout" and event == "start":
                 if len(workouts) >= self.chunk_size:
