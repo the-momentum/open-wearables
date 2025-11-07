@@ -8,6 +8,7 @@ from .apple.auto_export.heart_rate_data_repository import HeartRateDataRepositor
 from .apple.auto_export.heart_rate_recovery_repository import HeartRateRecoveryRepository
 from .apple.auto_export.base_heart_rate_repository import BaseHeartRateRepository
 from .apple.auto_export.active_energy_repository import ActiveEnergyRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
 
 __all__ = [
     "UserRepository",
@@ -20,4 +21,5 @@ __all__ = [
     "HeartRateRecoveryRepository",
     "BaseHeartRateRepository",
     "ActiveEnergyRepository",
+    "UserConnectionRepository",
 ]

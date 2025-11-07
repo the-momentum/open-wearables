@@ -60,6 +60,40 @@ class Settings(BaseSettings):
     secret_key: str
     token_lifetime: int = 3600
 
+    # REDIS SETTINGS
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+
+    # SUUNTO OAUTH SETTINGS
+    suunto_client_id: str
+    suunto_client_secret: SecretStr
+    suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
+    suunto_subscription_key: SecretStr
+    suunto_authorize_url: str = "https://cloudapi-oauth.suunto.com/oauth/authorize"
+    suunto_token_url: str = "https://cloudapi-oauth.suunto.com/oauth/token"
+    suunto_api_base_url: str = "https://cloudapi.suunto.com"
+    suunto_default_scope: str = "workout"
+
+    # GARMIN OAUTH SETTINGS (for future use)
+    garmin_client_id: str | None = None
+    garmin_client_secret: SecretStr | None = None
+    garmin_redirect_uri: str = "http://localhost:8000/api/v1/oauth/garmin/callback"
+    garmin_consumer_key: str | None = None
+    garmin_authorize_url: str = "https://connect.garmin.com/oauthConfirm"
+    garmin_token_url: str = "https://connectapi.garmin.com/oauth-service/oauth/access_token"
+    garmin_api_base_url: str = "https://apis.garmin.com"
+    garmin_default_scope: str = "activity:read"
+
+    # POLAR OAUTH SETTINGS (for future use)
+    polar_client_id: str | None = None
+    polar_client_secret: SecretStr | None = None
+    polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
+    polar_authorize_url: str = "https://flow.polar.com/oauth2/authorization"
+    polar_token_url: str = "https://polarremote.com/v2/oauth2/token"
+    polar_api_base_url: str = "https://www.polaraccesslink.com"
+    polar_default_scope: str = "read:activity"
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:
