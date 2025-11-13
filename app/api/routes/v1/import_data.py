@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from app.services import ae_import_service, hk_import_service, pre_url_service, ApiKeyDep
 from app.schemas import UploadDataResponse, PresignedURLRequest, PresignedURLResponse
 from app.database import DbSession
-from app.tasks import process_uploaded_file
+from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 
 
 router = APIRouter()
@@ -58,15 +58,12 @@ async def import_data_healthion(
 async def import_xml(
     user_id: str,
     request: PresignedURLRequest,
+    _api_key: ApiKeyDep,
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
     presigned_response = pre_url_service.create_presigned_url(request)
     
-    process_uploaded_file.delay(
-        bucket_name=presigned_response.bucket,
-        object_key=presigned_response.file_key,
-        user_id=user_id,
-    )
+    poll_sqs_task.delay(presigned_response.expires_in, user_id=user_id)
     
     return presigned_response
 

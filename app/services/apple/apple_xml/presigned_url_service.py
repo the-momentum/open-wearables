@@ -1,8 +1,4 @@
-import json
 from datetime import datetime
-from decimal import Decimal
-from uuid import UUID, uuid4
-from typing import Iterable
 from logging import Logger, getLogger
 
 from fastapi import HTTPException
@@ -10,10 +6,8 @@ from botocore.exceptions import ClientError
 from datetime import datetime, UTC
 from typing import Optional
 
-from app.database import DbSession
 from app.services.apple.apple_xml.aws_service import s3_client, AWS_BUCKET_NAME
 from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
-from app.tasks.poll_sqs_task import poll_sqs_task
 
 
 class ImportService:
@@ -75,8 +69,6 @@ class ImportService:
                 Conditions=conditions,
                 ExpiresIn=request.expiration_seconds,
             )
-
-            poll_sqs_task.delay(request.expiration_seconds)
 
             return PresignedURLResponse(
                 upload_url=presigned_post["url"],

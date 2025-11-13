@@ -58,10 +58,14 @@ class XMLService:
         "unit",
     )
 
-    def update_record(self, kind: str, document: dict[str, Any]) -> HKWorkoutCreate | list[HKWorkoutStatisticCreate] | None:
+    def update_record(self, kind: str, document: dict[str, Any], user_id: str = None) -> HKWorkoutCreate | list[HKWorkoutStatisticCreate] | None:
         """
-        change this
-        also not update record but something like create record
+        Create schema objects from XML document data.
+        
+        Args:
+            kind: Type of record to create ('record', 'workout', or 'stat')
+            document: Dictionary of attributes from XML element
+            user_id: User ID to associate with the records
         """
         for field in self.DATE_FIELDS:
             if field in document:
@@ -70,7 +74,7 @@ class XMLService:
         if kind == "record":
             return HKRecordCreate(
                 id=uuid4(),
-                user_id=document["user_id"],
+                user_id=user_id,
                 type=document["type"],
                 startDate=document["startDate"],
                 endDate=document["endDate"],
@@ -83,7 +87,7 @@ class XMLService:
 
             return HKWorkoutCreate(
                 id=uuid4(),
-                user_id=document["user_id"],
+                user_id=user_id,
                 type=document["type"],
                 duration=document["duration"],
                 durationUnit=document["durationUnit"],
@@ -98,7 +102,7 @@ class XMLService:
                 if field in document:
                     statistics.append(HKWorkoutStatisticCreate(
                         id=uuid4(),
-                        user_id=document["user_id"],
+                        user_id=user_id,
                         workout_id=document["workout_id"],
                         type=document["type"],
                         value=document[field],
@@ -107,10 +111,13 @@ class XMLService:
 
         return statistics if statistics else None
 
-    def parse_xml(self) -> Generator[tuple[list[HKWorkoutCreate], list[list[HKWorkoutStatisticCreate]]], Any, None]:
+    def parse_xml(self, user_id: str = None) -> Generator[tuple[list[HKWorkoutCreate], list[list[HKWorkoutStatisticCreate]]], Any, None]:
         """
-        Parses the XML file and yields pandas dataframes of specified chunk_size.
-        Extracts attributes from each Record element.
+        Parses the XML file and yields tuples of workouts and statistics.
+        Extracts attributes from each Record/Workout element.
+        
+        Args:
+            user_id: User ID to associate with parsed records
         """
         records: list[HKRecordCreate] = []
         workouts: list[HKWorkoutCreate] = []
@@ -119,10 +126,10 @@ class XMLService:
         for event, elem in ET.iterparse(self.xml_path, events=("start",)):
             if elem.tag == "Record" and event == "start":
                 if len(records) >= self.chunk_size:
-                    yield zip(records, [])
+                    # yield zip(records, [])
                     records = []
                 record: dict[str, Any] = elem.attrib.copy()
-                record_create = self.update_record("record", record)
+                record_create = self.update_record("record", record, user_id)
                 if record_create:
                     records.append(record_create)
 
@@ -131,7 +138,7 @@ class XMLService:
                     yield zip(workouts, statistics)
                     workouts = []
                 workout: dict[str, Any] = elem.attrib.copy()
-                workout_create = self.update_record("workout", workout)
+                workout_create = self.update_record("workout", workout, user_id)
                 if workout_create:
                     workouts.append(workout_create)
 
@@ -141,7 +148,7 @@ class XMLService:
                         continue
                     statistic = stat.attrib.copy()
                     statistic["workout_id"] = workout_create.id
-                    statistics_create = self.update_record("stat", statistic)
+                    statistics_create = self.update_record("stat", statistic, user_id)
                     if statistics_create:
                         statistics.append(statistics_create)
             elem.clear()

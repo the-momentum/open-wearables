@@ -159,3 +159,5 @@ volumes
 .streamlit/
 
 *.json
+*.xml
+upload_xml.py

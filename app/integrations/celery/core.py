@@ -20,13 +20,17 @@ def create_celery() -> Celery:
         result_expires=3 * 24 * 3600,
     )
 
-    celery_app.autodiscover_tasks(["app.integrations.celery.tasks.dummy_task"])
+    celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])
 
     celery_app.conf.beat_schedule = {
-        "dummy-task": {
-            "task": "app.integrations.celery.tasks.dummy_task",
-            "schedule": crontab(minute="*/1"),
-        },
+        # "poll-sqs-task": {
+        #     "task": "app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task",
+        #     "schedule": crontab(minute="*/1"),
+        # },
+        # "process-uploaded-file": {
+        #     "task": "app.integrations.celery.tasks.process_upload_task.process_uploaded_file",
+        #     "schedule": crontab(minute="*/1"),
+        # },
     }
 
     return celery_app
