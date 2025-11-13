@@ -95,7 +95,7 @@ from .apple.workout_statistics import (
     WorkoutStatisticResponse as HKWorkoutStatisticResponse,
     WorkoutStatisticIn as HKWorkoutStatisticIn,
 )
-
+from .apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
 # Common schemas
 
 from .api_key import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
@@ -200,4 +200,6 @@ __all__ = [
     "HKRecordIn",
     "HKRecordJSON",
     "HKMetadataEntryIn",
+    "PresignedURLRequest",
+    "PresignedURLResponse",
 ]

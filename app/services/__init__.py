@@ -15,6 +15,7 @@ from .apple.healthkit.import_service import import_service as hk_import_service
 from .apple.healthkit.workout_service import workout_service as hk_workout_service
 from .apple.healthkit.workout_statistic_service import workout_statistic_service as hk_workout_statistic_service
 from .apple.healthkit.record_service import record_service as hk_record_service
+from .apple.apple_xml.presigned_url_service import import_service as pre_url_service
 
 __all__ = [
     "AppService",
@@ -32,4 +33,5 @@ __all__ = [
     "hk_record_service",
     "hk_workout_service",
     "hk_workout_statistic_service",
+    "pre_url_service",
 ]

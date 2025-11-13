@@ -6,10 +6,9 @@ from app.mappings import (
     FKUser,
     FKWorkout,
     ManyToOne,
-    datetime_tz,
     numeric_10_2,
     str_10,
-    str_50,
+    str_100,
 )
 
 
@@ -18,7 +17,7 @@ class WorkoutStatistic(BaseDbModel):
     user_id: Mapped[FKUser]
     workout_id: Mapped[FKWorkout]
 
-    type: Mapped[str_50]
+    type: Mapped[str_100]
     value: Mapped[numeric_10_2]
     unit: Mapped[str_10]
 

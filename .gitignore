@@ -159,3 +159,4 @@ volumes
 .streamlit/
 
 *.json
+*.xml
