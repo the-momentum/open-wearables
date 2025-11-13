@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     cors_allow_all: bool = False
 
     # DATABASE SETTINGS
-    db_host: str = "localhost"
+    db_host: str = "db"
     db_port: int = 5432
     db_name: str = "open-wearables"
     db_user: str = "open-wearables"

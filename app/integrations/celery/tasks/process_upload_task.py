@@ -1,18 +1,13 @@
 import os
 import tempfile
 from pathlib import Path
-from decimal import Decimal
-from uuid import UUID, uuid4  
 
 from celery import shared_task
-import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services import hk_workout_service, hk_workout_statistic_service
-from app.schemas import HKWorkoutCreate, HKWorkoutStatisticCreate, HKRecordCreate
-from app.services import hk_record_service
 from app.database import SessionLocal
 
 
@@ -68,7 +63,6 @@ def process_uploaded_file(bucket_name: str, object_key: str, user_id: str):
         return result
 
     finally:
-        # Clean up temporary files
         if temp_xml_file and os.path.exists(temp_xml_file):
             os.remove(temp_xml_file)
         if dump_file and os.path.exists(dump_file):
@@ -86,9 +80,9 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
     """
     xml_service = XMLService(Path(xml_path))
 
-    for workouts, statistics in xml_service.parse_xml(user_id):
-        for workout_create in workouts:
-            hk_workout_service.create(db, workout_create)
-        for stat in statistics:
-            for stat_create in stat:
-                hk_workout_statistic_service.create(db, stat_create)
+    for workout_pair in xml_service.parse_xml(user_id):
+        for workout, statistics in workout_pair:
+            if workout:
+                hk_workout_service.create(db, workout)
+            for stat in statistics:
+                hk_workout_statistic_service.create(db, stat)
