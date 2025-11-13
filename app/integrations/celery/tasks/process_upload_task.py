@@ -12,14 +12,13 @@ from app.database import SessionLocal
 
 
 @shared_task
-def process_uploaded_file(bucket_name: str, object_key: str, user_id: str):
+def process_uploaded_file(bucket_name: str, object_key: str):
     """
     Process XML file uploaded to S3 and import to Postgres database.
 
     Args:
         bucket_name: S3 bucket name
         object_key: S3 object key (path)
-        user_id: User ID to associate with imported data (optional, extracted from object_key if not provided)
     """
     db = SessionLocal()
 
@@ -29,6 +28,7 @@ def process_uploaded_file(bucket_name: str, object_key: str, user_id: str):
     try:
         temp_dir = tempfile.gettempdir()
         temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
+        user_id = object_key.split('/')[-3]
 
         s3_client.download_file(bucket_name, object_key, temp_xml_file)
 

@@ -19,7 +19,7 @@ sqs = boto3.client("sqs", region_name=AWS_REGION)
 
 
 @shared_task()
-def poll_sqs_messages(user_id: str):
+def poll_sqs_messages():
     try:
         response = sqs.receive_message(
             QueueUrl=QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=5, MessageAttributeNames=["All"]
@@ -66,7 +66,7 @@ def poll_sqs_messages(user_id: str):
                         print(f"[poll_sqs_messages] Queuing file upload task: s3://{bucket_name}/{object_key}")
 
                         # Enqueue Celery task
-                        task = process_uploaded_file.delay(bucket_name, object_key, user_id)
+                        task = process_uploaded_file.delay(bucket_name, object_key)
                         print(f"[poll_sqs_messages] Queued task {task.id}")
                         processed_count += 1
 
@@ -92,7 +92,7 @@ def poll_sqs_messages(user_id: str):
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int, user_id: str):
+def poll_sqs_task(expiration_seconds: int):
     """
     Poll SQS messages for file uploads at regular intervals.
     Polls every 20 seconds for expiration_seconds // 20 iterations.
@@ -106,7 +106,7 @@ def poll_sqs_task(expiration_seconds: int, user_id: str):
 
     for i in range(num_polls):
         print(f"[poll_sqs_task] Poll {i + 1}/{num_polls}")
-        poll_sqs_messages(user_id=user_id)
+        poll_sqs_messages()
 
         if i < num_polls - 1:
             time.sleep(20)

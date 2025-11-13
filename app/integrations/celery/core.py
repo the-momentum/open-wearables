@@ -22,15 +22,6 @@ def create_celery() -> Celery:
 
     celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])
 
-    celery_app.conf.beat_schedule = {
-        # "poll-sqs-task": {
-        #     "task": "app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task",
-        #     "schedule": crontab(minute="*/1"),
-        # },
-        # "process-uploaded-file": {
-        #     "task": "app.integrations.celery.tasks.process_upload_task.process_uploaded_file",
-        #     "schedule": crontab(minute="*/1"),
-        # },
-    }
+    celery_app.conf.beat_schedule = {}
 
     return celery_app

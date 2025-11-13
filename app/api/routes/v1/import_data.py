@@ -56,13 +56,12 @@ async def import_data_healthion(
 
 @router.post("/users/{user_id}/import/apple/xml", response_model=PresignedURLResponse)
 async def import_xml(
-    user_id: str,
     request: PresignedURLRequest,
     _api_key: ApiKeyDep,
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
     presigned_response = pre_url_service.create_presigned_url(request)
 
-    poll_sqs_task.delay(presigned_response.expires_in, user_id=user_id)
+    poll_sqs_task.delay(presigned_response.expires_in)
 
     return presigned_response
