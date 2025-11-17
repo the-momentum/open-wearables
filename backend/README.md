@@ -15,6 +15,14 @@ FastAPI backend for the Open Wearables platform.
 The project uses a virtual environment (`.venv`) located in the `backend/` directory.
 
 **First-time setup:**
+
+Proceed to the `backend` directory:
+```bash
+cd backend
+```
+
+and run: 
+
 ```bash
 uv sync
 ```
