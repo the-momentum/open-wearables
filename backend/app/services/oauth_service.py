@@ -40,19 +40,25 @@ class OAuthService:
         configs = {
             "suunto": ProviderConfig(
                 name="suunto",
-                client_id=settings.suunto_client_id,
-                client_secret=settings.suunto_client_secret.get_secret_value(),
+                client_id=settings.suunto_client_id or "",
+                client_secret=(
+                    settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""
+                ),
                 redirect_uri=settings.suunto_redirect_uri,
                 authorize_url=settings.suunto_authorize_url,
                 token_url=settings.suunto_token_url,
                 api_base_url=settings.suunto_api_base_url,
                 default_scope=settings.suunto_default_scope,
-                subscription_key=settings.suunto_subscription_key.get_secret_value(),
+                subscription_key=(
+                    settings.suunto_subscription_key.get_secret_value() if settings.suunto_subscription_key else ""
+                ),
             ),
             "garmin": ProviderConfig(
                 name="garmin",
                 client_id=settings.garmin_client_id or "",
-                client_secret=settings.garmin_client_secret.get_secret_value() if settings.garmin_client_secret else "",
+                client_secret=(
+                    settings.garmin_client_secret.get_secret_value() if settings.garmin_client_secret else ""
+                ),
                 redirect_uri=settings.garmin_redirect_uri,
                 authorize_url=settings.garmin_authorize_url,
                 token_url=settings.garmin_token_url,
@@ -62,7 +68,7 @@ class OAuthService:
             "polar": ProviderConfig(
                 name="polar",
                 client_id=settings.polar_client_id or "",
-                client_secret=settings.polar_client_secret.get_secret_value() if settings.polar_client_secret else "",
+                client_secret=(settings.polar_client_secret.get_secret_value() if settings.polar_client_secret else ""),
                 redirect_uri=settings.polar_redirect_uri,
                 authorize_url=settings.polar_authorize_url,
                 token_url=settings.polar_token_url,
@@ -195,6 +201,23 @@ class OAuthService:
                 provider_user_id = decoded.get("sub")
             except Exception as e:
                 self.logger.warning(f"Failed to parse JWT: {str(e)}")
+        elif provider == "polar":
+            # Polar returns x_user_id in token response
+            provider_user_id = token_response.x_user_id
+
+            # Register user with Polar API (required before accessing data)
+            try:
+                from app.services.polar_service import polar_service
+
+                polar_service.register_user(
+                    access_token=token_response.access_token,
+                    member_id=str(oauth_state.user_id),
+                )
+                self.logger.info(f"Registered user {oauth_state.user_id} with Polar API")
+            except Exception as e:
+                self.logger.error(f"Failed to register user with Polar: {str(e)}")
+                # Don't fail the entire flow - user might already be registered
+                pass
 
         # Calculate token expiration
         token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_response.expires_in)

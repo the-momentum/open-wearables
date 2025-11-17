@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     environment: EnvironmentType = EnvironmentType.LOCAL
 
     # API SETTINGS
-    api_name: str = f"Open Wearables API"
+    api_name: str = "Open Wearables API"
     api_v1: str = "/api/v1"
     api_latest: str = api_v1
     paging_limit: int = 100
@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     redis_db: int = 0
 
     # SUUNTO OAUTH SETTINGS
-    suunto_client_id: str
-    suunto_client_secret: SecretStr
+    suunto_client_id: str | None = None
+    suunto_client_secret: SecretStr | None = None
     suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
     suunto_subscription_key: SecretStr
     suunto_authorize_url: str = "https://cloudapi-oauth.suunto.com/oauth/authorize"
@@ -85,14 +85,14 @@ class Settings(BaseSettings):
     garmin_api_base_url: str = "https://apis.garmin.com"
     garmin_default_scope: str = "activity:read"
 
-    # POLAR OAUTH SETTINGS (for future use)
+    # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
     polar_client_secret: SecretStr | None = None
     polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
     polar_authorize_url: str = "https://flow.polar.com/oauth2/authorization"
     polar_token_url: str = "https://polarremote.com/v2/oauth2/token"
     polar_api_base_url: str = "https://www.polaraccesslink.com"
-    polar_default_scope: str = "read:activity"
+    polar_default_scope: str = "accesslink.read_all"
 
     @field_validator("cors_origins", mode="after")
     @classmethod
