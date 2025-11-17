@@ -1,6 +1,5 @@
 DOCKER_COMMAND = docker compose -f docker-compose.yml
-UV = uv run
-ALEMBIC_CMD = $(UV) alembic
+ALEMBIC_CMD = cd backend && uv run alembic
 
 help:	## Show this help.
 	@echo "============================================================"
@@ -24,8 +23,8 @@ down:	## Kills running instance
 	$(DOCKER_COMMAND) down
 
 test:	## Run the tests.
-	export ENV=config/.env.test
-	uv run pytest -v --cov=app
+	export ENV=backend/config/.env.test && \
+	cd backend && uv run pytest -v --cov=app
 
 migrate:  ## Apply all migrations
 	$(ALEMBIC_CMD) upgrade head

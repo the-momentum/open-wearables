@@ -18,13 +18,13 @@ services:
 
   app:
     build:
-        context: .
+        context: ./backend
         dockerfile: Dockerfile
     container_name: backend__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/app.sh
     env_file:
-      - ./config/.env
+      - ./backend/config/.env
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
@@ -36,9 +36,9 @@ services:
       redis:
         condition: service_started
     volumes:
-      - ./app:/root_project/app
+      - ./backend/app:/root_project/app
       - type: bind
-        source: ./config/.env
+        source: ./backend/config/.env
         target: /root_project/config/.env
         bind:
           create_host_path: false
@@ -49,10 +49,10 @@ services:
     image: open-wearables-platform:latest
     command: scripts/start/worker.sh
     volumes:
-      - .:/root_project
+      - ./backend:/root_project
       - /root_project/.venv
     env_file:
-      - config/.env
+      - ./backend/config/.env
     depends_on:
       - redis
       - db
@@ -62,10 +62,10 @@ services:
     image: open-wearables-platform:latest
     command: scripts/start/beat.sh
     volumes:
-      - .:/root_project
+      - ./backend:/root_project
       - /root_project/.venv
     env_file:
-      - config/.env
+      - ./backend/config/.env
     depends_on:
       - redis
       - db
@@ -75,10 +75,10 @@ services:
     image: open-wearables-platform:latest
     command: scripts/start/flower.sh
     volumes:
-      - .:/root_project
+      - ./backend:/root_project
       - /root_project/.venv
     env_file:
-      - config/.env
+      - ./backend/config/.env
     ports:
       - 5555:5555
     depends_on:
