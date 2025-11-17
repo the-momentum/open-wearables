@@ -3,7 +3,7 @@ name: CI
 on: [push]
 
 jobs:
-  build:
+  backend-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,10 +13,13 @@ jobs:
           python-version: '3.13'
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install dependencies
+        working-directory: backend
         run: uv sync
 
-  code-quality-assurance:
+  backend-code-quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,11 +29,17 @@ jobs:
           python-version: '3.13'
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install dependencies
+        working-directory: backend
         run: uv sync --group code-quality
       - name: Run linter
+        working-directory: backend
         run: uv run ruff check
       - name: Run formatter
+        working-directory: backend
         run: uv run ruff format --check
       - name: Run type checker
+        working-directory: backend
         run: uv run ty check
