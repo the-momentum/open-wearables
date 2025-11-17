@@ -10,8 +10,10 @@ from pydantic_core.core_schema import str_schema
 
 from app.schemas.apple.workout_statistics import WorkoutStatisticIn
 
+
 class WorkoutBase(BaseModel):
     """Base schema for workout."""
+
     type: str | None = None
     startDate: datetime
     endDate: datetime

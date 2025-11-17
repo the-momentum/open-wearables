@@ -1,16 +1,17 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Generator
-from uuid import uuid4
+from uuid import uuid4, UUID
 from xml.etree import ElementTree as ET
 
 from app.schemas import HKWorkoutStatisticCreate, HKWorkoutCreate, HKRecordCreate
+from app.config import settings
 
 
 class XMLService:
     def __init__(self, path: Path):
         self.xml_path: Path = path
-        self.chunk_size: int = 50_000
+        self.chunk_size: int = settings.xml_chunk_size
 
     DATE_FIELDS: tuple[str, ...] = ("startDate", "endDate", "creationDate")
     DEFAULT_VALUES: dict[str, str] = {
@@ -56,67 +57,69 @@ class XMLService:
         "unit",
     )
 
-    def update_record(
-        self, kind: str, document: dict[str, Any], user_id: str = None
-    ) -> HKRecordCreate | HKWorkoutCreate | list[HKWorkoutStatisticCreate] | None:
-        """
-        Create schema objects from XML document data.
-
-        Args:
-            kind: Type of record to create ('record', 'workout', or 'stat')
-            document: Dictionary of attributes from XML element
-            user_id: User ID to associate with the records
-        """
+    def _parse_date_fields(self, document: dict[str, Any]) -> dict[str, Any]:
         for field in self.DATE_FIELDS:
             if field in document:
-                document[field] = datetime.strptime(document[field], "%Y-%m-%d %H:%M:%S %z")
+                try:
+                    document[field] = datetime.strptime(document[field], "%Y-%m-%d %H:%M:%S %z")
+                except ValueError as e:
+                    raise ValueError(f"Invalid date format for field {field}: {document[field]}") from e
+        return document
 
-        if kind == "record":
-            return HKRecordCreate(
-                id=uuid4(),
-                user_id=user_id,
-                type=document["type"],
-                startDate=document["startDate"],
-                endDate=document["endDate"],
-                sourceName=document["sourceName"],
-                unit=document["unit"],
-                value=document["value"],
-            )
+    def _create_record(self, document: dict[str, Any], user_id: str = None) -> HKRecordCreate:
+        document = self._parse_date_fields(document)
 
-        if kind == "workout":
-            document["type"] = document.pop("workoutActivityType")
+        return HKRecordCreate(
+            id=uuid4(),
+            user_id=UUID(user_id),
+            type=document["type"],
+            startDate=document["startDate"],
+            endDate=document["endDate"],
+            sourceName=document["sourceName"],
+            unit=document["unit"],
+            value=document["value"],
+        )
 
-            return HKWorkoutCreate(
-                id=uuid4(),
-                user_id=user_id,
-                type=document["type"],
-                duration=document["duration"],
-                durationUnit=document["durationUnit"],
-                sourceName=document["sourceName"],
-                startDate=document["startDate"],
-                endDate=document["endDate"],
-            )
+    def _create_workout(self, document: dict[str, Any], user_id: str = None) -> HKWorkoutCreate:
+        document = self._parse_date_fields(document)
 
-        if kind == "stat":
-            statistics: list[HKWorkoutStatisticCreate] = []
-            for field in ["sum", "average", "maximum", "minimum"]:
-                if field in document:
-                    statistics.append(
-                        HKWorkoutStatisticCreate(
-                            id=uuid4(),
-                            user_id=user_id,
-                            workout_id=document["workout_id"],
-                            type=document["type"],
-                            value=document[field],
-                            unit=document["unit"],
-                        )
+        document["type"] = document.pop("workoutActivityType")
+
+        return HKWorkoutCreate(
+            id=uuid4(),
+            user_id=UUID(user_id),
+            type=document["type"],
+            duration=document["duration"],
+            durationUnit=document["durationUnit"],
+            sourceName=document["sourceName"],
+            startDate=document["startDate"],
+            endDate=document["endDate"],
+        )
+
+    def _create_statistic(self, document: dict[str, Any], user_id: str = None) -> list[HKWorkoutStatisticCreate]:
+        document = self._parse_date_fields(document)
+
+        statistics: list[HKWorkoutStatisticCreate] = []
+        for field in ["sum", "average", "maximum", "minimum"]:
+            if field in document:
+                statistics.append(
+                    HKWorkoutStatisticCreate(
+                        id=uuid4(),
+                        user_id=UUID(user_id),
+                        workout_id=document["workout_id"],
+                        type=document["type"],
+                        value=document[field],
+                        unit=document["unit"],
                     )
+                )
 
-        return statistics if statistics else None
+        return statistics if statistics else []
 
     def parse_xml(
         self, user_id: str = None
-    ) -> Generator[tuple[list[HKWorkoutCreate], list[list[HKWorkoutStatisticCreate]]], Any, None]:
+    ) -> Generator[
+        tuple[list[HKRecordCreate], list[tuple[HKWorkoutCreate, list[HKWorkoutStatisticCreate]]]], None, None
+    ]:
         """
         Parses the XML file and yields tuples of workouts and statistics.
         Extracts attributes from each Record/Workout element.
@@ -128,24 +131,26 @@ class XMLService:
         workouts: list[HKWorkoutCreate] = []
         statistics: list[list[HKWorkoutStatisticCreate]] = []
 
-        for event, elem in ET.iterparse(self.xml_path, events=("start",)):
-            if elem.tag == "Record" and event == "start":
+        for event, elem in ET.iterparse(self.xml_path, events=("end",)):
+            if elem.tag == "Record" and event == "end":
                 if len(records) >= self.chunk_size:
-                    yield records, zip(workouts, statistics)
+                    yield records, list(zip(workouts, statistics))
                     records = []
                     workouts = []
+                    statistics = []
                 record: dict[str, Any] = elem.attrib.copy()
-                record_create = self.update_record("record", record, user_id)
+                record_create = self._create_record(record, user_id)
                 if record_create:
                     records.append(record_create)
 
-            elif elem.tag == "Workout" and event == "start":
+            elif elem.tag == "Workout" and event == "end":
                 if len(workouts) >= self.chunk_size:
-                    yield records, zip(workouts, statistics)
+                    yield records, list(zip(workouts, statistics))
                     records = []
                     workouts = []
+                    statistics = []
                 workout: dict[str, Any] = elem.attrib.copy()
-                workout_create = self.update_record("workout", workout, user_id)
+                workout_create: HKWorkoutCreate = self._create_workout(workout, user_id)
                 if workout_create:
                     workouts.append(workout_create)
 
@@ -155,10 +160,8 @@ class XMLService:
                         continue
                     statistic = stat.attrib.copy()
                     statistic["workout_id"] = workout_create.id
-                    statistics_create = self.update_record("stat", statistic, user_id)
-                    if statistics_create:
-                        statistics.append(statistics_create)
+                    statistics.append(self._create_statistic(statistic, user_id))
             elem.clear()
 
         # yield remaining records and workout pairs
-        yield records, zip(workouts, statistics)
+        yield records, list(zip(workouts, statistics))

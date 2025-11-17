@@ -132,7 +132,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "workoutstatistic",
-        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("workout_id", sa.UUID(), nullable=False),
         sa.Column("type", sa.String(length=100), nullable=False),

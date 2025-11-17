@@ -81,7 +81,6 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         for record in records:
             hk_record_service.create(db, record)
         for workout, statistics in workout_pairs:
-            if workout:
-                hk_workout_service.create(db, workout)
+            hk_workout_service.create(db, workout)
             for stat in statistics:
                 hk_workout_statistic_service.create(db, stat)

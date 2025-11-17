@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
@@ -13,7 +15,7 @@ from app.mappings import (
 
 
 class WorkoutStatistic(BaseDbModel):
-    id: Mapped[PrimaryKey[int]]
+    id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
     workout_id: Mapped[FKWorkout]
 
