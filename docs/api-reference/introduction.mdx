@@ -1,0 +1,130 @@
+---
+title: 'API Reference'
+description: 'Complete API documentation for Open Wearables'
+---
+
+## Overview
+
+The Open Wearables API provides a unified REST interface to access health data from multiple wearable devices and fitness platforms. All endpoints are versioned under `/api/v1` and follow RESTful conventions.
+
+<Card
+  title="Interactive API Docs"
+  icon="terminal"
+  href="http://localhost:8000/docs"
+>
+  Explore the interactive Swagger UI when running locally
+</Card>
+
+## Base URL
+
+When running locally:
+```
+http://localhost:8000/api/v1
+```
+
+For production deployments, replace with your server URL.
+
+## Authentication
+
+All API endpoints require authentication using API keys. Include your API key in the `Authorization` header as a Bearer token:
+
+```http
+Authorization: Bearer YOUR_API_KEY
+```
+
+### Getting an API Key
+
+1. Access the admin panel at `http://localhost:8000/admin`
+2. Create a developer account or log in
+3. Navigate to the API Keys section
+4. Generate a new API key
+5. Copy and securely store the key (it won't be shown again)
+
+<Warning>
+  Keep your API keys secure. Never commit them to version control or expose them in client-side code.
+</Warning>
+
+## Response Format
+
+All API responses follow a consistent format:
+
+### Success Response
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "page": 1,
+    "limit": 100,
+    "total": 50
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": { ... }
+  }
+}
+```
+
+## HTTP Status Codes
+
+- `200 OK` - Request succeeded
+- `201 Created` - Resource created successfully
+- `204 No Content` - Request succeeded, no content to return
+- `400 Bad Request` - Invalid request parameters
+- `401 Unauthorized` - Authentication required or invalid
+- `403 Forbidden` - Insufficient permissions
+- `404 Not Found` - Resource not found
+- `422 Unprocessable Entity` - Validation error
+- `500 Internal Server Error` - Server error
+
+## Rate Limiting
+
+Rate limiting is applied to prevent abuse. When rate limits are exceeded, you'll receive a `429 Too Many Requests` response with headers indicating when you can retry:
+
+```
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 999
+X-RateLimit-Reset: 1640995200
+```
+
+## Pagination
+
+List endpoints support pagination using query parameters:
+
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 100, max: 100)
+
+Example:
+```http
+GET /api/v1/users?page=2&limit=50
+```
+
+## Filtering & Sorting
+
+Many endpoints support filtering and sorting. Check individual endpoint documentation for available options.
+
+## Webhooks
+
+Configure webhooks to receive real-time notifications when health insights are triggered. Webhook endpoints are configured through the developer portal.
+
+## OpenAPI Specification
+
+The complete OpenAPI specification is available at:
+- Swagger UI: `http://localhost:8000/docs`
+- OpenAPI JSON: `http://localhost:8000/openapi.json`
+
+<Card
+  title="View OpenAPI Spec"
+  icon="file-code"
+  href="/api-reference/openapi.json"
+>
+  View the OpenAPI specification file
+</Card>
