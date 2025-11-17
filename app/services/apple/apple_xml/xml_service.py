@@ -1,4 +1,5 @@
 from datetime import datetime
+from logging import Logger
 from pathlib import Path
 from typing import Any, Generator
 from uuid import uuid4, UUID
@@ -6,12 +7,16 @@ from xml.etree import ElementTree as ET
 
 from app.schemas import HKWorkoutStatisticCreate, HKWorkoutCreate, HKRecordCreate
 from app.config import settings
+from app.schemas.apple.healthkit.record_crud import RecordCreate
+from app.schemas.apple.healthkit.workout_crud import WorkoutCreate
+from app.schemas.apple.workout_statistics import WorkoutStatisticCreate
 
 
 class XMLService:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, log: Logger):
         self.xml_path: Path = path
         self.chunk_size: int = settings.xml_chunk_size
+        self.log: Logger = log
 
     DATE_FIELDS: tuple[str, ...] = ("startDate", "endDate", "creationDate")
     DEFAULT_VALUES: dict[str, str] = {
@@ -96,7 +101,7 @@ class XMLService:
             endDate=document["endDate"],
         )
 
-    def _create_statistic(self, document: dict[str, Any], user_id: str = None) -> list[HKWorkoutStatisticCreate]:
+    def _create_statistics(self, document: dict[str, Any], user_id: str = None) -> list[HKWorkoutStatisticCreate]:
         document = self._parse_date_fields(document)
 
         statistics: list[HKWorkoutStatisticCreate] = []
@@ -117,9 +122,7 @@ class XMLService:
 
     def parse_xml(
         self, user_id: str = None
-    ) -> Generator[
-        tuple[list[HKRecordCreate], list[tuple[HKWorkoutCreate, list[HKWorkoutStatisticCreate]]]], None, None
-    ]:
+    ) -> Generator[tuple[list[RecordCreate], list[WorkoutCreate], list[WorkoutStatisticCreate]], None, None]:
         """
         Parses the XML file and yields tuples of workouts and statistics.
         Extracts attributes from each Record/Workout element.
@@ -129,12 +132,14 @@ class XMLService:
         """
         records: list[HKRecordCreate] = []
         workouts: list[HKWorkoutCreate] = []
-        statistics: list[list[HKWorkoutStatisticCreate]] = []
+        statistics: list[HKWorkoutStatisticCreate] = []
 
         for event, elem in ET.iterparse(self.xml_path, events=("end",)):
             if elem.tag == "Record" and event == "end":
-                if len(records) >= self.chunk_size:
-                    yield records, list(zip(workouts, statistics))
+                if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
+                    self.log.info(
+                        f"Lengths of records, workouts, statistics: {len(records)}, {len(workouts)}, {len(statistics)}")
+                    yield records, workouts, statistics
                     records = []
                     workouts = []
                     statistics = []
@@ -142,10 +147,13 @@ class XMLService:
                 record_create = self._create_record(record, user_id)
                 if record_create:
                     records.append(record_create)
+                elem.clear()
 
             elif elem.tag == "Workout" and event == "end":
-                if len(workouts) >= self.chunk_size:
-                    yield records, list(zip(workouts, statistics))
+                if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
+                    self.log.info(
+                        f"Lengths of records, workouts, statistics: {len(records)}, {len(workouts)}, {len(statistics)}")
+                    yield records, workouts, statistics
                     records = []
                     workouts = []
                     statistics = []
@@ -156,12 +164,17 @@ class XMLService:
 
                 # append workout statistics to workout
                 for stat in elem:
+                    if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
+                        self.log.info(
+                            f"Lengths of records, workouts, statistics: {len(records)}, {len(workouts)}, {len(statistics)}")
+                        yield records, workouts, statistics
                     if stat.tag != "WorkoutStatistics":
                         continue
                     statistic = stat.attrib.copy()
                     statistic["workout_id"] = workout_create.id
-                    statistics.append(self._create_statistic(statistic, user_id))
-            elem.clear()
+                    statistics.extend(self._create_statistics(statistic, user_id))
+                elem.clear()
 
         # yield remaining records and workout pairs
-        yield records, list(zip(workouts, statistics))
+        self.log.info(f"Lengths of records, workouts, statistics: {len(records)}, {len(workouts)}, {len(statistics)}")
+        yield records, workouts, statistics

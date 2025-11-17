@@ -1,5 +1,6 @@
 import os
 import tempfile
+from logging import getLogger
 from pathlib import Path
 
 from celery import shared_task
@@ -75,12 +76,12 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         xml_path: Path to the XML file
         user_id: User ID to associate with the data
     """
-    xml_service = XMLService(Path(xml_path))
+    xml_service = XMLService(Path(xml_path), getLogger(__name__))
 
-    for records, workout_pairs in xml_service.parse_xml(user_id):
+    for records, workouts, statistics in xml_service.parse_xml(user_id):
         for record in records:
             hk_record_service.create(db, record)
-        for workout, statistics in workout_pairs:
+        for workout in workouts:
             hk_workout_service.create(db, workout)
-            for stat in statistics:
-                hk_workout_statistic_service.create(db, stat)
+        for stat in statistics:
+            hk_workout_statistic_service.create(db, stat)
