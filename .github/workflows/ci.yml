@@ -88,15 +88,16 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
       - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Upload node_modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-node-modules
-          path: frontend/node_modules
-          retention-days: 1
 
   frontend-build:
     needs: [changes, frontend-setup]
@@ -112,11 +113,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download node_modules
-        uses: actions/download-artifact@v4
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
         with:
-          name: frontend-node-modules
           path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          fail-on-cache-miss: true
       - name: Build application
         working-directory: frontend
         run: pnpm run build
@@ -135,11 +137,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download node_modules
-        uses: actions/download-artifact@v4
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
         with:
-          name: frontend-node-modules
           path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          fail-on-cache-miss: true
       - name: Run oxlint
         working-directory: frontend
         run: pnpm run lint
@@ -158,11 +161,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download node_modules
-        uses: actions/download-artifact@v4
+      - name: Restore node_modules cache
+        uses: actions/cache/restore@v4
         with:
-          name: frontend-node-modules
           path: frontend/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          fail-on-cache-miss: true
       - name: Run prettier check
         working-directory: frontend
         run: pnpm run format:check
