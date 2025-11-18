@@ -33,7 +33,7 @@
       },
       {
         "tab": "API Reference",
-        "openapi": "https://petstore3.swagger.io/api/v3/openapi.json",
+        "openapi": "https://open-wearables-production.up.railway.app/openapi.json",
         "groups": [
           {
             "group": "Overview",
@@ -60,8 +60,8 @@
     }
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/logo/light.png",
+    "dark": "/logo/dark.png"
   },
   "navbar": {
     "links": [
