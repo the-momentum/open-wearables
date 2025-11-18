@@ -1,4 +1,4 @@
-# Mintlify Starter Kit
+# Open Wearables Documentation
 
 Use the starter kit to get your docs deployed and ready to customize.
 
