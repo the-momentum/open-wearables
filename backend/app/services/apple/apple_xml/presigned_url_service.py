@@ -1,11 +1,11 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from logging import Logger, getLogger
 
-from fastapi import HTTPException, status
 from botocore.exceptions import ClientError
+from fastapi import HTTPException, status
 
-from app.services.apple.apple_xml.aws_service import s3_client, AWS_BUCKET_NAME
-from app.schemas.apple.apple_xml.aws import PresignedURLResponse, PresignedURLRequest
+from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
+from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, s3_client
 
 
 class ImportService:
@@ -34,12 +34,12 @@ class ImportService:
             error_code = e.response["Error"]["Code"]
             if error_code == "404":
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="S3 bucket not found") from e
-            elif error_code == "403":
+            if error_code == "403":
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to S3 bucket") from e
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST, detail=f"S3 bucket error: {error_code}"
-                ) from e
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"S3 bucket error: {error_code}",
+            ) from e
 
     def create_presigned_url(self, user_id: str, request: PresignedURLRequest) -> PresignedURLResponse:
         self.validate_bucket_exists()
@@ -82,7 +82,8 @@ class ImportService:
             ) from e
         except Exception as e:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Unexpected error: {str(e)}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unexpected error: {str(e)}",
             ) from e
 
 

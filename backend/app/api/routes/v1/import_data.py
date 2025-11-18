@@ -2,10 +2,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
-from app.services import ae_import_service, hk_import_service, pre_url_service, ApiKeyDep
-from app.schemas import UploadDataResponse, PresignedURLResponse, PresignedURLRequest
 from app.database import DbSession
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
+from app.schemas import PresignedURLRequest, PresignedURLResponse, UploadDataResponse
+from app.services import ApiKeyDep, ae_import_service, hk_import_service, pre_url_service
 
 router = APIRouter()
 
@@ -53,7 +53,7 @@ async def import_data_healthion(
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
 
-@router.post("/users/{user_id}/import/apple/xml", response_model=PresignedURLResponse)
+@router.post("/users/{user_id}/import/apple/xml")
 async def import_xml(
     user_id: str,
     request: PresignedURLRequest,

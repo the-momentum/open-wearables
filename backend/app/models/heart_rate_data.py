@@ -1,4 +1,7 @@
+# ruff: noqa: F821
+
 from sqlalchemy.orm import Mapped
+
 from app.database import BaseDbModel
 from app.mappings import (
     FKUser,
@@ -9,6 +12,7 @@ from app.mappings import (
     numeric_10_3,
     str_50,
 )
+
 
 class HeartRateData(BaseDbModel):
     id: Mapped[PrimaryKey[int]]

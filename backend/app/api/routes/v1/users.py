@@ -1,8 +1,10 @@
 from uuid import UUID
+
 from fastapi import APIRouter
+
 from app.database import DbSession
 from app.schemas.user import UserCreate, UserRead, UserUpdate
-from app.services import user_service, ApiKeyDep, DeveloperDep
+from app.services import ApiKeyDep, DeveloperDep, user_service
 
 router = APIRouter()
 

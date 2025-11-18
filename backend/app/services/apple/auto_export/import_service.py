@@ -1,33 +1,32 @@
 import json
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
-from typing import Iterable
 from logging import Logger, getLogger
+from typing import Iterable
+from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.services.apple.healthkit.workout_service import workout_service
-from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
-from app.services.apple.auto_export.active_energy_service import active_energy_service
-from app.services.apple.auto_export.heart_rate_service import heart_rate_service
-from app.utils.exceptions import handle_exceptions
 from app.schemas import (
-    AEWorkoutJSON,
-    AEHeartRateDataIn,
-    AEHeartRateRecoveryIn,
+    AEActiveEnergyCreate,
     AEActiveEnergyIn,
+    AEHeartRateDataCreate,
+    AEHeartRateDataIn,
+    AEHeartRateRecoveryCreate,
+    AEHeartRateRecoveryIn,
     AEImportBundle,
     AERootJSON,
-    HKWorkoutStatisticIn,
-    HKWorkoutStatisticCreate,
+    AEWorkoutJSON,
     HKWorkoutCreate,
     HKWorkoutIn,
-    AEHeartRateDataCreate,
-    AEHeartRateRecoveryCreate,
-    AEActiveEnergyCreate,
+    HKWorkoutStatisticCreate,
+    HKWorkoutStatisticIn,
     UploadDataResponse,
 )
-
+from app.services.apple.auto_export.active_energy_service import active_energy_service
+from app.services.apple.auto_export.heart_rate_service import heart_rate_service
+from app.services.apple.healthkit.workout_service import workout_service
+from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
+from app.utils.exceptions import handle_exceptions
 
 APPLE_DT_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
@@ -59,43 +58,51 @@ class ImportService:
         if workout.activeEnergyBurned is not None:
             ae_data = workout.activeEnergyBurned
             statistics.append(
-                HKWorkoutStatisticIn(type="totalEnergyBurned", value=ae_data.qty or 0, unit=ae_data.units or "kcal")
+                HKWorkoutStatisticIn(type="totalEnergyBurned", value=ae_data.qty or 0, unit=ae_data.units or "kcal"),
             )
 
         if workout.distance is not None:
             dist_data = workout.distance
             statistics.append(
-                HKWorkoutStatisticIn(type="totalDistance", value=dist_data.qty or 0, unit=dist_data.units or "m")
+                HKWorkoutStatisticIn(type="totalDistance", value=dist_data.qty or 0, unit=dist_data.units or "m"),
             )
 
         if workout.intensity is not None:
             intensity_data = workout.intensity
             statistics.append(
                 HKWorkoutStatisticIn(
-                    type="averageIntensity", value=intensity_data.qty or 0, unit=intensity_data.units or "kcal/hr·kg"
-                )
+                    type="averageIntensity",
+                    value=intensity_data.qty or 0,
+                    unit=intensity_data.units or "kcal/hr·kg",
+                ),
             )
 
         if workout.temperature is not None:
             temp_data = workout.temperature
             statistics.append(
                 HKWorkoutStatisticIn(
-                    type="environmentalTemperature", value=temp_data.qty or 0, unit=temp_data.units or "degC"
-                )
+                    type="environmentalTemperature",
+                    value=temp_data.qty or 0,
+                    unit=temp_data.units or "degC",
+                ),
             )
 
         if workout.humidity is not None:
             humidity_data = workout.humidity
             statistics.append(
                 HKWorkoutStatisticIn(
-                    type="environmentalHumidity", value=humidity_data.qty or 0, unit=humidity_data.units or "%"
-                )
+                    type="environmentalHumidity",
+                    value=humidity_data.qty or 0,
+                    unit=humidity_data.units or "%",
+                ),
             )
 
         return statistics
 
     def _get_records(
-        self, workout: AEWorkoutJSON, wid: UUID
+        self,
+        workout: AEWorkoutJSON,
+        wid: UUID,
     ) -> tuple[list[AEHeartRateDataIn], list[AEHeartRateRecoveryIn], list[AEActiveEnergyIn]]:
         hr_data_rows: list[AEHeartRateDataIn] = []
         for e in workout.heartRateData or []:
@@ -108,7 +115,7 @@ class ImportService:
                     avg=self._dec(e.avg),
                     min=self._dec(e.min),
                     max=self._dec(e.max),
-                )
+                ),
             )
 
         hr_recovery_rows: list[AEHeartRateRecoveryIn] = []
@@ -122,7 +129,7 @@ class ImportService:
                     avg=self._dec(e.avg),
                     min=self._dec(e.min),
                     max=self._dec(e.max),
-                )
+                ),
             )
 
         ae_rows: list[AEActiveEnergyIn] = []
@@ -134,7 +141,7 @@ class ImportService:
                     source=e.source,
                     units=e.units,
                     qty=self._dec(e.qty),
-                )
+                ),
             )
 
         return hr_data_rows, hr_recovery_rows, ae_rows
@@ -226,7 +233,11 @@ class ImportService:
 
     @handle_exceptions
     async def import_data_from_request(
-        self, db_session: DbSession, request_content: str, content_type: str, user_id: str
+        self,
+        db_session: DbSession,
+        request_content: str,
+        content_type: str,
+        user_id: str,
     ) -> UploadDataResponse:
         try:
             # Parse content based on type

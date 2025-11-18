@@ -7,7 +7,7 @@ from app.services.services import AppService
 
 
 class WorkoutStatisticService(
-    AppService[WorkoutStatisticRepository, WorkoutStatistic, HKWorkoutStatisticCreate, HKWorkoutStatisticUpdate]
+    AppService[WorkoutStatisticRepository, WorkoutStatistic, HKWorkoutStatisticCreate, HKWorkoutStatisticUpdate],
 ):
     """Service for workout statistics business logic."""
 

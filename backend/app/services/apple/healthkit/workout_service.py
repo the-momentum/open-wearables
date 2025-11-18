@@ -6,14 +6,14 @@ from app.database import DbSession
 from app.models import Workout
 from app.repositories import HKWorkoutRepository
 from app.schemas import (
-    HKWorkoutQueryParams,
+    HKDateRange,
     HKWorkoutCreate,
-    HKWorkoutUpdate,
     HKWorkoutListResponse,
+    HKWorkoutMeta,
+    HKWorkoutQueryParams,
     HKWorkoutResponse,
     HKWorkoutSummary,
-    HKWorkoutMeta,
-    HKDateRange,
+    HKWorkoutUpdate,
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -27,7 +27,10 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
 
     @handle_exceptions
     async def _get_workouts_with_filters(
-        self, db_session: DbSession, query_params: HKWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKWorkoutQueryParams,
+        user_id: str,
     ) -> tuple[list[Workout], int]:
         """
         Get workouts with filtering, sorting, and pagination.
@@ -57,7 +60,10 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
 
     @handle_exceptions
     async def get_workouts_response(
-        self, db_session: DbSession, query_params: HKWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKWorkoutQueryParams,
+        user_id: str,
     ) -> HKWorkoutListResponse:
         """
         Get HealthKit workouts formatted as API response.

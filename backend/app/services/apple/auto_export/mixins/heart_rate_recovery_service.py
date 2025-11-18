@@ -9,7 +9,7 @@ from app.utils.exceptions import handle_exceptions
 
 
 class HeartRateRecoveryService(
-    AppService[HeartRateRecoveryRepository, HeartRateRecovery, AEHeartRateRecoveryCreate, AEHeartRateRecoveryUpdate]
+    AppService[HeartRateRecoveryRepository, HeartRateRecovery, AEHeartRateRecoveryCreate, AEHeartRateRecoveryUpdate],
 ):
     """Service for heart rate recovery business logic."""
 
@@ -18,7 +18,10 @@ class HeartRateRecoveryService(
 
     @handle_exceptions
     async def get_heart_rate_recovery_with_filters(
-        self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEHeartRateQueryParams,
+        user_id: str,
     ) -> tuple[list[HeartRateRecovery], int]:
         """
         Get heart rate recovery data with filtering, sorting, and pagination.
@@ -33,7 +36,10 @@ class HeartRateRecoveryService(
 
     @handle_exceptions
     async def get_heart_rate_summary(
-        self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEHeartRateQueryParams,
+        user_id: str,
     ) -> dict:
         """
         Get summary statistics for heart rate data.

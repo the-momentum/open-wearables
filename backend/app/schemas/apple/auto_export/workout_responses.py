@@ -6,11 +6,11 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.schemas.apple.auto_export.workout_values import (
-    DistanceValue,
     ActiveEnergyValue,
+    DistanceValue,
+    HumidityValue,
     IntensityValue,
     TemperatureValue,
-    HumidityValue,
 )
 
 

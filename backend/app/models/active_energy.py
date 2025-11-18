@@ -1,3 +1,5 @@
+# ruff: noqa: F821
+
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
@@ -10,6 +12,7 @@ from app.mappings import (
     numeric_15_5,
     str_50,
 )
+
 
 class ActiveEnergy(BaseDbModel):
     id: Mapped[PrimaryKey[int]]

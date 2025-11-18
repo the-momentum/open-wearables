@@ -1,15 +1,12 @@
-import os
 import json
 import time
-from pathlib import Path
+from typing import Any
 
-from dotenv import load_dotenv
 import boto3
-from celery import shared_task
 
-from app.integrations.celery.tasks.process_upload_task import process_uploaded_file
 from app.config import settings
-
+from app.integrations.celery.tasks.process_upload_task import process_uploaded_file
+from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
 
@@ -17,10 +14,13 @@ sqs = boto3.client("sqs", region_name=settings.aws_region)
 
 
 @shared_task()
-def poll_sqs_messages():
+def poll_sqs_messages() -> dict[str, Any]:
     try:
         response = sqs.receive_message(
-            QueueUrl=QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=5, MessageAttributeNames=["All"]
+            QueueUrl=QUEUE_URL,
+            MaxNumberOfMessages=10,
+            WaitTimeSeconds=5,
+            MessageAttributeNames=["All"],
         )
 
         messages = response.get("Messages", [])
@@ -43,7 +43,8 @@ def poll_sqs_messages():
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
                         print(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}"
+                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, \
+                            skipping: {message_body[:100]}",
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -90,7 +91,7 @@ def poll_sqs_messages():
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int):
+def poll_sqs_task(expiration_seconds: int) -> dict[str, int]:
     """
     Poll SQS messages for file uploads at regular intervals.
     Polls every 20 seconds for expiration_seconds // 20 iterations.

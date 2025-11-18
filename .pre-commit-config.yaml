@@ -5,15 +5,18 @@ repos:
       # Run the linter
       - id: ruff-check
         args: [--fix]
+        files: ^backend/.*\.py$
       # Run the formatter
       - id: ruff-format
+        files: ^backend/.*\.py$
 
   - repo: local
     hooks:
       - id: ty
         name: ty check
-        entry: .venv/bin/ty check .
+        entry: backend/.venv/bin/ty check .
         language: system
+        files: ^backend/.*\.py$
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

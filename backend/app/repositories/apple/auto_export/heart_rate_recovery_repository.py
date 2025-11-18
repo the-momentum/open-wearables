@@ -20,7 +20,10 @@ class HeartRateRecoveryRepository(
         BaseHeartRateRepository.__init__(self, model)
 
     def get_heart_rate_recovery_with_filters(
-        self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEHeartRateQueryParams,
+        user_id: str,
     ) -> tuple[list[HeartRateRecovery], int]:
         """
         Get heart rate recovery data with filtering, sorting, and pagination.

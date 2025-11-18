@@ -28,7 +28,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 and_(
                     self.model.user_id == user_id,
                     self.model.provider == provider,
-                )
+                ),
             )
             .one_or_none()
         )
@@ -47,7 +47,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                     self.model.user_id == user_id,
                     self.model.provider == provider,
                     self.model.status == "active",
-                )
+                ),
             )
             .one_or_none()
         )
@@ -65,7 +65,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 and_(
                     self.model.status == "active",
                     self.model.token_expires_at <= threshold_time,
-                )
+                ),
             )
             .all()
         )

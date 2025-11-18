@@ -8,8 +8,6 @@ class UserAdminView(
     model=User,
     create_schema=UserCreate,
     update_schema=UserUpdate,
-    column={
-        "searchable": ["username", "email"]
-    }
+    column={"searchable": ["username", "email"]},
 ):
     pass

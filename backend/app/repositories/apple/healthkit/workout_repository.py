@@ -8,7 +8,7 @@ from sqlalchemy.orm import Query
 from app.database import DbSession
 from app.models import Workout
 from app.repositories.repositories import CrudRepository
-from app.schemas import HKWorkoutQueryParams, HKWorkoutCreate, HKWorkoutUpdate
+from app.schemas import HKWorkoutCreate, HKWorkoutQueryParams, HKWorkoutUpdate
 
 
 class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate]):
@@ -16,7 +16,10 @@ class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate
         super().__init__(model)
 
     def get_workouts_with_filters(
-        self, db_session: DbSession, query_params: HKWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKWorkoutQueryParams,
+        user_id: str,
     ) -> tuple[list[Workout], int]:
         query: Query = db_session.query(Workout)
 
@@ -63,10 +66,8 @@ class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate
 
         # Apply sorting
         sort_column = getattr(Workout, query_params.sort_by, Workout.startDate)
-        if query_params.sort_order == "asc":
-            query = query.order_by(sort_column)
-        else:
-            query = query.order_by(desc(sort_column))
+
+        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
 
         # Apply pagination
         query = query.offset(query_params.offset).limit(query_params.limit)
@@ -75,8 +76,9 @@ class WorkoutRepository(CrudRepository[Workout, HKWorkoutCreate, HKWorkoutUpdate
 
     def get_workout_summary(self, db_session: DbSession, workout_id: UUID) -> dict:
         """Get workout summary statistics for HealthKit workouts."""
-        from app.models import WorkoutStatistic, HeartRateData, ActiveEnergy
         from sqlalchemy import func
+
+        from app.models import ActiveEnergy, HeartRateData, WorkoutStatistic
 
         # Get workout statistics summary
         stats_summary = (

@@ -65,6 +65,8 @@ ignore = [
     "RET503", # implicit-return
 ]
 
+[tool.ty.src]
+exclude = ["migrations/"]
 
 [build-system]
 requires = ["uv_build"]

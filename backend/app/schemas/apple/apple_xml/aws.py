@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 
-
 MIN_SECONDS, DEFAULT_SECONDS, MAX_SECONDS = settings.presigned_url_expiration_seconds
 MIN_FILESIZE, DEFAULT_FILESIZE, MAX_FILESIZE = settings.presigned_url_max_filesize
 

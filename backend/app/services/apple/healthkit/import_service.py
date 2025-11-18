@@ -1,29 +1,29 @@
 import json
 from decimal import Decimal
-from uuid import UUID, uuid4
-from typing import Iterable
 from logging import Logger, getLogger
+from typing import Iterable
+from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.services.apple.healthkit.workout_service import workout_service
-from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
-from app.services.apple.healthkit.record_service import record_service
 
 # from app.services.apple.healthkit.metadata_entry_service import metadata_entry_service
 from app.schemas import (
-    HKRootJSON,
-    HKWorkoutJSON,
-    HKWorkoutIn,
-    HKWorkoutCreate,
-    HKWorkoutStatisticCreate,
-    HKWorkoutStatisticIn,
-    HKRecordJSON,
-    HKRecordIn,
     HKMetadataEntryIn,
     HKRecordCreate,
+    HKRecordIn,
+    HKRecordJSON,
+    HKRootJSON,
+    HKWorkoutCreate,
+    HKWorkoutIn,
+    HKWorkoutJSON,
+    HKWorkoutStatisticCreate,
+    HKWorkoutStatisticIn,
     # HKMetadataEntryCreate,
     UploadDataResponse,
 )
+from app.services.apple.healthkit.record_service import record_service
+from app.services.apple.healthkit.workout_service import workout_service
+from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
 
 
 class ImportService:
@@ -35,7 +35,9 @@ class ImportService:
         # self.metadata_entry_service = metadata_entry_service
 
     def _build_workout_bundles(
-        self, raw: dict, user_id: str
+        self,
+        raw: dict,
+        user_id: str,
     ) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundle(s)
@@ -132,7 +134,7 @@ class ImportService:
             if user_id:
                 record_data["user_id"] = UUID(user_id)
             record_create = HKRecordCreate(**record_data)
-            created_record = self.record_service.create(db_session, record_create)
+            created_record = self.record_service.create(db_session, record_create) # noqa
 
             # # Create record metadata
             # for metadata_in in record_metadata:
@@ -147,7 +149,11 @@ class ImportService:
         return True
 
     async def import_data_from_request(
-        self, db_session: DbSession, request_content: str, content_type: str, user_id: str
+        self,
+        db_session: DbSession,
+        request_content: str,
+        content_type: str,
+        user_id: str,
     ) -> UploadDataResponse:
         try:
             # Parse content based on type

@@ -1,8 +1,10 @@
 from typing import Annotated
-from fastapi import APIRouter, status, Body
+
+from fastapi import APIRouter, Body, status
+
 from app.database import DbSession
 from app.schemas.api_key import ApiKeyRead, ApiKeyUpdate
-from app.services import api_key_service, DeveloperDep
+from app.services import DeveloperDep, api_key_service
 
 router = APIRouter()
 

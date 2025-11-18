@@ -1,13 +1,15 @@
+# ruff: noqa: F821
+
 from uuid import UUID
 
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import (
-    PrimaryKey,
     FKUser,
     FKWorkout,
     ManyToOne,
+    PrimaryKey,
     numeric_10_2,
     str_10,
     str_100,

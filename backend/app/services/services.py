@@ -2,16 +2,15 @@ from logging import Logger
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
 from fastapi import Request, Response
 from fastapi_users import UUIDIDMixin
+from pydantic import BaseModel
 
+from app.config import settings
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas import FilterParams
-from app.config import settings
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-
+from app.utils.exceptions import ResourceNotFoundError
 
 type OptRequest = Request | None
 

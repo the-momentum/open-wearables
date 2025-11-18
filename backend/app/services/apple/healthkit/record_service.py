@@ -5,14 +5,14 @@ from app.database import DbSession
 from app.models import Record
 from app.repositories import HKRecordRepository
 from app.schemas import (
-    HKRecordQueryParams,
-    HKRecordCreate,
-    HKRecordUpdate,
-    HKRecordListResponse,
-    HKRecordResponse,
-    HKRecordMeta,
-    HKMetadataEntryResponse,
     HKDateRange,
+    HKMetadataEntryResponse,
+    HKRecordCreate,
+    HKRecordListResponse,
+    HKRecordMeta,
+    HKRecordQueryParams,
+    HKRecordResponse,
+    HKRecordUpdate,
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -26,7 +26,10 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
 
     @handle_exceptions
     async def _get_records_with_filters(
-        self, db_session: DbSession, query_params: HKRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKRecordQueryParams,
+        user_id: str,
     ) -> tuple[list[Record], int]:
         """
         Get records with filtering, sorting, and pagination.
@@ -42,7 +45,10 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
 
     @handle_exceptions
     async def get_records_response(
-        self, db_session: DbSession, query_params: HKRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKRecordQueryParams,
+        user_id: str,
     ) -> HKRecordListResponse:
         """
         Get HealthKit records formatted as API response.

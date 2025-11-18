@@ -6,9 +6,9 @@ from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
-from app.models import Workout, ActiveEnergy, HeartRateData
+from app.models import ActiveEnergy, HeartRateData, Workout
 from app.repositories.repositories import CrudRepository
-from app.schemas import AEWorkoutQueryParams, AEWorkoutCreate, AEWorkoutUpdate
+from app.schemas import AEWorkoutCreate, AEWorkoutQueryParams, AEWorkoutUpdate
 
 
 class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate]):
@@ -16,7 +16,10 @@ class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate
         super().__init__(model)
 
     def get_workouts_with_filters(
-        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEWorkoutQueryParams,
+        user_id: str,
     ) -> tuple[list[Workout], int]:
         query: Query = db_session.query(Workout)
 
@@ -63,10 +66,8 @@ class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate
 
         # Apply sorting
         sort_column = getattr(Workout, query_params.sort_by, Workout.startDate)
-        if query_params.sort_order == "asc":
-            query = query.order_by(sort_column)
-        else:
-            query = query.order_by(desc(sort_column))
+
+        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
 
         # Apply pagination
         query = query.offset(query_params.offset).limit(query_params.limit)

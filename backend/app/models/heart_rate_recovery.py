@@ -1,3 +1,5 @@
+# ruff: noqa: F821
+
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
