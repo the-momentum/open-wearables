@@ -1,0 +1,169 @@
+// Base API client with fetch wrapper
+
+import { API_CONFIG } from './config';
+import { ApiError } from '../errors/api-error';
+import { getToken, clearSession } from '../auth/session';
+
+interface RequestOptions extends RequestInit {
+  timeout?: number;
+  retries?: number;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * Base fetch wrapper with error handling, retries, and timeout
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestOptions = {},
+  attempt: number = 0
+): Promise<Response> {
+  const {
+    timeout = API_CONFIG.timeout,
+    retries = API_CONFIG.retryAttempts,
+    ...fetchOptions
+  } = options;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    // Retry on 5xx errors
+    if (response.status >= 500 && attempt < retries) {
+      await delay(API_CONFIG.retryDelay * (attempt + 1));
+      return fetchWithRetry(url, options, attempt + 1);
+    }
+
+    return response;
+  } catch (error: unknown) {
+    clearTimeout(timeoutId);
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw ApiError.timeout();
+    }
+
+    if (attempt < retries) {
+      await delay(API_CONFIG.retryDelay * (attempt + 1));
+      return fetchWithRetry(url, options, attempt + 1);
+    }
+
+    const message = error instanceof Error ? error.message : 'Network error';
+    throw ApiError.networkError(message);
+  }
+}
+
+/**
+ * Main API client
+ */
+export const apiClient = {
+  async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+    const url = `${API_CONFIG.baseUrl}${endpoint}`;
+    const token = getToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+
+    // Add auth token if available
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetchWithRetry(url, {
+        ...options,
+        headers,
+      });
+
+      // Handle 401 - clear session and redirect to login
+      if (response.status === 401) {
+        clearSession();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        throw ApiError.fromResponse(response);
+      }
+
+      // Parse response
+      let data: unknown;
+      const contentType = response.headers.get('content-type');
+
+      if (contentType?.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+
+      // Handle error responses
+      if (!response.ok) {
+        throw ApiError.fromResponse(response, data);
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw ApiError.networkError((error as Error).message);
+    }
+  },
+
+  get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(endpoint, { ...options, method: 'GET' });
+  },
+
+  post<T>(
+    endpoint: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  },
+
+  patch<T>(
+    endpoint: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  },
+
+  put<T>(
+    endpoint: string,
+    body?: unknown,
+    options?: RequestOptions
+  ): Promise<T> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  },
+
+  delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(endpoint, { ...options, method: 'DELETE' });
+  },
+};
+
+// Utility function for delays
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export { ApiError };

@@ -82,4 +82,12 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
 }

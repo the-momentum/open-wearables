@@ -1,9 +1,15 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { createFileRoute } from '@tanstack/react-router';
+import { useState, useMemo } from 'react';
+import { Input } from '@/components/ui/input';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -11,82 +17,84 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { Search } from 'lucide-react'
+} from '@/components/ui/table';
+import { Search, Eye, Trash2 } from 'lucide-react';
+import { useUsers, useDeleteUser } from '@/hooks/api/use-users';
+import { TableSkeleton } from '@/components/common/table-skeleton';
+import { ErrorState } from '@/components/common/error-state';
+import { EmptyState } from '@/components/common/empty-state';
+import { formatDistanceToNow } from 'date-fns';
 
 export const Route = createFileRoute('/_authenticated/users')({
   component: UsersPage,
-})
-
-// Mock data
-const mockUsers = [
-  {
-    id: 'usr_abc123',
-    email: 'john.doe@example.com',
-    name: 'John Doe',
-    connections: ['fitbit', 'strava'],
-    status: 'active' as const,
-    lastSync: '2 hours ago',
-    dataPoints: '12.4K',
-  },
-  {
-    id: 'usr_def456',
-    email: 'jane.smith@example.com',
-    name: 'Jane Smith',
-    connections: ['garmin'],
-    status: 'active' as const,
-    lastSync: '5 minutes ago',
-    dataPoints: '8.2K',
-  },
-  {
-    id: 'usr_ghi789',
-    email: 'bob.wilson@example.com',
-    name: 'Bob Wilson',
-    connections: ['whoop', 'oura'],
-    status: 'error' as const,
-    lastSync: '2 days ago',
-    dataPoints: '15.7K',
-  },
-  {
-    id: 'usr_jkl012',
-    email: 'alice.johnson@example.com',
-    name: 'Alice Johnson',
-    connections: ['fitbit', 'strava', 'garmin'],
-    status: 'active' as const,
-    lastSync: '1 hour ago',
-    dataPoints: '23.1K',
-  },
-  {
-    id: 'usr_mno345',
-    email: 'charlie.brown@example.com',
-    name: 'Charlie Brown',
-    connections: [],
-    status: 'pending' as const,
-    lastSync: 'Never',
-    dataPoints: '0',
-  },
-]
+});
 
 function UsersPage() {
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState('');
+  const { data: users, isLoading, error, refetch } = useUsers({ search });
+  const deleteUser = useDeleteUser();
 
-  const filteredUsers = mockUsers.filter(
-    (user) =>
-      user.name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    if (!search) return users;
 
-  const getStatusColor = (status: string) => {
+    const searchLower = search.toLowerCase();
+    return users.filter(
+      (user) =>
+        user.name?.toLowerCase().includes(searchLower) ||
+        user.email?.toLowerCase().includes(searchLower)
+    );
+  }, [users, search]);
+
+  const getStatusColor = (
+    status: string
+  ): 'default' | 'destructive' | 'secondary' | 'outline' => {
     switch (status) {
       case 'active':
-        return 'bg-green-500'
+        return 'default';
       case 'error':
-        return 'bg-red-500'
+        return 'destructive';
       case 'pending':
-        return 'bg-yellow-500'
+        return 'secondary';
       default:
-        return 'bg-gray-500'
+        return 'outline';
     }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (confirm('Are you sure you want to delete this user?')) {
+      deleteUser.mutate(userId);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 p-8">
+        <div className="mb-4">
+          <h2 className="text-3xl font-bold tracking-tight">Users</h2>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>All Users</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TableSkeleton rows={5} columns={5} />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 p-8">
+        <ErrorState
+          title="Failed to load users"
+          message="An error occurred while loading the users list. Please try again."
+          onRetry={refetch}
+        />
+      </div>
+    );
   }
 
   return (
@@ -115,65 +123,111 @@ function UsersPage() {
             />
           </div>
 
-          {/* Table */}
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Connections</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last Sync</TableHead>
-                  <TableHead>Data Points</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.length === 0 ? (
+          {/* Empty State */}
+          {filteredUsers.length === 0 ? (
+            <EmptyState
+              title="No users found"
+              message={
+                search
+                  ? 'No users match your search criteria.'
+                  : 'No users have been added yet.'
+              }
+            />
+          ) : (
+            /* Table */
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center">
-                      No users found
-                    </TableCell>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Connections</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last Sync</TableHead>
+                    <TableHead>Data Points</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          {user.connections.map((conn) => (
-                            <Badge key={conn} variant="secondary">
-                              {conn}
-                            </Badge>
-                          ))}
-                          {user.connections.length === 0 && (
-                            <span className="text-sm text-muted-foreground">None</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2 w-2 rounded-full ${getStatusColor(user.status)}`} />
-                          <span className="capitalize">{user.status}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{user.lastSync}</TableCell>
-                      <TableCell>{user.dataPoints}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm">
-                          View
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => {
+                    const connections =
+                      (user.metadata?.connections as string[]) || [];
+                    const status =
+                      (user.metadata?.status as string) || 'pending';
+                    const lastSync = user.metadata?.lastSync as string | null;
+                    const dataPoints =
+                      (user.metadata?.dataPoints as number) || 0;
+
+                    return (
+                      <TableRow key={user.id}>
+                        <TableCell className="font-medium">
+                          {user.name || 'Unnamed User'}
+                        </TableCell>
+                        <TableCell>{user.email || 'No email'}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            {connections.length > 0 ? (
+                              connections.map((conn) => (
+                                <Badge key={conn} variant="outline">
+                                  {conn}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                None
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusColor(status)}>
+                            {status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {lastSync
+                            ? formatDistanceToNow(new Date(lastSync), {
+                                addSuffix: true,
+                              })
+                            : 'Never'}
+                        </TableCell>
+                        <TableCell>
+                          {dataPoints > 0
+                            ? dataPoints >= 1000
+                              ? `${(dataPoints / 1000).toFixed(1)}K`
+                              : dataPoints
+                            : '0'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                /* TODO: Navigate to user detail */
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteUser(user.id)}
+                              disabled={deleteUser.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

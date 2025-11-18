@@ -12,7 +12,6 @@ Modern web application built with TanStack Start for the Open Wearables Platform
 - **Form Management**: React Hook Form + Zod
 - **Charts**: Recharts
 - **Icons**: Lucide React
-- **Theme**: next-themes (Dark mode by default)
 
 ## Features
 
@@ -105,7 +104,7 @@ The application uses a custom color palette defined in `src/styles.css`:
 
 ### Dark Mode
 
-Dark mode is enabled by default. The theme can be toggled using the ThemeProvider from next-themes.
+Dark mode is enabled by default using the `dark` class on the root HTML element.
 
 ## Routing
 
@@ -124,6 +123,7 @@ TanStack Start uses file-based routing:
 ### UI Components (shadcn/ui)
 
 Installed components:
+
 - Button
 - Card
 - Input
@@ -163,16 +163,16 @@ npx shadcn@latest add [component-name]
 API calls should be made using TanStack Query for optimal caching and state management:
 
 ```typescript
-import { useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query';
 
 function useUsers() {
   return useQuery({
     queryKey: ['users'],
     queryFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/users`)
-      return response.json()
-    }
-  })
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/users`);
+      return response.json();
+    },
+  });
 }
 ```
 
@@ -203,6 +203,7 @@ This creates an optimized production build in the `dist/` directory.
 ## Deployment
 
 The application can be deployed to:
+
 - Vercel
 - Netlify
 - Cloudflare Pages

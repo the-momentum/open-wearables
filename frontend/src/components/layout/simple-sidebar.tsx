@@ -1,50 +1,55 @@
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router';
 import {
   Home,
   Users,
   Activity,
   Key,
   FileText,
+  DollarSign,
   LogOut,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
-import { cn } from '@/lib/utils'
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 
 const menuItems = [
   {
     title: 'Dashboard',
-    url: '/_authenticated/dashboard',
+    url: '/dashboard',
     icon: Home,
   },
   {
     title: 'Users',
-    url: '/_authenticated/users',
+    url: '/users',
     icon: Users,
   },
   {
     title: 'Health Insights',
-    url: '/_authenticated/health-insights',
+    url: '/health-insights',
     icon: Activity,
   },
   {
     title: 'Credentials',
-    url: '/_authenticated/credentials',
+    url: '/credentials',
     icon: Key,
   },
   {
-    title: 'Documentation',
-    url: '/_authenticated/docs',
-    icon: FileText,
+    title: 'Pricing',
+    url: '/pricing',
+    icon: DollarSign,
   },
-]
+  {
+    title: 'Documentation',
+    url: '/docs',
+    icon: FileText,
+    comingSoon: true,
+  },
+];
 
 export function SimpleSidebar() {
-  const location = useLocation()
-
-  const handleLogout = () => {
-    window.location.href = '/login'
-  }
+  const location = useLocation();
+  const { logout, isLoggingOut } = useAuth();
 
   return (
     <aside className="w-64 border-r border-border bg-card flex flex-col">
@@ -60,7 +65,21 @@ export function SimpleSidebar() {
 
       <nav className="flex-1 p-4 space-y-1">
         {menuItems.map((item) => {
-          const isActive = location.pathname === item.url
+          const isActive = location.pathname.startsWith(item.url);
+
+          if (item.comingSoon) {
+            return (
+              <div
+                key={item.title}
+                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground opacity-50 cursor-not-allowed"
+              >
+                <item.icon className="h-4 w-4" />
+                <span>{item.title}</span>
+                <span className="ml-auto text-xs">(Soon)</span>
+              </div>
+            );
+          }
+
           return (
             <Link
               key={item.title}
@@ -75,7 +94,7 @@ export function SimpleSidebar() {
               <item.icon className="h-4 w-4" />
               <span>{item.title}</span>
             </Link>
-          )
+          );
         })}
       </nav>
 
@@ -85,12 +104,13 @@ export function SimpleSidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start"
-          onClick={handleLogout}
+          onClick={() => logout()}
+          disabled={isLoggingOut}
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          {isLoggingOut ? 'Logging out...' : 'Logout'}
         </Button>
       </div>
     </aside>
-  )
+  );
 }

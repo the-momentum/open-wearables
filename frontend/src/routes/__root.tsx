@@ -1,13 +1,17 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ThemeProvider } from 'next-themes'
-import { Toaster } from '@/components/ui/sonner'
+import {
+  createRootRoute,
+  Outlet,
+  HeadContent,
+  Scripts,
+} from '@tanstack/react-router';
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
+import { TanStackDevtools } from '@tanstack/react-devtools';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from '@/components/ui/sonner';
 
-import appCss from '../styles.css?url'
+import appCss from '../styles.css?url';
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient();
 
 export const Route = createRootRoute({
   head: () => ({
@@ -37,43 +41,34 @@ export const Route = createRootRoute({
 
   component: RootComponent,
   notFoundComponent: NotFound,
-})
+});
 
 function RootComponent() {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark">
       <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Open Wearables Platform</title>
-        <link rel="stylesheet" href={appCss} />
+        <HeadContent />
       </head>
       <body>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <Outlet />
-            <Toaster />
-            <TanStackDevtools
-              config={{
-                position: 'bottom-right',
-              }}
-              plugins={[
-                {
-                  name: 'Tanstack Router',
-                  render: <TanStackRouterDevtoolsPanel />,
-                },
-              ]}
-            />
-          </ThemeProvider>
+          <Outlet />
+          <Toaster />
+          <TanStackDevtools
+            config={{
+              position: 'bottom-right',
+            }}
+            plugins={[
+              {
+                name: 'Tanstack Router',
+                render: <TanStackRouterDevtoolsPanel />,
+              },
+            ]}
+          />
+          <Scripts />
         </QueryClientProvider>
       </body>
     </html>
-  )
+  );
 }
 
 function NotFound() {
@@ -87,5 +82,5 @@ function NotFound() {
         </a>
       </div>
     </div>
-  )
+  );
 }

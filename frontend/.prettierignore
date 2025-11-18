@@ -1,0 +1,31 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+build
+.output
+.nitro
+
+# Generated files
+*.gen.ts
+routeTree.gen.ts
+
+# Cache
+.vite
+.cache
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+
+# Test coverage
+coverage

@@ -1,4 +1,4 @@
-import { createServerFn } from '@tanstack/react-start'
+import { createServerFn } from '@tanstack/react-start';
 
 export const getPunkSongs = createServerFn({
   method: 'GET',
@@ -10,4 +10,4 @@ export const getPunkSongs = createServerFn({
   { id: 5, name: 'Fat Lip', artist: 'Sum 41' },
   { id: 6, name: 'All the Small Things', artist: 'blink-182' },
   { id: 7, name: 'Beverly Hills', artist: 'Weezer' },
-])
+]);

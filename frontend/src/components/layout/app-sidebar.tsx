@@ -1,12 +1,5 @@
-import { Link, useLocation } from '@tanstack/react-router'
-import {
-  Home,
-  Users,
-  Activity,
-  Key,
-  FileText,
-  LogOut,
-} from 'lucide-react'
+import { Link, useLocation } from '@tanstack/react-router';
+import { Home, Users, Activity, Key, FileText, LogOut } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -18,9 +11,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from '@/components/ui/sidebar'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
+} from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
 
 const menuItems = [
   {
@@ -48,15 +40,15 @@ const menuItems = [
     url: '/docs',
     icon: FileText,
   },
-]
+];
 
 export function AppSidebar() {
-  const location = useLocation()
+  const location = useLocation();
 
   const handleLogout = () => {
     // TODO: Implement actual logout
-    window.location.href = '/login'
-  }
+    window.location.href = '/login';
+  };
 
   return (
     <Sidebar>
@@ -76,7 +68,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
-                const isActive = location.pathname === item.url
+                const isActive = location.pathname === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={isActive}>
@@ -86,7 +78,7 @@ export function AppSidebar() {
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                )
+                );
               })}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -104,5 +96,5 @@ export function AppSidebar() {
         </Button>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }
