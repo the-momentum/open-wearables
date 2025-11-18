@@ -90,7 +90,6 @@ function UserDetailPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link to="/users">
@@ -114,7 +113,6 @@ function UserDetailPage() {
         </Button>
       </div>
 
-      {/* User Info Card */}
       <Card>
         <CardHeader>
           <CardTitle>User Information</CardTitle>
@@ -133,7 +131,6 @@ function UserDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Connected Providers */}
       <Card>
         <CardHeader>
           <CardTitle>Connected Devices</CardTitle>
@@ -223,10 +220,8 @@ function UserDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Health Summary */}
       {healthSummary && (
         <div className="grid md:grid-cols-3 gap-6">
-          {/* Heart Rate */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Heart Rate</CardTitle>
@@ -247,7 +242,6 @@ function UserDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Sleep */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Sleep</CardTitle>
@@ -267,7 +261,6 @@ function UserDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Activity */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Activity</CardTitle>
@@ -290,7 +283,6 @@ function UserDetailPage() {
         </div>
       )}
 
-      {/* Placeholder for charts */}
       <Card>
         <CardHeader>
           <CardTitle>Health Data Visualizations</CardTitle>
@@ -303,7 +295,6 @@ function UserDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Placeholder for AI Assistant */}
       <Card>
         <CardHeader>
           <CardTitle>AI Health Assistant</CardTitle>

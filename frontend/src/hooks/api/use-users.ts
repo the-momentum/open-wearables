@@ -1,14 +1,9 @@
-// Users data hooks
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { usersService } from '../../lib/api';
 import { queryKeys } from '../../lib/query/keys';
 import type { UserRead, UserCreate, UserUpdate } from '../../lib/api/types';
 
-/**
- * Fetch all users with optional filtering
- */
 export function useUsers(filters?: { search?: string }) {
   return useQuery({
     queryKey: queryKeys.users.list(filters),
@@ -16,9 +11,6 @@ export function useUsers(filters?: { search?: string }) {
   });
 }
 
-/**
- * Fetch single user by ID
- */
 export function useUser(id: string) {
   return useQuery({
     queryKey: queryKeys.users.detail(id),
@@ -27,9 +19,6 @@ export function useUser(id: string) {
   });
 }
 
-/**
- * Create new user
- */
 export function useCreateUser() {
   const queryClient = useQueryClient();
 
@@ -48,9 +37,6 @@ export function useCreateUser() {
   });
 }
 
-/**
- * Update existing user
- */
 export function useUpdateUser() {
   const queryClient = useQueryClient();
 
@@ -97,9 +83,6 @@ export function useUpdateUser() {
   });
 }
 
-/**
- * Delete user
- */
 export function useDeleteUser() {
   const queryClient = useQueryClient();
 

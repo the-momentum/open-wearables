@@ -1,9 +1,35 @@
 name: CI
 
-on: [push]
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/ci.yml'
 
 jobs:
+  # Detect which parts of the codebase changed
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+
   backend-build:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +46,8 @@ jobs:
         run: uv sync
 
   backend-code-quality:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,3 +71,98 @@ jobs:
       - name: Run type checker
         working-directory: backend
         run: uv run ty check
+
+  frontend-setup:
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+      - name: Upload node_modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-node-modules
+          path: frontend/node_modules
+          retention-days: 1
+
+  frontend-build:
+    needs: [changes, frontend-setup]
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download node_modules
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-node-modules
+          path: frontend/node_modules
+      - name: Build application
+        working-directory: frontend
+        run: pnpm run build
+
+  frontend-lint:
+    needs: [changes, frontend-setup]
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download node_modules
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-node-modules
+          path: frontend/node_modules
+      - name: Run oxlint
+        working-directory: frontend
+        run: pnpm run lint
+
+  frontend-format-check:
+    needs: [changes, frontend-setup]
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download node_modules
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-node-modules
+          path: frontend/node_modules
+      - name: Run prettier check
+        working-directory: frontend
+        run: pnpm run format:check

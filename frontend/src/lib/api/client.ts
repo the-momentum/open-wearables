@@ -1,5 +1,3 @@
-// Base API client with fetch wrapper
-
 import { API_CONFIG } from './config';
 import { ApiError } from '../errors/api-error';
 import { getToken, clearSession } from '../auth/session';
@@ -10,9 +8,6 @@ interface RequestOptions extends RequestInit {
   params?: Record<string, unknown>;
 }
 
-/**
- * Base fetch wrapper with error handling, retries, and timeout
- */
 async function fetchWithRetry(
   url: string,
   options: RequestOptions = {},
@@ -59,9 +54,6 @@ async function fetchWithRetry(
   }
 }
 
-/**
- * Main API client
- */
 export const apiClient = {
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const url = `${API_CONFIG.baseUrl}${endpoint}`;
@@ -72,7 +64,6 @@ export const apiClient = {
       ...(options.headers as Record<string, string>),
     };
 
-    // Add auth token if available
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
@@ -83,7 +74,6 @@ export const apiClient = {
         headers,
       });
 
-      // Handle 401 - clear session and redirect to login
       if (response.status === 401) {
         clearSession();
         if (typeof window !== 'undefined') {
@@ -92,7 +82,6 @@ export const apiClient = {
         throw ApiError.fromResponse(response);
       }
 
-      // Parse response
       let data: unknown;
       const contentType = response.headers.get('content-type');
 
@@ -102,7 +91,6 @@ export const apiClient = {
         data = await response.text();
       }
 
-      // Handle error responses
       if (!response.ok) {
         throw ApiError.fromResponse(response, data);
       }
@@ -161,7 +149,6 @@ export const apiClient = {
   },
 };
 
-// Utility function for delays
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

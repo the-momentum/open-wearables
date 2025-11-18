@@ -30,7 +30,6 @@ function PricingPage() {
 
   return (
     <div className="p-6 space-y-8">
-      {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-4xl font-bold">Simple, Transparent Pricing</h1>
         <p className="text-xl text-muted-foreground">
@@ -38,7 +37,6 @@ function PricingPage() {
         </p>
       </div>
 
-      {/* Pricing Tiers */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
         {pricingTiers.map((tier) => (
           <Card
@@ -77,7 +75,6 @@ function PricingPage() {
             </CardHeader>
 
             <CardContent className="flex-1">
-              {/* Limits */}
               <div className="space-y-2 mb-6 pb-6 border-b">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Users</span>
@@ -111,7 +108,6 @@ function PricingPage() {
                 </div>
               </div>
 
-              {/* Features */}
               <ul className="space-y-3">
                 {tier.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
@@ -135,7 +131,6 @@ function PricingPage() {
         ))}
       </div>
 
-      {/* FAQ / Additional Info */}
       <div className="max-w-4xl mx-auto mt-16 space-y-8">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">

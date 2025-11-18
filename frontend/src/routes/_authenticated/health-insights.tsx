@@ -243,7 +243,6 @@ function HealthInsightsPage() {
         </CardContent>
       </Card>
 
-      {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -331,7 +330,6 @@ function HealthInsightsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Trigger History Dialog */}
       <Dialog open={showTriggers} onOpenChange={setShowTriggers}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

@@ -1,5 +1,3 @@
-// Table skeleton loading component
-
 import { Skeleton } from '../ui/skeleton';
 import {
   Table,

@@ -257,7 +257,6 @@ function CredentialsPage() {
         </CardContent>
       </Card>
 
-      {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -334,7 +333,6 @@ function CredentialsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Embed Code Dialog */}
       <Dialog open={isEmbedDialogOpen} onOpenChange={setIsEmbedDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -347,7 +345,6 @@ function CredentialsPage() {
 
           {selectedKey && (
             <div className="space-y-6">
-              {/* HTML Version */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label>HTML</Label>
@@ -373,7 +370,6 @@ function CredentialsPage() {
                 />
               </div>
 
-              {/* React Version */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label>React / TypeScript</Label>

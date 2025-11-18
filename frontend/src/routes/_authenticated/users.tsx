@@ -112,7 +112,6 @@ function UsersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Search */}
           <div className="relative mb-4">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -123,7 +122,6 @@ function UsersPage() {
             />
           </div>
 
-          {/* Empty State */}
           {filteredUsers.length === 0 ? (
             <EmptyState
               title="No users found"
@@ -134,7 +132,6 @@ function UsersPage() {
               }
             />
           ) : (
-            /* Table */
             <div className="rounded-md border">
               <Table>
                 <TableHeader>

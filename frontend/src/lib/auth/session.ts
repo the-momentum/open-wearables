@@ -1,5 +1,3 @@
-// Session management utilities
-
 const TOKEN_KEY = 'ow_auth_token';
 const DEVELOPER_ID_KEY = 'ow_developer_id';
 const SESSION_EXPIRY_KEY = 'ow_session_expiry';
@@ -12,9 +10,6 @@ export interface Session {
   expiresAt: number;
 }
 
-/**
- * Store session data
- */
 export function setSession(
   token: string,
   developerId: string,
@@ -29,9 +24,6 @@ export function setSession(
   }
 }
 
-/**
- * Get current session
- */
 export function getSession(): Session | null {
   if (typeof window === 'undefined') {
     return null;
@@ -58,32 +50,20 @@ export function getSession(): Session | null {
   };
 }
 
-/**
- * Get auth token
- */
 export function getToken(): string | null {
   const session = getSession();
   return session?.token || null;
 }
 
-/**
- * Get developer ID
- */
 export function getDeveloperId(): string | null {
   const session = getSession();
   return session?.developerId || null;
 }
 
-/**
- * Check if user is authenticated
- */
 export function isAuthenticated(): boolean {
   return getSession() !== null;
 }
 
-/**
- * Clear session data
- */
 export function clearSession(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY);
@@ -92,9 +72,6 @@ export function clearSession(): void {
   }
 }
 
-/**
- * Check if session is about to expire (within 5 minutes)
- */
 export function isSessionExpiringSoon(): boolean {
   const session = getSession();
   if (!session) return false;
@@ -103,9 +80,6 @@ export function isSessionExpiringSoon(): boolean {
   return session.expiresAt - Date.now() < fiveMinutes;
 }
 
-/**
- * Get time until session expires (in milliseconds)
- */
 export function getTimeUntilExpiry(): number {
   const session = getSession();
   if (!session) return 0;

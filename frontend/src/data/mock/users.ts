@@ -1,5 +1,3 @@
-// Mock user data
-
 import type { UserRead } from '../../lib/api/types';
 
 export const mockUsers: UserRead[] = [

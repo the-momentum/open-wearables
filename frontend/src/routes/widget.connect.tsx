@@ -99,7 +99,6 @@ function ConnectWidgetPage() {
     );
   }
 
-  // Success state
   if (connectionState === 'success') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -125,7 +124,6 @@ function ConnectWidgetPage() {
     );
   }
 
-  // Error state
   if (connectionState === 'error') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -152,7 +150,6 @@ function ConnectWidgetPage() {
     );
   }
 
-  // Main widget view
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-4xl mx-auto py-8">
@@ -174,7 +171,6 @@ function ConnectWidgetPage() {
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mb-2">
-                    {/* In production, this would be an actual logo image */}
                     <span className="text-2xl">{provider.name[0]}</span>
                   </div>
                   {!provider.isAvailable && (

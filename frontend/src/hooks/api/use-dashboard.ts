@@ -1,12 +1,7 @@
-// Dashboard data hooks
-
 import { useQuery } from '@tanstack/react-query';
 import { dashboardService } from '../../lib/api';
 import { queryKeys } from '../../lib/query/keys';
 
-/**
- * Fetch dashboard stats
- */
 export function useDashboardStats() {
   return useQuery({
     queryKey: queryKeys.dashboard.stats(),
@@ -15,9 +10,6 @@ export function useDashboardStats() {
   });
 }
 
-/**
- * Fetch API calls chart data
- */
 export function useApiCallsData(timeRange?: string) {
   return useQuery({
     queryKey: queryKeys.dashboard.charts(timeRange),
@@ -26,9 +18,6 @@ export function useApiCallsData(timeRange?: string) {
   });
 }
 
-/**
- * Fetch data points chart data
- */
 export function useDataPointsData(timeRange?: string) {
   return useQuery({
     queryKey: [...queryKeys.dashboard.charts(timeRange), 'dataPoints'],
@@ -37,9 +26,6 @@ export function useDataPointsData(timeRange?: string) {
   });
 }
 
-/**
- * Fetch automation triggers chart data
- */
 export function useAutomationTriggersData(timeRange?: string) {
   return useQuery({
     queryKey: [...queryKeys.dashboard.charts(timeRange), 'automationTriggers'],
@@ -48,9 +34,6 @@ export function useAutomationTriggersData(timeRange?: string) {
   });
 }
 
-/**
- * Fetch triggers by type chart data
- */
 export function useTriggersByTypeData() {
   return useQuery({
     queryKey: [...queryKeys.dashboard.charts(), 'triggersByType'],

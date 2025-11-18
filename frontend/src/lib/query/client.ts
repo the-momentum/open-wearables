@@ -1,5 +1,3 @@
-// TanStack Query client configuration
-
 import { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '../errors/api-error';
 

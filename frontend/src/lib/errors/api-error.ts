@@ -1,5 +1,3 @@
-// Custom API error class
-
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'

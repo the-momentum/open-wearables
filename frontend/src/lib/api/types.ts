@@ -1,5 +1,3 @@
-// Common API types and interfaces
-
 export interface ApiErrorResponse {
   message: string;
   code: string;
@@ -20,7 +18,6 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-// User types
 export interface UserRead {
   id: string;
   email?: string;
@@ -41,7 +38,6 @@ export interface UserUpdate {
   metadata?: Record<string, unknown>;
 }
 
-// Auth types
 export interface LoginRequest {
   email: string;
   password: string;
@@ -59,7 +55,6 @@ export interface RegisterRequest {
   name?: string;
 }
 
-// Dashboard types
 export interface DashboardStats {
   totalUsers: number;
   activeConnections: number;
@@ -67,7 +62,6 @@ export interface DashboardStats {
   apiCalls: number;
 }
 
-// Provider types
 export interface Provider {
   id: string;
   name: string;
@@ -78,7 +72,6 @@ export interface Provider {
   authType: 'oauth2' | 'api_key';
 }
 
-// Connection types
 export type WearableProvider =
   | 'fitbit'
   | 'garmin'
@@ -103,7 +96,6 @@ export interface UserConnection {
   dataPoints: number;
 }
 
-// Health data types
 export interface HeartRateData {
   id: string;
   userId: string;
@@ -162,7 +154,6 @@ export interface HealthDataSummary {
   lastUpdated: string;
 }
 
-// Legacy types for backward compatibility
 export interface HeartRatePoint {
   timestamp: string;
   bpm: number;
@@ -188,7 +179,6 @@ export interface ActivitySummary {
   activeMinutes: number;
 }
 
-// API Key types
 export interface ApiKey {
   id: string;
   name: string;
@@ -215,7 +205,6 @@ export interface ApiKeyCreate {
   type: 'live' | 'test' | 'widget';
 }
 
-// Automation types
 export interface Automation {
   id: string;
   name: string;
@@ -263,7 +252,6 @@ export interface TestAutomationResult {
   instances: AutomationTrigger[];
 }
 
-// Request log types
 export interface RequestLog {
   id: string;
   timestamp: string;
@@ -286,7 +274,6 @@ export interface RequestLog {
   };
 }
 
-// Chart data types
 export interface ApiCallsDataPoint {
   date: string;
   calls: number;
@@ -308,7 +295,6 @@ export interface TriggersByTypeDataPoint {
   count: number;
 }
 
-// Chat types
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';

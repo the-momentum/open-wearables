@@ -31,21 +31,16 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen w-full relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-      {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
-        {/* Gradient Orbs */}
         <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-teal-500/30 rounded-full blur-3xl animate-pulse delay-1000" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-3xl animate-pulse delay-500" />
 
-        {/* Grid Pattern */}
         <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.05)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black,transparent)]" />
       </div>
 
-      {/* Main Content */}
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-6xl grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left Side - Branding & Features */}
           <div className="hidden lg:block space-y-8 text-white">
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
@@ -67,7 +62,6 @@ function LoginPage() {
               </p>
             </div>
 
-            {/* Feature Cards */}
             <div className="grid grid-cols-2 gap-4">
               <div className="group p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 hover:bg-white/10 transition-all duration-300 hover:scale-105">
                 <Zap className="w-8 h-8 text-yellow-400 mb-3" />
@@ -93,9 +87,7 @@ function LoginPage() {
             </div>
           </div>
 
-          {/* Right Side - Login Form */}
           <div className="w-full">
-            {/* Mobile Logo */}
             <div className="lg:hidden mb-8 text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white">
                 <Activity className="w-4 h-4 text-blue-400" />
@@ -105,13 +97,10 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* Login Card */}
             <div className="relative group">
-              {/* Glow Effect */}
               <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-teal-500 rounded-3xl opacity-20 group-hover:opacity-30 blur transition duration-500" />
 
               <div className="relative bg-slate-900/90 backdrop-blur-xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
-                {/* Header Gradient */}
                 <div className="h-2 bg-gradient-to-r from-blue-500 via-teal-500 to-blue-500 animate-gradient" />
 
                 <div className="p-8 sm:p-10">
@@ -125,7 +114,6 @@ function LoginPage() {
                   </div>
 
                   <form onSubmit={handleLogin} className="space-y-6">
-                    {/* Email Field */}
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-white font-medium">
                         Email Address
@@ -148,7 +136,6 @@ function LoginPage() {
                       </div>
                     </div>
 
-                    {/* Password Field */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label
@@ -182,7 +169,6 @@ function LoginPage() {
                       </div>
                     </div>
 
-                    {/* Remember Me */}
                     <div className="flex items-center">
                       <input
                         id="remember"
@@ -197,7 +183,6 @@ function LoginPage() {
                       </label>
                     </div>
 
-                    {/* Submit Button */}
                     <Button
                       type="submit"
                       disabled={isLoggingIn}
@@ -233,7 +218,6 @@ function LoginPage() {
                   </form>
                 </div>
 
-                {/* Footer */}
                 <div className="px-8 sm:px-10 py-6 bg-white/5 border-t border-white/10">
                   <p className="text-center text-sm text-slate-400">
                     Don't have an account?{' '}
@@ -245,7 +229,6 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* Trust Indicators */}
             <div className="mt-8 flex items-center justify-center gap-6 text-xs text-slate-500">
               <div className="flex items-center gap-1">
                 <Shield className="w-3 h-3" />
@@ -264,7 +247,6 @@ function LoginPage() {
         </div>
       </div>
 
-      {/* Custom Styles */}
       <style>{`
         @keyframes gradient {
           0%, 100% { background-position: 0% 50%; }

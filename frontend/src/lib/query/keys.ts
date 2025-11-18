@@ -1,13 +1,9 @@
-// Query key factory for TanStack Query
-
 export const queryKeys = {
-  // Auth
   auth: {
     all: ['auth'] as const,
     session: () => [...queryKeys.auth.all, 'session'] as const,
   },
 
-  // Users
   users: {
     all: ['users'] as const,
     lists: () => [...queryKeys.users.all, 'list'] as const,
@@ -17,7 +13,6 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.users.details(), id] as const,
   },
 
-  // Dashboard
   dashboard: {
     all: ['dashboard'] as const,
     stats: () => [...queryKeys.dashboard.all, 'stats'] as const,
@@ -25,7 +20,6 @@ export const queryKeys = {
       [...queryKeys.dashboard.all, 'charts', timeRange] as const,
   },
 
-  // API Keys / Credentials
   apiKeys: {
     all: ['apiKeys'] as const,
     lists: () => [...queryKeys.apiKeys.all, 'list'] as const,
@@ -43,7 +37,6 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.credentials.details(), id] as const,
   },
 
-  // Automations
   automations: {
     all: ['automations'] as const,
     lists: () => [...queryKeys.automations.all, 'list'] as const,
@@ -59,7 +52,6 @@ export const queryKeys = {
       [...queryKeys.automations.detail(id), 'test'] as const,
   },
 
-  // Health Data
   healthData: {
     all: (userId: string) => ['healthData', userId] as const,
     heartRate: (userId: string, dateRange?: { start: string; end: string }) =>
@@ -85,14 +77,12 @@ export const queryKeys = {
       [...queryKeys.health.all, 'summary', userId, period] as const,
   },
 
-  // Connections
   connections: {
     all: (userId: string) => ['connections', userId] as const,
     status: (userId: string) =>
       [...queryKeys.connections.all(userId), 'status'] as const,
   },
 
-  // Request Logs
   requestLogs: {
     all: ['requestLogs'] as const,
     lists: () => [...queryKeys.requestLogs.all, 'list'] as const,
@@ -104,7 +94,6 @@ export const queryKeys = {
     }) => [...queryKeys.requestLogs.lists(), filters] as const,
   },
 
-  // Chat
   chat: {
     all: (userId?: string) => ['chat', userId] as const,
     history: (userId?: string) =>
