@@ -202,8 +202,8 @@ class OAuthService:
             except Exception as e:
                 self.logger.warning(f"Failed to parse JWT: {str(e)}")
         elif provider == "polar":
-            # Polar returns x_user_id in token response
-            provider_user_id = token_response.x_user_id
+            # Polar returns x_user_id in token response (convert to string)
+            provider_user_id = str(token_response.x_user_id) if token_response.x_user_id is not None else None
 
             # Register user with Polar API (required before accessing data)
             try:
