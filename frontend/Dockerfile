@@ -22,15 +22,19 @@ COPY . .
 RUN pnpm run build
 
 # Production stage
-FROM nginx:alpine
+FROM node:22-alpine
 
-# Copy built assets from builder
-COPY --from=builder /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copy built output from builder
+COPY --from=builder /app/.output ./.output
 
 # Expose port
-EXPOSE 80
+EXPOSE 3000
 
-CMD ["nginx", "-g", "daemon off;"]
+# Set the port for Nitro
+ENV PORT=3000
+ENV HOST=0.0.0.0
+
+# Run the Nitro server
+CMD ["node", ".output/server/index.mjs"]
