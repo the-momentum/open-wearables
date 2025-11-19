@@ -27,10 +27,15 @@ class OAuthService:
     def __init__(self, log: Logger):
         self.logger = log
         self.repository = UserConnectionRepository()
+        
+        # Get Redis connection parameters (supports REDIS_URL connection string format)
+        redis_params = settings.get_redis_connection_params()
         self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            db=settings.redis_db,
+            host=redis_params["host"],
+            port=redis_params["port"],
+            db=redis_params["db"],
+            password=redis_params["password"],
+            username=redis_params["username"],
             decode_responses=True,
         )
         self.state_ttl = 900  # 15 minutes

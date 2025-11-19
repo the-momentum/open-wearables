@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -61,9 +62,14 @@ class Settings(BaseSettings):
     token_lifetime: int = 3600
 
     # REDIS SETTINGS
+    # Priority: REDIS_URL > individual settings
+    redis_url: str | None = None  # Connection string: redis://username:password@host:port/db
+
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_password: SecretStr | None = None  # Fallback for individual password setting
+    redis_username: str | None = None  # Fallback for individual username setting (Redis 6.0+ ACL)
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
@@ -123,6 +129,42 @@ class Settings(BaseSettings):
     @property
     def auth0_issuer_url(self) -> str:
         return f"https://{self.auth0_domain}/"
+
+    def get_redis_connection_params(self) -> dict[str, Any]:
+        """
+        Get Redis connection parameters, parsing REDIS_URL if provided,
+        otherwise using individual settings.
+        
+        Returns:
+            dict with keys: host, port, db, password, username
+        """
+        # Priority: REDIS_URL > individual settings
+        redis_url_to_parse = self.redis_url
+        
+        if redis_url_to_parse:
+            parsed = urlparse(redis_url_to_parse)
+            # Use password from URL if present (even if empty string), otherwise fall back to individual setting
+            password = (
+                parsed.password
+                if parsed.password is not None
+                else (self.redis_password.get_secret_value() if self.redis_password else None)
+            )
+            return {
+                "host": parsed.hostname or self.redis_host,
+                "port": parsed.port or self.redis_port,
+                "db": int(parsed.path.lstrip("/")) if parsed.path and parsed.path != "/" else self.redis_db,
+                "password": password,
+                "username": parsed.username or self.redis_username,
+            }
+        
+        # Fallback to individual settings
+        return {
+            "host": self.redis_host,
+            "port": self.redis_port,
+            "db": self.redis_db,
+            "password": self.redis_password.get_secret_value() if self.redis_password else None,
+            "username": self.redis_username,
+        }
 
     # 0. pytest ini_options
     # 1. environment variables
