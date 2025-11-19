@@ -3,9 +3,8 @@ name: CI
 on:
   push:
     paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - '.github/workflows/ci.yml'
+      - "backend/**"
+      - "frontend/**"
 
 jobs:
   # Detect which parts of the codebase changed
@@ -36,7 +35,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH
@@ -54,7 +53,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Add uv to PATH
@@ -85,8 +84,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Cache node_modules
         id: cache-node-modules
@@ -112,7 +111,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Restore node_modules cache
         uses: actions/cache/restore@v4
         with:
@@ -136,7 +135,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Restore node_modules cache
         uses: actions/cache/restore@v4
         with:
@@ -160,7 +159,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Restore node_modules cache
         uses: actions/cache/restore@v4
         with:

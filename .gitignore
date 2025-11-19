@@ -1,9 +1,2 @@
 # macOS automatic files
 .DS_Store
-
-# Frontend
-frontend/node_modules/
-frontend/.output/
-frontend/dist/
-frontend/.env
-frontend/.env.local

@@ -1,5 +1,5 @@
 {
-  "projectName": "frontend-app",
+  "projectName": "open-wearables-frontend",
   "mode": "file-router",
   "typescript": true,
   "tailwind": true,
