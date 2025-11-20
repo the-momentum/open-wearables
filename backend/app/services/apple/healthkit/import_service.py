@@ -134,7 +134,7 @@ class ImportService:
             if user_id:
                 record_data["user_id"] = UUID(user_id)
             record_create = HKRecordCreate(**record_data)
-            created_record = self.record_service.create(db_session, record_create) # noqa
+            created_record = self.record_service.create(db_session, record_create)  # noqa
 
             # # Create record metadata
             # for metadata_in in record_metadata:
