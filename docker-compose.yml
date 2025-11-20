@@ -100,7 +100,7 @@ services:
     container_name: frontend__open-wearables
     image: open-wearables-frontend:latest
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       - app
     restart: on-failure
