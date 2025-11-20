@@ -12,7 +12,6 @@ from app.mappings import (
     numeric_10_2,
     str_10,
     str_100,
-    str_50,
 )
 
 
@@ -21,7 +20,7 @@ class Workout(BaseDbModel):
     provider_id: Mapped[UUID | None] = None
     user_id: Mapped[FKUser]
 
-    type: Mapped[str_50 | None] = None
+    type: Mapped[str_100 | None] = None
     duration: Mapped[numeric_10_2]
     durationUnit: Mapped[str_10]
     sourceName: Mapped[str_100]

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Request
-
-from app.services import ae_import_service, hk_import_service, ApiKeyDep
-from app.schemas import UploadDataResponse
-from app.database import DbSession
 from typing import Annotated
 
+from fastapi import APIRouter, Depends, Request
+
+from app.services import ae_import_service, hk_import_service, pre_url_service, ApiKeyDep
+from app.schemas import UploadDataResponse, PresignedURLResponse, PresignedURLRequest
+from app.database import DbSession
+from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 
 router = APIRouter()
 
@@ -50,3 +51,17 @@ async def import_data_healthion(
     """Import health data from file upload or JSON."""
     content_str, content_type = content[0], content[1]
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
+
+
+@router.post("/users/{user_id}/import/apple/xml", response_model=PresignedURLResponse)
+async def import_xml(
+    user_id: str,
+    request: PresignedURLRequest,
+    _api_key: ApiKeyDep,
+) -> PresignedURLResponse:
+    """Generate presigned URL for XML file upload and trigger processing task."""
+    presigned_response = pre_url_service.create_presigned_url(user_id, request)
+
+    poll_sqs_task.delay(presigned_response.expires_in)
+
+    return presigned_response

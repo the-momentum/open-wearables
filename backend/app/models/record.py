@@ -11,7 +11,6 @@ from app.mappings import (
     numeric_15_5,
     str_10,
     str_100,
-    str_50,
 )
 
 
@@ -20,7 +19,7 @@ class Record(BaseDbModel):
     provider_id: Mapped[UUID | None] = None
     user_id: Mapped[FKUser]
 
-    type: Mapped[str_50 | None] = None
+    type: Mapped[str_100 | None] = None
     sourceName: Mapped[str_100]
     startDate: Mapped[datetime_tz]
     endDate: Mapped[datetime_tz]

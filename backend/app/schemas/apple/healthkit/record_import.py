@@ -10,12 +10,14 @@ from pydantic import BaseModel, ConfigDict
 
 class MetadataEntryIn(BaseModel):
     """Schema for metadata entry."""
+
     key: str
     value: Decimal
 
 
 class RecordBase(BaseModel):
     """Base schema for record."""
+
     type: str
     startDate: datetime
     endDate: datetime
@@ -35,6 +37,7 @@ class RecordIn(RecordBase):
 
 class RecordJSON(BaseModel):
     """Schema for JSON import format from HealthKit."""
+
     uuid: str | None = None
     user_id: str | None = None
     type: str | None = None
@@ -44,6 +47,3 @@ class RecordJSON(BaseModel):
     value: Decimal
     sourceName: str | None = None
     recordMetadata: list[dict[str, Any]] | None = None
-
-
-

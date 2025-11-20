@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class ActiveEnergyCreate(BaseModel):
     """Schema for creating active energy data."""
-    
+
     user_id: UUID
     workout_id: UUID
     date: datetime
@@ -18,7 +18,7 @@ class ActiveEnergyCreate(BaseModel):
 
 class ActiveEnergyUpdate(BaseModel):
     """Schema for updating active energy data."""
-    
+
     date: datetime | None = None
     source: str | None = None
     units: str | None = None

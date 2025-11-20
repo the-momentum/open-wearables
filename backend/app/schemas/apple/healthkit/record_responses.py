@@ -11,7 +11,7 @@ from app.schemas.apple.common import DateRange
 
 class MetadataEntryResponse(BaseModel):
     """Metadata entry response model."""
-    
+
     id: str
     key: str
     value: Decimal
@@ -29,7 +29,6 @@ class RecordResponse(BaseModel):
     value: Decimal
     user_id: str
     recordMetadata: list[MetadataEntryResponse] = []
-
 
 
 class RecordMeta(BaseModel):
