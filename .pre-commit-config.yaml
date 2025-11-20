@@ -9,6 +9,7 @@ repos:
       # Run the formatter
       - id: ruff-format
         files: ^backend/.*\.py$
+        exclude: ^(migrations/|README.md|.python-version|LICENSE)
 
   - repo: local
     hooks:
@@ -17,11 +18,15 @@ repos:
         entry: backend/.venv/bin/ty check .
         language: system
         files: ^backend/.*\.py$
+        exclude: ^(migrations/|README.md|.python-version|LICENSE)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^(migrations/|README.md|.python-version|LICENSE)
       - id: end-of-file-fixer
+        exclude: ^(migrations/|README.md|.python-version|LICENSE)
       - id: check-merge-conflict
+        exclude: ^(migrations/|README.md|.python-version|LICENSE)
         args: [--assume-in-merge]

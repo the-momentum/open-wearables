@@ -65,8 +65,11 @@ ignore = [
     "RET503", # implicit-return
 ]
 
+[tool.ruff.lint.exclude]
+files = ["migrations/", "README.md", ".python-version", "LICENSE"]
+
 [tool.ty.src]
-exclude = ["migrations/"]
+exclude = ["migrations/", "README.md", ".python-version", "LICENSE"]
 
 [build-system]
 requires = ["uv_build"]
