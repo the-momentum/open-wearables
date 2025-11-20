@@ -55,6 +55,7 @@ Open Wearables handles this complexity so you can focus on building your product
 ```bash
 # Start services
 docker compose up -d
+```
 
 ### Access the application
 - 🌐 API: http://localhost:8000

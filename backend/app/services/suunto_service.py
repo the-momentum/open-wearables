@@ -1,70 +1,24 @@
 from logging import Logger, getLogger
-from typing import Any
 from uuid import UUID
-
-import httpx
-from fastapi import HTTPException
 
 from app.config import settings
 from app.database import DbSession
-from app.services.oauth_service import oauth_service
+from app.services.base_workout_service import BaseWorkoutService
 
 
-class SuuntoService:
+class SuuntoService(BaseWorkoutService):
     """Service for interacting with Suunto API."""
 
     def __init__(self, log: Logger):
-        self.logger = log
-        self.provider = "suunto"
-        self.api_base_url = settings.suunto_api_base_url
-        self.subscription_key = settings.suunto_subscription_key.get_secret_value()
-
-    def _make_api_request(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        endpoint: str,
-        method: str = "GET",
-        params: dict[str, Any] | None = None,
-    ) -> dict:
-        """Make authenticated request to Suunto API."""
-        # Get valid access token (will auto-refresh if needed)
-        access_token = oauth_service.get_valid_token(db, user_id, self.provider)
-
-        # Prepare headers
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Ocp-Apim-Subscription-Key": self.subscription_key,
-        }
-
-        # Make request
-        url = f"{self.api_base_url}{endpoint}"
-
-        try:
-            response = httpx.request(
-                method=method,
-                url=url,
-                headers=headers,
-                params=params or {},
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            return response.json()
-
-        except httpx.HTTPStatusError as e:
-            self.logger.error(f"Suunto API error: {e.response.status_code} - {e.response.text}")
-            if e.response.status_code == 401:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Suunto authorization expired. Please re-authorize.",
-                )
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"Suunto API error: {e.response.text}",
-            )
-        except Exception as e:
-            self.logger.error(f"Suunto API request failed: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to fetch data from Suunto")
+        extra_headers = {}
+        if settings.suunto_subscription_key:
+            extra_headers["Ocp-Apim-Subscription-Key"] = settings.suunto_subscription_key.get_secret_value()
+        super().__init__(
+            log,
+            provider="suunto",
+            api_base_url=settings.suunto_api_base_url,
+            extra_headers=extra_headers,
+        )
 
     def get_workouts(
         self,

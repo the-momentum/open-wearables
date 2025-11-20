@@ -1,0 +1,76 @@
+@import 'tailwindcss';
+
+@layer base {
+  :root {
+    /* Core Brand Colors - Aligned with Landing Page (Dark Mode Default) */
+    --primary: 180 85% 45%; /* Cyan #11BCBC */
+    --primary-foreground: 0 0% 100%; /* White text on primary #FFFFFF */
+    --primary-glow: 180 95% 55%; /* Primary glow effect #07FFFF */
+
+    --accent: 160 75% 50%; /* Green-Cyan #20E0A0 */
+    --accent-foreground: 0 0% 100%; /* White text on accent */
+
+    /* Backgrounds */
+    --background: 222 47% 11%; /* #0F1C2A */
+    --foreground: 0 0% 98%; /* #FAFAFA */
+
+    --card: 222 47% 15%; /* #142638 */
+    --card-foreground: 0 0% 98%; /* #FAFAFA */
+
+    --popover: 222 47% 15%; /* #142638 */
+    --popover-foreground: 0 0% 98%; /* #FAFAFA */
+
+    /* Secondary/Muted */
+    --secondary: 222 47% 18%; /* #182D43 */
+    --secondary-foreground: 0 0% 98%; /* #FAFAFA */
+
+    --muted: 222 47% 18%; /* #182D43 */
+    --muted-foreground: 220 9% 65%; /* #9EA3AB */
+
+    /* UI Elements */
+    --border: 222 47% 18%; /* #182D43 */
+    --input: 222 47% 18%; /* #182D43 */
+    --ring: 180 85% 45%; /* Cyan focus ring #11BCBC */
+
+    /* Status */
+    --destructive: 0 63% 31%; /* #811D1D */
+    --destructive-foreground: 0 0% 98%; /* #FAFAFA */
+
+    /* Border Radius */
+    --radius: 0.75rem; /* 12px */
+
+    /* Chart Colors */
+    --chart-1: 180 85% 45%; /* Primary cyan */
+    --chart-2: 160 75% 50%; /* Accent green-cyan */
+    --chart-3: 200 70% 45%; /* Blue variation */
+    --chart-4: 140 65% 45%; /* Green variation */
+    --chart-5: 220 60% 50%; /* Purple-blue variation */
+
+    /* Sidebar */
+    --sidebar: 240 5.9% 10%; /* #18181B */
+    --sidebar-foreground: 240 4.8% 95.9%; /* #F3F4F6 */
+    --sidebar-primary: 224.3 76.3% 48%; /* #1D4ED8 */
+    --sidebar-primary-foreground: 0 0% 100%; /* #FFFFFF */
+    --sidebar-accent: 240 3.7% 15.9%; /* #27272A */
+    --sidebar-accent-foreground: 240 4.8% 95.9%; /* #F3F4F6 */
+    --sidebar-border: 240 3.7% 15.9%; /* #27272A */
+    --sidebar-ring: 217.2 91.2% 59.8%; /* #3B82F6 */
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+}

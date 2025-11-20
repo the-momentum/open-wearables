@@ -1,0 +1,167 @@
+---
+title: "Quickstart"
+description: "Get Open Wearables up and running in minutes"
+---
+
+## Get started in three steps
+
+Get Open Wearables running locally and start integrating wearable device data.
+
+### Step 1: Set up your environment
+
+<AccordionGroup>
+  <Accordion icon="copy" title="Clone the repository">
+    Clone the Open Wearables repository to your local machine:
+    
+    ```bash
+    git clone https://github.com/the-momentum/open-wearables.git
+    cd open-wearables
+    ```
+  </Accordion>
+  <Accordion icon="gear" title="Configure environment variables">
+    Create your environment file from the example:
+    
+    ```bash
+    cp ./config/.env.example ./config/.env
+    ```
+    
+    Edit the `.env` file with your configuration. You'll need to set up:
+    - Database credentials
+    - Redis/Celery broker settings
+    - OAuth credentials for wearable providers (Garmin, Fitbit, etc.)
+    - Secret keys for authentication
+    
+    <Tip>Default credentials are provided in the `.env.example` file for local development.</Tip>
+  </Accordion>
+</AccordionGroup>
+
+### Step 2: Start the application
+
+<AccordionGroup>
+  <Accordion icon="docker" title="Using Docker (Recommended)">
+    The easiest way to get started is with Docker Compose:
+    
+    ```bash
+    docker compose up -d
+    ```
+    
+    This will start all required services:
+    - PostgreSQL database
+    - Redis (for Celery)
+    - FastAPI backend
+    - Celery worker
+    - Celery beat (scheduler)
+    
+    Once started, access:
+    - 🌐 **API**: http://localhost:8000
+    - 📚 **Swagger UI**: http://localhost:8000/docs
+    - 🔐 **Admin Panel**: http://localhost:8000/admin
+    
+    <Tip>Use `docker compose logs -f` to view logs from all services.</Tip>
+  </Accordion>
+  <Accordion icon="rectangle-terminal" title="Local development setup">
+    For local development without Docker:
+    
+    1. Install dependencies using `uv` (recommended) or `pip`:
+       ```bash
+       cd backend
+       uv sync
+       ```
+    
+    2. Set up PostgreSQL and Redis locally
+    
+    3. Run database migrations:
+       ```bash
+       alembic upgrade head
+       ```
+    
+    4. Start the FastAPI server:
+       ```bash
+       uvicorn app.main:api --reload
+       ```
+  </Accordion>
+</AccordionGroup>
+
+### Step 3: Make your first API call
+
+<Accordion icon="rocket" title="Test the API">
+  Once the application is running, you can test it:
+
+  1. **Check server status**:
+     ```bash
+     curl http://localhost:8000/
+     ```
+     Should return: `{"message": "Server is running!"}`
+
+  2. **View API documentation**:
+     Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
+
+  3. **Create an API key**:
+     Use the admin panel at http://localhost:8000/admin to create a developer account and generate API keys.
+
+  4. **Authenticate and make requests**:
+     ```bash
+     # Get authentication token
+     curl -X POST http://localhost:8000/api/v1/auth/login \
+       -H "Content-Type: application/json" \
+       -d '{"username": "your_username", "password": "your_password"}'
+     
+     # Use the token to make authenticated requests
+     curl http://localhost:8000/api/v1/users \
+       -H "Authorization: Bearer YOUR_TOKEN"
+     ```
+</Accordion>
+
+## Core Concepts
+
+### Authentication
+
+Open Wearables uses API key authentication. Generate API keys through the admin panel or via the API:
+
+```http
+POST /api/v1/developer/api-keys
+Authorization: Bearer YOUR_TOKEN
+```
+
+### OAuth Flow
+
+Connect user wearables through OAuth:
+
+1. Generate a connection link for your user
+2. User authenticates with their wearable provider
+3. Data automatically syncs to your platform
+4. Access via unified API
+
+### Data Types
+
+The platform supports various health data types:
+- ❤️ Heart rate (BPM)
+- 😴 Sleep (stages, duration, quality)
+- 🏃 Activity (workouts, exercises)
+- 👣 Steps and distance
+- 🔥 Calories burned
+- 📈 Heart rate variability (HRV)
+- 🫁 Blood oxygen (SpO2)
+- ⚖️ Body metrics (weight, BMI)
+- 📍 GPS/location data
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore all available API endpoints.
+  </Card>
+  <Card title="Development Guide" icon="code" href="/development">
+    Learn about local development and contributing.
+  </Card>
+  <Card title="Provider Setup" icon="plug" href="/api-reference/introduction">
+    Configure OAuth credentials for wearable providers.
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/the-momentum/open-wearables">
+    View source code and contribute.
+  </Card>
+</CardGroup>
+
+<Note>
+  **Need help?** Check out our [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions) or open an issue on GitHub.
+</Note>
