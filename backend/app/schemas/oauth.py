@@ -73,6 +73,7 @@ class OAuthTokenResponse(BaseModel):
     refresh_token: str | None = None
     expires_in: int
     scope: str | None = None
+    x_user_id: int | None = None  # Polar-specific: user ID in Polar ecosystem
 
 
 # Provider config

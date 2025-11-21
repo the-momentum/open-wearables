@@ -93,6 +93,18 @@ services:
     volumes:
       - redis_data:/var/lib/redis/data
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend__open-wearables
+    image: open-wearables-frontend:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+    restart: on-failure
+
 volumes:
   postgres_data:
   redis_data:

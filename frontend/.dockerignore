@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.gitignore
+README.md
+IMPLEMENTATION_SUMMARY.md
+LOGIN_PAGE_GUIDE.md
+*.log
+.DS_Store
+coverage
+.env.local
+.env.*.local
+pnpm-debug.log*
