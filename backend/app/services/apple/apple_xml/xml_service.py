@@ -71,7 +71,7 @@ class XMLService:
                     raise ValueError(f"Invalid date format for field {field}: {document[field]}") from e
         return document
 
-    def _create_record(self, document: dict[str, Any], user_id: str = None) -> HKRecordCreate:
+    def _create_record(self, document: dict[str, Any], user_id: str) -> HKRecordCreate:
         document = self._parse_date_fields(document)
 
         return HKRecordCreate(
@@ -85,7 +85,7 @@ class XMLService:
             value=document["value"],
         )
 
-    def _create_workout(self, document: dict[str, Any], user_id: str = None) -> HKWorkoutCreate:
+    def _create_workout(self, document: dict[str, Any], user_id: str) -> HKWorkoutCreate:
         document = self._parse_date_fields(document)
 
         document["type"] = document.pop("workoutActivityType")
@@ -101,7 +101,7 @@ class XMLService:
             endDate=document["endDate"],
         )
 
-    def _create_statistics(self, document: dict[str, Any], user_id: str = None) -> list[HKWorkoutStatisticCreate]:
+    def _create_statistics(self, document: dict[str, Any], user_id: str) -> list[HKWorkoutStatisticCreate]:
         document = self._parse_date_fields(document)
 
         statistics: list[HKWorkoutStatisticCreate] = []
@@ -122,7 +122,7 @@ class XMLService:
 
     def parse_xml(
         self,
-        user_id: str = None,
+        user_id: str,
     ) -> Generator[tuple[list[RecordCreate], list[WorkoutCreate], list[WorkoutStatisticCreate]], None, None]:
         """
         Parses the XML file and yields tuples of workouts and statistics.
@@ -177,7 +177,7 @@ class XMLService:
                         yield records, workouts, statistics
                     if stat.tag != "WorkoutStatistics":
                         continue
-                    statistic = stat.attrib.copy()
+                    statistic: dict[str, Any] = stat.attrib.copy()
                     statistic["workout_id"] = workout_create.id
                     statistics.extend(self._create_statistics(statistic, user_id))
                 elem.clear()

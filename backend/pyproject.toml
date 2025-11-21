@@ -67,7 +67,7 @@ ignore = [
 ]
 
 [tool.ty.src]
-exclude = ["migrations/", "README.md", ".python-version", "LICENSE"]
+exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
 
 [build-system]
 requires = ["uv_build"]

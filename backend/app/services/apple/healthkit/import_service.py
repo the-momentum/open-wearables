@@ -48,23 +48,20 @@ class ImportService:
         for w in workouts_raw:
             wjson = HKWorkoutJSON(**w)
 
-            # prioritize id from json
-            provider_id = wjson.uuid if wjson.uuid else uuid4()
-            # first user_id from token -> json -> default to None
-            user_id = user_id if user_id else (wjson.user_id if wjson.user_id else None)
+            provider_id = wjson.uuid if wjson.uuid else None
 
             duration = (wjson.endDate - wjson.startDate).total_seconds() / 60
 
             workout_row = HKWorkoutIn(
                 id=uuid4(),
-                provider_id=provider_id,
+                provider_id=UUID(provider_id) if provider_id else None,
                 user_id=user_id,
-                type=wjson.type,
+                type=wjson.type or "Unknown",
                 startDate=wjson.startDate,
                 endDate=wjson.endDate,
                 duration=Decimal(str(duration)),
                 durationUnit="min",
-                sourceName=wjson.sourceName,
+                sourceName=wjson.sourceName or "Apple Health",
             )
 
             # Handle workout statistics
@@ -83,19 +80,17 @@ class ImportService:
             rjson = HKRecordJSON(**r)
 
             provider_id = UUID(rjson.uuid) if rjson.uuid else None
-            # first user_id from token -> json -> default to None
-            user_id = user_id if user_id else (rjson.user_id if rjson.user_id else None)
 
             record_row = HKRecordIn(
                 id=uuid4(),
-                provider_id=provider_id,
+                provider_id=UUID(provider_id) if provider_id else None,
                 user_id=user_id,
-                type=rjson.type,
+                type=rjson.type or "Unknown",
                 startDate=rjson.startDate,
                 endDate=rjson.endDate,
                 unit=rjson.unit,
                 value=rjson.value,
-                sourceName=rjson.sourceName,
+                sourceName=rjson.sourceName or "Apple Health",
             )
 
             record_metadata = []
@@ -109,11 +104,10 @@ class ImportService:
 
             yield record_row, record_metadata
 
-    def load_data(self, db_session: DbSession, raw: dict, user_id: str = None) -> bool:
+    def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for workout_row, workout_statistics in self._build_workout_bundles(raw, user_id):
             workout_data = workout_row.model_dump()
-            if user_id:
-                workout_data["user_id"] = UUID(user_id)
+            workout_data["user_id"] = UUID(user_id)
             workout_create = HKWorkoutCreate(**workout_data)
             created_workout = self.workout_service.create(db_session, workout_create)
 
@@ -131,8 +125,7 @@ class ImportService:
 
         for record_row, record_metadata in self._build_record_bundles(raw, user_id):
             record_data = record_row.model_dump()
-            if user_id:
-                record_data["user_id"] = UUID(user_id)
+            record_data["user_id"] = UUID(user_id)
             record_create = HKRecordCreate(**record_data)
             created_record = self.record_service.create(db_session, record_create)  # noqa
 

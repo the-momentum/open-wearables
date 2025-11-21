@@ -1,5 +1,5 @@
 default:
-  exclude: ^backend/(migrations/|backend/README.md|.python-version|LICENSE)
+  exclude: ^backend/(migrations/|app/models/|README.md|.python-version|LICENSE)
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -17,7 +17,7 @@ repos:
     hooks:
       - id: ty
         name: ty check
-        entry: backend/.venv/bin/ty check .
+        entry: sh -c 'cd backend && .venv/bin/ty check .'
         language: system
         files: ^backend/.*\.py$
 

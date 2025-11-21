@@ -7,7 +7,7 @@ MIN_FILESIZE, DEFAULT_FILESIZE, MAX_FILESIZE = settings.presigned_url_max_filesi
 
 
 class PresignedURLRequest(BaseModel):
-    filename: str = Field(None, max_length=200, description="Custom filename")
+    filename: str = Field("", max_length=200, description="Custom filename")
     expiration_seconds: int = Field(
         default=DEFAULT_SECONDS,
         ge=MIN_SECONDS,

@@ -10,12 +10,12 @@ from app.schemas import (
     AEDateRange,
     AEDistanceValue,
     AEIntensityValue,
-    AESummary,
     AEWorkoutCreate,
     AEWorkoutListResponse,
     AEWorkoutMeta,
     AEWorkoutQueryParams,
     AEWorkoutResponse,
+    AEWorkoutSummary,
     AEWorkoutUpdate,
 )
 from app.services.services import AppService
@@ -106,7 +106,7 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
                 temperature=None,
                 humidity=None,
                 source=workout.sourceName,
-                summary=AESummary(**summary_data),
+                summary=AEWorkoutSummary(**summary_data),
             )
             workout_responses.append(workout_response)
 

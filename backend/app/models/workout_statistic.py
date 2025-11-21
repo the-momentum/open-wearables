@@ -1,5 +1,3 @@
-# ruff: noqa: F821
-
 from uuid import UUID
 
 from sqlalchemy.orm import Mapped

@@ -173,7 +173,7 @@ class ImportService:
                 type=workout_type,
                 startDate=start_date,
                 endDate=end_date,
-                duration=self._dec(duration),
+                duration=self._dec(duration) or Decimal(0),
                 durationUnit=duration_unit,
                 sourceName="Auto Export",
                 workoutStatistics=None,
@@ -189,22 +189,20 @@ class ImportService:
                 active_energy=active_energy,
             )
 
-    def load_data(self, db_session: DbSession, raw: dict, user_id: str = None) -> bool:
+    def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for bundle in self._build_import_bundles(raw):
             workout_dict = bundle.workout.model_dump()
 
-            if user_id:
-                workout_dict["user_id"] = UUID(user_id)
+            workout_dict["user_id"] = UUID(user_id)
 
             workout_create = HKWorkoutCreate(**workout_dict)
             created_workout = self.workout_service.create(db_session, workout_create)
 
             for stat in bundle.workout_statistics:
                 stat_dict = stat.model_dump()
-                if user_id:
-                    stat_dict["id"] = uuid4()
-                    stat_dict["user_id"] = UUID(user_id)
-                    stat_dict["workout_id"] = created_workout.id
+                stat_dict["id"] = uuid4()
+                stat_dict["user_id"] = UUID(user_id)
+                stat_dict["workout_id"] = created_workout.id
                 stat_create = HKWorkoutStatisticCreate(**stat_dict)
                 self.workout_statistic_service.create(db_session, stat_create)
 
