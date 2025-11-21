@@ -63,12 +63,33 @@ class HeartRateRecoveryRepository(
             func.min(HeartRateRecovery.min).label("min_recovery"),
         ).first()
 
+        # Extract recovery stats with safe defaults
+        if hr_recovery_stats:
+            avg_recovery = float(hr_recovery_stats.avg_recovery)
+            max_recovery = float(hr_recovery_stats.max_recovery)
+            min_recovery = float(hr_recovery_stats.min_recovery)
+        else:
+            avg_recovery = 0
+            max_recovery = 0
+            min_recovery = 0
+
+        if hr_stats:
+            total_records = int(hr_stats.total_records)
+            avg_hr = float(hr_stats.avg_hr)
+            max_hr = float(hr_stats.max_hr)
+            min_hr = float(hr_stats.min_hr)
+        else:
+            total_records = 0
+            avg_hr = 0
+            max_hr = 0
+            min_hr = 0
+
         return {
-            "total_records": hr_stats.total_records or 0,
-            "avg_heart_rate": float(hr_stats.avg_hr or 0),
-            "max_heart_rate": float(hr_stats.max_hr or 0),
-            "min_heart_rate": float(hr_stats.min_hr or 0),
-            "avg_recovery_rate": float(hr_recovery_stats.avg_recovery or 0),
-            "max_recovery_rate": float(hr_recovery_stats.max_recovery or 0),
-            "min_recovery_rate": float(hr_recovery_stats.min_recovery or 0),
+            "total_records": total_records,
+            "avg_heart_rate": avg_hr,
+            "max_heart_rate": max_hr,
+            "min_heart_rate": min_hr,
+            "avg_recovery_rate": avg_recovery,
+            "max_recovery_rate": max_recovery,
+            "min_recovery_rate": min_recovery,
         }

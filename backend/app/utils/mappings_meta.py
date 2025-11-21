@@ -1,4 +1,4 @@
-from typing import Any, get_args, get_origin
+from typing import Any, TypeAliasType, get_args, get_origin
 
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
@@ -7,7 +7,7 @@ from app.mappings import ManyToOne, OneToMany
 
 DEFAULT_ONE_TO_MANY = dict(cascade="all, delete-orphan", passive_deletes=True)
 DEFAULT_MANY_TO_ONE = dict()
-RELATION_TYPES: dict[type, dict] = {
+RELATION_TYPES: dict[TypeAliasType, dict] = {
     ManyToOne: DEFAULT_MANY_TO_ONE,
     OneToMany: DEFAULT_ONE_TO_MANY,
 }
