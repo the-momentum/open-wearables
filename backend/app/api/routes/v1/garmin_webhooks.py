@@ -1,4 +1,5 @@
 """Garmin webhook endpoints for receiving push/ping notifications."""
+
 from logging import getLogger
 from typing import Annotated
 
@@ -112,8 +113,7 @@ async def garmin_ping_notification(
                         )
 
                         logger.info(
-                            f"Saved pull token for user {internal_user_id} "
-                            f"(time range: {upload_start}-{upload_end})"
+                            f"Saved pull token for user {internal_user_id} (time range: {upload_start}-{upload_end})"
                         )
 
                         # Also save the full callback URL for convenience
