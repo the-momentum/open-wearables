@@ -75,15 +75,14 @@ class Settings(BaseSettings):
     suunto_api_base_url: str = "https://cloudapi.suunto.com"
     suunto_default_scope: str = "workout"
 
-    # GARMIN OAUTH SETTINGS (for future use)
+    # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None
     garmin_client_secret: SecretStr | None = None
     garmin_redirect_uri: str = "http://localhost:8000/api/v1/oauth/garmin/callback"
-    garmin_consumer_key: str | None = None
-    garmin_authorize_url: str = "https://connect.garmin.com/oauthConfirm"
-    garmin_token_url: str = "https://connectapi.garmin.com/oauth-service/oauth/access_token"
+    garmin_authorize_url: str = "https://connect.garmin.com/oauth2Confirm"
+    garmin_token_url: str = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
     garmin_api_base_url: str = "https://apis.garmin.com"
-    garmin_default_scope: str = "activity:read"
+    garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None

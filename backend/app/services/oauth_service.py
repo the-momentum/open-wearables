@@ -1,11 +1,10 @@
+import json
 import secrets
-from base64 import b64encode
 from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
 import httpx
-import jwt
 import redis
 from fastapi import HTTPException
 
@@ -18,6 +17,12 @@ from app.schemas import (
     OAuthTokenResponse,
     ProviderConfig,
     UserConnectionCreate,
+)
+from app.services.oauth import (
+    BaseOAuthStrategy,
+    GarminOAuthStrategy,
+    PolarOAuthStrategy,
+    SuuntoOAuthStrategy,
 )
 
 
@@ -34,6 +39,19 @@ class OAuthService:
             decode_responses=True,
         )
         self.state_ttl = 900  # 15 minutes
+
+        # Initialize OAuth strategies
+        self.strategies = {
+            "garmin": GarminOAuthStrategy(),
+            "suunto": SuuntoOAuthStrategy(),
+            "polar": PolarOAuthStrategy(),
+        }
+
+    def _get_oauth_strategy(self, provider: str) -> "BaseOAuthStrategy":
+        """Get OAuth strategy for the given provider."""
+        if provider not in self.strategies:
+            raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
+        return self.strategies[provider]
 
     def get_provider_config(self, provider: str) -> ProviderConfig:
         """Get configuration for a specific provider."""
@@ -97,41 +115,44 @@ class OAuthService:
     ) -> AuthorizationURLResponse:
         """Generate authorization URL and save state to Redis."""
         config = self.get_provider_config(provider)
+        strategy = self._get_oauth_strategy(provider)
 
         # Generate random state
         state = secrets.token_urlsafe(32)
 
-        # Save state to Redis
+        # Prepare OAuth state
         oauth_state = OAuthState(
             user_id=user_id,
             provider=provider,
             redirect_uri=redirect_uri,
         )
+
+        # Build authorization URL using strategy
+        auth_url, pkce_data = strategy.build_authorization_url(
+            config=config,
+            state=state,
+        )
+
+        # Save state to Redis (with PKCE data if applicable)
         redis_key = f"oauth_state:{state}"
-        self.redis_client.setex(
-            redis_key,
-            self.state_ttl,
-            oauth_state.model_dump_json(),
-        )
-
-        # Build authorization URL
-        auth_url = (
-            f"{config.authorize_url}?"
-            f"response_type=code&"
-            f"client_id={config.client_id}&"
-            f"redirect_uri={config.redirect_uri}&"
-            f"state={state}"
-        )
-
-        if config.default_scope:
-            auth_url += f"&scope={config.default_scope}"
+        if pkce_data:
+            state_data = oauth_state.model_dump(mode="json")
+            state_data.update(pkce_data)
+            self.redis_client.setex(redis_key, self.state_ttl, json.dumps(state_data))
+            self.logger.debug(f"Saved OAuth state with PKCE for {provider}")
+        else:
+            self.redis_client.setex(redis_key, self.state_ttl, oauth_state.model_dump_json())
 
         self.logger.info(f"Generated authorization URL for user {user_id} and provider {provider}")
 
         return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
-    def validate_and_consume_state(self, state: str) -> OAuthState:
-        """Validate state from Redis and consume it (one-time use)."""
+    def validate_and_consume_state(self, state: str) -> tuple[OAuthState, str | None]:
+        """Validate state from Redis and consume it (one-time use).
+
+        Returns:
+            tuple: (OAuthState, code_verifier) where code_verifier is None for non-PKCE flows
+        """
         redis_key = f"oauth_state:{state}"
         state_data = self.redis_client.get(redis_key)
 
@@ -141,7 +162,16 @@ class OAuthService:
         # Delete state immediately (one-time use)
         self.redis_client.delete(redis_key)
 
-        return OAuthState.model_validate_json(state_data)
+        # Try to parse as JSON and extract code_verifier if present (for Garmin PKCE)
+        try:
+            state_dict = json.loads(state_data)
+            code_verifier = state_dict.pop("code_verifier", None)
+            oauth_state = OAuthState.model_validate(state_dict)
+            return oauth_state, code_verifier
+        except (json.JSONDecodeError, KeyError):
+            # Fallback for non-PKCE providers
+            oauth_state = OAuthState.model_validate_json(state_data)
+            return oauth_state, None
 
     def exchange_code_for_tokens(
         self,
@@ -151,28 +181,21 @@ class OAuthService:
         state: str,
     ) -> dict:
         """Exchange authorization code for access tokens."""
-        # Validate state
-        oauth_state = self.validate_and_consume_state(state)
+        # Validate state and get PKCE data (if applicable)
+        oauth_state, code_verifier = self.validate_and_consume_state(state)
 
         if oauth_state.provider != provider:
             raise HTTPException(status_code=400, detail="Provider mismatch in state")
 
         config = self.get_provider_config(provider)
+        strategy = self._get_oauth_strategy(provider)
 
-        # Prepare token request
-        token_data = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": config.redirect_uri,
-        }
-
-        # Prepare Basic Auth header
-        credentials = f"{config.client_id}:{config.client_secret}"
-        b64_credentials = b64encode(credentials.encode()).decode()
-        headers = {
-            "Authorization": f"Basic {b64_credentials}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
+        # Prepare token request using strategy
+        token_data, headers = strategy.prepare_token_exchange(
+            config=config,
+            code=code,
+            code_verifier=code_verifier,
+        )
 
         # Exchange code for tokens
         try:
@@ -191,33 +214,15 @@ class OAuthService:
             self.logger.error(f"Token exchange error: {str(e)}")
             raise HTTPException(status_code=500, detail="Token exchange failed")
 
-        # Parse JWT to extract provider username (Suunto-specific)
-        provider_username = None
-        provider_user_id = None
-        if provider == "suunto":
-            try:
-                decoded = jwt.decode(token_response.access_token, options={"verify_signature": False})
-                provider_username = decoded.get("user")
-                provider_user_id = decoded.get("sub")
-            except Exception as e:
-                self.logger.warning(f"Failed to parse JWT: {str(e)}")
-        elif provider == "polar":
-            # Polar returns x_user_id in token response (convert to string)
-            provider_user_id = str(token_response.x_user_id) if token_response.x_user_id is not None else None
+        # Extract provider-specific user information using strategy
+        provider_user_info = strategy.extract_provider_user_info(
+            config=config,
+            token_response=token_response,
+            user_id=str(oauth_state.user_id),
+        )
 
-            # Register user with Polar API (required before accessing data)
-            try:
-                from app.services.polar_service import polar_service
-
-                polar_service.register_user(
-                    access_token=token_response.access_token,
-                    member_id=str(oauth_state.user_id),
-                )
-                self.logger.info(f"Registered user {oauth_state.user_id} with Polar API")
-            except Exception as e:
-                self.logger.error(f"Failed to register user with Polar: {str(e)}")
-                # Don't fail the entire flow - user might already be registered
-                pass
+        provider_username = provider_user_info.get("username")
+        provider_user_id = provider_user_info.get("user_id")
 
         # Calculate token expiration
         token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_response.expires_in)
@@ -280,20 +285,13 @@ class OAuthService:
             raise HTTPException(status_code=400, detail="No refresh token available")
 
         config = self.get_provider_config(provider)
+        strategy = self._get_oauth_strategy(provider)
 
-        # Prepare refresh request
-        refresh_data = {
-            "grant_type": "refresh_token",
-            "refresh_token": connection.refresh_token,
-        }
-
-        # Prepare Basic Auth header
-        credentials = f"{config.client_id}:{config.client_secret}"
-        b64_credentials = b64encode(credentials.encode()).decode()
-        headers = {
-            "Authorization": f"Basic {b64_credentials}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
+        # Prepare refresh request using strategy
+        refresh_data, headers = strategy.prepare_token_refresh(
+            config=config,
+            refresh_token=connection.refresh_token,
+        )
 
         try:
             response = httpx.post(
