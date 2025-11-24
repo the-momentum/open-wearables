@@ -14,8 +14,8 @@ from app.schemas import (
     HKRecordJSON,
 )
 from app.services.apple.healthkit.record_service import record_service
-from app.services.apple.healthkit.workout_service import workout_service
-from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
+from app.services.apple.workout_service import workout_service
+from app.services.apple.workout_statistic_service import workout_statistic_service
 from app.schemas import UploadDataResponse
 
 class ImportService:

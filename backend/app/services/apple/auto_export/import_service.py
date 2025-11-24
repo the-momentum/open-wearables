@@ -12,13 +12,9 @@ from app.schemas import (
     WorkoutStatisticCreate,
     UploadDataResponse,
     AEWorkoutJSON,
-    AEHeartRateEntryJSON,
-    AEActiveEnergyEntryJSON,
 )
-from app.services.apple.auto_export.active_energy_service import active_energy_service
-from app.services.apple.auto_export.heart_rate_service import heart_rate_service
-from app.services.apple.healthkit.workout_service import workout_service
-from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
+from app.services.apple.workout_service import workout_service
+from app.services.apple.workout_statistic_service import workout_statistic_service
 from app.utils.exceptions import handle_exceptions
 
 APPLE_DT_FORMAT = "%Y-%m-%d %H:%M:%S %z"
@@ -29,9 +25,6 @@ class ImportService:
         self.log = log
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
-        self.active_energy_service = active_energy_service
-        self.heart_rate_data_service = heart_rate_service.heart_rate_data_service
-        self.heart_rate_recovery_service = heart_rate_service.heart_rate_recovery_service
 
     def _dt(self, s: str) -> datetime:
         s = s.replace(" +", "+").replace(" ", "T", 1)
@@ -118,6 +111,9 @@ class ImportService:
             duration_unit = "min"
 
             workout_statistics = self._get_workout_statistics(wjson, user_id, workout_id)
+            records = self._get_records(wjson, workout_id, user_id)
+            
+            statistics = [*workout_statistics, *records]
 
             workout_type = wjson.name or "Unknown Workout"
 
@@ -132,53 +128,15 @@ class ImportService:
                 endDate=end_date,
             )
 
-            heart_rate_data, heart_rate_recovery, active_energy = self._get_records(wjson, wid)
 
-            yield AEImportBundle(
-                workout=workout_row,
-                workout_statistics=workout_statistics,
-                heart_rate_data=heart_rate_data,
-                heart_rate_recovery=heart_rate_recovery,
-                active_energy=active_energy,
-            )
+            yield workout_row, statistics
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
-        for bundle in self._build_import_bundles(raw, user_id):
-            workout_dict = bundle.workout.model_dump()
+        for workout_row, statistics in self._build_import_bundles(raw, user_id):
+            self.workout_service.create(db_session, workout_row)
 
-            workout_dict["user_id"] = UUID(user_id)
-
-            workout_create = HKWorkoutCreate(**workout_dict)
-            created_workout = self.workout_service.create(db_session, workout_create)
-
-            for stat in bundle.workout_statistics:
-                stat_dict = stat.model_dump()
-                stat_dict["id"] = uuid4()
-                stat_dict["user_id"] = UUID(user_id)
-                stat_dict["workout_id"] = created_workout.id
-                stat_create = HKWorkoutStatisticCreate(**stat_dict)
-                self.workout_statistic_service.create(db_session, stat_create)
-
-            for row in bundle.heart_rate_data:
-                hr_data = row.model_dump()
-                if user_id:
-                    hr_data["user_id"] = UUID(user_id)
-                hr_create = AEHeartRateDataCreate(**hr_data)
-                self.heart_rate_data_service.create(db_session, hr_create)
-
-            for row in bundle.heart_rate_recovery:
-                hr_recovery_data = row.model_dump()
-                if user_id:
-                    hr_recovery_data["user_id"] = UUID(user_id)
-                hr_recovery_create = AEHeartRateRecoveryCreate(**hr_recovery_data)
-                self.heart_rate_recovery_service.create(db_session, hr_recovery_create)
-
-            for row in bundle.active_energy:
-                ae_data = row.model_dump()
-                if user_id:
-                    ae_data["user_id"] = UUID(user_id)
-                ae_create = AEActiveEnergyCreate(**ae_data)
-                self.active_energy_service.create(db_session, ae_create)
+            for stat in statistics:
+                self.workout_statistic_service.create(db_session, stat)
 
         return True
 
