@@ -18,7 +18,7 @@ from app.mappings import (
 class WorkoutStatistic(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    workout_id: Mapped[FKWorkout]
+    workout_id: Mapped[FKWorkout | None] = None
 
     type: Mapped[str_100]
     sourceName: Mapped[str_100]

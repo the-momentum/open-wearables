@@ -32,7 +32,15 @@ from .apple.common import (
 
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
+)
+from .apple.healthkit.record_import import (
     RecordJSON as HKRecordJSON,
+)
+
+from .apple.auto_export.json_schemas import (
+    WorkoutJSON as AEWorkoutJSON,
+    HeartRateEntryJSON as AEHeartRateEntryJSON,
+    ActiveEnergyEntryJSON as AEActiveEnergyEntryJSON,
 )
 
 __all__ = [
@@ -72,6 +80,9 @@ __all__ = [
     "HKWorkoutJSON",
     "HKRecordJSON",
     
+    "AEWorkoutJSON",
+    "AEHeartRateEntryJSON",
+    "AEActiveEnergyEntryJSON",
     
     # AWS schemas
     "PresignedURLRequest",

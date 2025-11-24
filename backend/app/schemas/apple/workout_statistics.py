@@ -8,7 +8,7 @@ class WorkoutStatisticCreate(BaseModel):
 
     id: UUID
     user_id: UUID
-    workout_id: UUID
+    workout_id: UUID | None = None
     
     type: str
     sourceName: str
