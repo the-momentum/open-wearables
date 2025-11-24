@@ -26,7 +26,13 @@ from .apple.workout_statistics import (
     WorkoutStatisticUpdate,
     WorkoutStatisticResponse,
 )
+from .apple.common import (
+    RootJSON,
+)
 
+from .apple.healthkit.workout_import import (
+    WorkoutJSON as HKWorkoutJSON,
+)
 
 __all__ = [
     # Common schemas
@@ -51,7 +57,8 @@ __all__ = [
     "UserConnectionUpdate",
     "AuthorizationURLResponse",
     
-
+    "RootJSON",
+    
     "WorkoutCreate",
     "WorkoutUpdate",
     "WorkoutResponse",
@@ -60,6 +67,9 @@ __all__ = [
     "WorkoutStatisticCreate",
     "WorkoutStatisticUpdate",
     "WorkoutStatisticResponse",
+    
+    "HKWorkoutJSON",
+    
     
     # AWS schemas
     "PresignedURLRequest",

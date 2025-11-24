@@ -7,16 +7,10 @@ from uuid import UUID, uuid4
 from app.database import DbSession
 
 from app.schemas import (
-    HKRecordCreate,
-    HKRecordIn,
-    HKRecordJSON,
-    HKRootJSON,
-    HKWorkoutCreate,
-    HKWorkoutIn,
+    WorkoutCreate,
+    WorkoutStatisticCreate,
+    RootJSON,
     HKWorkoutJSON,
-    HKWorkoutStatisticCreate,
-    HKWorkoutStatisticIn,
-    UploadDataResponse,
 )
 from app.services.apple.healthkit.record_service import record_service
 from app.services.apple.healthkit.workout_service import workout_service
@@ -34,12 +28,12 @@ class ImportService:
         self,
         raw: dict,
         user_id: str,
-    ) -> Iterable[tuple[HKWorkoutIn, list[HKWorkoutStatisticIn]]]:
+    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundle(s)
         ready to insert into your ORM session.
         """
-        root = HKRootJSON(**raw)
+        root = RootJSON(**raw)
         workouts_raw = root.data.get("workouts", [])
         for w in workouts_raw:
             wjson = HKWorkoutJSON(**w)
@@ -48,7 +42,7 @@ class ImportService:
 
             duration = (wjson.endDate - wjson.startDate).total_seconds() / 60
 
-            workout_row = HKWorkoutIn(
+            workout_create = WorkoutCreate(
                 id=uuid4(),
                 provider_id=UUID(provider_id) if provider_id else None,
                 user_id=user_id,
@@ -64,13 +58,25 @@ class ImportService:
             workout_statistics = []
             if wjson.workoutStatistics is not None:
                 for stat in wjson.workoutStatistics:
-                    stat_in = HKWorkoutStatisticIn(type=stat.type, value=stat.value, unit=stat.unit)
-                    workout_statistics.append(stat_in)
+                    stat_create = WorkoutStatisticCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        workout_id=workout_create.id,
+                        type=stat.type,
+                        sourceName=wjson.sourceName or "Apple Health",
+                        startDate=wjson.startDate,
+                        endDate=wjson.endDate,
+                        min=stat.value,
+                        max=stat.value,
+                        avg=stat.value,
+                        unit=stat.unit,
+                    )
+                    workout_statistics.append(stat_create)
 
-            yield workout_row, workout_statistics
+            yield workout_create, workout_statistics
 
     def _build_record_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKRecordIn, list[HKMetadataEntryIn]]]:
-        root = HKRootJSON(**raw)
+        root = RootJSON(**raw)
         records_raw = root.data.get("records", [])
         for r in records_raw:
             rjson = HKRecordJSON(**r)
@@ -94,21 +100,10 @@ class ImportService:
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for workout_row, workout_statistics in self._build_workout_bundles(raw, user_id):
-            workout_data = workout_row.model_dump()
-            workout_data["user_id"] = UUID(user_id)
-            workout_create = HKWorkoutCreate(**workout_data)
-            created_workout = self.workout_service.create(db_session, workout_create)
+            self.workout_service.create(db_session, workout_row)
 
             # Create workout statistics
-            for stat_in in workout_statistics:
-                stat_create = HKWorkoutStatisticCreate(
-                    id=uuid4(),
-                    user_id=created_workout.user_id,
-                    workout_id=created_workout.id,
-                    type=stat_in.type,
-                    value=stat_in.value,
-                    unit=stat_in.unit,
-                )
+            for stat_create in workout_statistics:
                 self.workout_statistic_service.create(db_session, stat_create)
 
         for record_row in self._build_record_bundles(raw, user_id):
