@@ -52,6 +52,29 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .one_or_none()
         )
 
+    def get_by_provider_user_id(
+        self,
+        db_session: DbSession,
+        provider: str,
+        provider_user_id: str,
+    ) -> UserConnection | None:
+        """Get connection by provider and provider's user ID.
+
+        Useful for webhook processing where we receive provider's user ID
+        and need to find our internal user.
+        """
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.provider_user_id == provider_user_id,
+                    self.model.status == "active",
+                )
+            )
+            .one_or_none()
+        )
+
     def get_expiring_tokens(self, db_session: DbSession, minutes_threshold: int = 5) -> list[UserConnection]:
         """Get connections with tokens expiring soon (for background refresh)."""
         now = datetime.now(timezone.utc)
