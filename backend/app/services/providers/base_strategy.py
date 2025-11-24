@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-    from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
 
 class BaseProviderStrategy(ABC):
@@ -22,7 +20,7 @@ class BaseProviderStrategy(ABC):
 
     @property
     @abstractmethod
-    def oauth(self) -> "BaseOAuthTemplate | None":
+    def oauth(self) -> BaseOAuthTemplate | None:
         """Returns the OAuth handler for this provider.
 
         Returns:
@@ -33,7 +31,7 @@ class BaseProviderStrategy(ABC):
 
     @property
     @abstractmethod
-    def workouts(self) -> "BaseWorkoutsTemplate | None":
+    def workouts(self) -> BaseWorkoutsTemplate | None:
         """Returns the Workouts handler for this provider.
 
         Returns:
