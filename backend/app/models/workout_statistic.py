@@ -22,13 +22,12 @@ class WorkoutStatistic(BaseDbModel):
 
     type: Mapped[str_100]
     sourceName: Mapped[str_100]
-    value: Mapped[numeric_10_3]
-    unit: Mapped[str_10]
     startDate: Mapped[datetime_tz]
     endDate: Mapped[datetime_tz]
     min: Mapped[numeric_10_3]
     max: Mapped[numeric_10_3]
     avg: Mapped[numeric_10_3]
+    unit: Mapped[str_10]
 
     user: Mapped[ManyToOne["User"]]
     workout: Mapped[ManyToOne["Workout"]]
