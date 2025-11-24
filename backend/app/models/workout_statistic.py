@@ -8,9 +8,10 @@ from app.mappings import (
     FKWorkout,
     ManyToOne,
     PrimaryKey,
-    numeric_10_2,
+    numeric_10_3,
     str_10,
     str_100,
+    datetime_tz,
 )
 
 
@@ -20,8 +21,14 @@ class WorkoutStatistic(BaseDbModel):
     workout_id: Mapped[FKWorkout]
 
     type: Mapped[str_100]
-    value: Mapped[numeric_10_2]
+    sourceName: Mapped[str_100]
+    value: Mapped[numeric_10_3]
     unit: Mapped[str_10]
+    startDate: Mapped[datetime_tz]
+    endDate: Mapped[datetime_tz]
+    min: Mapped[numeric_10_3]
+    max: Mapped[numeric_10_3]
+    avg: Mapped[numeric_10_3]
 
     user: Mapped[ManyToOne["User"]]
     workout: Mapped[ManyToOne["Workout"]]
