@@ -6,20 +6,17 @@ from app.database import DbSession
 from app.models import Workout
 from app.repositories import HKWorkoutRepository
 from app.schemas import (
-    HKDateRange,
-    HKWorkoutCreate,
-    HKWorkoutListResponse,
-    HKWorkoutMeta,
-    HKWorkoutQueryParams,
-    HKWorkoutResponse,
-    HKWorkoutSummary,
-    HKWorkoutUpdate,
+    WorkoutCreate,
+    WorkoutUpdate,
+    WorkoutResponse,
+    WorkoutQueryParams,
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
+from app.services.apple.workout_statistic_service import workout_statistic_service
 
 
-class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, HKWorkoutUpdate]):
+class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, WorkoutUpdate]):
     """Service for HealthKit workout-related business logic."""
 
     def __init__(self, log: Logger, **kwargs):
@@ -29,7 +26,7 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
     async def _get_workouts_with_filters(
         self,
         db_session: DbSession,
-        query_params: HKWorkoutQueryParams,
+        query_params: WorkoutQueryParams,
         user_id: str,
     ) -> tuple[list[Workout], int]:
         """
@@ -62,57 +59,35 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, HKWorkoutCreate, H
     async def get_workouts_response(
         self,
         db_session: DbSession,
-        query_params: HKWorkoutQueryParams,
+        query_params: WorkoutQueryParams,
         user_id: str,
-    ) -> HKWorkoutListResponse:
+    ) -> list[WorkoutResponse]:
         """
         Get HealthKit workouts formatted as API response.
 
         Returns:
-            HKWorkoutListResponse ready for API
+            list[WorkoutResponse] ready for API
         """
-        workouts, total_count = await self._get_workouts_with_filters(db_session, query_params, user_id)
+        workouts, _ = await self._get_workouts_with_filters(db_session, query_params, user_id)
 
         workout_responses = []
         for workout in workouts:
-            _, summary_data = await self._get_workout_with_summary(db_session, workout.id)
-
-            workout_response = HKWorkoutResponse(
+            # statistics = await workout_statistic_service.get_workout_statistics(db_session, workout.id)
+            
+            workout_response = WorkoutResponse(
                 id=workout.id,
                 type=workout.type,
-                startDate=workout.startDate,
-                endDate=workout.endDate,
                 duration=float(workout.duration),
                 durationUnit=workout.durationUnit,
                 sourceName=workout.sourceName,
-                user_id=workout.user_id,
-                summary=HKWorkoutSummary(**summary_data),
+                startDate=workout.startDate,
+                endDate=workout.endDate,
+                statistics=[], # statistics,
             )
             workout_responses.append(workout_response)
 
-        start_date_str = query_params.start_date or "1900-01-01T00:00:00Z"
-        end_date_str = query_params.end_date or datetime.now().isoformat() + "Z"
 
-        start_date = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
-        end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-        duration_days = (end_date - start_date).days
-
-        meta = HKWorkoutMeta(
-            requested_at=datetime.now().isoformat() + "Z",
-            filters=query_params.model_dump(exclude_none=True),
-            result_count=total_count,
-            total_count=total_count,
-            date_range=HKDateRange(
-                start=start_date_str,
-                end=end_date_str,
-                duration_days=duration_days,
-            ),
-        )
-
-        return HKWorkoutListResponse(
-            data=workout_responses,
-            meta=meta,
-        )
+        return workout_responses
 
 
 workout_service = WorkoutService(log=getLogger(__name__))

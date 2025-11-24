@@ -13,7 +13,6 @@ from app.schemas import (
     HKWorkoutJSON,
     HKRecordJSON,
 )
-from app.services.apple.healthkit.record_service import record_service
 from app.services.apple.workout_service import workout_service
 from app.services.apple.workout_statistic_service import workout_statistic_service
 from app.schemas import UploadDataResponse
@@ -23,7 +22,6 @@ class ImportService:
         self.log = log
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
-        self.record_service = record_service
 
     def _build_workout_bundles(
         self,

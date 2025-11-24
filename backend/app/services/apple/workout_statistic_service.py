@@ -2,12 +2,12 @@ from logging import Logger, getLogger
 
 from app.models import WorkoutStatistic
 from app.repositories import WorkoutStatisticRepository
-from app.schemas import HKWorkoutStatisticCreate, HKWorkoutStatisticUpdate
+from app.schemas import WorkoutStatisticCreate, WorkoutStatisticUpdate
 from app.services.services import AppService
 
 
 class WorkoutStatisticService(
-    AppService[WorkoutStatisticRepository, WorkoutStatistic, HKWorkoutStatisticCreate, HKWorkoutStatisticUpdate],
+    AppService[WorkoutStatisticRepository, WorkoutStatistic, WorkoutStatisticCreate, WorkoutStatisticUpdate],
 ):
     """Service for workout statistics business logic."""
 
