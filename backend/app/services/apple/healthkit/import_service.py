@@ -11,11 +11,12 @@ from app.schemas import (
     WorkoutStatisticCreate,
     RootJSON,
     HKWorkoutJSON,
+    HKRecordJSON,
 )
 from app.services.apple.healthkit.record_service import record_service
 from app.services.apple.healthkit.workout_service import workout_service
 from app.services.apple.healthkit.workout_statistic_service import workout_statistic_service
-
+from app.schemas import UploadDataResponse
 
 class ImportService:
     def __init__(self, log: Logger, **kwargs):
@@ -75,7 +76,7 @@ class ImportService:
 
             yield workout_create, workout_statistics
 
-    def _build_record_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[HKRecordIn, list[HKMetadataEntryIn]]]:
+    def _build_statistic_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[WorkoutStatisticCreate]]:
         root = RootJSON(**raw)
         records_raw = root.data.get("records", [])
         for r in records_raw:
@@ -83,8 +84,7 @@ class ImportService:
 
             provider_id = UUID(rjson.uuid) if rjson.uuid else None
 
-            # TODO: change to workout statistic
-            record_row = HKRecordIn(
+            stat_create = WorkoutStatisticCreate(
                 id=uuid4(),
                 provider_id=provider_id,
                 user_id=user_id,
@@ -92,25 +92,23 @@ class ImportService:
                 startDate=rjson.startDate,
                 endDate=rjson.endDate,
                 unit=rjson.unit,
-                value=rjson.value,
+                min=rjson.value,
+                max=rjson.value,
+                avg=rjson.value,
                 sourceName=rjson.sourceName or "Apple Health",
             )
 
-            yield record_row
+            yield stat_create
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for workout_row, workout_statistics in self._build_workout_bundles(raw, user_id):
             self.workout_service.create(db_session, workout_row)
 
-            # Create workout statistics
             for stat_create in workout_statistics:
                 self.workout_statistic_service.create(db_session, stat_create)
 
-        for record_row in self._build_record_bundles(raw, user_id):
-            record_data = record_row.model_dump()
-            record_data["user_id"] = UUID(user_id)
-            record_create = HKRecordCreate(**record_data)
-            self.record_service.create(db_session, record_create)
+        for stat_create in self._build_statistic_bundles(raw, user_id):
+            self.workout_statistic_service.create(db_session, stat_create)
 
         return True
 

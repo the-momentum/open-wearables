@@ -32,6 +32,7 @@ from .apple.common import (
 
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
+    RecordJSON as HKRecordJSON,
 )
 
 __all__ = [
@@ -69,6 +70,7 @@ __all__ = [
     "WorkoutStatisticResponse",
     
     "HKWorkoutJSON",
+    "HKRecordJSON",
     
     
     # AWS schemas
