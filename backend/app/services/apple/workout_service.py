@@ -1,4 +1,3 @@
-from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -72,7 +71,7 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, Wor
 
         workout_responses = []
         for workout in workouts:
-            # statistics = await workout_statistic_service.get_workout_statistics(db_session, workout.id)
+            statistics = await workout_statistic_service._get_statistics(db_session, user_id, workout.id)
             
             workout_response = WorkoutResponse(
                 id=workout.id,
