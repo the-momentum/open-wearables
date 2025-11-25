@@ -13,6 +13,4 @@ class User(BaseDbModel):
     created_at: Mapped[datetime_tz]
 
     workouts: Mapped[OneToMany["Workout"]]
-    heart_rate_data: Mapped[OneToMany["HeartRateData"]]
-    heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
-    active_energy: Mapped[OneToMany["ActiveEnergy"]]
+    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]
