@@ -1,17 +1,18 @@
+# type: ignore[unresolved-attribute]
+
 from logging import Logger
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
 from fastapi import Request, Response
 from fastapi_users import UUIDIDMixin
+from pydantic import BaseModel
 
+from app.config import settings
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas import FilterParams
-from app.config import settings
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
-
+from app.utils.exceptions import ResourceNotFoundError
 
 type OptRequest = Request | None
 
@@ -44,7 +45,7 @@ class AppService[
     def get(
         self,
         db_session: DbSession,
-        object_id: UUID | int,
+        object_id: UUID | str | int,
         raise_404: bool = False,
         print_log: bool = True,
     ) -> ModelType | None:
@@ -86,7 +87,7 @@ class AppService[
     def update(
         self,
         db_session: DbSession,
-        object_id: UUID | int,
+        object_id: UUID | str | int,
         updater: UpdateSchemaType,
         raise_404: bool = False,
     ) -> ModelType | None:
@@ -95,7 +96,7 @@ class AppService[
             self.logger.debug(f"Updated {self.name} with ID: {fetched.id}.")
             return fetched
 
-    def delete(self, db_session: DbSession, object_id: UUID | int, raise_404: bool = False) -> ModelType | None:
+    def delete(self, db_session: DbSession, object_id: UUID | str | int, raise_404: bool = False) -> ModelType | None:
         if originator := self.get(db_session, object_id, print_log=False, raise_404=raise_404):
             deleted = self.crud.delete(db_session, originator)
             self.logger.debug(f"Deleted {self.name} with ID: {deleted.id}.")

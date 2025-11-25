@@ -4,14 +4,12 @@ from fastapi import APIRouter, Depends
 
 from app.database import DbSession
 from app.schemas import AEHeartRateListResponse, AEHeartRateQueryParams
-
-from app.services import ae_heart_rate_service, ApiKeyDep
+from app.services import ApiKeyDep, ae_heart_rate_service
 
 router = APIRouter()
 
 
-
-@router.get("/users/{user_id}/heart-rate", response_model=AEHeartRateListResponse)
+@router.get("/users/{user_id}/heart-rate")
 async def get_heart_rate_endpoint(
     user_id: str,
     db: DbSession,

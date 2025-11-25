@@ -6,17 +6,20 @@ from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
-from app.models import Workout, ActiveEnergy, HeartRateData
+from app.models import Workout, WorkoutStatistic
 from app.repositories.repositories import CrudRepository
-from app.schemas import AEWorkoutQueryParams, AEWorkoutCreate, AEWorkoutUpdate
+from app.schemas import WorkoutCreate, WorkoutQueryParams, WorkoutUpdate
 
 
-class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate]):
+class WorkoutRepository(CrudRepository[Workout, WorkoutCreate, WorkoutUpdate]):
     def __init__(self, model: type[Workout]):
         super().__init__(model)
 
     def get_workouts_with_filters(
-        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: WorkoutQueryParams,
+        user_id: str,
     ) -> tuple[list[Workout], int]:
         query: Query = db_session.query(Workout)
 
@@ -62,11 +65,9 @@ class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate
         total_count = query.count()
 
         # Apply sorting
-        sort_column = getattr(Workout, query_params.sort_by, Workout.startDate)
-        if query_params.sort_order == "asc":
-            query = query.order_by(sort_column)
-        else:
-            query = query.order_by(desc(sort_column))
+        sort_column = getattr(Workout, query_params.sort_by, Workout.startDate)  # type: ignore[no-matching-overload]
+
+        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
 
         # Apply pagination
         query = query.offset(query_params.offset).limit(query_params.limit)
@@ -77,20 +78,20 @@ class WorkoutRepository(CrudRepository[Workout, AEWorkoutCreate, AEWorkoutUpdate
         # Get heart rate summary
         hr_stats = (
             db_session.query(
-                func.avg(HeartRateData.avg).label("avg_hr"),
-                func.max(HeartRateData.max).label("max_hr"),
-                func.min(HeartRateData.min).label("min_hr"),
+                func.avg(WorkoutStatistic.avg).label("avg_hr"),
+                func.max(WorkoutStatistic.max).label("max_hr"),
+                func.min(WorkoutStatistic.min).label("min_hr"),
             )
-            .filter(HeartRateData.workout_id == workout_id)
+            .filter(WorkoutStatistic.workout_id == workout_id)
             .first()
         )
 
         # Get total calories from active energy
         total_calories = (
             db_session.query(
-                func.sum(ActiveEnergy.qty).label("total_calories"),
+                func.sum(WorkoutStatistic.value).label("total_calories"),
             )
-            .filter(ActiveEnergy.workout_id == workout_id)
+            .filter(WorkoutStatistic.workout_id == workout_id)
             .first()
         )
 

@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, OneToMany, datetime_tz
+from app.mappings import OneToMany, PrimaryKey, datetime_tz
 
 
 class User(BaseDbModel):
@@ -13,6 +13,4 @@ class User(BaseDbModel):
     created_at: Mapped[datetime_tz]
 
     workouts: Mapped[OneToMany["Workout"]]
-    heart_rate_data: Mapped[OneToMany["HeartRateData"]]
-    heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
-    active_energy: Mapped[OneToMany["ActiveEnergy"]]
+    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]

@@ -1,9 +1,10 @@
 from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from app.database import DbSession
-from app.schemas import HKWorkoutListResponse, HKWorkoutQueryParams
-from app.services import hk_workout_service, ApiKeyDep
+from app.schemas import WorkoutQueryParams, WorkoutResponse
+from app.services import ApiKeyDep, workout_service
 
 router = APIRouter()
 
@@ -13,7 +14,7 @@ async def get_workouts_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,
-    query_params: Annotated[HKWorkoutQueryParams, Depends()],
-) -> HKWorkoutListResponse:
+    query_params: Annotated[WorkoutQueryParams, Depends()],
+) -> list[WorkoutResponse]:
     """Get workouts with filtering, sorting, and pagination."""
-    return await hk_workout_service.get_workouts_response(db, query_params, user_id)
+    return await workout_service.get_workouts_response(db, query_params, user_id)

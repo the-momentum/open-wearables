@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, TypeVar, NewType
+from typing import Annotated, NewType, TypeVar
 from uuid import UUID
 
 from pydantic import EmailStr

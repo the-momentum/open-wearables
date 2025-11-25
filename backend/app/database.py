@@ -1,20 +1,21 @@
-from collections.abc import Iterator, AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import Engine, UUID as SqlUUID, Text, String, create_engine, inspect
+from sqlalchemy import UUID as SqlUUID
+from sqlalchemy import Engine, String, Text, create_engine, inspect
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Session,
     declared_attr,
     sessionmaker,
-)
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    AsyncEngine,
-    async_sessionmaker,
-    create_async_engine,
 )
 
 from app.config import settings

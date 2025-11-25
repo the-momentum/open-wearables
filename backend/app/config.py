@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     # CORE SETTINGS
-    fernet_decryptor: FernetDecryptorField = Field("MASTER_KEY")
+    fernet_decryptor: FernetDecryptorField = Field(FernetDecryptorField("MASTER_KEY"))
     environment: EnvironmentType = EnvironmentType.LOCAL
 
     # API SETTINGS
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     cors_allow_all: bool = False
 
     # DATABASE SETTINGS
-    db_host: str = "localhost"
+    db_host: str = "db"
     db_port: int = 5432
     db_name: str = "open-wearables"
     db_user: str = "open-wearables"
@@ -94,6 +94,18 @@ class Settings(BaseSettings):
     polar_token_url: str = "https://polarremote.com/v2/oauth2/token"
     polar_api_base_url: str = "https://www.polaraccesslink.com"
     polar_default_scope: str = "accesslink.read_all"
+
+    # AWS SETTINGS
+    aws_bucket_name: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region: str = "eu-north-1"
+    sqs_queue_url: str | None = None
+
+    xml_chunk_size: int = 50_000
+    # min, default, max
+    presigned_url_expiration_seconds: tuple[int, int, int] = (60, 300, 3600)  # 1 min, 5 min, 1 hour
+    presigned_url_max_filesize: tuple[int, int, int] = (1024, 50 * 1024 * 1024, 1024 * 1024 * 1024)  # 1KB, 50MB, 1GB
 
     @field_validator("cors_origins", mode="after")
     @classmethod
