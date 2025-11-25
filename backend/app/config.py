@@ -139,21 +139,6 @@ class Settings(BaseSettings):
     def auth0_issuer_url(self) -> str:
         return f"https://{self.auth0_domain}/"
 
-    def get_redis_connection_params(self) -> dict[str, Any]:
-        """
-        Get Redis connection parameters from individual settings.
-        
-        Returns:
-            dict with keys: host, port, db, password, username
-        """
-        return {
-            "host": self.redis_host,
-            "port": self.redis_port,
-            "db": self.redis_db,
-            "password": self.redis_password.get_secret_value() if self.redis_password else None,
-            "username": self.redis_username,
-        }
-
     # 0. pytest ini_options
     # 1. environment variables
     # 2. .env
