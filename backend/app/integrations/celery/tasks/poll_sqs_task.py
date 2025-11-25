@@ -85,24 +85,16 @@ def poll_sqs_messages():
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int):
-    """
-    Poll SQS messages for file uploads at regular intervals.
-    Polls every 20 seconds for expiration_seconds // 20 iterations.
-
-    Args:
-        expiration_seconds: Total time to poll for (in seconds)
-    """
-
+def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
     num_polls = expiration_seconds // 20
-    logger.info(f"[poll_sqs_task] Starting with {num_polls} polls (every 20 seconds)")
-
-    for i in range(num_polls):
-        logger.info(f"[poll_sqs_task] Poll {i + 1}/{num_polls}")
-        poll_sqs_messages()
-
-        if i < num_polls - 1:
-            time.sleep(20)
-
-    logger.info(f"[poll_sqs_task] Completed {num_polls} polls")
-    return {"polls_completed": num_polls}
+    
+    if iterations_done >= num_polls:
+        return {"polls_completed": num_polls}
+    
+    poll_sqs_messages()
+    
+    # Schedule next iteration
+    poll_sqs_task.apply_async(
+        args=[expiration_seconds, iterations_done + 1],
+        countdown=20
+    )
