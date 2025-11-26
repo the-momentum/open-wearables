@@ -24,8 +24,6 @@ type ManyToOne[T] = T
 
 # Custom types
 datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
-datetime_tz_now = Annotated[datetime, mapped_column(DateTime(timezone=True), insert_default=lambda: datetime.now(timezone.utc))]
-datetime_tz_updated = Annotated[datetime, mapped_column(DateTime(timezone=True), insert_default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))]
 email = Annotated[EmailStr, mapped_column(String)]
 
 str_10 = Annotated[str, mapped_column(String(10))]
