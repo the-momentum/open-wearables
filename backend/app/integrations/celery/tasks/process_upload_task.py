@@ -23,14 +23,13 @@ def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
     """
 
     with SessionLocal() as db:
-
         temp_xml_file = None
 
         try:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
-            
-            user_id = object_key.split('/')[-3]
+
+            user_id = object_key.split("/")[-3]
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 
@@ -40,7 +39,7 @@ def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
             except Exception as e:
                 db.rollback()
                 raise e
-            
+
             result = {
                 "bucket": bucket_name,
                 "input_key": object_key,

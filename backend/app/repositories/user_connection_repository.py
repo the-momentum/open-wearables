@@ -70,7 +70,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                     self.model.provider == provider,
                     self.model.provider_user_id == provider_user_id,
                     self.model.status == "active",
-                )
+                ),
             )
             .one_or_none()
         )

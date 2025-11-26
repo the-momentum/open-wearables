@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     created_at: datetime
 

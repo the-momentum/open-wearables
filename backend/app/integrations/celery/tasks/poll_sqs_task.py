@@ -1,6 +1,6 @@
 import json
-import time
-from logging import getLogger   
+from logging import getLogger
+from typing import Any
 
 import boto3
 
@@ -45,7 +45,7 @@ def poll_sqs_messages() -> dict[str, Any]:
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
                         logger.info(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}"
+                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}",
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -89,14 +89,14 @@ def poll_sqs_messages() -> dict[str, Any]:
 @shared_task()
 def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
     num_polls = expiration_seconds // 20
-    
+
     if iterations_done >= num_polls:
         return {"polls_completed": num_polls}
-    
+
     poll_sqs_messages()
-    
+
     # Schedule next iteration
     poll_sqs_task.apply_async(
         args=[expiration_seconds, iterations_done + 1],
-        countdown=20
+        countdown=20,
     )

@@ -101,7 +101,6 @@ class Settings(BaseSettings):
     sqs_queue_url: str | None = None
 
     xml_chunk_size: int = 50_000
-      
 
     @field_validator("cors_origins", mode="after")
     @classmethod
