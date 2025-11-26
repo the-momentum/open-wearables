@@ -28,9 +28,9 @@ def upgrade() -> None:
     op.add_column('workoutstatistic', sa.Column('sourceName', sa.String(length=100), nullable=False))
     op.add_column('workoutstatistic', sa.Column('startDate', sa.DateTime(timezone=True), nullable=False))
     op.add_column('workoutstatistic', sa.Column('endDate', sa.DateTime(timezone=True), nullable=False))
-    op.add_column('workoutstatistic', sa.Column('min', sa.Numeric(precision=10, scale=3), nullable=False))
-    op.add_column('workoutstatistic', sa.Column('max', sa.Numeric(precision=10, scale=3), nullable=False))
-    op.add_column('workoutstatistic', sa.Column('avg', sa.Numeric(precision=10, scale=3), nullable=False))
+    op.add_column('workoutstatistic', sa.Column('min', sa.Numeric(precision=10, scale=3), nullable=True))
+    op.add_column('workoutstatistic', sa.Column('max', sa.Numeric(precision=10, scale=3), nullable=True))
+    op.add_column('workoutstatistic', sa.Column('avg', sa.Numeric(precision=10, scale=3), nullable=True))
     op.alter_column('workoutstatistic', 'workout_id',
                existing_type=sa.UUID(),
                nullable=True)

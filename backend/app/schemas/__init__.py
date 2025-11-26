@@ -15,18 +15,18 @@ from .response import UploadDataResponse
 from .user import UserCreate, UserRead, UserUpdate
 
 from .apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
-from .apple.workout import (
+from .workout import (
     WorkoutCreate,
     WorkoutUpdate,
     WorkoutResponse,
     WorkoutQueryParams,
 )
-from .apple.workout_statistics import (
+from .workout_statistics import (
     WorkoutStatisticCreate,
     WorkoutStatisticUpdate,
     WorkoutStatisticResponse,
 )
-from .apple.common import (
+from .common import (
     RootJSON,
 )
 

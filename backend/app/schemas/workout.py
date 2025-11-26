@@ -7,8 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from typing import Literal
 
-from app.schemas.apple.common import BaseQueryParams
-from app.schemas.apple.workout_statistics import WorkoutStatisticResponse
+from app.schemas.common import BaseQueryParams
+from app.schemas.workout_statistics import WorkoutStatisticResponse
 
 
 class WorkoutCreate(BaseModel):

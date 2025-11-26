@@ -24,9 +24,9 @@ class WorkoutStatistic(BaseDbModel):
     sourceName: Mapped[str_100]
     startDate: Mapped[datetime_tz]
     endDate: Mapped[datetime_tz]
-    min: Mapped[numeric_10_3]
-    max: Mapped[numeric_10_3]
-    avg: Mapped[numeric_10_3]
+    min: Mapped[numeric_10_3 | None] = None
+    max: Mapped[numeric_10_3 | None] = None
+    avg: Mapped[numeric_10_3 | None] = None
     unit: Mapped[str_10]
 
     user: Mapped[ManyToOne["User"]]

@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiKeyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     name: str
     created_by: UUID | None
