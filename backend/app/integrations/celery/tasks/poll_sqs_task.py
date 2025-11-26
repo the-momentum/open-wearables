@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any
+from logging import getLogger   
 
 import boto3
 
@@ -11,6 +11,8 @@ from celery import shared_task
 QUEUE_URL: str = settings.sqs_queue_url
 
 sqs = boto3.client("sqs", region_name=settings.aws_region)
+
+logger = getLogger(__name__)
 
 
 @shared_task()
@@ -27,7 +29,7 @@ def poll_sqs_messages() -> dict[str, Any]:
         processed_count = 0
         failed_count = 0
 
-        print(f"[poll_sqs_messages] Received {len(messages)} messages from SQS")
+        logger.info(f"[poll_sqs_messages] Received {len(messages)} messages from SQS")
 
         for message in messages:
             receipt_handle = message["ReceiptHandle"]
@@ -35,16 +37,15 @@ def poll_sqs_messages() -> dict[str, Any]:
 
             try:
                 message_body = message["Body"]
-                print(f"[poll_sqs_messages] Processing message {message_id}")
+                logger.info(f"[poll_sqs_messages] Processing message {message_id}")
 
                 # Parse JSON string if necessary
                 if isinstance(message_body, str):
                     try:
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
-                        print(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, \
-                            skipping: {message_body[:100]}",
+                        logger.info(
+                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}"
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -52,7 +53,6 @@ def poll_sqs_messages() -> dict[str, Any]:
 
                 # Check if this is an S3 event
                 if "Records" not in message_body:
-                    print(f"[poll_sqs_messages] Message {message_id} has no 'Records' key, skipping")
                     sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                     failed_count += 1
                     continue
@@ -62,18 +62,16 @@ def poll_sqs_messages() -> dict[str, Any]:
                     if record.get("eventSource") == "aws:s3":
                         bucket_name = record["s3"]["bucket"]["name"]
                         object_key = record["s3"]["object"]["key"]
-                        print(f"[poll_sqs_messages] Queuing file upload task: s3://{bucket_name}/{object_key}")
 
                         # Enqueue Celery task
-                        task = process_uploaded_file.delay(bucket_name, object_key)
-                        print(f"[poll_sqs_messages] Queued task {task.id}")
+                        process_uploaded_file.delay(bucket_name, object_key)
                         processed_count += 1
 
                 # Delete message from queue after processing
                 sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
 
             except Exception as e:
-                print(f"[poll_sqs_messages] Error processing message {message_id}: {str(e)}")
+                logger.info(f"[poll_sqs_messages] Error processing message {message_id}: {str(e)}")
                 failed_count += 1
                 continue
 
@@ -82,33 +80,23 @@ def poll_sqs_messages() -> dict[str, Any]:
             "messages_failed": failed_count,
             "total_messages": len(messages),
         }
-        print(f"[poll_sqs_messages] Result: {result}")
         return result
 
     except Exception as e:
-        print(f"[poll_sqs_messages] Fatal error: {str(e)}")
         return {"status": "error", "error": str(e)}
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int) -> dict[str, int]:
-    """
-    Poll SQS messages for file uploads at regular intervals.
-    Polls every 20 seconds for expiration_seconds // 20 iterations.
-
-    Args:
-        expiration_seconds: Total time to poll for (in seconds)
-    """
-
+def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
     num_polls = expiration_seconds // 20
-    print(f"[poll_sqs_task] Starting with {num_polls} polls (every 20 seconds)")
-
-    for i in range(num_polls):
-        print(f"[poll_sqs_task] Poll {i + 1}/{num_polls}")
-        poll_sqs_messages()
-
-        if i < num_polls - 1:
-            time.sleep(20)
-
-    print(f"[poll_sqs_task] Completed {num_polls} polls")
-    return {"polls_completed": num_polls}
+    
+    if iterations_done >= num_polls:
+        return {"polls_completed": num_polls}
+    
+    poll_sqs_messages()
+    
+    # Schedule next iteration
+    poll_sqs_task.apply_async(
+        args=[expiration_seconds, iterations_done + 1],
+        countdown=20
+    )
