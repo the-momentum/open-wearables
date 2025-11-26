@@ -25,7 +25,10 @@ export const automationsService = {
     id: string,
     data: AutomationUpdate
   ): Promise<Automation> {
-    return apiClient.patch<Automation>(API_ENDPOINTS.automationDetail(id), data);
+    return apiClient.patch<Automation>(
+      API_ENDPOINTS.automationDetail(id),
+      data
+    );
   },
 
   async deleteAutomation(id: string): Promise<void> {

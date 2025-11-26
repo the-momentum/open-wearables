@@ -76,8 +76,7 @@ export function useAuth() {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (data: ResetPasswordRequest) =>
-      authService.resetPassword(data),
+    mutationFn: (data: ResetPasswordRequest) => authService.resetPassword(data),
     onSuccess: () => {
       toast.success('Password reset successfully');
       navigate({ to: '/login' });
