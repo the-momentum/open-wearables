@@ -22,8 +22,8 @@ export const API_ENDPOINTS = {
   sleep: '/api/v1/sleep',
   workouts: '/api/v1/workouts',
 
-  apiKeys: '/api/v1/api-keys',
-  apiKeyDetail: (id: string) => `/api/v1/api-keys/${id}`,
+  apiKeys: '/api/v1/developer/api-keys',
+  apiKeyDetail: (id: string) => `/api/v1/developer/api-keys/${id}`,
 
   automations: '/api/v1/automations',
   automationDetail: (id: string) => `/api/v1/automations/${id}`,

@@ -1,4 +1,3 @@
-import path from 'path';
 import { defineConfig } from 'vite';
 import { devtools } from '@tanstack/devtools-vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
@@ -10,11 +9,6 @@ import { nitro } from 'nitro/vite';
 const config = defineConfig({
   build: {
     outDir: 'dist',
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
   },
   plugins: [
     devtools(),
