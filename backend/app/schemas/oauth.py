@@ -1,7 +1,24 @@
 from datetime import datetime, timezone
+from enum import Enum
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+
+class AuthenticationMethod(str, Enum):
+    """Method used for client authentication."""
+
+    BASIC_AUTH = "basic_auth"
+    BODY = "body"
+
+
+class ProviderName(str, Enum):
+    """Supported data providers."""
+
+    APPLE = "apple"
+    GARMIN = "garmin"
+    POLAR = "polar"
+    SUUNTO = "suunto"
 
 
 # OAuth State (Redis)
@@ -77,16 +94,21 @@ class OAuthTokenResponse(BaseModel):
 
 
 # Provider config
-class ProviderConfig(BaseModel):
-    """Configuration for an OAuth provider."""
+class ProviderEndpoints(BaseModel):
+    """Static endpoints for an OAuth provider."""
+
+    authorize_url: str
+    token_url: str
+    api_base_url: str
+
+
+class ProviderCredentials(BaseModel):
+    """User-configurable credentials for an OAuth provider."""
 
     name: str
     client_id: str
     client_secret: str
     redirect_uri: str
-    authorize_url: str
-    token_url: str
-    api_base_url: str
     default_scope: str
     subscription_key: str | None = None  # Suunto-specific
 

@@ -74,27 +74,18 @@ class Settings(BaseSettings):
     suunto_client_secret: SecretStr | None = None
     suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
     suunto_subscription_key: SecretStr | None = None
-    suunto_authorize_url: str = "https://cloudapi-oauth.suunto.com/oauth/authorize"
-    suunto_token_url: str = "https://cloudapi-oauth.suunto.com/oauth/token"
-    suunto_api_base_url: str = "https://cloudapi.suunto.com"
     suunto_default_scope: str = "workout"
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None
     garmin_client_secret: SecretStr | None = None
     garmin_redirect_uri: str = "http://localhost:8000/api/v1/oauth/garmin/callback"
-    garmin_authorize_url: str = "https://connect.garmin.com/oauth2Confirm"
-    garmin_token_url: str = "https://diauth.garmin.com/di-oauth2-service/oauth/token"
-    garmin_api_base_url: str = "https://apis.garmin.com"
     garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
     polar_client_secret: SecretStr | None = None
     polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
-    polar_authorize_url: str = "https://flow.polar.com/oauth2/authorization"
-    polar_token_url: str = "https://polarremote.com/v2/oauth2/token"
-    polar_api_base_url: str = "https://www.polaraccesslink.com"
     polar_default_scope: str = "accesslink.read_all"
 
     # AWS SETTINGS

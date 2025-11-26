@@ -1,19 +1,33 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
-from app.schemas.oauth import AuthorizationURLResponse
-from app.services.oauth_service import oauth_service
+from app.schemas import AuthorizationURLResponse, ProviderName
+from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
+factory = ProviderFactory()
+
+
+def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
+    """Helper to get provider strategy and ensure it supports OAuth."""
+    strategy = factory.get_provider(provider.value)
+
+    if not strategy.oauth:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provider '{provider.value}' does not support OAuth",
+        )
+    return strategy
 
 
 @router.get("/{provider}/authorize")
 async def authorize_provider(
-    provider: str,
+    provider: ProviderName,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
     redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
 ) -> AuthorizationURLResponse:
@@ -22,12 +36,15 @@ async def authorize_provider(
 
     Returns authorization URL where user should be redirected to log in.
     """
-    return oauth_service.generate_authorization_url(user_id, provider, redirect_uri)
+    strategy = get_oauth_strategy(provider)
+
+    auth_url, state = strategy.oauth.get_authorization_url(user_id, redirect_uri)
+    return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
 @router.get("/{provider}/callback")
 async def oauth_callback(
-    provider: str,
+    provider: ProviderName,
     code: Annotated[str, Query(description="Authorization code from provider")],
     state: Annotated[str, Query(description="State parameter for CSRF protection")],
     db: DbSession,
@@ -37,14 +54,12 @@ async def oauth_callback(
 
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
-    result = oauth_service.exchange_code_for_tokens(db, provider, code, state)
+    strategy = get_oauth_strategy(provider)
+
+    oauth_state = strategy.oauth.handle_callback(db, code, state)
 
     # Redirect to success page or developer's redirect_uri
-    if result.get("redirect_uri"):
-        redirect_url = result["redirect_uri"]
-    else:
-        # Default success page
-        redirect_url = f"/oauth/success?provider={provider}&user_id={result['user_id']}"
+    redirect_url = oauth_state.redirect_uri or f"/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}"
 
     return RedirectResponse(url=redirect_url)
 

@@ -1,7 +1,7 @@
 import jwt
 
 from app.config import settings
-from app.schemas.oauth import OAuthTokenResponse, ProviderConfig
+from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 
@@ -9,17 +9,20 @@ class SuuntoOAuth(BaseOAuthTemplate):
     """Suunto OAuth 2.0 implementation."""
 
     @property
-    def config(self) -> ProviderConfig:
-        return ProviderConfig(
+    def endpoints(self) -> ProviderEndpoints:
+        return ProviderEndpoints(
+            authorize_url="https://cloudapi-oauth.suunto.com/oauth/authorize",
+            token_url="https://cloudapi-oauth.suunto.com/oauth/token",
+            api_base_url="https://cloudapi.suunto.com",
+        )
+
+    @property
+    def credentials(self) -> ProviderCredentials:
+        return ProviderCredentials(
             name="suunto",
             client_id=settings.suunto_client_id or "",
-            client_secret=(
-                settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""
-            ),
+            client_secret=(settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""),
             redirect_uri=settings.suunto_redirect_uri,
-            authorize_url=settings.suunto_authorize_url,
-            token_url=settings.suunto_token_url,
-            api_base_url=settings.suunto_api_base_url,
             default_scope=settings.suunto_default_scope,
             subscription_key=(
                 settings.suunto_subscription_key.get_secret_value() if settings.suunto_subscription_key else ""

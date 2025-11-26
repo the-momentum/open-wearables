@@ -6,7 +6,7 @@ from sqlalchemy import and_
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.repositories import CrudRepository
-from app.schemas.oauth import UserConnectionCreate, UserConnectionUpdate
+from app.schemas import UserConnectionCreate, UserConnectionUpdate
 
 
 class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCreate, UserConnectionUpdate]):

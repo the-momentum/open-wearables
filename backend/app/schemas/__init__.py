@@ -191,10 +191,13 @@ from .developer import DeveloperCreate, DeveloperRead, DeveloperUpdate
 from .error_codes import ErrorCode
 from .filter_params import FilterParams
 from .oauth import (
+    AuthenticationMethod,
     AuthorizationURLResponse,
     OAuthState,
     OAuthTokenResponse,
-    ProviderConfig,
+    ProviderCredentials,
+    ProviderEndpoints,
+    ProviderName,
     UserConnectionCreate,
     UserConnectionRead,
     UserConnectionUpdate,
@@ -218,9 +221,12 @@ __all__ = [
     "ErrorCode",
     "UploadDataResponse",
     # OAuth schemas
+    "AuthenticationMethod",
+    "ProviderName",
     "OAuthState",
     "OAuthTokenResponse",
-    "ProviderConfig",
+    "ProviderEndpoints",
+    "ProviderCredentials",
     "UserConnectionCreate",
     "UserConnectionRead",
     "UserConnectionUpdate",
