@@ -1,5 +1,3 @@
-// Dashboard API service
-
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import type {
@@ -9,46 +7,8 @@ import type {
   AutomationTriggersDataPoint,
   TriggersByTypeDataPoint,
 } from '../types';
-import {
-  mockDashboardStats,
-  mockApiCallsData,
-  mockDataPointsData,
-  mockAutomationTriggersData,
-  mockTriggersByTypeData,
-} from '../../../data/mock/dashboard';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === 'true';
-
-// Mock dashboard service
-const mockDashboardService = {
-  async getStats(): Promise<DashboardStats> {
-    await delay(400);
-    return mockDashboardStats;
-  },
-
-  async getApiCallsData(): Promise<ApiCallsDataPoint[]> {
-    await delay(500);
-    return mockApiCallsData;
-  },
-
-  async getDataPointsData(): Promise<DataPointsDataPoint[]> {
-    await delay(500);
-    return mockDataPointsData;
-  },
-
-  async getAutomationTriggersData(): Promise<AutomationTriggersDataPoint[]> {
-    await delay(500);
-    return mockAutomationTriggersData;
-  },
-
-  async getTriggersByTypeData(): Promise<TriggersByTypeDataPoint[]> {
-    await delay(400);
-    return mockTriggersByTypeData;
-  },
-};
-
-// Real dashboard service
-const realDashboardService = {
+export const dashboardService = {
   async getStats(): Promise<DashboardStats> {
     return apiClient.get<DashboardStats>(API_ENDPOINTS.dashboardStats);
   },
@@ -94,12 +54,3 @@ const realDashboardService = {
     );
   },
 };
-
-export const dashboardService = USE_MOCK
-  ? mockDashboardService
-  : realDashboardService;
-
-// Utility function
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

@@ -55,6 +55,25 @@ export interface RegisterRequest {
   name?: string;
 }
 
+export interface RegisterResponse {
+  id: string;
+  email: string;
+  is_active: boolean;
+  is_superuser: boolean;
+  is_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
 export interface DashboardStats {
   totalUsers: number;
   activeConnections: number;

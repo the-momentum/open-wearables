@@ -10,11 +10,125 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { pricingTiers } from '@/data/mock/pricing';
 
 export const Route = createFileRoute('/_authenticated/pricing')({
   component: PricingPage,
 });
+
+interface PricingTier {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  billingPeriod: 'month' | 'year';
+  features: string[];
+  limits: {
+    users: number | 'unlimited';
+    apiCalls: number | 'unlimited';
+    automations: number | 'unlimited';
+    dataRetention: string;
+  };
+  cta: string;
+  popular?: boolean;
+}
+
+const pricingTiers: PricingTier[] = [
+  {
+    id: 'developer',
+    name: 'Developer',
+    description: 'Perfect for testing and personal projects',
+    price: 0,
+    billingPeriod: 'month',
+    features: [
+      'Up to 10 connected users',
+      '1,000 API calls/month',
+      'Basic health data access',
+      'Community support',
+      'Public documentation',
+    ],
+    limits: {
+      users: 10,
+      apiCalls: 1000,
+      automations: 2,
+      dataRetention: '30 days',
+    },
+    cta: 'Get Started Free',
+  },
+  {
+    id: 'starter',
+    name: 'Starter',
+    description: 'For small teams and early-stage startups',
+    price: 49,
+    billingPeriod: 'month',
+    features: [
+      'Up to 100 connected users',
+      '10,000 API calls/month',
+      'All health data types',
+      'Email support',
+      '5 automations',
+      'Basic analytics',
+    ],
+    limits: {
+      users: 100,
+      apiCalls: 10000,
+      automations: 5,
+      dataRetention: '90 days',
+    },
+    cta: 'Start Free Trial',
+  },
+  {
+    id: 'professional',
+    name: 'Professional',
+    description: 'For growing companies with advanced needs',
+    price: 199,
+    billingPeriod: 'month',
+    features: [
+      'Up to 1,000 connected users',
+      '100,000 API calls/month',
+      'All health data types',
+      'Priority support',
+      'Unlimited automations',
+      'Advanced analytics',
+      'AI Health Assistant',
+      'Custom webhooks',
+    ],
+    limits: {
+      users: 1000,
+      apiCalls: 100000,
+      automations: 'unlimited',
+      dataRetention: '1 year',
+    },
+    cta: 'Start Free Trial',
+    popular: true,
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    description: 'For large organizations with custom requirements',
+    price: 0,
+    billingPeriod: 'month',
+    features: [
+      'Unlimited connected users',
+      'Unlimited API calls',
+      'All health data types',
+      'Dedicated support',
+      'Unlimited automations',
+      'Custom analytics',
+      'AI Health Assistant',
+      'Custom integrations',
+      'SLA guarantee',
+      'HIPAA BAA',
+      'SOC 2 compliance',
+    ],
+    limits: {
+      users: 'unlimited',
+      apiCalls: 'unlimited',
+      automations: 'unlimited',
+      dataRetention: 'Custom',
+    },
+    cta: 'Contact Sales',
+  },
+];
 
 function PricingPage() {
   const handleCTA = (tierId: string) => {

@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
+import { createFileRoute, redirect, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -144,12 +144,12 @@ function LoginPage() {
                         >
                           Password
                         </Label>
-                        <button
-                          type="button"
+                        <Link
+                          to="/forgot-password"
                           className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
                         >
                           Forgot password?
-                        </button>
+                        </Link>
                       </div>
                       <div className="relative">
                         <Input
@@ -167,20 +167,6 @@ function LoginPage() {
                           <div className="absolute inset-0 -z-10 bg-blue-500/20 blur-xl rounded-lg transition-opacity" />
                         )}
                       </div>
-                    </div>
-
-                    <div className="flex items-center">
-                      <input
-                        id="remember"
-                        type="checkbox"
-                        className="w-4 h-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500 focus:ring-offset-0 focus:ring-2"
-                      />
-                      <label
-                        htmlFor="remember"
-                        className="ml-2 text-sm text-slate-300"
-                      >
-                        Remember me for 30 days
-                      </label>
                     </div>
 
                     <Button
@@ -221,9 +207,12 @@ function LoginPage() {
                 <div className="px-8 sm:px-10 py-6 bg-white/5 border-t border-white/10">
                   <p className="text-center text-sm text-slate-400">
                     Don't have an account?{' '}
-                    <button className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                      Contact Sales
-                    </button>
+                    <Link
+                      to="/register"
+                      className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                    >
+                      Create account
+                    </Link>
                   </p>
                 </div>
               </div>
@@ -246,23 +235,6 @@ function LoginPage() {
           </div>
         </div>
       </div>
-
-      <style>{`
-        @keyframes gradient {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        .animate-gradient {
-          background-size: 200% 200%;
-          animation: gradient 3s ease infinite;
-        }
-        .delay-500 {
-          animation-delay: 0.5s;
-        }
-        .delay-1000 {
-          animation-delay: 1s;
-        }
-      `}</style>
     </div>
   );
 }

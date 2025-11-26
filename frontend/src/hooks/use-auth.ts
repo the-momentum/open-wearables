@@ -3,7 +3,12 @@ import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { authService } from '../lib/api';
 import { setSession, clearSession, isAuthenticated } from '../lib/auth/session';
-import type { LoginRequest, RegisterRequest } from '../lib/api/types';
+import type {
+  LoginRequest,
+  RegisterRequest,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+} from '../lib/api/types';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -22,7 +27,14 @@ export function useAuth() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: (data: RegisterRequest) => authService.register(data),
+    mutationFn: async (data: RegisterRequest) => {
+      await authService.register(data);
+      const loginResponse = await authService.login({
+        email: data.email,
+        password: data.password,
+      });
+      return loginResponse;
+    },
     onSuccess: (data) => {
       setSession(data.access_token, data.developer_id);
       toast.success('Account created successfully');
@@ -43,9 +55,39 @@ export function useAuth() {
       navigate({ to: '/login' });
     },
     onError: () => {
-      // Clear session even if API call fails
       clearSession();
       navigate({ to: '/login' });
+    },
+  });
+
+  const forgotPasswordMutation = useMutation({
+    mutationFn: (data: ForgotPasswordRequest) =>
+      authService.forgotPassword(data),
+    onSuccess: () => {
+      toast.success(
+        'If an account exists with that email, we have sent password reset instructions'
+      );
+    },
+    onError: () => {
+      toast.success(
+        'If an account exists with that email, we have sent password reset instructions'
+      );
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (data: ResetPasswordRequest) =>
+      authService.resetPassword(data),
+    onSuccess: () => {
+      toast.success('Password reset successfully');
+      navigate({ to: '/login' });
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to reset password. The link may have expired.';
+      toast.error(message);
     },
   });
 
@@ -53,9 +95,13 @@ export function useAuth() {
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     logout: logoutMutation.mutate,
+    forgotPassword: forgotPasswordMutation.mutate,
+    resetPassword: resetPasswordMutation.mutate,
     isLoggingIn: loginMutation.isPending,
     isRegistering: registerMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
+    isForgotPasswordPending: forgotPasswordMutation.isPending,
+    isResetPasswordPending: resetPasswordMutation.isPending,
     isAuthenticated: isAuthenticated(),
   };
 }

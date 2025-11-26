@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated, TypeVar, NewType
 from uuid import UUID
 
 from pydantic import EmailStr
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import mapped_column
 
 T = TypeVar("T")
@@ -24,6 +24,8 @@ type ManyToOne[T] = T
 
 # Custom types
 datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
+datetime_tz_now = Annotated[datetime, mapped_column(DateTime(timezone=True), insert_default=lambda: datetime.now(timezone.utc))]
+datetime_tz_updated = Annotated[datetime, mapped_column(DateTime(timezone=True), insert_default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))]
 email = Annotated[EmailStr, mapped_column(String)]
 
 str_10 = Annotated[str, mapped_column(String(10))]

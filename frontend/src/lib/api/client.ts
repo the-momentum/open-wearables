@@ -120,6 +120,46 @@ export const apiClient = {
     });
   },
 
+  async postForm<T>(
+    endpoint: string,
+    body: Record<string, string>,
+    options?: RequestOptions
+  ): Promise<T> {
+    const url = `${API_CONFIG.baseUrl}${endpoint}`;
+    const token = getToken();
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(options?.headers as Record<string, string>),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetchWithRetry(url, {
+      ...options,
+      method: 'POST',
+      headers,
+      body: new URLSearchParams(body).toString(),
+    });
+
+    let data: unknown;
+    const contentType = response.headers.get('content-type');
+
+    if (contentType?.includes('application/json')) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    if (!response.ok) {
+      throw ApiError.fromResponse(response, data);
+    }
+
+    return data as T;
+  },
+
   patch<T>(
     endpoint: string,
     body?: unknown,
