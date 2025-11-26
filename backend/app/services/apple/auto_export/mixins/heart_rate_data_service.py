@@ -3,13 +3,13 @@ from logging import Logger
 from app.database import DbSession
 from app.models import HeartRateData
 from app.repositories import HeartRateDataRepository
-from app.schemas import AEHeartRateQueryParams, AEHeartRateDataCreate, AEHeartRateDataUpdate
+from app.schemas import AEHeartRateDataCreate, AEHeartRateDataUpdate, AEHeartRateQueryParams
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
 
 class HeartRateDataService(
-    AppService[HeartRateDataRepository, HeartRateData, AEHeartRateDataCreate, AEHeartRateDataUpdate]
+    AppService[HeartRateDataRepository, HeartRateData, AEHeartRateDataCreate, AEHeartRateDataUpdate],
 ):
     """Service for heart rate data business logic."""
 
@@ -18,7 +18,10 @@ class HeartRateDataService(
 
     @handle_exceptions
     async def get_heart_rate_data_with_filters(
-        self, db_session: DbSession, query_params: AEHeartRateQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEHeartRateQueryParams,
+        user_id: str,
     ) -> tuple[list[HeartRateData], int]:
         """
         Get heart rate data with filtering, sorting, and pagination.

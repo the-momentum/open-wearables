@@ -37,7 +37,9 @@ class ActiveEnergyService(AppService[ActiveEnergyRepository, ActiveEnergy, AEAct
 
     @handle_exceptions
     def create_active_energy_batch(
-        self, db_session: DbSession, active_energy_data: list[AEActiveEnergyCreate]
+        self,
+        db_session: DbSession,
+        active_energy_data: list[AEActiveEnergyCreate],
     ) -> list[ActiveEnergy]:
         self.logger.debug(f"Creating batch of {len(active_energy_data)} active energy records")
 

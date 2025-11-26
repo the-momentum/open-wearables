@@ -3,7 +3,6 @@ from botocore.exceptions import NoCredentialsError
 
 from app.config import settings
 
-
 AWS_BUCKET_NAME = settings.aws_bucket_name
 AWS_REGION = settings.aws_region
 

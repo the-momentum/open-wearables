@@ -3,7 +3,7 @@ import sentry_sdk
 from app.config import settings
 
 
-def init_sentry():
+def init_sentry() -> None:
     if settings.SENTRY_ENABLED:
         sentry_sdk.init(
             dsn=settings.SENTRY_DSN,

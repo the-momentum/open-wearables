@@ -3,17 +3,17 @@ import tempfile
 from logging import getLogger
 from pathlib import Path
 
-from celery import shared_task
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
+from app.services import hk_record_service, hk_workout_service, hk_workout_statistic_service
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
-from app.services import hk_workout_service, hk_workout_statistic_service, hk_record_service
-from app.database import SessionLocal
+from celery import shared_task
 
 
 @shared_task
-def process_uploaded_file(bucket_name: str, object_key: str):
+def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
     """
     Process XML file uploaded to S3 and import to Postgres database.
 
@@ -23,14 +23,13 @@ def process_uploaded_file(bucket_name: str, object_key: str):
     """
 
     with SessionLocal() as db:
-
         temp_xml_file = None
 
         try:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
-            
-            user_id = object_key.split('/')[-3]
+
+            user_id = object_key.split("/")[-3]
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 
@@ -40,7 +39,7 @@ def process_uploaded_file(bucket_name: str, object_key: str):
             except Exception as e:
                 db.rollback()
                 raise e
-            
+
             result = {
                 "bucket": bucket_name,
                 "input_key": object_key,

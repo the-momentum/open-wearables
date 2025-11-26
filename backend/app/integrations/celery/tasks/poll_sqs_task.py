@@ -1,13 +1,12 @@
 import json
-import time
-from logging import getLogger   
+from logging import getLogger
+from typing import Any
 
 import boto3
-from celery import shared_task
 
-from app.integrations.celery.tasks.process_upload_task import process_uploaded_file
 from app.config import settings
-
+from app.integrations.celery.tasks.process_upload_task import process_uploaded_file
+from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
 
@@ -17,10 +16,13 @@ logger = getLogger(__name__)
 
 
 @shared_task()
-def poll_sqs_messages():
+def poll_sqs_messages() -> dict[str, Any]:
     try:
         response = sqs.receive_message(
-            QueueUrl=QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=5, MessageAttributeNames=["All"]
+            QueueUrl=QUEUE_URL,
+            MaxNumberOfMessages=10,
+            WaitTimeSeconds=5,
+            MessageAttributeNames=["All"],
         )
 
         messages = response.get("Messages", [])
@@ -43,7 +45,7 @@ def poll_sqs_messages():
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
                         logger.info(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}"
+                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}",
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -87,14 +89,14 @@ def poll_sqs_messages():
 @shared_task()
 def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
     num_polls = expiration_seconds // 20
-    
+
     if iterations_done >= num_polls:
         return {"polls_completed": num_polls}
-    
+
     poll_sqs_messages()
-    
+
     # Schedule next iteration
     poll_sqs_task.apply_async(
         args=[expiration_seconds, iterations_done + 1],
-        countdown=20
+        countdown=20,
     )

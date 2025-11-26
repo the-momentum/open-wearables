@@ -1,6 +1,5 @@
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID
 
 from sqlalchemy import and_, desc
 from sqlalchemy.orm import Query
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Query
 from app.database import DbSession
 from app.models import Record
 from app.repositories.repositories import CrudRepository
-from app.schemas import HKRecordQueryParams, HKRecordCreate, HKRecordUpdate
+from app.schemas import HKRecordCreate, HKRecordQueryParams, HKRecordUpdate
 
 
 class RecordRepository(CrudRepository[Record, HKRecordCreate, HKRecordUpdate]):
@@ -16,7 +15,10 @@ class RecordRepository(CrudRepository[Record, HKRecordCreate, HKRecordUpdate]):
         super().__init__(model)
 
     def get_records_with_filters(
-        self, db_session: DbSession, query_params: HKRecordQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: HKRecordQueryParams,
+        user_id: str,
     ) -> tuple[list[Record], int]:
         query: Query = db_session.query(Record)
 
@@ -62,11 +64,9 @@ class RecordRepository(CrudRepository[Record, HKRecordCreate, HKRecordUpdate]):
         total_count = query.count()
 
         # Apply sorting
-        sort_column = getattr(Record, query_params.sort_by, Record.startDate)
-        if query_params.sort_order == "asc":
-            query = query.order_by(sort_column)
-        else:
-            query = query.order_by(desc(sort_column))
+        sort_column = getattr(Record, query_params.sort_by, Record.startDate)  # type: ignore[no-matching-overload]
+
+        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
 
         # Apply pagination
         query = query.offset(query_params.offset).limit(query_params.limit)

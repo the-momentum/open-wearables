@@ -1,5 +1,6 @@
 from logging import Logger, getLogger
 from uuid import UUID
+
 import httpx
 
 from app.config import settings
@@ -63,7 +64,7 @@ class PolarService(BaseWorkoutService):
         samples: bool = False,
         zones: bool = False,
         route: bool = False,
-    ) -> list[dict]:
+    ) -> dict:
         """Get exercises from Polar API.
 
         Args:
