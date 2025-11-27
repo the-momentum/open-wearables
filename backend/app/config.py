@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_password: SecretStr | None = None
+    redis_username: str | None = None  # Redis 6.0+ ACL
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
