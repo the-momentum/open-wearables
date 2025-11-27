@@ -1,63 +1,21 @@
-from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, Path, Query
 
 from app.database import DbSession
+from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
-from app.services.garmin_service import garmin_service
-from app.services.polar_service import polar_service
-from app.services.suunto_service import suunto_service
-
-
-def parse_timestamp(value: str | None) -> int | None:
-    """Parse timestamp from string (Unix timestamp or ISO 8601 date).
-
-    Args:
-        value: Unix timestamp as string or ISO 8601 date string
-
-    Returns:
-        Unix timestamp in seconds, or None if value is None
-    """
-    if not value:
-        return None
-
-    # Try to parse as integer (Unix timestamp)
-    try:
-        return int(value)
-    except ValueError:
-        pass
-
-    # Try to parse as ISO 8601 date
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return int(dt.timestamp())
-    except (ValueError, AttributeError) as e:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid timestamp format: {value}. "
-                "Use Unix timestamp or ISO 8601 format (e.g., '2024-01-01T00:00:00Z')"
-            ),
-        ) from e
+from app.services.providers.factory import ProviderFactory
 
 
 router = APIRouter()
-
-# Map provider names to their service instances
-WORKOUT_SERVICES = {
-    "suunto": suunto_service,
-    "polar": polar_service,
-    "garmin": garmin_service,
-}
-
-ProviderType = Literal["suunto", "polar", "garmin"]
+factory = ProviderFactory()
 
 
 @router.get("/{provider}/users/{user_id}/workouts")
 async def get_user_workouts(
-    provider: Annotated[ProviderType, Path(description="Workout data provider (suunto, polar, garmin)")],
+    provider: Annotated[ProviderName, Path(description="Workout data provider")],
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -98,42 +56,27 @@ async def get_user_workouts(
 
     Requires valid API key and active connection for the user.
     """
-    service = WORKOUT_SERVICES.get(provider)
+    strategy = factory.get_provider(provider.value)
 
-    if not service:
-        raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
+    # Collect all parameters
+    params = {
+        "since": since,
+        "limit": limit,
+        "offset": offset,
+        "filter_by_modification_time": filter_by_modification_time,
+        "samples": samples,
+        "zones": zones,
+        "route": route,
+        "summary_start_time": summary_start_time,
+        "summary_end_time": summary_end_time,
+    }
 
-    if provider == "suunto":
-        return service.get_workouts(
-            db=db,
-            user_id=user_id,
-            since=since,
-            limit=limit,
-            offset=offset,
-            filter_by_modification_time=filter_by_modification_time,
-        )
-
-    if provider == "polar":
-        return service.get_exercises(
-            db=db,
-            user_id=user_id,
-            samples=samples,
-            zones=zones,
-            route=route,
-        )
-
-    # provider == "garmin"
-    return service.get_activities(
-        db=db,
-        user_id=user_id,
-        summary_start_time_in_seconds=parse_timestamp(summary_start_time),
-        summary_end_time_in_seconds=parse_timestamp(summary_end_time),
-    )
+    return strategy.workouts.get_workouts_from_api(db, user_id, **params)
 
 
 @router.get("/{provider}/users/{user_id}/workouts/{workout_id}")
 async def get_user_workout_detail(
-    provider: Annotated[ProviderType, Path(description="Workout data provider (suunto, polar, garmin)")],
+    provider: Annotated[ProviderName, Path(description="Workout data provider")],
     user_id: UUID,
     workout_id: str,
     db: DbSession,
@@ -152,31 +95,13 @@ async def get_user_workout_detail(
 
     Requires valid API key and active connection for the user.
     """
-    service = WORKOUT_SERVICES.get(provider)
+    strategy = factory.get_provider(provider.value)
 
-    if not service:
-        raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
+    # Collect all parameters
+    params = {
+        "samples": samples,
+        "zones": zones,
+        "route": route,
+    }
 
-    if provider == "suunto":
-        return service.get_workout_detail(
-            db=db,
-            user_id=user_id,
-            workout_key=workout_id,
-        )
-
-    if provider == "polar":
-        return service.get_exercise_detail(
-            db=db,
-            user_id=user_id,
-            exercise_id=workout_id,
-            samples=samples,
-            zones=zones,
-            route=route,
-        )
-
-    # provider == "garmin"
-    return service.get_activity_detail(
-        db=db,
-        user_id=user_id,
-        activity_id=workout_id,
-    )
+    return strategy.workouts.get_workout_detail_from_api(db, user_id, workout_id, **params)

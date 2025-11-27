@@ -296,3 +296,91 @@ class BaseOAuthTemplate(ABC):
                 scope=token_response.scope,
             )
             self.connection_repo.create(db, connection_create)
+
+    def get_valid_token(self, db: DbSession, user_id: UUID) -> str:
+        """Get a valid access token, refreshing if necessary."""
+        connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.credentials.name)
+        if not connection:
+            raise HTTPException(
+                status_code=401,
+                detail=f"User not connected to {self.credentials.name}",
+            )
+
+        # Check if token is expired (with 5 minute buffer)
+        if connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
+            if not connection.refresh_token:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"Token expired and no refresh token available for {self.credentials.name}",
+                )
+            token_response = self.refresh_access_token(db, user_id, connection.refresh_token)
+            return token_response.access_token
+
+        return connection.access_token
+
+    def make_api_request(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any:
+        """Make authenticated request to vendor API.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            endpoint: API endpoint path
+            method: HTTP method (default: GET)
+            params: Query parameters
+            headers: Additional headers
+
+        Returns:
+            Any: API response JSON
+
+        Raises:
+            HTTPException: If API request fails
+        """
+        # Get valid access token (will auto-refresh if needed)
+        access_token = self.get_valid_token(db, user_id)
+
+        # Prepare headers
+        request_headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+        if headers:
+            request_headers.update(headers)
+
+        # Make request
+        url = f"{self.endpoints.api_base_url}{endpoint}"
+
+        try:
+            response = httpx.request(
+                method=method,
+                url=url,
+                headers=request_headers,
+                params=params or {},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except httpx.HTTPStatusError as e:
+            # No logger here, so we just raise
+            if e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"{self.credentials.name.capitalize()} authorization expired. Please re-authorize.",
+                )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"{self.credentials.name.capitalize()} API error: {e.response.text}",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch data from {self.credentials.name.capitalize()}: {str(e)}",
+            )
