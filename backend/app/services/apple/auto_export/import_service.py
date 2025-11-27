@@ -13,8 +13,8 @@ from app.schemas import (
     UploadDataResponse,
     AEWorkoutJSON,
 )
-from app.services.apple.workout_service import workout_service
-from app.services.apple.workout_statistic_service import workout_statistic_service
+from app.services.workout_service import workout_service
+from app.services.workout_statistic_service import workout_statistic_service
 from app.utils.exceptions import handle_exceptions
 
 APPLE_DT_FORMAT = "%Y-%m-%d %H:%M:%S %z"

@@ -12,7 +12,7 @@ from app.schemas import (
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
-from app.services.apple.workout_statistic_service import workout_statistic_service
+from app.services.workout_statistic_service import workout_statistic_service
 
 
 class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, WorkoutUpdate]):
