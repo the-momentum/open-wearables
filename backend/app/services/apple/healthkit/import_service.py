@@ -80,7 +80,7 @@ class ImportService:
         for r in records_raw:
             rjson = HKRecordJSON(**r)
 
-            provider_id = UUID(rjson.uuid) if rjson.uuid else None
+            provider_id = rjson.uuid if rjson.uuid else None
 
             stat_create = WorkoutStatisticCreate(
                 id=uuid4(),
