@@ -50,7 +50,7 @@ class BaseWorkoutService(ABC):
         endpoint: str,
         method: str = "GET",
         params: dict[str, Any] | None = None,
-    ) -> dict:
+    ) -> dict | list[dict]:
         """Make authenticated request to vendor API.
 
         Args:

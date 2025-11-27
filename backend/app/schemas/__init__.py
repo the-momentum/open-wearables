@@ -51,6 +51,9 @@ from .garmin.activity_import import (
     RootJSON as GarminRootJSON,
     ActivityJSON as GarminActivityJSON,
 )
+from .polar.exercise_import import (
+    ExerciseJSON as PolarExerciseJSON,
+)
 
 __all__ = [
     # Common schemas
@@ -101,6 +104,9 @@ __all__ = [
     # Garmin schemas
     "GarminRootJSON",
     "GarminActivityJSON",
+    
+    # Polar schemas
+    "PolarExerciseJSON",
     
     # AWS schemas
     "PresignedURLRequest",
