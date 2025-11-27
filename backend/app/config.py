@@ -113,7 +113,6 @@ class Settings(BaseSettings):
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
 
-
     @property
     def redis_url(self) -> str:
         """Get Redis connection URL built from individual settings."""
