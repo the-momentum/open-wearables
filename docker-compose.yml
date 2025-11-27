@@ -45,9 +45,6 @@ services:
     restart: on-failure
 
   celery-worker:
-    build:
-        context: ./backend
-        dockerfile: Dockerfile
     container_name: celery-worker__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/worker.sh
@@ -56,6 +53,7 @@ services:
     depends_on:
       - redis
       - db
+      - app
     develop:
       watch:
         - action: sync
@@ -63,13 +61,8 @@ services:
           target: /root_project
           ignore:
             - .venv/
-        - action: rebuild
-          path: ./backend/uv.lock
 
   celery-beat:
-    build:
-        context: ./backend
-        dockerfile: Dockerfile
     container_name: celery-beat__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/beat.sh
@@ -78,6 +71,7 @@ services:
     depends_on:
       - redis
       - db
+      - app
     develop:
       watch:
         - action: sync
@@ -85,13 +79,8 @@ services:
           target: /root_project
           ignore:
             - .venv/
-        - action: rebuild
-          path: ./backend/uv.lock
 
   flower:
-    build:
-        context: ./backend
-        dockerfile: Dockerfile
     container_name: flower__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/flower.sh
@@ -102,6 +91,7 @@ services:
     depends_on:
       - redis
       - db
+      - app
     develop:
       watch:
         - action: sync
@@ -109,8 +99,6 @@ services:
           target: /root_project
           ignore:
             - .venv/
-        - action: rebuild
-          path: ./backend/uv.lock
 
   redis:
     container_name: redis__open-wearables
