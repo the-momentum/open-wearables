@@ -10,8 +10,16 @@ class HeartRateJSON(BaseModel):
     max: int
 
 
+class DeviceJSON(BaseModel):
+    manufacturer: str
+    name: str
+    displayName: str
+    serialNumber: str
+    # some more stuff, like software version, etc.
+    
+    
 class WorkoutJSON(BaseModel):
-    workoutId: str
+    workoutId: int
     # unix timestamp (ms)
     startTime: int
     stopTime: int
@@ -24,3 +32,9 @@ class WorkoutJSON(BaseModel):
     
     hrdata: HeartRateJSON
     
+    gear: DeviceJSON | None = None
+    
+    
+class RootJSON(BaseModel):
+    error: str | None = None   
+    payload: list[WorkoutJSON]

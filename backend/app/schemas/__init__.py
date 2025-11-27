@@ -42,6 +42,11 @@ from .apple.auto_export.json_schemas import (
     HeartRateEntryJSON as AEHeartRateEntryJSON,
     ActiveEnergyEntryJSON as AEActiveEnergyEntryJSON,
 )
+from .suunto.workout_import import (
+    RootJSON as SuuntoRootJSON,
+    WorkoutJSON as SuuntoWorkoutJSON,
+    HeartRateJSON as SuuntoHeartRateJSON,
+)
 
 __all__ = [
     # Common schemas
@@ -83,6 +88,11 @@ __all__ = [
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",
+    
+    # Suunto schemas
+    "SuuntoRootJSON",
+    "SuuntoWorkoutJSON",
+    "SuuntoHeartRateJSON",
     
     # AWS schemas
     "PresignedURLRequest",

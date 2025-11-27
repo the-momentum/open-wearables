@@ -15,7 +15,7 @@ class WorkoutCreate(BaseModel):
     """Schema for creating a workout."""
     
     id: UUID
-    provider_id: UUID | None = None
+    provider_id: str | None = None
     user_id: UUID
 
     type: str | None = None

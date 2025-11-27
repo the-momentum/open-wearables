@@ -74,7 +74,7 @@ class ImportService:
                     )
                 )
                 
-            hr_data = SuuntoHeartRateJSON(**workout.hrdata)
+            hr_data = workout.hrdata
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),

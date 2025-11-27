@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 class WorkoutStatisticCreate(BaseModel):
     """Schema for creating a workout statistic."""
@@ -15,9 +15,9 @@ class WorkoutStatisticCreate(BaseModel):
     
     startDate: datetime
     endDate: datetime
-    min: float | int
-    max: float | int
-    avg: float | int
+    min: float | int | None = None
+    max: float | int | None = None
+    avg: float | int | None = None
     unit: str
 
 
@@ -44,9 +44,9 @@ class WorkoutStatisticResponse(BaseModel):
     sourceName: str
     startDate: datetime
     endDate: datetime
-    min: float | int
-    max: float | int
-    avg: float | int
+    min: float | int | None = None
+    max: float | int | None = None
+    avg: float | int | None = None
     unit: str
     
 

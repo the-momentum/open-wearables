@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.database import DbSession
 
@@ -43,7 +43,7 @@ class ImportService:
 
             workout_create = WorkoutCreate(
                 id=uuid4(),
-                provider_id=UUID(provider_id) if provider_id else None,
+                provider_id=provider_id,
                 user_id=user_id,
                 type=wjson.type or "Unknown",
                 startDate=wjson.startDate,

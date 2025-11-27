@@ -17,7 +17,7 @@ from app.mappings import (
 
 class Workout(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
-    provider_id: Mapped[UUID | None] = None
+    provider_id: Mapped[str_100 | None] = None
     user_id: Mapped[FKUser]
 
     type: Mapped[str_100 | None] = None
