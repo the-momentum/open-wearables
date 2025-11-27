@@ -35,48 +35,66 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    volumes:
-      - ./backend/app:/root_project/app
-      - type: bind
-        source: ./backend/config/.env
-        target: /root_project/config/.env
-        bind:
-          create_host_path: false
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/app
+          target: /root_project/app
+        - action: rebuild
+          path: ./backend/uv.lock
     restart: on-failure
 
   celery-worker:
+    build:
+        context: ./backend
+        dockerfile: Dockerfile
     container_name: celery-worker__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/worker.sh
-    volumes:
-      - ./backend:/root_project
-      - /root_project/.venv
     env_file:
       - ./backend/config/.env
     depends_on:
       - redis
       - db
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /root_project
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: ./backend/uv.lock
 
   celery-beat:
+    build:
+        context: ./backend
+        dockerfile: Dockerfile
     container_name: celery-beat__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/beat.sh
-    volumes:
-      - ./backend:/root_project
-      - /root_project/.venv
     env_file:
       - ./backend/config/.env
     depends_on:
       - redis
       - db
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /root_project
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: ./backend/uv.lock
 
   flower:
+    build:
+        context: ./backend
+        dockerfile: Dockerfile
     container_name: flower__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/flower.sh
-    volumes:
-      - ./backend:/root_project
-      - /root_project/.venv
     env_file:
       - ./backend/config/.env
     ports:
@@ -84,6 +102,15 @@ services:
     depends_on:
       - redis
       - db
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /root_project
+          ignore:
+            - .venv/
+        - action: rebuild
+          path: ./backend/uv.lock
 
   redis:
     container_name: redis__open-wearables

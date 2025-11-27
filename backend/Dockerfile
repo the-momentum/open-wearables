@@ -13,8 +13,9 @@ FROM python:3.13-slim AS builder
     COPY uv.lock pyproject.toml ./
     COPY . .
 
-    RUN uv venv /root_project/.venv
-    ENV PATH="/root_project/.venv/bin:$PATH"
+    ENV VIRTUAL_ENV=/opt/venv
+    RUN uv venv $VIRTUAL_ENV
+    ENV PATH="$VIRTUAL_ENV/bin:$PATH"
     RUN uv sync --locked --no-dev
 
 FROM python:3.13-slim
@@ -28,6 +29,10 @@ FROM python:3.13-slim
 
     COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+    COPY --from=builder /opt/venv /opt/venv
     COPY --from=builder /root_project /root_project
+    ENV VIRTUAL_ENV=/opt/venv
+    ENV PATH="/opt/venv/bin:$PATH"
+    ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
     EXPOSE 8000
