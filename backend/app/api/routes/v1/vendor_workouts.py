@@ -9,6 +9,7 @@ from app.services import ApiKeyDep
 from app.services.garmin_service import garmin_service
 from app.services.polar_service import polar_service
 from app.services.suunto_service import suunto_service
+from app.services import suunto_import_service
 
 
 def parse_timestamp(value: str | None) -> int | None:
@@ -104,7 +105,7 @@ async def get_user_workouts(
         raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
 
     if provider == "suunto":
-        return service.get_workouts(
+        raw_workouts = service.get_workouts(
             db=db,
             user_id=user_id,
             since=since,
@@ -112,6 +113,10 @@ async def get_user_workouts(
             offset=offset,
             filter_by_modification_time=filter_by_modification_time,
         )
+        
+        # temporary, for testing before services refactor
+        suunto_import_service.load_data(db, raw_workouts, user_id)
+        return raw_workouts
 
     if provider == "polar":
         return service.get_exercises(

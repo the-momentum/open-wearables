@@ -65,7 +65,7 @@ def upgrade() -> None:
     op.create_table(
         "workout",
         sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("provider_id", sa.UUID(), nullable=True),
+        sa.Column("provider_id", sa.String(length=100), nullable=True),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("type", sa.String(length=100), nullable=True),
         sa.Column("duration", sa.Numeric(precision=10, scale=2), nullable=False),

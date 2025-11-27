@@ -52,7 +52,3 @@ class WorkoutJSON(BaseModel):
     activeEnergy: list[ActiveEnergyEntryJSON] | None = None
 
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class RootJSON(BaseModel):
-    data: dict[str, Any]
