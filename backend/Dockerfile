@@ -36,7 +36,7 @@ FROM python:3.13-slim
     ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
     ENV PATH="/root_project/.venv/bin:$PATH"
-    
+
     # Reinstall to regenerate scripts with correct shebangs for this environment
     RUN uv sync --reinstall
 

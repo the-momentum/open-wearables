@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 
-    
+
 class HeartRateJSON(BaseModel):
-    workoutMaxHR: int   
+    workoutMaxHR: int
     workoutAvgHR: int
     userMaxHR: int
     avg: int
@@ -16,8 +16,8 @@ class DeviceJSON(BaseModel):
     displayName: str
     serialNumber: str
     # some more stuff, like software version, etc.
-    
-    
+
+
 class WorkoutJSON(BaseModel):
     workoutId: int
     # unix timestamp (ms)
@@ -25,16 +25,16 @@ class WorkoutJSON(BaseModel):
     stopTime: int
     # seconds
     totalTime: int
-    
+
     totalDistance: int
     stepCount: int
     energyConsumption: int
-    
+
     hrdata: HeartRateJSON
-    
+
     gear: DeviceJSON | None = None
-    
-    
+
+
 class RootJSON(BaseModel):
-    error: str | None = None   
+    error: str | None = None
     payload: list[WorkoutJSON]

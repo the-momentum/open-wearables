@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -23,4 +21,3 @@ class WorkoutStatisticJSON(BaseModel):
     type: str
     unit: str
     value: float | int
-    

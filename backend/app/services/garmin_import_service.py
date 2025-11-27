@@ -3,15 +3,15 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import uuid4
 
-from app.services.workout_service import workout_service
-from app.services.workout_statistic_service import workout_statistic_service
+from app.database import DbSession
 from app.schemas import (
     GarminActivityJSON,
     GarminRootJSON,
     WorkoutCreate,
     WorkoutStatisticCreate,
 )
-from app.database import DbSession
+from app.services.workout_service import workout_service
+from app.services.workout_statistic_service import workout_statistic_service
 
 
 class ImportService:
@@ -20,15 +20,16 @@ class ImportService:
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
 
-    def _build_bundles(self, raw: list[GarminActivityJSON], user_id: str) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
+    def _build_bundles(
+        self, raw: list[GarminActivityJSON], user_id: str
+    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         for activity in raw:
-            
             workout_id = uuid4()
-            
+
             start_date = datetime.fromtimestamp(activity.startTimeInSeconds)
             end_date = datetime.fromtimestamp(activity.startTimeInSeconds + activity.durationInSeconds)
             duration_seconds = activity.durationInSeconds
-            
+
             workout_row = WorkoutCreate(
                 id=workout_id,
                 provider_id=activity.summaryId,
@@ -39,16 +40,16 @@ class ImportService:
                 startDate=start_date,
                 endDate=end_date,
             )
-            
+
             workout_statistics = []
-            
+
             units = {
                 "distanceInMeters": "m",
                 "steps": "count",
                 "activeKilocalories": "kcal",
             }
-            
-            for field in ['distanceInMeters', 'steps', 'activeKilocalories']:
+
+            for field in ["distanceInMeters", "steps", "activeKilocalories"]:
                 value = getattr(activity, field)
                 workout_statistics.append(
                     WorkoutStatisticCreate(
@@ -63,9 +64,9 @@ class ImportService:
                         max=None,
                         avg=value,
                         unit=units[field],
-                    )
+                    ),
                 )
-                
+
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),
@@ -75,15 +76,14 @@ class ImportService:
                     sourceName=activity.deviceName,
                     startDate=start_date,
                     endDate=end_date,
-                    min=None, # doesnt exist for garmin
+                    min=None,  # doesnt exist for garmin
                     max=activity.maxHeartRateInBeatsPerMinute,
                     avg=activity.averageHeartRateInBeatsPerMinute,
                     unit="bpm",
-                )
+                ),
             )
-            
+
             yield workout_row, workout_statistics
-            
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         root = GarminRootJSON(**raw)
@@ -91,12 +91,13 @@ class ImportService:
             raise ValueError(root.error)
 
         raw_activities = root.activities
-        
+
         for workout_row, workout_statistics in self._build_bundles(raw_activities, user_id):
             self.workout_service.create(db_session, workout_row)
             for stat in workout_statistics:
                 self.workout_statistic_service.create(db_session, stat)
 
         return True
-        
+
+
 import_service = ImportService(log=getLogger(__name__))

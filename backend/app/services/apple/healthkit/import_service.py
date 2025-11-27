@@ -1,21 +1,20 @@
 import json
-from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
 from uuid import uuid4
 
 from app.database import DbSession
-
 from app.schemas import (
+    HKRecordJSON,
+    HKWorkoutJSON,
+    RootJSON,
+    UploadDataResponse,
     WorkoutCreate,
     WorkoutStatisticCreate,
-    RootJSON,
-    HKWorkoutJSON,
-    HKRecordJSON,
 )
 from app.services.workout_service import workout_service
 from app.services.workout_statistic_service import workout_statistic_service
-from app.schemas import UploadDataResponse
+
 
 class ImportService:
     def __init__(self, log: Logger, **kwargs):
