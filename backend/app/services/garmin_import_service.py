@@ -6,8 +6,8 @@ from uuid import uuid4
 from app.services.apple.workout_service import workout_service
 from app.services.apple.workout_statistic_service import workout_statistic_service
 from app.schemas import (
-    SuuntoRootJSON,
-    SuuntoWorkoutJSON,
+    GarminActivityJSON,
+    GarminRootJSON,
     WorkoutCreate,
     WorkoutStatisticCreate,
 )
@@ -20,29 +20,24 @@ class ImportService:
         self.workout_service = workout_service
         self.workout_statistic_service = workout_statistic_service
 
-    def _build_bundles(self, raw: list[SuuntoWorkoutJSON], user_id: str) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
-        for workout in raw:
+    def _build_bundles(self, raw: list[GarminActivityJSON], user_id: str) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
+        for activity in raw:
             
             workout_id = uuid4()
             
-            start_date = datetime.fromtimestamp(workout.startTime / 1000)
-            end_date = datetime.fromtimestamp(workout.stopTime / 1000)
-            duration = workout.totalTime / 60
+            start_date = datetime.fromtimestamp(activity.startTimeInSeconds)
+            end_date = datetime.fromtimestamp(activity.startTimeInSeconds + activity.durationInSeconds)
+            duration = activity.durationInSeconds / 60
             duration_unit = "min"
-            
-            if workout.gear:
-                sourceName = workout.gear.name
-            else:
-                sourceName = "Unknown"
             
             workout_row = WorkoutCreate(
                 id=workout_id,
-                provider_id=str(workout.workoutId),
+                provider_id=activity.summaryId,
                 user_id=user_id,
-                type="Unknown",
+                type=activity.activityType,
                 duration=duration,
                 durationUnit=duration_unit,
-                sourceName=sourceName,
+                sourceName=activity.deviceName,
                 startDate=start_date,
                 endDate=end_date,
             )
@@ -50,56 +45,56 @@ class ImportService:
             workout_statistics = []
             
             units = {
-                "totalDistance": "km",
-                "stepCount": "count",
-                "energyConsumption": "kcal",
+                "distanceInMeters": "m",
+                "steps": "count",
+                "activeKilocalories": "kcal",
             }
             
-            for field in ["totalDistance", "stepCount", "energyConsumption"]:
-                value = getattr(workout, field)
+            for field in ['distanceInMeters', 'steps', 'activeKilocalories']:
+                value = getattr(activity, field)
                 workout_statistics.append(
                     WorkoutStatisticCreate(
                         id=uuid4(),
                         user_id=user_id,
                         workout_id=workout_id,
                         type=field,
-                        sourceName=sourceName,
+                        sourceName=activity.deviceName,
                         startDate=start_date,
                         endDate=end_date,
-                        min=value,
-                        max=value,
+                        min=None,
+                        max=None,
                         avg=value,
                         unit=units[field],
                     )
                 )
                 
-            hr_data = workout.hrdata
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),
                     user_id=user_id,
                     workout_id=workout_id,
                     type="heartRate",
-                    sourceName=sourceName,
+                    sourceName=activity.deviceName,
                     startDate=start_date,
                     endDate=end_date,
-                    min=None, # doesnt exist for suunto
-                    max=hr_data.max,
-                    avg=hr_data.avg,
+                    min=None, # doesnt exist for garmin
+                    max=activity.maxHeartRateInBeatsPerMinute,
+                    avg=activity.averageHeartRateInBeatsPerMinute,
                     unit="bpm",
                 )
             )
             
             yield workout_row, workout_statistics
+            
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
-        root = SuuntoRootJSON(**raw)
+        root = GarminRootJSON(**raw)
         if root.error:
             raise ValueError(root.error)
 
-        raw_workouts = root.payload
+        raw_activities = root.activities
         
-        for workout_row, workout_statistics in self._build_bundles(raw_workouts, user_id):
+        for workout_row, workout_statistics in self._build_bundles(raw_activities, user_id):
             self.workout_service.create(db_session, workout_row)
             for stat in workout_statistics:
                 self.workout_statistic_service.create(db_session, stat)

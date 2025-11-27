@@ -47,6 +47,10 @@ from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
     HeartRateJSON as SuuntoHeartRateJSON,
 )
+from .garmin.activity_import import (
+    RootJSON as GarminRootJSON,
+    ActivityJSON as GarminActivityJSON,
+)
 
 __all__ = [
     # Common schemas
@@ -93,6 +97,10 @@ __all__ = [
     "SuuntoRootJSON",
     "SuuntoWorkoutJSON",
     "SuuntoHeartRateJSON",
+    
+    # Garmin schemas
+    "GarminRootJSON",
+    "GarminActivityJSON",
     
     # AWS schemas
     "PresignedURLRequest",
