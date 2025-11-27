@@ -111,7 +111,7 @@ export function useDeleteUser() {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() });
       toast.success('User deleted successfully');
     },
-    onError: (error: unknown, id, context) => {
+    onError: (error: unknown, _id, context) => {
       // Rollback on error
       if (context?.previousUsers) {
         queryClient.setQueryData(

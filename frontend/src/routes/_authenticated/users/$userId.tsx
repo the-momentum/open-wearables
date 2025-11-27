@@ -39,6 +39,48 @@ import { LoadingState } from '@/components/common/loading-spinner';
 import { ErrorState } from '@/components/common/error-state';
 import { HeartRateChart, WorkoutsTable, RecordsTable } from '@/components/health';
 import { toast } from 'sonner';
+import type {
+  HeartRateListResponse,
+  WorkoutListResponse,
+  RecordListResponse,
+} from '@/lib/api/types';
+
+const emptyHeartRateData: HeartRateListResponse = {
+  data: [],
+  recovery_data: [],
+  summary: {
+    total_records: 0,
+    avg_heart_rate: 0,
+    max_heart_rate: 0,
+    min_heart_rate: 0,
+    avg_recovery_rate: 0,
+    max_recovery_rate: 0,
+    min_recovery_rate: 0,
+  },
+  meta: { requested_at: '', filters: {}, result_count: 0, date_range: {} },
+};
+
+const emptyWorkoutsData: WorkoutListResponse = {
+  data: [],
+  meta: {
+    requested_at: '',
+    filters: {},
+    result_count: 0,
+    total_count: 0,
+    date_range: { start: '', end: '', duration_days: 0 },
+  },
+};
+
+const emptyRecordsData: RecordListResponse = {
+  data: [],
+  meta: {
+    requested_at: '',
+    filters: {},
+    result_count: 0,
+    total_count: 0,
+    date_range: { start: '', end: '', duration_days: 0 },
+  },
+};
 
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
@@ -97,12 +139,13 @@ function UserDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      await deleteUserMutation.mutateAsync(userId);
-      setIsDeleteDialogOpen(false);
-      navigate({ to: '/users' });
-    } catch {}
+  const handleDelete = () => {
+    deleteUserMutation.mutate(userId, {
+      onSuccess: () => {
+        setIsDeleteDialogOpen(false);
+        navigate({ to: '/users' });
+      },
+    });
   };
 
   const formatDate = (dateString: string | null) => {
@@ -287,35 +330,18 @@ function UserDetailPage() {
 
       {!connectionsLoading && (
         <>
-          {heartRateData && (
-            <HeartRateChart data={heartRateData} isLoading={heartRateLoading} />
-          )}
-          {!heartRateData && heartRateLoading && (
-            <HeartRateChart
-              data={{ data: [], recovery_data: [], summary: { total_records: 0, avg_heart_rate: 0, max_heart_rate: 0, min_heart_rate: 0, avg_recovery_rate: 0, max_recovery_rate: 0, min_recovery_rate: 0 }, meta: { requested_at: '', filters: {}, result_count: 0, date_range: {} } }}
-              isLoading={true}
-            />
-          )}
-
-          {workoutsData && (
-            <WorkoutsTable data={workoutsData} isLoading={workoutsLoading} />
-          )}
-          {!workoutsData && workoutsLoading && (
-            <WorkoutsTable
-              data={{ data: [], meta: { requested_at: '', filters: {}, result_count: 0, total_count: 0, date_range: { start: '', end: '', duration_days: 0 } } }}
-              isLoading={true}
-            />
-          )}
-
-          {recordsData && (
-            <RecordsTable data={recordsData} isLoading={recordsLoading} />
-          )}
-          {!recordsData && recordsLoading && (
-            <RecordsTable
-              data={{ data: [], meta: { requested_at: '', filters: {}, result_count: 0, total_count: 0, date_range: { start: '', end: '', duration_days: 0 } } }}
-              isLoading={true}
-            />
-          )}
+          <HeartRateChart
+            data={heartRateData ?? emptyHeartRateData}
+            isLoading={heartRateLoading}
+          />
+          <WorkoutsTable
+            data={workoutsData ?? emptyWorkoutsData}
+            isLoading={workoutsLoading}
+          />
+          <RecordsTable
+            data={recordsData ?? emptyRecordsData}
+            isLoading={recordsLoading}
+          />
         </>
       )}
 

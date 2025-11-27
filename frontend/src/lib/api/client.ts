@@ -95,7 +95,7 @@ export const apiClient = {
         throw ApiError.fromResponse(response, data);
       }
 
-      return data;
+      return data as T;
     } catch (error) {
       if (error instanceof ApiError) {
         throw error;

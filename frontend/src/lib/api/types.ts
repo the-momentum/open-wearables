@@ -447,4 +447,5 @@ export interface HealthDataParams {
   end_date?: string;
   limit?: number;
   offset?: number;
+  [key: string]: string | number | undefined;
 }

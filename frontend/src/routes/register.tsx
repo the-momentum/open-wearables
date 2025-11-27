@@ -151,10 +151,13 @@ function RegisterPage() {
                                   type="email"
                                   placeholder="you@example.com"
                                   autoComplete="email"
-                                  onFocus={() => setFocusedField('email')}
-                                  onBlur={() => setFocusedField(null)}
                                   className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-blue-500/50 transition-all duration-300"
                                   {...field}
+                                  onFocus={() => setFocusedField('email')}
+                                  onBlur={() => {
+                                    field.onBlur();
+                                    setFocusedField(null);
+                                  }}
                                 />
                               </FormControl>
                               {focusedField === 'email' && (
@@ -180,10 +183,13 @@ function RegisterPage() {
                                   type={showPassword ? 'text' : 'password'}
                                   placeholder="At least 8 characters"
                                   autoComplete="new-password"
-                                  onFocus={() => setFocusedField('password')}
-                                  onBlur={() => setFocusedField(null)}
                                   className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-blue-500/50 transition-all duration-300 pr-12"
                                   {...field}
+                                  onFocus={() => setFocusedField('password')}
+                                  onBlur={() => {
+                                    field.onBlur();
+                                    setFocusedField(null);
+                                  }}
                                 />
                               </FormControl>
                               <button
@@ -227,12 +233,15 @@ function RegisterPage() {
                                   }
                                   placeholder="Confirm your password"
                                   autoComplete="new-password"
+                                  className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-blue-500/50 transition-all duration-300 pr-12"
+                                  {...field}
                                   onFocus={() =>
                                     setFocusedField('confirmPassword')
                                   }
-                                  onBlur={() => setFocusedField(null)}
-                                  className="h-12 bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-blue-500/50 transition-all duration-300 pr-12"
-                                  {...field}
+                                  onBlur={() => {
+                                    field.onBlur();
+                                    setFocusedField(null);
+                                  }}
                                 />
                               </FormControl>
                               <button

@@ -62,19 +62,24 @@ function UsersPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleCreateUser = async () => {
-    try {
-      await createUser.mutateAsync({});
-      setIsCreateDialogOpen(false);
-    } catch {}
+  const handleCreateUser = () => {
+    createUser.mutate(
+      {},
+      {
+        onSuccess: () => {
+          setIsCreateDialogOpen(false);
+        },
+      }
+    );
   };
 
-  const handleDeleteUser = async () => {
+  const handleDeleteUser = () => {
     if (deleteUserId) {
-      try {
-        await deleteUser.mutateAsync(deleteUserId);
-        setDeleteUserId(null);
-      } catch {}
+      deleteUser.mutate(deleteUserId, {
+        onSuccess: () => {
+          setDeleteUserId(null);
+        },
+      });
     }
   };
 
@@ -197,7 +202,10 @@ function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Link to={`/users/${user.id}`}>
+                          <Link
+                            to="/users/$userId"
+                            params={{ userId: user.id }}
+                          >
                             <Button variant="ghost" size="icon">
                               <Eye className="h-4 w-4" />
                             </Button>
