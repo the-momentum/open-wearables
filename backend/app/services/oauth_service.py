@@ -32,12 +32,8 @@ class OAuthService:
     def __init__(self, log: Logger):
         self.logger = log
         self.repository = UserConnectionRepository()
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            db=settings.redis_db,
-            decode_responses=True,
-        )
+        # Create Redis client from URL
+        self.redis_client = redis.from_url(settings.redis_url, decode_responses=True)
         self.state_ttl = 900  # 15 minutes
 
         # Initialize OAuth strategies

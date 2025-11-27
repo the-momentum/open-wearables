@@ -113,6 +113,21 @@ class Settings(BaseSettings):
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
 
+
+    @property
+    def redis_url(self) -> str:
+        """Get Redis connection URL built from individual settings."""
+        auth_part = ""
+        if self.redis_username and self.redis_password:
+            auth_part = f"{self.redis_username}:{self.redis_password.get_secret_value()}@"
+        elif self.redis_password:
+            auth_part = f":{self.redis_password.get_secret_value()}@"
+        elif self.redis_username:
+            auth_part = f"{self.redis_username}@"
+
+        return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    # Decryptor for encrypted fields
     @field_validator("*", mode="after")
     @classmethod
     def _decryptor(cls, v: Any, validation_info: ValidationInfo, *args, **kwargs) -> Any:
