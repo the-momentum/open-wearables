@@ -1,10 +1,10 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, TypeVar, NewType
 from uuid import UUID
 
 from pydantic import EmailStr
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import mapped_column
 
 T = TypeVar("T")
