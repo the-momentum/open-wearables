@@ -39,7 +39,7 @@ class ImportService:
 
             provider_id = wjson.uuid if wjson.uuid else None
 
-            duration = (wjson.endDate - wjson.startDate).total_seconds() / 60
+            duration_seconds = (wjson.endDate - wjson.startDate).total_seconds()
 
             workout_create = WorkoutCreate(
                 id=uuid4(),
@@ -48,8 +48,7 @@ class ImportService:
                 type=wjson.type or "Unknown",
                 startDate=wjson.startDate,
                 endDate=wjson.endDate,
-                duration=Decimal(str(duration)),
-                durationUnit="min",
+                duration_seconds=duration_seconds,
                 sourceName=wjson.sourceName or "Apple Health",
             )
 

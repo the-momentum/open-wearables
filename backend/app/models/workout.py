@@ -9,8 +9,7 @@ from app.mappings import (
     OneToMany,
     PrimaryKey,
     datetime_tz,
-    numeric_10_2,
-    str_10,
+    numeric_10_3,
     str_100,
 )
 
@@ -21,8 +20,7 @@ class Workout(BaseDbModel):
     user_id: Mapped[FKUser]
 
     type: Mapped[str_100 | None] = None
-    duration: Mapped[numeric_10_2]
-    durationUnit: Mapped[str_10]
+    duration_seconds: Mapped[numeric_10_3]
     sourceName: Mapped[str_100]
 
     startDate: Mapped[datetime_tz]

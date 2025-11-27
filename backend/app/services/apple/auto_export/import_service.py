@@ -107,8 +107,7 @@ class ImportService:
 
             start_date = self._dt(wjson.start)
             end_date = self._dt(wjson.end)
-            duration = (end_date - start_date).total_seconds() / 60
-            duration_unit = "min"
+            duration_seconds = (end_date - start_date).total_seconds()
 
             workout_statistics = self._get_workout_statistics(wjson, user_id, workout_id)
             records = self._get_records(wjson, workout_id, user_id)
@@ -121,8 +120,7 @@ class ImportService:
                 id=workout_id,
                 user_id=UUID(user_id),
                 type=workout_type,
-                duration=self._dec(duration) or Decimal(0),
-                durationUnit=duration_unit,
+                duration_seconds=duration_seconds,
                 sourceName="Auto Export",
                 startDate=start_date,
                 endDate=end_date,
