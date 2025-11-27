@@ -1,7 +1,7 @@
 """update_user
 
 Revision ID: 78f7872254c8
-Revises: bb3d1c8232ec
+Revises: 80f94b41c69a
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '78f7872254c8'
-down_revision: Union[str, None] = 'bb3d1c8232ec'
+down_revision: Union[str, None] = '80f94b41c69a'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
