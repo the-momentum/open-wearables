@@ -114,6 +114,7 @@ async def get_user_workouts(
             filter_by_modification_time=filter_by_modification_time,
         )
         
+        # temporary, for testing before services refactor
         suunto_import_service.load_data(db, raw_workouts, user_id)
         return raw_workouts
 

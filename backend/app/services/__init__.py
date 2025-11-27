@@ -5,6 +5,7 @@ from .apple.healthkit.import_service import import_service as hk_import_service
 from .apple.workout_service import workout_service
 from .apple.workout_statistic_service import workout_statistic_service
 from .suunto_import_service import import_service as suunto_import_service
+from .garmin_import_service import import_service as garmin_import_service
 from .developer_service import (
     DeveloperDep,
     current_active_user_optional,
@@ -27,6 +28,7 @@ __all__ = [
     "ae_import_service",
     "hk_import_service",
     "suunto_import_service",
+    "garmin_import_service",
     
     "workout_service",
     "workout_statistic_service",
