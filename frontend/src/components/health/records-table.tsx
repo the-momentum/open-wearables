@@ -49,9 +49,7 @@ export function RecordsTable({ data, isLoading }: RecordsTableProps) {
           <ClipboardList className="h-5 w-5 text-purple-500" />
           Health Records
         </CardTitle>
-        <CardDescription>
-          {data.meta.total_count} total records
-        </CardDescription>
+        <CardDescription>{data.meta.total_count} total records</CardDescription>
       </CardHeader>
       <CardContent>
         {data.data.length === 0 ? (
@@ -76,7 +74,9 @@ export function RecordsTable({ data, isLoading }: RecordsTableProps) {
                     <TableCell>
                       <Badge variant="outline">{record.type}</Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{record.value}</TableCell>
+                    <TableCell className="font-medium">
+                      {record.value}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {record.unit}
                     </TableCell>

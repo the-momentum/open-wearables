@@ -96,10 +96,15 @@ export function WorkoutsTable({ data, isLoading }: WorkoutsTableProps) {
                 {data.data.map((workout) => (
                   <TableRow key={workout.id}>
                     <TableCell>
-                      <Badge variant="outline">{workout.type || 'Unknown'}</Badge>
+                      <Badge variant="outline">
+                        {workout.type || 'Unknown'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      {format(new Date(workout.startDate), 'MMM dd, yyyy HH:mm')}
+                      {format(
+                        new Date(workout.startDate),
+                        'MMM dd, yyyy HH:mm'
+                      )}
                     </TableCell>
                     <TableCell>
                       {formatDuration(workout.duration, workout.durationUnit)}

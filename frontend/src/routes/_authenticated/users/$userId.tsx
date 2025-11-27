@@ -37,7 +37,11 @@ import {
 import { useUser, useDeleteUser } from '@/hooks/api/use-users';
 import { LoadingState } from '@/components/common/loading-spinner';
 import { ErrorState } from '@/components/common/error-state';
-import { HeartRateChart, WorkoutsTable, RecordsTable } from '@/components/health';
+import {
+  HeartRateChart,
+  WorkoutsTable,
+  RecordsTable,
+} from '@/components/health';
 import { toast } from 'sonner';
 import type {
   HeartRateListResponse,
@@ -99,12 +103,18 @@ function UserDetailPage() {
   } = useUser(userId);
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
-  const { data: heartRateData, isLoading: heartRateLoading } =
-    useUserHeartRate(userId, { limit: 100 });
-  const { data: workoutsData, isLoading: workoutsLoading } =
-    useUserWorkouts(userId, { limit: 20 });
-  const { data: recordsData, isLoading: recordsLoading } =
-    useUserRecords(userId, { limit: 20 });
+  const { data: heartRateData, isLoading: heartRateLoading } = useUserHeartRate(
+    userId,
+    { limit: 100 }
+  );
+  const { data: workoutsData, isLoading: workoutsLoading } = useUserWorkouts(
+    userId,
+    { limit: 20 }
+  );
+  const { data: recordsData, isLoading: recordsLoading } = useUserRecords(
+    userId,
+    { limit: 20 }
+  );
   const generateLinkMutation = useGenerateConnectionLink();
   const syncMutation = useSyncUserData();
   const disconnectMutation = useDisconnectProvider();
@@ -152,7 +162,6 @@ function UserDetailPage() {
     if (!dateString) return 'Never';
     return new Date(dateString).toLocaleString();
   };
-
 
   if (userLoading) {
     return <LoadingState message="Loading user..." />;
@@ -299,7 +308,10 @@ function UserDetailPage() {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          handleDisconnect(connection.id, connection.providerName)
+                          handleDisconnect(
+                            connection.id,
+                            connection.providerName
+                          )
                         }
                         disabled={disconnectMutation.isPending}
                       >
