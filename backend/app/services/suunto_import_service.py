@@ -22,8 +22,7 @@ class ImportService:
         self.workout_statistic_service = workout_statistic_service
 
     def _build_bundles(self, raw: list[SuuntoWorkoutJSON], user_id: str) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
-        for raw_workout in raw:
-            workout = SuuntoWorkoutJSON(**raw_workout)
+        for workout in raw:
             
             workout_id = uuid4()
             
@@ -32,14 +31,16 @@ class ImportService:
             duration = workout.totalTime / 60
             duration_unit = "min"
             
-            device_data = workout.gear
-            sourceName = device_data.name
+            if workout.gear:
+                sourceName = workout.gear.name
+            else:
+                sourceName = "Unknown"
             
             workout_row = WorkoutCreate(
                 id=workout_id,
-                provider_id=workout.workoutId,
+                provider_id=str(workout.workoutId),
                 user_id=user_id,
-                type=workout.name,
+                type="Unknown",
                 duration=duration,
                 durationUnit=duration_unit,
                 sourceName=sourceName,
@@ -106,4 +107,4 @@ class ImportService:
 
         return True
         
-suunto_import_service = ImportService(log=getLogger(__name__))
+import_service = ImportService(log=getLogger(__name__))

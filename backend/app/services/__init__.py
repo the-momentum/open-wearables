@@ -4,6 +4,7 @@ from .apple.auto_export.import_service import import_service as ae_import_servic
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .apple.workout_service import workout_service
 from .apple.workout_statistic_service import workout_statistic_service
+from .suunto_import_service import import_service as suunto_import_service
 from .developer_service import (
     DeveloperDep,
     current_active_user_optional,
@@ -22,9 +23,13 @@ __all__ = [
     "current_active_user_optional",
     "ApiKeyDep",
     "user_service",
+    
     "ae_import_service",
     "hk_import_service",
+    "suunto_import_service",
+    
     "workout_service",
     "workout_statistic_service",
+    
     "pre_url_service",
 ]
