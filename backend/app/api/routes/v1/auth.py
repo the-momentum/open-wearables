@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from app.services import developer_service, developer_auth_backend
-from app.schemas import DeveloperRead, DeveloperCreate, DeveloperUpdate
+from app.schemas import DeveloperCreate, DeveloperRead, DeveloperUpdate
+from app.services import developer_auth_backend, developer_service
 
 router = APIRouter()
 

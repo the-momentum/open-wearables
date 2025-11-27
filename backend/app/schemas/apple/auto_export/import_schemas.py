@@ -6,8 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas.apple.workout_statistics import WorkoutStatisticIn
 from app.schemas.apple.healthkit.workout_import import WorkoutIn as HKWorkoutIn
+from app.schemas.apple.workout_statistics import WorkoutStatisticIn
 
 
 class WorkoutIn(BaseModel):

@@ -22,6 +22,8 @@ dependencies = [
     "httpx>=0.28.1",
     "alembic>=1.17.1",
     "fastapi-users[sqlalchemy]>=15.0.1",
+    "boto3>=1.40.67",
+    "requests>=2.32.5",
 ]
 
 [dependency-groups]
@@ -39,6 +41,7 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = 'py313'
+exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
 
 [tool.ruff.lint]
 select = [
@@ -64,6 +67,8 @@ ignore = [
     "RET503", # implicit-return
 ]
 
+[tool.ty.src]
+exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
 
 [build-system]
 requires = ["uv_build"]

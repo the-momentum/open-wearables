@@ -94,8 +94,9 @@ async def garmin_ping_notification(
                     if pull_token:
                         # Save pull token to Redis for later use
                         # Token is associated with user and time range
-                        from app.config import settings
                         import redis
+
+                        from app.config import settings
 
                         redis_client = redis.Redis(
                             host=settings.redis_host,
@@ -113,7 +114,7 @@ async def garmin_ping_notification(
                         )
 
                         logger.info(
-                            f"Saved pull token for user {internal_user_id} (time range: {upload_start}-{upload_end})"
+                            f"Saved pull token for user {internal_user_id} (time range: {upload_start}-{upload_end})",
                         )
 
                         # Also save the full callback URL for convenience
@@ -225,7 +226,7 @@ async def garmin_push_notification(
 
                     logger.info(
                         f"New Garmin activity: {activity_name} ({activity_type}) "
-                        f"ID={activity_id} for user {garmin_user_id}"
+                        f"ID={activity_id} for user {garmin_user_id}",
                     )
 
                     # TODO: Map garmin_user_id to internal user_id
@@ -255,7 +256,7 @@ async def garmin_push_notification(
                             "type": activity_type,
                             "garmin_user_id": garmin_user_id,
                             "status": "received",
-                        }
+                        },
                     )
                     results["processed"] += 1
 

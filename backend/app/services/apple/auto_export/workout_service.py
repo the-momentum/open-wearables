@@ -6,17 +6,17 @@ from app.database import DbSession
 from app.models import Workout
 from app.repositories import AEWorkoutRepository
 from app.schemas import (
-    AEWorkoutQueryParams,
-    AEWorkoutCreate,
-    AEWorkoutUpdate,
-    AEWorkoutListResponse,
-    AEWorkoutResponse,
-    AESummary,
-    AEWorkoutMeta,
-    AEDistanceValue,
     AEActiveEnergyValue,
-    AEIntensityValue,
     AEDateRange,
+    AEDistanceValue,
+    AEIntensityValue,
+    AEWorkoutCreate,
+    AEWorkoutListResponse,
+    AEWorkoutMeta,
+    AEWorkoutQueryParams,
+    AEWorkoutResponse,
+    AEWorkoutSummary,
+    AEWorkoutUpdate,
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -30,7 +30,10 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
 
     @handle_exceptions
     async def _get_workouts_with_filters(
-        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEWorkoutQueryParams,
+        user_id: str,
     ) -> tuple[list[Workout], int]:
         """
         Get workouts with filtering, sorting, and pagination.
@@ -60,7 +63,10 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
 
     @handle_exceptions
     async def get_workouts_response(
-        self, db_session: DbSession, query_params: AEWorkoutQueryParams, user_id: str
+        self,
+        db_session: DbSession,
+        query_params: AEWorkoutQueryParams,
+        user_id: str,
     ) -> AEWorkoutListResponse:
         """
         Get workouts formatted as API response.
@@ -100,7 +106,7 @@ class WorkoutService(AppService[AEWorkoutRepository, Workout, AEWorkoutCreate, A
                 temperature=None,
                 humidity=None,
                 source=workout.sourceName,
-                summary=AESummary(**summary_data),
+                summary=AEWorkoutSummary(**summary_data),
             )
             workout_responses.append(workout_response)
 

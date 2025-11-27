@@ -5,14 +5,14 @@ from app.database import DbSession
 from app.models import Record
 from app.repositories import HKRecordRepository
 from app.schemas import (
-    HKRecordQueryParams,
-    HKRecordCreate,
-    HKRecordUpdate,
-    HKRecordListResponse,
-    HKRecordResponse,
-    HKRecordMeta,
-    HKMetadataEntryResponse,
     HKDateRange,
+    HKMetadataEntryResponse,
+    HKRecordCreate,
+    HKRecordListResponse,
+    HKRecordMeta,
+    HKRecordQueryParams,
+    HKRecordResponse,
+    HKRecordUpdate,
 )
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -22,32 +22,25 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
     """Service for HealthKit record-related business logic."""
 
     def __init__(self, log: Logger, **kwargs):
-        super().__init__(
-            crud_model=HKRecordRepository,
-            model=Record,
-            log=log,
-            **kwargs
-        )
+        super().__init__(crud_model=HKRecordRepository, model=Record, log=log, **kwargs)
 
     @handle_exceptions
     async def _get_records_with_filters(
-        self, 
-        db_session: DbSession, 
+        self,
+        db_session: DbSession,
         query_params: HKRecordQueryParams,
-        user_id: str
+        user_id: str,
     ) -> tuple[list[Record], int]:
         """
         Get records with filtering, sorting, and pagination.
         Includes business logic and logging.
         """
         self.logger.debug(f"Fetching HealthKit records with filters: {query_params.model_dump()}")
-        
-        records, total_count = self.crud.get_records_with_filters(
-            db_session, query_params, user_id
-        )
-        
+
+        records, total_count = self.crud.get_records_with_filters(db_session, query_params, user_id)
+
         self.logger.debug(f"Retrieved {len(records)} HealthKit records out of {total_count} total")
-        
+
         return records, total_count
 
     @handle_exceptions
@@ -55,16 +48,16 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
         self,
         db_session: DbSession,
         query_params: HKRecordQueryParams,
-        user_id: str
+        user_id: str,
     ) -> HKRecordListResponse:
         """
         Get HealthKit records formatted as API response.
-        
+
         Returns:
             HKRecordListResponse ready for API
         """
         records, total_count = await self._get_records_with_filters(db_session, query_params, user_id)
-        
+
         record_responses = []
         for record in records:
             # Convert metadata entries to response format
@@ -77,7 +70,7 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
                         value=metadata_entry.value,
                     )
                     metadata_responses.append(metadata_response)
-            
+
             record_response = HKRecordResponse(
                 id=record.id,
                 type=record.type,
@@ -93,11 +86,11 @@ class RecordService(AppService[HKRecordRepository, Record, HKRecordCreate, HKRec
 
         start_date_str = query_params.start_date or "1900-01-01T00:00:00Z"
         end_date_str = query_params.end_date or datetime.now().isoformat() + "Z"
-        
+
         start_date = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
         end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
         duration_days = (end_date - start_date).days
-        
+
         meta = HKRecordMeta(
             requested_at=datetime.now().isoformat() + "Z",
             filters=query_params.model_dump(exclude_none=True),

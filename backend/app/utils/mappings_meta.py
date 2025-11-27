@@ -1,16 +1,17 @@
-from typing import Any, get_origin, get_args
+from typing import Any, TypeAliasType, get_args, get_origin
 
-from sqlalchemy.orm import relationship, Mapped
+from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
 from app.mappings import ManyToOne, OneToMany
 
 DEFAULT_ONE_TO_MANY = dict(cascade="all, delete-orphan", passive_deletes=True)
 DEFAULT_MANY_TO_ONE = dict()
-RELATION_TYPES: dict[type, dict] = {
+RELATION_TYPES: dict[TypeAliasType, dict] = {
     ManyToOne: DEFAULT_MANY_TO_ONE,
     OneToMany: DEFAULT_ONE_TO_MANY,
 }
+
 
 class AutoRelMeta(DeclarativeAttributeIntercept):
     """Metaclass for auto-creating SQLAlchemy relationships from type annotations."""
@@ -87,4 +88,3 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
             for tgt_attr, (tgt_type, tgt_target) in target_rels.items():
                 if tgt_target == mapped_cls.__name__ and tgt_type != my_type:
                     setattr(mapped_cls, my_attr, relationship(target_name, back_populates=tgt_attr))
-

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
 
     # CORE SETTINGS
-    fernet_decryptor: FernetDecryptorField = Field("MASTER_KEY")
+    fernet_decryptor: FernetDecryptorField = Field(FernetDecryptorField("MASTER_KEY"))
     environment: EnvironmentType = EnvironmentType.LOCAL
 
     # API SETTINGS
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     cors_allow_all: bool = False
 
     # DATABASE SETTINGS
-    db_host: str = "localhost"
+    db_host: str = "db"
     db_port: int = 5432
     db_name: str = "open-wearables"
     db_user: str = "open-wearables"
@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_password: SecretStr | None = None
+    redis_username: str | None = None  # Redis 6.0+ ACL
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
@@ -93,6 +95,15 @@ class Settings(BaseSettings):
     polar_api_base_url: str = "https://www.polaraccesslink.com"
     polar_default_scope: str = "accesslink.read_all"
 
+    # AWS SETTINGS
+    aws_bucket_name: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region: str = "eu-north-1"
+    sqs_queue_url: str | None = None
+
+    xml_chunk_size: int = 50_000
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:
@@ -104,6 +115,20 @@ class Settings(BaseSettings):
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
 
+    @property
+    def redis_url(self) -> str:
+        """Get Redis connection URL built from individual settings."""
+        auth_part = ""
+        if self.redis_username and self.redis_password:
+            auth_part = f"{self.redis_username}:{self.redis_password.get_secret_value()}@"
+        elif self.redis_password:
+            auth_part = f":{self.redis_password.get_secret_value()}@"
+        elif self.redis_username:
+            auth_part = f"{self.redis_username}@"
+
+        return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    # Decryptor for encrypted fields
     @field_validator("*", mode="after")
     @classmethod
     def _decryptor(cls, v: Any, validation_info: ValidationInfo, *args, **kwargs) -> Any:

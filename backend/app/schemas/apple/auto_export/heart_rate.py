@@ -9,33 +9,19 @@ from pydantic import BaseModel, Field
 class HeartRateQueryParams(BaseModel):
     """Query parameters for heart rate filtering and pagination."""
 
-    start_date: str | None = Field(
-        None, description="ISO 8601 format (e.g., '2023-12-01T00:00:00Z')"
-    )
-    end_date: str | None = Field(
-        None, description="ISO 8601 format (e.g., '2023-12-31T23:59:59Z')"
-    )
-    workout_id: UUID | None = Field(
-        None, description="Filter by specific workout ID"
-    )
-    source: str | None = Field(
-        None, description="Filter by data source (e.g., 'Apple Health')"
-    )
+    start_date: str | None = Field(None, description="ISO 8601 format (e.g., '2023-12-01T00:00:00Z')")
+    end_date: str | None = Field(None, description="ISO 8601 format (e.g., '2023-12-31T23:59:59Z')")
+    workout_id: UUID | None = Field(None, description="Filter by specific workout ID")
+    source: str | None = Field(None, description="Filter by data source (e.g., 'Apple Health')")
     min_avg: float | None = Field(None, description="Minimum average heart rate")
     max_avg: float | None = Field(None, description="Maximum average heart rate")
     min_max: float | None = Field(None, description="Minimum maximum heart rate")
     max_max: float | None = Field(None, description="Maximum maximum heart rate")
     min_min: float | None = Field(None, description="Minimum minimum heart rate")
     max_min: float | None = Field(None, description="Maximum minimum heart rate")
-    sort_by: Literal["date", "avg", "max", "min"] | None = Field(
-        "date", description="Sort field"
-    )
-    sort_order: Literal["asc", "desc"] | None = Field(
-        "desc", description="Sort order"
-    )
-    limit: int | None = Field(
-        20, ge=1, le=100, description="Number of results to return"
-    )
+    sort_by: Literal["date", "avg", "max", "min"] | None = Field("date", description="Sort field")
+    sort_order: Literal["asc", "desc"] | None = Field("desc", description="Sort order")
+    limit: int | None = Field(20, ge=1, le=100, description="Number of results to return")
     offset: int | None = Field(0, ge=0, description="Number of results to skip")
 
 
@@ -105,7 +91,7 @@ class HeartRateListResponse(BaseModel):
 # CRUD Schemas
 class HeartRateDataCreate(BaseModel):
     """Schema for creating heart rate data."""
-    
+
     user_id: UUID
     workout_id: UUID
     date: datetime
@@ -118,7 +104,7 @@ class HeartRateDataCreate(BaseModel):
 
 class HeartRateDataUpdate(BaseModel):
     """Schema for updating heart rate data."""
-    
+
     date: datetime | None = None
     source: str | None = None
     units: str | None = None
@@ -129,7 +115,7 @@ class HeartRateDataUpdate(BaseModel):
 
 class HeartRateRecoveryCreate(BaseModel):
     """Schema for creating heart rate recovery data."""
-    
+
     user_id: UUID
     workout_id: UUID
     date: datetime
@@ -142,7 +128,7 @@ class HeartRateRecoveryCreate(BaseModel):
 
 class HeartRateRecoveryUpdate(BaseModel):
     """Schema for updating heart rate recovery data."""
-    
+
     date: datetime | None = None
     source: str | None = None
     units: str | None = None

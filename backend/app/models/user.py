@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, OneToMany, datetime_tz, str_100, str_255, email
+from app.mappings import OneToMany, PrimaryKey, datetime_tz, str_100, str_255, email
 
 
 class User(BaseDbModel):
