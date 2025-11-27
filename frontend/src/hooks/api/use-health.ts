@@ -3,6 +3,7 @@ import { healthService } from '@/lib/api/services/health.service';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/errors/handler';
+import type { HealthDataParams } from '@/lib/api/types';
 
 // Get available providers
 export function useProviders() {
@@ -130,5 +131,29 @@ export function useSyncUserData() {
     onError: (error) => {
       toast.error(`Failed to sync data: ${getErrorMessage(error)}`);
     },
+  });
+}
+
+export function useUserHeartRate(userId: string, params?: HealthDataParams) {
+  return useQuery({
+    queryKey: queryKeys.health.heartRateList(userId, params),
+    queryFn: () => healthService.getHeartRateList(userId, params),
+    enabled: !!userId,
+  });
+}
+
+export function useUserWorkouts(userId: string, params?: HealthDataParams) {
+  return useQuery({
+    queryKey: queryKeys.health.workouts(userId, params),
+    queryFn: () => healthService.getWorkouts(userId, params),
+    enabled: !!userId,
+  });
+}
+
+export function useUserRecords(userId: string, params?: HealthDataParams) {
+  return useQuery({
+    queryKey: queryKeys.health.records(userId, params),
+    queryFn: () => healthService.getRecords(userId, params),
+    enabled: !!userId,
   });
 }

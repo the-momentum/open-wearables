@@ -6,6 +6,10 @@ import type {
   HealthDataSummary,
   Provider,
   UserConnection,
+  HeartRateListResponse,
+  WorkoutListResponse,
+  RecordListResponse,
+  HealthDataParams,
 } from '../types';
 
 export const healthService = {
@@ -79,5 +83,33 @@ export const healthService = {
       `/v1/users/${userId}/sync`,
       {}
     );
+  },
+
+  async getHeartRateList(
+    userId: string,
+    params?: HealthDataParams
+  ): Promise<HeartRateListResponse> {
+    return apiClient.get<HeartRateListResponse>(
+      `/v1/users/${userId}/heart-rate`,
+      { params }
+    );
+  },
+
+  async getWorkouts(
+    userId: string,
+    params?: HealthDataParams
+  ): Promise<WorkoutListResponse> {
+    return apiClient.get<WorkoutListResponse>(`/v1/users/${userId}/workouts`, {
+      params,
+    });
+  },
+
+  async getRecords(
+    userId: string,
+    params?: HealthDataParams
+  ): Promise<RecordListResponse> {
+    return apiClient.get<RecordListResponse>(`/v1/users/${userId}/records`, {
+      params,
+    });
   },
 };

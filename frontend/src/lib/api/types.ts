@@ -20,23 +20,15 @@ export interface ApiResponse<T> {
 
 export interface UserRead {
   id: string;
-  email?: string;
-  name?: string;
   created_at: string;
-  metadata?: Record<string, unknown>;
 }
 
 export interface UserCreate {
-  email?: string;
-  name?: string;
-  metadata?: Record<string, unknown>;
+  id?: string;
+  created_at?: string;
 }
 
-export interface UserUpdate {
-  email?: string;
-  name?: string;
-  metadata?: Record<string, unknown>;
-}
+export interface UserUpdate {}
 
 export interface LoginRequest {
   email: string;
@@ -324,4 +316,135 @@ export interface ChatMessage {
 export interface ChatRequest {
   message: string;
   userId?: string;
+}
+
+export interface HeartRateValue {
+  value: number;
+  unit: string;
+}
+
+export interface HeartRateDataResponse {
+  id: number;
+  workout_id: string;
+  date: string;
+  source: string | null;
+  units: string | null;
+  avg: HeartRateValue | null;
+  min: HeartRateValue | null;
+  max: HeartRateValue | null;
+}
+
+export interface HeartRateRecoveryResponse {
+  id: number;
+  workout_id: string;
+  date: string;
+  source: string | null;
+  units: string | null;
+  avg: HeartRateValue | null;
+  min: HeartRateValue | null;
+  max: HeartRateValue | null;
+}
+
+export interface HeartRateSummary {
+  total_records: number;
+  avg_heart_rate: number;
+  max_heart_rate: number;
+  min_heart_rate: number;
+  avg_recovery_rate: number;
+  max_recovery_rate: number;
+  min_recovery_rate: number;
+}
+
+export interface HeartRateMeta {
+  requested_at: string;
+  filters: Record<string, unknown>;
+  result_count: number;
+  date_range: Record<string, unknown>;
+}
+
+export interface HeartRateListResponse {
+  data: HeartRateDataResponse[];
+  recovery_data: HeartRateRecoveryResponse[];
+  summary: HeartRateSummary;
+  meta: HeartRateMeta;
+}
+
+export interface DateRange {
+  start: string;
+  end: string;
+  duration_days: number;
+}
+
+export interface WorkoutSummary {
+  total_statistics: number;
+  avg_statistic_value: number;
+  max_statistic_value: number;
+  min_statistic_value: number;
+  avg_heart_rate: number;
+  max_heart_rate: number;
+  min_heart_rate: number;
+  total_calories: number;
+}
+
+export interface WorkoutResponse {
+  id: string;
+  type: string | null;
+  startDate: string;
+  endDate: string;
+  duration: number;
+  durationUnit: string;
+  sourceName: string | null;
+  user_id: string;
+  summary: WorkoutSummary;
+}
+
+export interface WorkoutMeta {
+  requested_at: string;
+  filters: Record<string, unknown>;
+  result_count: number;
+  total_count: number;
+  date_range: DateRange;
+}
+
+export interface WorkoutListResponse {
+  data: WorkoutResponse[];
+  meta: WorkoutMeta;
+}
+
+export interface MetadataEntryResponse {
+  id: string;
+  key: string;
+  value: string;
+}
+
+export interface RecordResponse {
+  id: string;
+  type: string;
+  sourceName: string;
+  startDate: string;
+  endDate: string;
+  unit: string;
+  value: string;
+  user_id: string;
+  recordMetadata: MetadataEntryResponse[];
+}
+
+export interface RecordMeta {
+  requested_at: string;
+  filters: Record<string, unknown>;
+  result_count: number;
+  total_count: number;
+  date_range: DateRange;
+}
+
+export interface RecordListResponse {
+  data: RecordResponse[];
+  meta: RecordMeta;
+}
+
+export interface HealthDataParams {
+  start_date?: string;
+  end_date?: string;
+  limit?: number;
+  offset?: number;
 }

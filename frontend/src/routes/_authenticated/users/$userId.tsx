@@ -1,11 +1,12 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { useState } from 'react';
 import {
   ArrowLeft,
   RefreshCw,
   Link as LinkIcon,
-  Activity,
-  Heart,
-  Moon,
+  Trash2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,17 +17,27 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   useUserConnections,
-  useHealthSummary,
   useGenerateConnectionLink,
   useSyncUserData,
   useDisconnectProvider,
+  useUserHeartRate,
+  useUserWorkouts,
+  useUserRecords,
 } from '@/hooks/api/use-health';
-import { useUsers } from '@/hooks/api/use-users';
+import { useUser, useDeleteUser } from '@/hooks/api/use-users';
 import { LoadingState } from '@/components/common/loading-spinner';
 import { ErrorState } from '@/components/common/error-state';
+import { HeartRateChart, WorkoutsTable, RecordsTable } from '@/components/health';
 import { toast } from 'sonner';
 
 export const Route = createFileRoute('/_authenticated/users/$userId')({
@@ -35,23 +46,40 @@ export const Route = createFileRoute('/_authenticated/users/$userId')({
 
 function UserDetailPage() {
   const { userId } = Route.useParams();
-  const { data: users } = useUsers();
+  const navigate = useNavigate();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+
+  const {
+    data: user,
+    isLoading: userLoading,
+    error: userError,
+  } = useUser(userId);
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
-  const { data: healthSummary, isLoading: healthLoading } =
-    useHealthSummary(userId);
+  const { data: heartRateData, isLoading: heartRateLoading } =
+    useUserHeartRate(userId, { limit: 100 });
+  const { data: workoutsData, isLoading: workoutsLoading } =
+    useUserWorkouts(userId, { limit: 20 });
+  const { data: recordsData, isLoading: recordsLoading } =
+    useUserRecords(userId, { limit: 20 });
   const generateLinkMutation = useGenerateConnectionLink();
   const syncMutation = useSyncUserData();
   const disconnectMutation = useDisconnectProvider();
+  const deleteUserMutation = useDeleteUser();
 
-  const user = users?.find((u) => u.id === userId);
+  const handleCopyId = async () => {
+    await navigator.clipboard.writeText(userId);
+    setCopiedId(true);
+    toast.success('User ID copied to clipboard');
+    setTimeout(() => setCopiedId(false), 2000);
+  };
 
   const handleGenerateLink = async (providerId: string) => {
     const result = await generateLinkMutation.mutateAsync({
       userId,
       providerId,
     });
-    // Copy link to clipboard
     await navigator.clipboard.writeText(result.url);
     toast.success('Connection link copied to clipboard');
   };
@@ -69,23 +97,31 @@ function UserDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await deleteUserMutation.mutateAsync(userId);
+      setIsDeleteDialogOpen(false);
+      navigate({ to: '/users' });
+    } catch {}
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
     return new Date(dateString).toLocaleString();
   };
 
-  const formatMinutes = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
-  };
 
-  if (!user) {
-    return <ErrorState message="User not found" />;
+  if (userLoading) {
+    return <LoadingState message="Loading user..." />;
   }
 
-  if (connectionsLoading || healthLoading) {
-    return <LoadingState message="Loading user data..." />;
+  if (userError || !user) {
+    return (
+      <ErrorState
+        title="User not found"
+        message="The requested user could not be found."
+      />
+    );
   }
 
   return (
@@ -99,18 +135,41 @@ function UserDetailPage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">
-              {user.name || 'Unnamed User'}
-            </h1>
-            <p className="text-muted-foreground">{user.email}</p>
+            <h1 className="text-3xl font-bold">User Details</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <code className="font-mono text-sm text-muted-foreground bg-muted px-2 py-1 rounded">
+                {userId}
+              </code>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleCopyId}
+              >
+                {copiedId ? (
+                  <Check className="h-3 w-3 text-green-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
-        <Button onClick={handleSync} disabled={syncMutation.isPending}>
-          <RefreshCw
-            className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
-          />
-          Sync Data
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleSync} disabled={syncMutation.isPending}>
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
+            />
+            Sync Data
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => setIsDeleteDialogOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete User
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -139,161 +198,126 @@ function UserDetailPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {connections && connections.length > 0 ? (
-              connections.map((connection) => (
-                <div
-                  key={connection.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-semibold">
-                        {connection.providerName}
-                      </h3>
-                      <Badge
-                        variant={
-                          connection.status === 'active'
-                            ? 'default'
-                            : connection.status === 'error'
-                              ? 'destructive'
-                              : 'secondary'
-                        }
-                      >
-                        {connection.status}
-                      </Badge>
-                      <Badge
-                        variant={
-                          connection.syncStatus === 'success'
-                            ? 'default'
-                            : connection.syncStatus === 'failed'
-                              ? 'destructive'
-                              : 'secondary'
-                        }
-                      >
-                        {connection.syncStatus}
-                      </Badge>
-                    </div>
-                    <div className="mt-2 text-sm text-muted-foreground space-y-1">
-                      <p>Connected: {formatDate(connection.connectedAt)}</p>
-                      <p>Last Sync: {formatDate(connection.lastSyncAt)}</p>
-                      <p>
-                        Data Points: {connection.dataPoints.toLocaleString()}
-                      </p>
-                      {connection.syncError && (
-                        <p className="text-destructive">
-                          Error: {connection.syncError}
+          {connectionsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {connections && connections.length > 0 ? (
+                connections.map((connection) => (
+                  <div
+                    key={connection.id}
+                    className="flex items-center justify-between p-4 border rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <h3 className="font-semibold">
+                          {connection.providerName}
+                        </h3>
+                        <Badge
+                          variant={
+                            connection.status === 'active'
+                              ? 'default'
+                              : connection.status === 'error'
+                                ? 'destructive'
+                                : 'secondary'
+                          }
+                        >
+                          {connection.status}
+                        </Badge>
+                        <Badge
+                          variant={
+                            connection.syncStatus === 'success'
+                              ? 'default'
+                              : connection.syncStatus === 'failed'
+                                ? 'destructive'
+                                : 'secondary'
+                          }
+                        >
+                          {connection.syncStatus}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 text-sm text-muted-foreground space-y-1">
+                        <p>Connected: {formatDate(connection.connectedAt)}</p>
+                        <p>Last Sync: {formatDate(connection.lastSyncAt)}</p>
+                        <p>
+                          Data Points: {connection.dataPoints.toLocaleString()}
                         </p>
-                      )}
+                        {connection.syncError && (
+                          <p className="text-destructive">
+                            Error: {connection.syncError}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          handleDisconnect(connection.id, connection.providerName)
+                        }
+                        disabled={disconnectMutation.isPending}
+                      >
+                        Disconnect
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        handleDisconnect(connection.id, connection.providerName)
-                      }
-                      disabled={disconnectMutation.isPending}
-                    >
-                      Disconnect
-                    </Button>
-                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No devices connected yet</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => handleGenerateLink('garmin')}
+                    disabled={generateLinkMutation.isPending}
+                  >
+                    <LinkIcon className="mr-2 h-4 w-4" />
+                    Generate Connection Link
+                  </Button>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <p>No devices connected yet</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={() => handleGenerateLink('garmin')}
-                  disabled={generateLinkMutation.isPending}
-                >
-                  <LinkIcon className="mr-2 h-4 w-4" />
-                  Generate Connection Link
-                </Button>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {healthSummary && (
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Heart Rate</CardTitle>
-              <Heart className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {healthSummary.heartRate.average} bpm
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Range: {healthSummary.heartRate.min} -{' '}
-                {healthSummary.heartRate.max} bpm
-              </p>
-              <Separator className="my-3" />
-              <p className="text-xs text-muted-foreground">
-                {healthSummary.heartRate.data.length} readings (7 days)
-              </p>
-            </CardContent>
-          </Card>
+      {!connectionsLoading && (
+        <>
+          {heartRateData && (
+            <HeartRateChart data={heartRateData} isLoading={heartRateLoading} />
+          )}
+          {!heartRateData && heartRateLoading && (
+            <HeartRateChart
+              data={{ data: [], recovery_data: [], summary: { total_records: 0, avg_heart_rate: 0, max_heart_rate: 0, min_heart_rate: 0, avg_recovery_rate: 0, max_recovery_rate: 0, min_recovery_rate: 0 }, meta: { requested_at: '', filters: {}, result_count: 0, date_range: {} } }}
+              isLoading={true}
+            />
+          )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Sleep</CardTitle>
-              <Moon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatMinutes(healthSummary.sleep.averageMinutes)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Efficiency: {healthSummary.sleep.averageEfficiency}%
-              </p>
-              <Separator className="my-3" />
-              <p className="text-xs text-muted-foreground">
-                {healthSummary.sleep.data.length} nights recorded
-              </p>
-            </CardContent>
-          </Card>
+          {workoutsData && (
+            <WorkoutsTable data={workoutsData} isLoading={workoutsLoading} />
+          )}
+          {!workoutsData && workoutsLoading && (
+            <WorkoutsTable
+              data={{ data: [], meta: { requested_at: '', filters: {}, result_count: 0, total_count: 0, date_range: { start: '', end: '', duration_days: 0 } } }}
+              isLoading={true}
+            />
+          )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Activity</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {healthSummary.activity.averageSteps.toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Average daily steps
-              </p>
-              <Separator className="my-3" />
-              <p className="text-xs text-muted-foreground">
-                {healthSummary.activity.totalActiveMinutes} active minutes (7
-                days)
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+          {recordsData && (
+            <RecordsTable data={recordsData} isLoading={recordsLoading} />
+          )}
+          {!recordsData && recordsLoading && (
+            <RecordsTable
+              data={{ data: [], meta: { requested_at: '', filters: {}, result_count: 0, total_count: 0, date_range: { start: '', end: '', duration_days: 0 } } }}
+              isLoading={true}
+            />
+          )}
+        </>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Health Data Visualizations</CardTitle>
-          <CardDescription>
-            Charts will be implemented in Phase 3 with Recharts
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="h-64 flex items-center justify-center text-muted-foreground">
-          <p>Heart Rate, Sleep, and Activity charts coming soon...</p>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -306,6 +330,44 @@ function UserDetailPage() {
           <p>AI-powered health insights coming soon...</p>
         </CardContent>
       </Card>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete User?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the
+              user and all associated data including:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+              <li>All wearable device connections</li>
+              <li>All health data (heart rate, sleep, activity)</li>
+              <li>All automation triggers for this user</li>
+            </ul>
+            <div className="mt-4 p-3 bg-muted rounded-md">
+              <p className="text-sm text-muted-foreground">User ID:</p>
+              <code className="font-mono text-sm">{userId}</code>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteUserMutation.isPending}
+            >
+              {deleteUserMutation.isPending ? 'Deleting...' : 'Delete User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
