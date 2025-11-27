@@ -27,8 +27,7 @@ class ImportService:
             
             start_date = datetime.fromtimestamp(workout.startTime / 1000)
             end_date = datetime.fromtimestamp(workout.stopTime / 1000)
-            duration = workout.totalTime / 60
-            duration_unit = "min"
+            duration_seconds = workout.totalTime
             
             if workout.gear:
                 sourceName = workout.gear.name
@@ -40,8 +39,7 @@ class ImportService:
                 provider_id=str(workout.workoutId),
                 user_id=user_id,
                 type="Unknown",
-                duration=duration,
-                durationUnit=duration_unit,
+                duration_seconds=duration_seconds,
                 sourceName=sourceName,
                 startDate=start_date,
                 endDate=end_date,

@@ -27,16 +27,14 @@ class ImportService:
             
             start_date = datetime.fromtimestamp(activity.startTimeInSeconds)
             end_date = datetime.fromtimestamp(activity.startTimeInSeconds + activity.durationInSeconds)
-            duration = activity.durationInSeconds / 60
-            duration_unit = "min"
+            duration_seconds = activity.durationInSeconds
             
             workout_row = WorkoutCreate(
                 id=workout_id,
                 provider_id=activity.summaryId,
                 user_id=user_id,
                 type=activity.activityType,
-                duration=duration,
-                durationUnit=duration_unit,
+                duration_seconds=duration_seconds,
                 sourceName=activity.deviceName,
                 startDate=start_date,
                 endDate=end_date,

@@ -90,13 +90,14 @@ class XMLService:
 
         document["type"] = document.pop("workoutActivityType")
 
+        duration_seconds = (document["endDate"] - document["startDate"]).total_seconds()
+
         return WorkoutCreate(
             id=uuid4(),
             provider_id=None,
             user_id=UUID(user_id),
             type=document["type"],
-            duration=document["duration"],
-            durationUnit=document["durationUnit"],
+            duration_seconds=duration_seconds,
             sourceName=document["sourceName"],
             startDate=document["startDate"],
             endDate=document["endDate"],
