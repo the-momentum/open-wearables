@@ -19,7 +19,7 @@ from sqlalchemy.orm import (
 )
 
 from app.config import settings
-from app.mappings import str_64
+from app.mappings import str_64, str_255
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -59,6 +59,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         str: Text,
         UUID: SqlUUID,
         str_64: String(64),
+        str_255: String(255),
     }
 
 
