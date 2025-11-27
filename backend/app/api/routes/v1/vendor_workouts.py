@@ -5,11 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, Query
 
 from app.database import DbSession
-from app.services import ApiKeyDep
+from app.services import ApiKeyDep, suunto_import_service
 from app.services.garmin_service import garmin_service
 from app.services.polar_service import polar_service
 from app.services.suunto_service import suunto_service
-from app.services import suunto_import_service
 
 
 def parse_timestamp(value: str | None) -> int | None:
@@ -113,7 +112,7 @@ async def get_user_workouts(
             offset=offset,
             filter_by_modification_time=filter_by_modification_time,
         )
-        
+
         # temporary, for testing before services refactor
         suunto_import_service.load_data(db, raw_workouts, user_id)
         return raw_workouts

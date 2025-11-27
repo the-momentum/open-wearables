@@ -82,4 +82,4 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         for workout in workouts:
             workout_service.create(db, workout)
         for stat in statistics:
-            workout_statistic_service.create(db, stat)   
+            workout_statistic_service.create(db, stat)

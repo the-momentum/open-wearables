@@ -6,13 +6,13 @@ from app.models import Workout
 from app.repositories import HKWorkoutRepository
 from app.schemas import (
     WorkoutCreate,
-    WorkoutUpdate,
-    WorkoutResponse,
     WorkoutQueryParams,
+    WorkoutResponse,
+    WorkoutUpdate,
 )
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
 from app.services.workout_statistic_service import workout_statistic_service
+from app.utils.exceptions import handle_exceptions
 
 
 class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, WorkoutUpdate]):
@@ -72,7 +72,7 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, Wor
         workout_responses = []
         for workout in workouts:
             statistics = await workout_statistic_service._get_statistics(db_session, user_id, workout.id)
-            
+
             workout_response = WorkoutResponse(
                 id=workout.id,
                 type=workout.type,
@@ -81,10 +81,9 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, Wor
                 sourceName=workout.sourceName,
                 startDate=workout.startDate,
                 endDate=workout.endDate,
-                statistics=[], # statistics,
+                statistics=[],  # statistics,
             )
             workout_responses.append(workout_response)
-
 
         return workout_responses
 

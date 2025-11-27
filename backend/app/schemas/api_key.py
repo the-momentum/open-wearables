@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ApiKeyRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str
     name: str
     created_by: UUID | None

@@ -8,6 +8,7 @@ from app.schemas import WorkoutStatisticCreate, WorkoutStatisticUpdate
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
+
 class WorkoutStatisticService(
     AppService[WorkoutStatisticRepository, WorkoutStatistic, WorkoutStatisticCreate, WorkoutStatisticUpdate],
 ):
@@ -32,5 +33,6 @@ class WorkoutStatisticService(
         """
         statistics = self.crud.get_workout_statistics(db_session, user_id, workout_id)
         return statistics
+
 
 workout_statistic_service = WorkoutStatisticService(log=getLogger(__name__))

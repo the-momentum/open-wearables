@@ -1,8 +1,9 @@
+from uuid import UUID
+
+from app.database import DbSession
 from app.models import WorkoutStatistic
 from app.repositories.repositories import CrudRepository
 from app.schemas import WorkoutStatisticCreate, WorkoutStatisticUpdate
-from app.database import DbSession
-from uuid import UUID
 
 
 class WorkoutStatisticRepository(CrudRepository[WorkoutStatistic, WorkoutStatisticCreate, WorkoutStatisticUpdate]):
@@ -12,4 +13,8 @@ class WorkoutStatisticRepository(CrudRepository[WorkoutStatistic, WorkoutStatist
         super().__init__(model)
 
     def get_workout_statistics(self, db_session: DbSession, user_id: str, workout_id: UUID) -> list[WorkoutStatistic]:
-        return db_session.query(self.model).filter(self.model.user_id == user_id, self.model.workout_id == workout_id).all()
+        return (
+            db_session.query(self.model)
+            .filter(self.model.user_id == user_id, self.model.workout_id == workout_id)
+            .all()
+        )

@@ -31,7 +31,7 @@ FROM python:3.13-slim
     COPY --from=builder /root_project /root_project
 
     ENV PATH="/root_project/.venv/bin:$PATH"
-    
+
     # Reinstall to regenerate scripts with correct shebangs for this environment
     RUN uv sync --reinstall
 

@@ -7,11 +7,11 @@ from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas import (
+    AEWorkoutJSON,
     RootJSON,
+    UploadDataResponse,
     WorkoutCreate,
     WorkoutStatisticCreate,
-    UploadDataResponse,
-    AEWorkoutJSON,
 )
 from app.services.workout_service import workout_service
 from app.services.workout_statistic_service import workout_statistic_service
@@ -35,7 +35,9 @@ class ImportService:
     def _dec(self, x: float | int | None) -> Decimal | None:
         return None if x is None else Decimal(str(x))
 
-    def _get_workout_statistics(self, workout: AEWorkoutJSON, user_id: str, workout_id: UUID) -> list[WorkoutStatisticCreate]:
+    def _get_workout_statistics(
+        self, workout: AEWorkoutJSON, user_id: str, workout_id: UUID
+    ) -> list[WorkoutStatisticCreate]:
         """
         Get workout statistics from workout JSON.
         """
@@ -69,7 +71,7 @@ class ImportService:
         user_id: str,
     ) -> tuple[list[WorkoutStatisticCreate]]:
         statistics: list[WorkoutStatisticCreate] = []
-        
+
         for field in ["heartRate", "heartRateRecovery", "activeEnergy"]:
             if field in workout:
                 data = getattr(workout, field)
@@ -92,7 +94,9 @@ class ImportService:
 
         return statistics
 
-    def _build_import_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
+    def _build_import_bundles(
+        self, raw: dict, user_id: str
+    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundles
         ready to insert the database.
@@ -111,7 +115,7 @@ class ImportService:
 
             workout_statistics = self._get_workout_statistics(wjson, user_id, workout_id)
             records = self._get_records(wjson, workout_id, user_id)
-            
+
             statistics = [*workout_statistics, *records]
 
             workout_type = wjson.name or "Unknown Workout"
@@ -125,7 +129,6 @@ class ImportService:
                 startDate=start_date,
                 endDate=end_date,
             )
-
 
             yield workout_row, statistics
 
