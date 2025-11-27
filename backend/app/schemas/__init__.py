@@ -12,7 +12,7 @@ from .oauth import (
     UserConnectionUpdate,
 )
 from .response import UploadDataResponse
-from .user import UserCreate, UserRead, UserUpdate
+from .user import UserCreate, UserCreateInternal, UserRead, UserUpdate
 
 from .apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
 from .workout import (
@@ -60,6 +60,7 @@ __all__ = [
     "FilterParams",
     "UserRead",
     "UserCreate",
+    "UserCreateInternal",
     "UserUpdate",
     "DeveloperRead",
     "DeveloperCreate",
