@@ -74,7 +74,8 @@ function UsersPage() {
 
     const searchLower = search.toLowerCase();
     return users.filter((user) => {
-      const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+      const fullName =
+        `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
 
       switch (searchField) {
         case 'id':
