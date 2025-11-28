@@ -1,11 +1,8 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.database import DbSession
 from app.services import ApiKeyDep, workout_statistic_service
-from app.schemas import WorkoutStatisticQueryParams
-from app.models import WorkoutStatistic
+from app.schemas import WorkoutStatisticResponse
 
 router = APIRouter()
 
@@ -15,7 +12,6 @@ async def get_heart_rate_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,
-    query_params: Annotated[WorkoutStatisticQueryParams, Depends()],
-) -> list[WorkoutStatistic]:
+) -> list[WorkoutStatisticResponse]:
     """Get heart rate data with filtering, sorting, and pagination."""
-    return await workout_statistic_service.get_heart_rate_statistics(db, query_params, user_id)
+    return await workout_statistic_service.get_user_heart_rate_statistics(db, user_id)
