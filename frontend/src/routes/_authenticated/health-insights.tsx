@@ -314,11 +314,15 @@ function HealthInsightsPage() {
                   <button
                     type="button"
                     onClick={handleImproveDescription}
-                    disabled={improveMutation.isPending || !formData.description}
+                    disabled={
+                      improveMutation.isPending || !formData.description
+                    }
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 border border-zinc-700 rounded-md hover:text-white hover:border-zinc-600 transition-colors disabled:opacity-50"
                   >
                     <Sparkles className="h-3 w-3" />
-                    {improveMutation.isPending ? 'Improving...' : 'Improve with AI'}
+                    {improveMutation.isPending
+                      ? 'Improving...'
+                      : 'Improve with AI'}
                   </button>
                 </div>
                 <textarea

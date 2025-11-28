@@ -79,7 +79,9 @@ export function SimpleSidebar() {
               >
                 <item.icon className="h-4 w-4" />
                 <span>{item.title}</span>
-                <span className="ml-auto text-[10px] text-zinc-700">(Soon)</span>
+                <span className="ml-auto text-[10px] text-zinc-700">
+                  (Soon)
+                </span>
               </div>
             );
           }

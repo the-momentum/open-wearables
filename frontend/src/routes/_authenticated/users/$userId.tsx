@@ -107,7 +107,9 @@ function UserDetailPage() {
                   ? `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
                   : 'Unnamed User'}
               </h1>
-              <p className="text-sm text-zinc-500">{user?.email || 'No email'}</p>
+              <p className="text-sm text-zinc-500">
+                {user?.email || 'No email'}
+              </p>
             </div>
           )}
         </div>
@@ -245,7 +247,9 @@ function UserDetailPage() {
                     <div className="mt-2 text-xs text-zinc-500 space-y-1">
                       <p>Connected: {formatDate(connection.connectedAt)}</p>
                       <p>Last Sync: {formatDate(connection.lastSyncAt)}</p>
-                      <p>Data Points: {connection.dataPoints.toLocaleString()}</p>
+                      <p>
+                        Data Points: {connection.dataPoints.toLocaleString()}
+                      </p>
                       {connection.syncError && (
                         <p className="text-red-400">
                           Error: {connection.syncError}
@@ -366,11 +370,13 @@ function UserDetailPage() {
                 <div className="text-3xl font-medium text-white">
                   {healthSummary.activity.averageSteps.toLocaleString()}
                 </div>
-                <p className="text-xs text-zinc-500 mt-2">Average daily steps</p>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Average daily steps
+                </p>
                 <div className="mt-4 pt-4 border-t border-zinc-800">
                   <p className="text-xs text-zinc-500">
-                    {healthSummary.activity.totalActiveMinutes} active minutes (7
-                    days)
+                    {healthSummary.activity.totalActiveMinutes} active minutes
+                    (7 days)
                   </p>
                 </div>
               </>
@@ -401,7 +407,9 @@ function UserDetailPage() {
       {/* AI Health Assistant */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-medium text-white">AI Health Assistant</h2>
+          <h2 className="text-sm font-medium text-white">
+            AI Health Assistant
+          </h2>
           <p className="text-xs text-zinc-500 mt-1">
             Chat interface will be implemented in Phase 3
           </p>

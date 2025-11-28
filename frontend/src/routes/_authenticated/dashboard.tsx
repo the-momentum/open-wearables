@@ -15,9 +15,7 @@ function DashboardPage() {
       <div className="p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-medium text-white">Dashboard</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Your platform overview
-          </p>
+          <p className="text-sm text-zinc-500 mt-1">Your platform overview</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (

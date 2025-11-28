@@ -244,7 +244,9 @@ function UsersPage() {
           <div className="p-12 text-center">
             <UsersIcon className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
             <p className="text-zinc-400 mb-2">
-              {search ? 'No users match your search criteria.' : 'No users found'}
+              {search
+                ? 'No users match your search criteria.'
+                : 'No users found'}
             </p>
             {!search && (
               <button
@@ -359,7 +361,9 @@ function UsersPage() {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
             <div className="p-6 border-b border-zinc-800">
-              <h2 className="text-lg font-medium text-white">Create New User</h2>
+              <h2 className="text-lg font-medium text-white">
+                Create New User
+              </h2>
               <p className="text-sm text-zinc-500 mt-1">
                 Create a new user to connect wearable devices and collect health
                 data.
@@ -432,7 +436,9 @@ function UsersPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-300">Email</label>
+                <label className="text-xs font-medium text-zinc-300">
+                  Email
+                </label>
                 <input
                   type="email"
                   placeholder="john.doe@example.com"

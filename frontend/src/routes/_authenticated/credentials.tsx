@@ -385,7 +385,9 @@ function CredentialsPage() {
             <div className="p-6 space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-medium text-zinc-300">HTML</span>
+                  <span className="text-xs font-medium text-zinc-300">
+                    HTML
+                  </span>
                   <button
                     onClick={() =>
                       copyToClipboard(

@@ -246,8 +246,8 @@ function RegisterPage() {
                 Start Building Today
               </h2>
               <p className="text-sm text-zinc-500 text-center">
-                Create your developer account and integrate health data from
-                any wearable device.
+                Create your developer account and integrate health data from any
+                wearable device.
               </p>
 
               <div className="space-y-4 mt-8">

@@ -173,7 +173,9 @@ function PricingPage() {
               <div className="mt-4">
                 {tier.price === 0 && tier.id !== 'enterprise' ? (
                   <div className="flex items-baseline">
-                    <span className="text-3xl font-medium text-white">Free</span>
+                    <span className="text-3xl font-medium text-white">
+                      Free
+                    </span>
                   </div>
                 ) : tier.id === 'enterprise' ? (
                   <div className="flex items-baseline">
@@ -222,7 +224,9 @@ function PricingPage() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-500">Data Retention</span>
-                <span className="text-zinc-300">{tier.limits.dataRetention}</span>
+                <span className="text-zinc-300">
+                  {tier.limits.dataRetention}
+                </span>
               </div>
             </div>
 

@@ -2,7 +2,15 @@ import { createFileRoute, redirect, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { isAuthenticated } from '@/lib/auth/session';
-import { Activity, ArrowRight, Mail, Lock, Check, Github, Chrome } from 'lucide-react';
+import {
+  Activity,
+  ArrowRight,
+  Mail,
+  Lock,
+  Check,
+  Github,
+  Chrome,
+} from 'lucide-react';
 import { CodePreviewCard } from '@/components/login/code-preview-card';
 
 export const Route = createFileRoute('/login')({
@@ -59,7 +67,10 @@ function LoginPage() {
             <form className="space-y-4" onSubmit={handleLogin}>
               {/* Email Input */}
               <div className="space-y-1.5">
-                <label htmlFor="email" className="text-xs font-medium text-zinc-300">
+                <label
+                  htmlFor="email"
+                  className="text-xs font-medium text-zinc-300"
+                >
                   Email address
                 </label>
                 <div className="relative group">
@@ -81,7 +92,10 @@ function LoginPage() {
               {/* Password Input */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label htmlFor="password" className="text-xs font-medium text-zinc-300">
+                  <label
+                    htmlFor="password"
+                    className="text-xs font-medium text-zinc-300"
+                  >
                     Password
                   </label>
                   <Link
@@ -165,7 +179,9 @@ function LoginPage() {
                 <div className="w-full border-t border-zinc-800" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-black px-2 text-zinc-600">Or continue with</span>
+                <span className="bg-black px-2 text-zinc-600">
+                  Or continue with
+                </span>
               </div>
             </div>
 
@@ -195,7 +211,10 @@ function LoginPage() {
               <a href="#" className="hover:text-zinc-400 transition-colors">
                 Privacy
               </a>
-              <Link to="/register" className="text-white hover:text-zinc-200 transition-colors">
+              <Link
+                to="/register"
+                className="text-white hover:text-zinc-200 transition-colors"
+              >
                 Sign up
               </Link>
             </div>
