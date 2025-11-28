@@ -11,8 +11,8 @@ from app.schemas import (
     WorkoutCreate,
     WorkoutStatisticCreate,
 )
-from app.services.apple.workout_service import workout_service
-from app.services.apple.workout_statistic_service import workout_statistic_service
+from app.services.workout_service import workout_service
+from app.services.workout_statistic_service import workout_statistic_service
 
 
 class ImportService:
@@ -41,9 +41,9 @@ class ImportService:
                 user_id=user_id,
                 type=exercise.sport,
                 duration_seconds=exercise.duration,
-                sourceName=exercise.device,
-                startDate=start_date,
-                endDate=end_date,
+                source_name=exercise.device,
+                start_datetime=start_date,
+                end_datetime=end_date,
             )
 
             units = {
@@ -60,9 +60,8 @@ class ImportService:
                         user_id=user_id,
                         workout_id=workout_id,
                         type=field,
-                        sourceName=exercise.device,
-                        startDate=start_date,
-                        endDate=end_date,
+                        start_datetime=start_date,
+                        end_datetime=end_date,
                         min=None,
                         max=None,
                         avg=getattr(exercise, field),
@@ -76,9 +75,8 @@ class ImportService:
                     user_id=user_id,
                     workout_id=workout_id,
                     type="heartRate",
-                    sourceName=exercise.device,
-                    startDate=start_date,
-                    endDate=end_date,
+                    start_datetime=start_date,
+                    end_datetime=end_date,
                     min=None,
                     max=hr_max,
                     avg=hr_avg,

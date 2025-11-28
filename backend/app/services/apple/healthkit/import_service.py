@@ -45,10 +45,10 @@ class ImportService:
                 provider_id=provider_id,
                 user_id=user_id,
                 type=wjson.type or "Unknown",
-                startDate=wjson.startDate,
-                endDate=wjson.endDate,
                 duration_seconds=duration_seconds,
-                sourceName=wjson.sourceName or "Apple Health",
+                source_name=wjson.sourceName or "Apple Health",
+                start_datetime=wjson.startDate,
+                end_datetime=wjson.endDate,
             )
 
             # Handle workout statistics

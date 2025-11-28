@@ -31,9 +31,9 @@ class ImportService:
             duration_seconds = workout.totalTime
 
             if workout.gear:
-                sourceName = workout.gear.name
+                source_name = workout.gear.name
             else:
-                sourceName = "Unknown"
+                source_name = "Unknown"
 
             workout_row = WorkoutCreate(
                 id=workout_id,
@@ -41,9 +41,9 @@ class ImportService:
                 user_id=user_id,
                 type="Unknown",
                 duration_seconds=duration_seconds,
-                sourceName=sourceName,
-                startDate=start_date,
-                endDate=end_date,
+                source_name=source_name,
+                start_datetime=start_date,
+                end_datetime=end_date,
             )
 
             workout_statistics = []
@@ -62,9 +62,8 @@ class ImportService:
                         user_id=user_id,
                         workout_id=workout_id,
                         type=field,
-                        sourceName=sourceName,
-                        startDate=start_date,
-                        endDate=end_date,
+                        start_datetime=start_date,
+                        end_datetime=end_date,
                         min=value,
                         max=value,
                         avg=value,
@@ -79,9 +78,8 @@ class ImportService:
                     user_id=user_id,
                     workout_id=workout_id,
                     type="heartRate",
-                    sourceName=sourceName,
-                    startDate=start_date,
-                    endDate=end_date,
+                    start_datetime=start_date,
+                    end_datetime=end_date,
                     min=None,  # doesnt exist for suunto
                     max=hr_data.max,
                     avg=hr_data.avg,

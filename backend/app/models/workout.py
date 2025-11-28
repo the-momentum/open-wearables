@@ -21,10 +21,10 @@ class Workout(BaseDbModel):
 
     type: Mapped[str_100 | None] = None
     duration_seconds: Mapped[numeric_10_3]
-    sourceName: Mapped[str_100]
+    source_name: Mapped[str_100]
 
-    startDate: Mapped[datetime_tz]
-    endDate: Mapped[datetime_tz]
+    start_datetime: Mapped[datetime_tz]
+    end_datetime: Mapped[datetime_tz]
 
     user: Mapped[ManyToOne["User"]]
 
