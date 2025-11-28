@@ -1,3 +1,5 @@
+from app.utils.auth import DeveloperDep
+
 from .api_key_service import ApiKeyDep, api_key_service
 from .apple.apple_xml.presigned_url_service import import_service as pre_url_service
 from .apple.auto_export.active_energy_service import active_energy_service as ae_active_energy_service
@@ -11,7 +13,6 @@ from .apple.healthkit.workout_statistic_service import workout_statistic_service
 from .developer_service import developer_service
 from .services import AppService
 from .user_service import user_service
-from app.utils.auth import DeveloperDep
 
 __all__ = [
     "AppService",

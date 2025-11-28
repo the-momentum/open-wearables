@@ -201,7 +201,8 @@ class BaseOAuthTemplate(ABC):
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
             raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to exchange authorization code: {e.response.text}"
+                status_code=HTTP_400_BAD_REQUEST,
+                detail=f"Failed to exchange authorization code: {e.response.text}",
             )
         except Exception as e:
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token exchange failed: {str(e)}")

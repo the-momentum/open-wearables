@@ -8,7 +8,6 @@ from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 
-
 router = APIRouter()
 factory = ProviderFactory()
 
