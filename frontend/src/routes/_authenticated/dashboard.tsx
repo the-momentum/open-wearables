@@ -1,15 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Users, Activity, Database, Zap } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/api/use-dashboard';
-import { LoadingState } from '@/components/common/loading-spinner';
-import { ErrorState } from '@/components/common/error-state';
+import { NumberTicker } from '@/components/ui/number-ticker';
 
 export const Route = createFileRoute('/_authenticated/dashboard')({
   component: DashboardPage,
@@ -20,19 +12,45 @@ function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 p-8">
-        <LoadingState message="Loading dashboard..." />
+      <div className="p-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-medium text-white">Dashboard</h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Your platform overview
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6"
+            >
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 w-24 bg-zinc-800 rounded" />
+                <div className="h-8 w-16 bg-zinc-800 rounded" />
+                <div className="h-3 w-32 bg-zinc-800/50 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="flex-1 p-8">
-        <ErrorState
-          message="Failed to load dashboard data. Please try again."
-          onRetry={refetch}
-        />
+      <div className="p-8">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+          <p className="text-zinc-400 mb-4">
+            Failed to load dashboard data. Please try again.
+          </p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -40,91 +58,109 @@ function DashboardPage() {
   const statCards = [
     {
       title: 'Total Users',
-      value: stats.totalUsers.toLocaleString(),
+      value: stats.totalUsers,
+      suffix: '',
       description: 'Registered users',
       icon: Users,
     },
     {
       title: 'Active Connections',
-      value: stats.activeConnections.toLocaleString(),
+      value: stats.activeConnections,
+      suffix: '',
       description: 'Connected wearables',
       icon: Activity,
     },
     {
       title: 'Data Points',
-      value: (stats.dataPoints / 1000).toFixed(1) + 'K',
+      value: stats.dataPoints / 1000,
+      suffix: 'K',
       description: 'Health data collected',
       icon: Database,
+      decimalPlaces: 1,
     },
     {
       title: 'API Calls',
-      value: (stats.apiCalls / 1000).toFixed(1) + 'K',
+      value: stats.apiCalls / 1000,
+      suffix: 'K',
       description: 'This month',
       icon: Zap,
+      decimalPlaces: 1,
     },
   ];
 
   return (
-    <div className="flex-1 space-y-4 p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-medium text-white">Dashboard</h1>
+        <p className="text-sm text-zinc-500 mt-1">
+          Your platform overview and key metrics
+        </p>
       </div>
 
+      {/* Stats Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
+          <div
+            key={stat.title}
+            className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors group"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-medium text-zinc-400">
                 {stat.title}
-              </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">
-                {stat.description}
-              </p>
-            </CardContent>
-          </Card>
+              </span>
+              <stat.icon className="h-4 w-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+            </div>
+            <div className="text-2xl font-medium text-white">
+              <NumberTicker
+                value={stat.value}
+                decimalPlaces={stat.decimalPlaces || 0}
+                className="text-white"
+              />
+              {stat.suffix && (
+                <span className="text-zinc-500 ml-0.5">{stat.suffix}</span>
+              )}
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">{stat.description}</p>
+          </div>
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle>Overview</CardTitle>
-            <CardDescription>
+      {/* Charts Section */}
+      <div className="grid gap-6 lg:grid-cols-7">
+        {/* Overview Chart */}
+        <div className="lg:col-span-4 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800">
+            <h2 className="text-sm font-medium text-white">Overview</h2>
+            <p className="text-xs text-zinc-500 mt-1">
               Your platform performance this month
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pl-2">
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-              Chart will be rendered here
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <div className="h-[300px] flex items-center justify-center text-zinc-600">
+            <p className="text-sm">Chart will be rendered here</p>
+          </div>
+        </div>
 
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Recent Users</CardTitle>
-            <CardDescription>You have 234 new users this month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-8">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-none">User {i}</p>
-                    <p className="text-sm text-muted-foreground">
-                      user{i}@example.com
-                    </p>
-                  </div>
-                  <div className="ml-auto font-medium">Connected</div>
+        {/* Recent Users */}
+        <div className="lg:col-span-3 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800">
+            <h2 className="text-sm font-medium text-white">Recent Users</h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              You have 234 new users this month
+            </p>
+          </div>
+          <div className="p-6 space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-300">User {i}</p>
+                  <p className="text-xs text-zinc-500">user{i}@example.com</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <span className="text-xs text-emerald-400">Connected</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

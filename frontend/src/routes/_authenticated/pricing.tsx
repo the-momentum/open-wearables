@@ -1,15 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 export const Route = createFileRoute('/_authenticated/pricing')({
   component: PricingPage,
@@ -133,193 +123,203 @@ const pricingTiers: PricingTier[] = [
 function PricingPage() {
   const handleCTA = (tierId: string) => {
     if (tierId === 'enterprise') {
-      // In production, this would open a contact form or redirect to a contact page
       window.location.href =
         'mailto:sales@example.com?subject=Enterprise Plan Inquiry';
     } else {
-      // In production, this would redirect to checkout/upgrade flow
       alert(`Upgrading to ${tierId} plan - checkout flow coming soon!`);
     }
   };
 
   return (
-    <div className="p-6 space-y-8">
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold">Simple, Transparent Pricing</h1>
-        <p className="text-xl text-muted-foreground">
+    <div className="p-8 space-y-8">
+      {/* Header */}
+      <div className="text-center">
+        <h1 className="text-3xl font-medium text-white">
+          Simple, Transparent Pricing
+        </h1>
+        <p className="text-zinc-500 mt-2">
           Choose the perfect plan for your health platform
         </p>
       </div>
 
+      {/* Pricing Grid */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
         {pricingTiers.map((tier) => (
-          <Card
+          <div
             key={tier.id}
-            className={`relative flex flex-col ${tier.popular ? 'border-primary shadow-lg scale-105' : ''}`}
+            className={`relative flex flex-col bg-zinc-900/50 border rounded-xl overflow-hidden transition-all ${
+              tier.popular
+                ? 'border-white shadow-[0_0_30px_-5px_rgba(255,255,255,0.15)] scale-[1.02]'
+                : 'border-zinc-800 hover:border-zinc-700'
+            }`}
           >
             {tier.popular && (
-              <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                <Badge className="px-3 py-1">Most Popular</Badge>
-              </div>
+              <div className="absolute -top-px left-0 right-0 h-1 bg-white" />
             )}
 
-            <CardHeader>
-              <CardTitle className="text-2xl">{tier.name}</CardTitle>
-              <CardDescription className="min-h-[40px]">
+            {/* Header */}
+            <div className="p-6 border-b border-zinc-800">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-white">{tier.name}</h3>
+                {tier.popular && (
+                  <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider font-medium bg-white text-black rounded-full">
+                    Popular
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-zinc-500 mt-1 min-h-[40px]">
                 {tier.description}
-              </CardDescription>
+              </p>
               <div className="mt-4">
                 {tier.price === 0 && tier.id !== 'enterprise' ? (
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">Free</span>
+                    <span className="text-3xl font-medium text-white">Free</span>
                   </div>
                 ) : tier.id === 'enterprise' ? (
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">Custom</span>
+                    <span className="text-3xl font-medium text-white">
+                      Custom
+                    </span>
                   </div>
                 ) : (
                   <div className="flex items-baseline">
-                    <span className="text-4xl font-bold">${tier.price}</span>
-                    <span className="text-muted-foreground ml-2">
+                    <span className="text-3xl font-medium text-white">
+                      ${tier.price}
+                    </span>
+                    <span className="text-zinc-500 ml-1">
                       /{tier.billingPeriod}
                     </span>
                   </div>
                 )}
               </div>
-            </CardHeader>
+            </div>
 
-            <CardContent className="flex-1">
-              <div className="space-y-2 mb-6 pb-6 border-b">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Users</span>
-                  <span className="font-medium">
-                    {tier.limits.users === 'unlimited'
-                      ? 'Unlimited'
-                      : tier.limits.users.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">API Calls</span>
-                  <span className="font-medium">
-                    {tier.limits.apiCalls === 'unlimited'
-                      ? 'Unlimited'
-                      : tier.limits.apiCalls.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Automations</span>
-                  <span className="font-medium">
-                    {tier.limits.automations === 'unlimited'
-                      ? 'Unlimited'
-                      : tier.limits.automations}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Data Retention</span>
-                  <span className="font-medium">
-                    {tier.limits.dataRetention}
-                  </span>
-                </div>
+            {/* Limits */}
+            <div className="p-6 border-b border-zinc-800 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Users</span>
+                <span className="text-zinc-300">
+                  {tier.limits.users === 'unlimited'
+                    ? 'Unlimited'
+                    : tier.limits.users.toLocaleString()}
+                </span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">API Calls</span>
+                <span className="text-zinc-300">
+                  {tier.limits.apiCalls === 'unlimited'
+                    ? 'Unlimited'
+                    : tier.limits.apiCalls.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Automations</span>
+                <span className="text-zinc-300">
+                  {tier.limits.automations === 'unlimited'
+                    ? 'Unlimited'
+                    : tier.limits.automations}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Data Retention</span>
+                <span className="text-zinc-300">{tier.limits.dataRetention}</span>
+              </div>
+            </div>
 
+            {/* Features */}
+            <div className="flex-1 p-6">
               <ul className="space-y-3">
                 {tier.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">{feature}</span>
+                    <Check className="h-4 w-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-zinc-400">{feature}</span>
                   </li>
                 ))}
               </ul>
-            </CardContent>
+            </div>
 
-            <CardFooter>
-              <Button
-                className="w-full"
-                variant={tier.popular ? 'default' : 'outline'}
+            {/* CTA */}
+            <div className="p-6 pt-0">
+              <button
                 onClick={() => handleCTA(tier.id)}
+                className={`w-full py-2.5 rounded-md text-sm font-medium transition-colors ${
+                  tier.popular
+                    ? 'bg-white text-black hover:bg-zinc-200'
+                    : 'bg-zinc-800 text-white hover:bg-zinc-700 border border-zinc-700'
+                }`}
               >
                 {tier.cta}
-              </Button>
-            </CardFooter>
-          </Card>
+              </button>
+            </div>
+          </div>
         ))}
       </div>
 
+      {/* FAQ Section */}
       <div className="max-w-4xl mx-auto mt-16 space-y-8">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">
+          <h2 className="text-xl font-medium text-white">
             Frequently Asked Questions
           </h2>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Can I change plans later?
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Yes! You can upgrade or downgrade your plan at any time. Changes
-                take effect immediately, and we'll prorate any differences.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white mb-2">
+              Can I change plans later?
+            </h3>
+            <p className="text-sm text-zinc-500">
+              Yes! You can upgrade or downgrade your plan at any time. Changes
+              take effect immediately, and we'll prorate any differences.
+            </p>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                What payment methods do you accept?
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                We accept all major credit cards (Visa, MasterCard, American
-                Express) and ACH transfers for annual plans.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white mb-2">
+              What payment methods do you accept?
+            </h3>
+            <p className="text-sm text-zinc-500">
+              We accept all major credit cards (Visa, MasterCard, American
+              Express) and ACH transfers for annual plans.
+            </p>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Is there a free trial?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Yes! All paid plans come with a 14-day free trial. No credit
-                card required to start. The Developer plan is free forever.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white mb-2">
+              Is there a free trial?
+            </h3>
+            <p className="text-sm text-zinc-500">
+              Yes! All paid plans come with a 14-day free trial. No credit card
+              required to start. The Developer plan is free forever.
+            </p>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">
-                What about data retention?
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                We store your health data securely for the duration specified in
-                your plan. Enterprise customers can request custom retention
-                periods.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white mb-2">
+              What about data retention?
+            </h3>
+            <p className="text-sm text-zinc-500">
+              We store your health data securely for the duration specified in
+              your plan. Enterprise customers can request custom retention
+              periods.
+            </p>
+          </div>
         </div>
 
         <div className="text-center pt-8">
-          <h3 className="text-xl font-semibold mb-2">
+          <h3 className="text-lg font-medium text-white mb-2">
             Need a custom solution?
           </h3>
-          <p className="text-muted-foreground mb-4">
+          <p className="text-zinc-500 mb-4">
             Contact our sales team to discuss enterprise features, custom
             integrations, and volume pricing.
           </p>
-          <Button size="lg" onClick={() => handleCTA('enterprise')}>
+          <button
+            onClick={() => handleCTA('enterprise')}
+            className="px-6 py-2.5 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+          >
             Contact Sales
-          </Button>
+          </button>
         </div>
       </div>
     </div>

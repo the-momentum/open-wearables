@@ -1,96 +1,21 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import {
   ArrowLeft,
-  RefreshCw,
   Link as LinkIcon,
+  Activity,
+  Heart,
+  Moon,
   Trash2,
-  Copy,
-  Check,
-  Pencil,
-  X,
-  Save,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import {
   useUserConnections,
+  useHealthSummary,
   useGenerateConnectionLink,
   useSyncUserData,
   useDisconnectProvider,
-  useUserHeartRate,
-  useUserWorkouts,
-  useUserRecords,
 } from '@/hooks/api/use-health';
-import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
-import { LoadingState } from '@/components/common/loading-spinner';
-import { ErrorState } from '@/components/common/error-state';
-import {
-  HeartRateChart,
-  WorkoutsTable,
-  RecordsTable,
-} from '@/components/health';
+import { useUsers } from '@/hooks/api/use-users';
 import { toast } from 'sonner';
-import type {
-  HeartRateListResponse,
-  WorkoutListResponse,
-  RecordListResponse,
-  UserUpdate,
-} from '@/lib/api/types';
-
-const emptyHeartRateData: HeartRateListResponse = {
-  data: [],
-  recovery_data: [],
-  summary: {
-    total_records: 0,
-    avg_heart_rate: 0,
-    max_heart_rate: 0,
-    min_heart_rate: 0,
-    avg_recovery_rate: 0,
-    max_recovery_rate: 0,
-    min_recovery_rate: 0,
-  },
-  meta: { requested_at: '', filters: {}, result_count: 0, date_range: {} },
-};
-
-const emptyWorkoutsData: WorkoutListResponse = {
-  data: [],
-  meta: {
-    requested_at: '',
-    filters: {},
-    result_count: 0,
-    total_count: 0,
-    date_range: { start: '', end: '', duration_days: 0 },
-  },
-};
-
-const emptyRecordsData: RecordListResponse = {
-  data: [],
-  meta: {
-    requested_at: '',
-    filters: {},
-    result_count: 0,
-    total_count: 0,
-    date_range: { start: '', end: '', duration_days: 0 },
-  },
-};
 
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
@@ -98,116 +23,16 @@ export const Route = createFileRoute('/_authenticated/users/$userId')({
 
 function UserDetailPage() {
   const { userId } = Route.useParams();
-  const navigate = useNavigate();
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editFormData, setEditFormData] = useState<UserUpdate>({});
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-
-  const {
-    data: user,
-    isLoading: userLoading,
-    error: userError,
-  } = useUser(userId);
+  const { data: users, isLoading: usersLoading } = useUsers();
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
-  const { data: heartRateData, isLoading: heartRateLoading } = useUserHeartRate(
-    userId,
-    { limit: 100 }
-  );
-  const { data: workoutsData, isLoading: workoutsLoading } = useUserWorkouts(
-    userId,
-    { limit: 20 }
-  );
-  const { data: recordsData, isLoading: recordsLoading } = useUserRecords(
-    userId,
-    { limit: 20 }
-  );
+  const { data: healthSummary, isLoading: healthLoading } =
+    useHealthSummary(userId);
   const generateLinkMutation = useGenerateConnectionLink();
   const syncMutation = useSyncUserData();
   const disconnectMutation = useDisconnectProvider();
-  const deleteUserMutation = useDeleteUser();
-  const updateUserMutation = useUpdateUser();
 
-  // Initialize edit form when user data loads or when entering edit mode
-  useEffect(() => {
-    if (user && isEditing) {
-      setEditFormData({
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        client_user_id: user.client_user_id,
-      });
-    }
-  }, [user, isEditing]);
-
-  const handleCopyId = async () => {
-    await navigator.clipboard.writeText(userId);
-    setCopiedId(true);
-    toast.success('User ID copied to clipboard');
-    setTimeout(() => setCopiedId(false), 2000);
-  };
-
-  const validateEditForm = (): boolean => {
-    const errors: Record<string, string> = {};
-
-    if (
-      editFormData.client_user_id !== undefined &&
-      editFormData.client_user_id !== null
-    ) {
-      if (!editFormData.client_user_id.trim()) {
-        errors.client_user_id = 'Client User ID cannot be empty';
-      } else if (editFormData.client_user_id.length > 255) {
-        errors.client_user_id = 'Client User ID must be 255 characters or less';
-      }
-    }
-
-    if (editFormData.first_name && editFormData.first_name.length > 100) {
-      errors.first_name = 'First name must be 100 characters or less';
-    }
-
-    if (editFormData.last_name && editFormData.last_name.length > 100) {
-      errors.last_name = 'Last name must be 100 characters or less';
-    }
-
-    if (
-      editFormData.email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email)
-    ) {
-      errors.email = 'Please enter a valid email address';
-    }
-
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleSaveEdit = () => {
-    if (!validateEditForm()) return;
-
-    const payload: UserUpdate = {
-      first_name: editFormData.first_name?.trim() || null,
-      last_name: editFormData.last_name?.trim() || null,
-      email: editFormData.email?.trim() || null,
-      client_user_id: editFormData.client_user_id?.trim() || null,
-    };
-
-    updateUserMutation.mutate(
-      { id: userId, data: payload },
-      {
-        onSuccess: () => {
-          setIsEditing(false);
-          setFormErrors({});
-        },
-      }
-    );
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    setEditFormData({});
-    setFormErrors({});
-  };
+  const user = users?.find((u) => u.id === userId);
 
   const handleGenerateLink = async (providerId: string) => {
     const result = await generateLinkMutation.mutateAsync({
@@ -231,416 +56,360 @@ function UserDetailPage() {
     }
   };
 
-  const handleDelete = () => {
-    deleteUserMutation.mutate(userId, {
-      onSuccess: () => {
-        setIsDeleteDialogOpen(false);
-        navigate({ to: '/users' });
-      },
-    });
-  };
-
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
     return new Date(dateString).toLocaleString();
   };
 
-  if (userLoading) {
-    return <LoadingState message="Loading user..." />;
-  }
+  const formatMinutes = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
 
-  if (userError || !user) {
+  if (!usersLoading && !user) {
     return (
-      <ErrorState
-        title="User not found"
-        message="The requested user could not be found."
-      />
+      <div className="p-8">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+          <p className="text-zinc-400">User not found</p>
+          <Link
+            to="/users"
+            className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Users
+          </Link>
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link to="/users">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Users
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold">User Details</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <code className="font-mono text-sm text-muted-foreground bg-muted px-2 py-1 rounded">
-                {userId}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={handleCopyId}
-              >
-                {copiedId ? (
-                  <Check className="h-3 w-3 text-green-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleSync} disabled={syncMutation.isPending}>
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`}
-            />
-            Sync Data
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setIsDeleteDialogOpen(true)}
+          <Link
+            to="/users"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          {usersLoading ? (
+            <div className="space-y-2">
+              <div className="h-7 w-48 bg-zinc-800 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-zinc-800/50 rounded animate-pulse" />
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-2xl font-medium text-white">
+                {user?.first_name || user?.last_name
+                  ? `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
+                  : 'Unnamed User'}
+              </h1>
+              <p className="text-sm text-zinc-500">{user?.email || 'No email'}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleGenerateLink('garmin')}
+            disabled={generateLinkMutation.isPending}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
+          >
+            <LinkIcon className="h-4 w-4" />
+            Connect Wearables
+          </button>
+          <button
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this user?')) {
+                // TODO: implement delete user
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
             Delete User
-          </Button>
+          </button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle>User Information</CardTitle>
-          {!isEditing ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-            >
-              <Pencil className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancelEdit}
-                disabled={updateUserMutation.isPending}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSaveEdit}
-                disabled={updateUserMutation.isPending}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {updateUserMutation.isPending ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!isEditing ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">User ID</p>
-                <p className="font-mono text-sm">{user.id}</p>
+      {/* User Information */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">User Information</h2>
+        </div>
+        <div className="p-6">
+          {usersLoading ? (
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
+                <div className="h-5 w-48 bg-zinc-800 rounded animate-pulse" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Client User ID</p>
-                <p className="font-mono text-sm">{user.client_user_id}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">First Name</p>
-                <p className="text-sm">
-                  {user.first_name || (
-                    <span className="text-muted-foreground">Not set</span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Last Name</p>
-                <p className="text-sm">
-                  {user.last_name || (
-                    <span className="text-muted-foreground">Not set</span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Email</p>
-                <p className="text-sm">
-                  {user.email || (
-                    <span className="text-muted-foreground">Not set</span>
-                  )}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Created</p>
-                <p className="text-sm">{formatDate(user.created_at)}</p>
+              <div className="space-y-2">
+                <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
+                <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse" />
               </div>
             </div>
           ) : (
-            <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">User ID</p>
-                  <p className="font-mono text-sm bg-muted px-2 py-1.5 rounded">
-                    {user.id}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Created</p>
-                  <p className="text-sm bg-muted px-2 py-1.5 rounded">
-                    {formatDate(user.created_at)}
-                  </p>
-                </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">User ID</p>
+                <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
+                  {user?.id.slice(0, 8)}...
+                </code>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit_client_user_id">Client User ID</Label>
-                <Input
-                  id="edit_client_user_id"
-                  value={editFormData.client_user_id || ''}
-                  onChange={(e) =>
-                    setEditFormData({
-                      ...editFormData,
-                      client_user_id: e.target.value,
-                    })
-                  }
-                  maxLength={255}
-                />
-                {formErrors.client_user_id && (
-                  <p className="text-sm text-destructive">
-                    {formErrors.client_user_id}
-                  </p>
-                )}
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Client User ID</p>
+                <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
+                  {user?.client_user_id}
+                </code>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_first_name">First Name</Label>
-                  <Input
-                    id="edit_first_name"
-                    value={editFormData.first_name || ''}
-                    onChange={(e) =>
-                      setEditFormData({
-                        ...editFormData,
-                        first_name: e.target.value,
-                      })
-                    }
-                    maxLength={100}
-                  />
-                  {formErrors.first_name && (
-                    <p className="text-sm text-destructive">
-                      {formErrors.first_name}
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_last_name">Last Name</Label>
-                  <Input
-                    id="edit_last_name"
-                    value={editFormData.last_name || ''}
-                    onChange={(e) =>
-                      setEditFormData({
-                        ...editFormData,
-                        last_name: e.target.value,
-                      })
-                    }
-                    maxLength={100}
-                  />
-                  {formErrors.last_name && (
-                    <p className="text-sm text-destructive">
-                      {formErrors.last_name}
-                    </p>
-                  )}
-                </div>
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Email</p>
+                <p className="text-sm text-zinc-300">{user?.email || '—'}</p>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="edit_email">Email</Label>
-                <Input
-                  id="edit_email"
-                  type="email"
-                  value={editFormData.email || ''}
-                  onChange={(e) =>
-                    setEditFormData({
-                      ...editFormData,
-                      email: e.target.value,
-                    })
-                  }
-                />
-                {formErrors.email && (
-                  <p className="text-sm text-destructive">{formErrors.email}</p>
-                )}
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Created</p>
+                <p className="text-sm text-zinc-300">
+                  {formatDate(user?.created_at ?? null)}
+                </p>
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Connected Devices</CardTitle>
-          <CardDescription>
+      {/* Connected Devices */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">Connected Devices</h2>
+          <p className="text-xs text-zinc-500 mt-1">
             Wearable devices and health platforms connected to this user
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-6">
           {connectionsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
             <div className="space-y-4">
-              {connections && connections.length > 0 ? (
-                connections.map((connection) => (
-                  <div
-                    key={connection.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="font-semibold">
-                          {connection.providerName}
-                        </h3>
-                        <Badge
-                          variant={
-                            connection.status === 'active'
-                              ? 'default'
-                              : connection.status === 'error'
-                                ? 'destructive'
-                                : 'secondary'
-                          }
-                        >
-                          {connection.status}
-                        </Badge>
-                        <Badge
-                          variant={
-                            connection.syncStatus === 'success'
-                              ? 'default'
-                              : connection.syncStatus === 'failed'
-                                ? 'destructive'
-                                : 'secondary'
-                          }
-                        >
-                          {connection.syncStatus}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 text-sm text-muted-foreground space-y-1">
-                        <p>Connected: {formatDate(connection.connectedAt)}</p>
-                        <p>Last Sync: {formatDate(connection.lastSyncAt)}</p>
-                        <p>
-                          Data Points: {connection.dataPoints.toLocaleString()}
-                        </p>
-                        {connection.syncError && (
-                          <p className="text-destructive">
-                            Error: {connection.syncError}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          handleDisconnect(
-                            connection.id,
-                            connection.providerName
-                          )
-                        }
-                        disabled={disconnectMutation.isPending}
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="p-4 border border-zinc-800 rounded-lg space-y-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-6 w-24 bg-zinc-800 rounded animate-pulse" />
+                    <div className="h-5 w-16 bg-zinc-800/50 rounded animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 w-40 bg-zinc-800/50 rounded animate-pulse" />
+                    <div className="h-4 w-36 bg-zinc-800/50 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : connections && connections.length > 0 ? (
+            <div className="space-y-4">
+              {connections.map((connection) => (
+                <div
+                  key={connection.id}
+                  className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-medium text-white">
+                        {connection.providerName}
+                      </h3>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          connection.status === 'active'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : connection.status === 'error'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-zinc-700 text-zinc-400'
+                        }`}
                       >
-                        Disconnect
-                      </Button>
+                        {connection.status}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          connection.syncStatus === 'success'
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : connection.syncStatus === 'failed'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-zinc-700 text-zinc-400'
+                        }`}
+                      >
+                        {connection.syncStatus}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-xs text-zinc-500 space-y-1">
+                      <p>Connected: {formatDate(connection.connectedAt)}</p>
+                      <p>Last Sync: {formatDate(connection.lastSyncAt)}</p>
+                      <p>Data Points: {connection.dataPoints.toLocaleString()}</p>
+                      {connection.syncError && (
+                        <p className="text-red-400">
+                          Error: {connection.syncError}
+                        </p>
+                      )}
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <p>No devices connected yet</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => handleGenerateLink('garmin')}
-                    disabled={generateLinkMutation.isPending}
+                  <button
+                    onClick={() =>
+                      handleDisconnect(connection.id, connection.providerName)
+                    }
+                    disabled={disconnectMutation.isPending}
+                    className="px-3 py-1.5 text-xs text-zinc-400 border border-zinc-700 rounded-md hover:text-white hover:border-zinc-600 transition-colors disabled:opacity-50"
                   >
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Generate Connection Link
-                  </Button>
+                    Disconnect
+                  </button>
                 </div>
-              )}
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-zinc-500 mb-4">No devices connected yet</p>
+              <button
+                onClick={() => handleGenerateLink('garmin')}
+                disabled={generateLinkMutation.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors disabled:opacity-50"
+              >
+                <LinkIcon className="h-4 w-4" />
+                Generate Connection Link
+              </button>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {!connectionsLoading && connections && connections.length > 0 && (
-        <>
-          <HeartRateChart
-            data={heartRateData ?? emptyHeartRateData}
-            isLoading={heartRateLoading}
-          />
-          <WorkoutsTable
-            data={workoutsData ?? emptyWorkoutsData}
-            isLoading={workoutsLoading}
-          />
-          <RecordsTable
-            data={recordsData ?? emptyRecordsData}
-            isLoading={recordsLoading}
-          />
-        </>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>AI Health Assistant</CardTitle>
-          <CardDescription>
-            Chat interface will be implemented in Phase 3
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="h-64 flex items-center justify-center text-muted-foreground">
-          <p>AI-powered health insights coming soon...</p>
-        </CardContent>
-      </Card>
-
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete User?</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. This will permanently delete the
-              user and all associated data including:
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-              <li>All wearable device connections</li>
-              <li>All health data (heart rate, sleep, activity)</li>
-              <li>All automation triggers for this user</li>
-            </ul>
-            <div className="mt-4 p-3 bg-muted rounded-md">
-              <p className="text-sm text-muted-foreground">User ID:</p>
-              <code className="font-mono text-sm">{userId}</code>
-            </div>
+      {/* Health Stats */}
+      <div className="grid md:grid-cols-3 gap-6">
+        {/* Heart Rate */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-white">Heart Rate</h3>
+            <Heart className="h-4 w-4 text-zinc-500" />
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleteUserMutation.isPending}
-            >
-              {deleteUserMutation.isPending ? 'Deleting...' : 'Delete User'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="p-6">
+            {healthLoading ? (
+              <div className="space-y-3">
+                <div className="h-8 w-24 bg-zinc-800 rounded animate-pulse" />
+                <div className="h-4 w-32 bg-zinc-800/50 rounded animate-pulse" />
+              </div>
+            ) : healthSummary ? (
+              <>
+                <div className="text-3xl font-medium text-white">
+                  {healthSummary.heartRate.average}{' '}
+                  <span className="text-lg text-zinc-500">bpm</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Range: {healthSummary.heartRate.min} -{' '}
+                  {healthSummary.heartRate.max} bpm
+                </p>
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <p className="text-xs text-zinc-500">
+                    {healthSummary.heartRate.data.length} readings (7 days)
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">No data available</p>
+            )}
+          </div>
+        </div>
+
+        {/* Sleep */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-white">Sleep</h3>
+            <Moon className="h-4 w-4 text-zinc-500" />
+          </div>
+          <div className="p-6">
+            {healthLoading ? (
+              <div className="space-y-3">
+                <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
+                <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
+              </div>
+            ) : healthSummary ? (
+              <>
+                <div className="text-3xl font-medium text-white">
+                  {formatMinutes(healthSummary.sleep.averageMinutes)}
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Efficiency: {healthSummary.sleep.averageEfficiency}%
+                </p>
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <p className="text-xs text-zinc-500">
+                    {healthSummary.sleep.data.length} nights recorded
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">No data available</p>
+            )}
+          </div>
+        </div>
+
+        {/* Activity */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-white">Activity</h3>
+            <Activity className="h-4 w-4 text-zinc-500" />
+          </div>
+          <div className="p-6">
+            {healthLoading ? (
+              <div className="space-y-3">
+                <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
+                <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
+              </div>
+            ) : healthSummary ? (
+              <>
+                <div className="text-3xl font-medium text-white">
+                  {healthSummary.activity.averageSteps.toLocaleString()}
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">Average daily steps</p>
+                <div className="mt-4 pt-4 border-t border-zinc-800">
+                  <p className="text-xs text-zinc-500">
+                    {healthSummary.activity.totalActiveMinutes} active minutes (7
+                    days)
+                  </p>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">No data available</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Health Data Visualizations */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">
+            Health Data Visualizations
+          </h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Charts will be implemented in Phase 3 with Recharts
+          </p>
+        </div>
+        <div className="h-64 flex items-center justify-center text-zinc-500">
+          <p className="text-sm">
+            Heart Rate, Sleep, and Activity charts coming soon...
+          </p>
+        </div>
+      </div>
+
+      {/* AI Health Assistant */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">AI Health Assistant</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Chat interface will be implemented in Phase 3
+          </p>
+        </div>
+        <div className="h-64 flex items-center justify-center text-zinc-500">
+          <p className="text-sm">AI-powered health insights coming soon...</p>
+        </div>
+      </div>
     </div>
   );
 }

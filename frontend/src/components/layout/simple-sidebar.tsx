@@ -8,8 +8,6 @@ import {
   DollarSign,
   LogOut,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -52,18 +50,24 @@ export function SimpleSidebar() {
   const { logout, isLoggingOut } = useAuth();
 
   return (
-    <aside className="w-64 border-r border-border bg-card flex flex-col">
-      <div className="border-b border-border p-4">
-        <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" />
+    <aside className="relative w-64 bg-black flex flex-col border-r border-zinc-900">
+      {/* Header */}
+      <div className="p-4 border-b border-zinc-900">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+            <Activity className="h-5 w-5 text-black" />
+          </div>
           <div>
-            <h2 className="text-lg font-semibold">Open Wearables</h2>
-            <p className="text-xs text-muted-foreground">Platform Dashboard</p>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-tight">
+              Open Wearables
+            </h2>
+            <p className="text-[10px] text-zinc-500">Platform Dashboard</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      {/* Navigation */}
+      <nav className="flex-1 p-3 space-y-1">
         {menuItems.map((item) => {
           const isActive = location.pathname.startsWith(item.url);
 
@@ -71,11 +75,11 @@ export function SimpleSidebar() {
             return (
               <div
                 key={item.title}
-                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground opacity-50 cursor-not-allowed"
+                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-zinc-600 cursor-not-allowed"
               >
                 <item.icon className="h-4 w-4" />
                 <span>{item.title}</span>
-                <span className="ml-auto text-xs">(Soon)</span>
+                <span className="ml-auto text-[10px] text-zinc-700">(Soon)</span>
               </div>
             );
           }
@@ -85,31 +89,37 @@ export function SimpleSidebar() {
               key={item.title}
               to={item.url}
               className={cn(
-                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all duration-200',
                 isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'bg-zinc-900 text-white border-l-2 border-white -ml-[2px] pl-[calc(0.75rem+2px)]'
+                  : 'text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200'
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon
+                className={cn(
+                  'h-4 w-4 transition-colors',
+                  isActive ? 'text-white' : 'text-zinc-500'
+                )}
+              />
               <span>{item.title}</span>
             </Link>
           );
         })}
       </nav>
 
-      <Separator />
+      {/* Divider */}
+      <div className="mx-3 border-t border-zinc-900" />
 
-      <div className="p-4">
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
+      {/* Footer */}
+      <div className="p-3">
+        <button
           onClick={() => logout()}
           disabled={isLoggingOut}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-zinc-400 hover:bg-zinc-900/50 hover:text-red-400 transition-colors disabled:opacity-50"
         >
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="h-4 w-4" />
           {isLoggingOut ? 'Logging out...' : 'Logout'}
-        </Button>
+        </button>
       </div>
     </aside>
   );

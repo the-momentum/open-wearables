@@ -5,8 +5,6 @@ import { isAuthenticated } from '@/lib/auth/session';
 export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
   beforeLoad: () => {
-    // Skip auth check on server-side rendering
-    // Only check authentication in the browser
     if (typeof window !== 'undefined' && !isAuthenticated()) {
       throw redirect({ to: '/login' });
     }
@@ -15,9 +13,9 @@ export const Route = createFileRoute('/_authenticated')({
 
 function AuthenticatedLayout() {
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex min-h-screen w-full bg-black">
       <SimpleSidebar />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto bg-zinc-950 border-l border-zinc-800/50">
         <Outlet />
       </main>
     </div>

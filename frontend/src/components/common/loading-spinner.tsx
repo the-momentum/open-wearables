@@ -17,7 +17,13 @@ export function LoadingSpinner({
   };
 
   return (
-    <Loader2 className={cn('animate-spin', sizeClasses[size], className)} />
+    <Loader2
+      className={cn(
+        'animate-spin text-primary drop-shadow-[0_0_8px_hsla(185,100%,60%,0.6)]',
+        sizeClasses[size],
+        className
+      )}
+    />
   );
 }
 
@@ -34,7 +40,10 @@ export function LoadingState({
     <div
       className={cn('flex flex-col items-center justify-center p-8', className)}
     >
-      <LoadingSpinner size="lg" />
+      <div className="relative">
+        <LoadingSpinner size="lg" />
+        <div className="absolute inset-0 animate-pulse-glow rounded-full bg-primary/20 blur-xl" />
+      </div>
       <p className="mt-4 text-sm text-muted-foreground">{message}</p>
     </div>
   );

@@ -7,35 +7,8 @@ import {
   Power,
   PowerOff,
   Sparkles,
+  Zap,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import {
   useAutomations,
   useCreateAutomation,
@@ -45,8 +18,6 @@ import {
   useAutomationTriggers,
   useImproveDescription,
 } from '@/hooks/api/use-automations';
-import { LoadingState } from '@/components/common/loading-spinner';
-import { ErrorState } from '@/components/common/error-state';
 import type { AutomationCreate } from '@/lib/api/types';
 import { toast } from 'sonner';
 
@@ -67,7 +38,7 @@ function HealthInsightsPage() {
     isEnabled: true,
   });
 
-  const { data: automations, isLoading, error } = useAutomations();
+  const { data: automations, isLoading, error, refetch } = useAutomations();
   const createMutation = useCreateAutomation();
   const deleteMutation = useDeleteAutomation();
   const toggleMutation = useToggleAutomation();
@@ -129,259 +100,365 @@ function HealthInsightsPage() {
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading automations..." />;
-  }
-
-  if (error) {
-    return <ErrorState message="Failed to load automations" />;
-  }
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Health Insights Automations</h1>
-          <p className="text-muted-foreground mt-1">
+    return (
+      <div className="p-8">
+        <div className="mb-6">
+          <h1 className="text-2xl font-medium text-white">
+            Health Insights Automations
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">
             Automate webhooks based on health data patterns
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-zinc-800 rounded-md w-full" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-16 bg-zinc-800/50 rounded-md" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+          <p className="text-zinc-400 mb-4">Failed to load automations</p>
+          <button
+            onClick={() => refetch()}
+            className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-medium text-white">
+            Health Insights Automations
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Automate webhooks based on health data patterns
+          </p>
+        </div>
+        <button
+          onClick={() => setIsCreateDialogOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
           Create Automation
-        </Button>
+        </button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Active Automations</CardTitle>
-          <CardDescription>
+      {/* Automations Table */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">Active Automations</h2>
+          <p className="text-xs text-zinc-500 mt-1">
             Manage your health data automations and webhooks
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Triggers</TableHead>
-                <TableHead>Last Triggered</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {automations && automations.length > 0 ? (
-                automations.map((automation) => (
-                  <TableRow key={automation.id}>
-                    <TableCell className="font-medium">
+          </p>
+        </div>
+
+        {automations && automations.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left">
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Triggers
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                    Last Triggered
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider text-right">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50">
+                {automations.map((automation) => (
+                  <tr
+                    key={automation.id}
+                    className="hover:bg-zinc-800/30 transition-colors"
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-zinc-300">
                       {automation.name}
-                    </TableCell>
-                    <TableCell className="max-w-md truncate">
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-400 max-w-md truncate">
                       {automation.description}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={automation.isEnabled ? 'default' : 'secondary'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          automation.isEnabled
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-zinc-700 text-zinc-400'
+                        }`}
                       >
                         {automation.isEnabled ? 'Enabled' : 'Disabled'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{automation.triggerCount}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-zinc-400">
+                      {automation.triggerCount}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-zinc-500">
                       {formatDate(automation.lastTriggered)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-1">
+                        <button
                           onClick={() =>
                             handleToggle(automation.id, automation.isEnabled)
                           }
                           disabled={toggleMutation.isPending}
+                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
                         >
                           {automation.isEnabled ? (
                             <PowerOff className="h-4 w-4" />
                           ) : (
                             <Power className="h-4 w-4" />
                           )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        </button>
+                        <button
                           onClick={() => handleTest(automation.id)}
                           disabled={testMutation.isPending}
+                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
                         >
                           <PlayCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
+                        </button>
+                        <button
                           onClick={() => handleDelete(automation.id)}
                           disabled={deleteMutation.isPending}
+                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No automations yet. Create your first automation to get
-                    started.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-12 text-center">
+            <Zap className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
+            <p className="text-zinc-400 mb-2">No automations yet</p>
+            <p className="text-sm text-zinc-500 mb-4">
+              Create your first automation to get started
+            </p>
+            <button
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Create Automation
+            </button>
+          </div>
+        )}
+      </div>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Create New Automation</DialogTitle>
-            <DialogDescription>
-              Set up a webhook automation based on health data patterns
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Automation Name</Label>
-              <Input
-                id="name"
-                placeholder="e.g., High Heart Rate Alert"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, name: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="description">Description</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleImproveDescription}
-                  disabled={improveMutation.isPending || !formData.description}
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  {improveMutation.isPending
-                    ? 'Improving...'
-                    : 'Improve with AI'}
-                </Button>
-              </div>
-              <Textarea
-                id="description"
-                placeholder="Describe when this automation should trigger..."
-                rows={4}
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    description: e.target.value,
-                  }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Describe the conditions that should trigger this webhook
+      {/* Create Dialog */}
+      {isCreateDialogOpen && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-2xl shadow-2xl">
+            <div className="p-6 border-b border-zinc-800">
+              <h2 className="text-lg font-medium text-white">
+                Create New Automation
+              </h2>
+              <p className="text-sm text-zinc-500 mt-1">
+                Set up a webhook automation based on health data patterns
               </p>
             </div>
+            <div className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-300">
+                  Automation Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., High Heart Rate Alert"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="webhookUrl">Webhook URL</Label>
-              <Input
-                id="webhookUrl"
-                type="url"
-                placeholder="https://api.example.com/webhooks/health-alert"
-                value={formData.webhookUrl}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    webhookUrl: e.target.value,
-                  }))
-                }
-              />
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-medium text-zinc-300">
+                    Description
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleImproveDescription}
+                    disabled={improveMutation.isPending || !formData.description}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 border border-zinc-700 rounded-md hover:text-white hover:border-zinc-600 transition-colors disabled:opacity-50"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {improveMutation.isPending ? 'Improving...' : 'Improve with AI'}
+                  </button>
+                </div>
+                <textarea
+                  placeholder="Describe when this automation should trigger..."
+                  rows={4}
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all resize-none"
+                />
+                <p className="text-[10px] text-zinc-600">
+                  Describe the conditions that should trigger this webhook
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-300">
+                  Webhook URL
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://api.example.com/webhooks/health-alert"
+                  value={formData.webhookUrl}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      webhookUrl: e.target.value,
+                    }))
+                  }
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
+              <button
+                onClick={() => setIsCreateDialogOpen(false)}
+                disabled={createMutation.isPending}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={createMutation.isPending}
+                className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
+              >
+                {createMutation.isPending ? 'Creating...' : 'Create Automation'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateDialogOpen(false)}
-              disabled={createMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Automation'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showTriggers} onOpenChange={setShowTriggers}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Test Results & Trigger History</DialogTitle>
-            <DialogDescription>
-              Recent triggers for this automation (last 24 hours simulation)
-            </DialogDescription>
-          </DialogHeader>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Triggered At</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {triggers && triggers.length > 0 ? (
-                triggers.map((trigger) => (
-                  <TableRow key={trigger.id}>
-                    <TableCell>{trigger.userName}</TableCell>
-                    <TableCell>{trigger.userEmail}</TableCell>
-                    <TableCell>{formatDate(trigger.triggeredAt)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          trigger.webhookStatus === 'success'
-                            ? 'default'
-                            : 'destructive'
-                        }
+      {/* Triggers Dialog */}
+      {showTriggers && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-4xl max-h-[80vh] overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-zinc-800">
+              <h2 className="text-lg font-medium text-white">
+                Test Results & Trigger History
+              </h2>
+              <p className="text-sm text-zinc-500 mt-1">
+                Recent triggers for this automation (last 24 hours simulation)
+              </p>
+            </div>
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 bg-zinc-900">
+                  <tr className="border-b border-zinc-800 text-left">
+                    <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      User
+                    </th>
+                    <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Email
+                    </th>
+                    <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Triggered At
+                    </th>
+                    <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/50">
+                  {triggers && triggers.length > 0 ? (
+                    triggers.map((trigger) => (
+                      <tr
+                        key={trigger.id}
+                        className="hover:bg-zinc-800/30 transition-colors"
                       >
-                        {trigger.webhookStatus}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No triggers found in the test period
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </DialogContent>
-      </Dialog>
+                        <td className="px-6 py-4 text-sm text-zinc-300">
+                          {trigger.userName}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-zinc-400">
+                          {trigger.userEmail}
+                        </td>
+                        <td className="px-6 py-4 text-xs text-zinc-500">
+                          {formatDate(trigger.triggeredAt)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded-full ${
+                              trigger.webhookStatus === 'success'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {trigger.webhookStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-6 py-12 text-center text-zinc-500"
+                      >
+                        No triggers found in the test period
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-6 border-t border-zinc-800 flex justify-end">
+              <button
+                onClick={() => setShowTriggers(false)}
+                className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
