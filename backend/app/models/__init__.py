@@ -10,7 +10,6 @@ from .user_connection import UserConnection
 from .workout import Workout
 from .workout_statistic import WorkoutStatistic
 
-
 __all__ = [
     "ActiveEnergy",
     "ApiKey",

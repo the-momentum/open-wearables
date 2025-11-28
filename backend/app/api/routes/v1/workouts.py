@@ -1,9 +1,10 @@
 from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from app.database import DbSession
 from app.schemas import HKWorkoutListResponse, HKWorkoutQueryParams
-from app.services import hk_workout_service, ApiKeyDep
+from app.services import ApiKeyDep, hk_workout_service
 
 router = APIRouter()
 

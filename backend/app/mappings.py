@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, TypeVar, NewType
+from typing import Annotated, NewType, TypeVar
 from uuid import UUID
 
 from pydantic import EmailStr
@@ -28,9 +28,9 @@ email = Annotated[EmailStr, mapped_column(String)]
 
 str_10 = Annotated[str, mapped_column(String(10))]
 str_50 = Annotated[str, mapped_column(String(50))]
-str_64 = NewType("str_64", int)  # it's mapped in database.py, because it didn't work with PrimaryKey
+str_64 = NewType("str_64", str)  # it's mapped in database.py, because it didn't work with PrimaryKey
 str_100 = Annotated[str, mapped_column(String(100))]
-str_255 = Annotated[str, mapped_column(String(255))]
+str_255 = NewType("str_255", str)  # it's mapped in database.py, because it didn't work with Unique
 
 numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]

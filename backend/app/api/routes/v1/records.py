@@ -4,13 +4,12 @@ from fastapi import APIRouter, Depends
 
 from app.database import DbSession
 from app.schemas import HKRecordListResponse, HKRecordQueryParams
-
-from app.services import hk_record_service, ApiKeyDep
+from app.services import ApiKeyDep, hk_record_service
 
 router = APIRouter()
 
 
-@router.get("/users/{user_id}/records", response_model=HKRecordListResponse)
+@router.get("/users/{user_id}/records")
 async def get_records_endpoint(
     user_id: str,
     db: DbSession,

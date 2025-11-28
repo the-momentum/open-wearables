@@ -4,7 +4,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 class FilterParams(BaseModel):
     """Generic filter parameters for database queries."""
-    
+
     page: int = Field(1, ge=1, description="Page number (1-based)")
     limit: int = Field(20, ge=1, le=100, description="Number of results per page")
     sort_by: str | None = Field(None, description="Field to sort by")

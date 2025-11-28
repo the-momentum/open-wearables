@@ -1,12 +1,13 @@
 from uuid import UUID
+
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import (
-    PrimaryKey,
     FKUser,
     ManyToOne,
     OneToMany,
+    PrimaryKey,
     datetime_tz,
     numeric_15_5,
     str_10,

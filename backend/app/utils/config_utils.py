@@ -61,7 +61,7 @@ class FernetDecryptorField(str):
         yield cls.validate
 
     @classmethod
-    def validate(cls, value: str, _: ValidationInfo) -> Decryptor:
+    def validate(cls, value: str, _: ValidationInfo) -> Fernet | FakeFernet:
         master_key = os.environ.get(value)
         if not master_key:
             return FakeFernet()

@@ -12,22 +12,15 @@ class BaseHeartRateRepository[HeartRateModel: BaseDbModel]:
     def __init__(self, model: type[HeartRateModel]):
         self.model = model
 
-    def _apply_common_filters(
-        self, 
-        query: Query, 
-        query_params: AEHeartRateQueryParams, 
-        user_id: str
-    ) -> Query:
+    def _apply_common_filters(self, query: Query, query_params: AEHeartRateQueryParams, user_id: str) -> Query:
         filters = []
-        
+
         # User ID filter (always required)
         filters.append(self.model.user_id == user_id)
 
         # Date range filters
         if query_params.start_date:
-            start_dt = datetime.fromisoformat(
-                query_params.start_date.replace("Z", "+00:00")
-            )
+            start_dt = datetime.fromisoformat(query_params.start_date.replace("Z", "+00:00"))
             filters.append(self.model.date >= start_dt)
 
         if query_params.end_date:
@@ -67,38 +60,30 @@ class BaseHeartRateRepository[HeartRateModel: BaseDbModel]:
 
         return query
 
-    def _apply_sorting_and_pagination(
-        self, 
-        query: Query, 
-        query_params: AEHeartRateQueryParams
-    ) -> Query:
+    def _apply_sorting_and_pagination(self, query: Query, query_params: AEHeartRateQueryParams) -> Query:
         """
         Apply sorting and pagination to query.
-        
+
         Args:
             query: SQLAlchemy query object
             query_params: Query parameters for sorting and pagination
-            
+
         Returns:
             Query with sorting and pagination applied
         """
         # Apply sorting
-        sort_column = getattr(self.model, query_params.sort_by, self.model.date)
-        if query_params.sort_order == "asc":
-            query = query.order_by(sort_column)
-        else:
-            query = query.order_by(desc(sort_column))
+        sort_column = getattr(self.model, query_params.sort_by, self.model.date)  # type: ignore[no-matching-overload]
+
+        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
 
         # Apply pagination
-        query = query.offset(query_params.offset).limit(query_params.limit)
-
-        return query
+        return query.offset(query_params.offset).limit(query_params.limit)
 
     def get_heart_rate_with_filters(
-        self, 
-        db_session: DbSession, 
+        self,
+        db_session: DbSession,
         query_params: AEHeartRateQueryParams,
-        user_id: str
+        user_id: str,
     ) -> tuple[list[HeartRateModel], int]:
         query: Query = db_session.query(self.model)
 
