@@ -21,14 +21,25 @@ export interface ApiResponse<T> {
 export interface UserRead {
   id: string;
   created_at: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  client_user_id: string;
 }
 
 export interface UserCreate {
-  id?: string;
-  created_at?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  client_user_id: string;
 }
 
-export interface UserUpdate {}
+export interface UserUpdate {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  client_user_id?: string | null;
+}
 
 export interface LoginRequest {
   email: string;

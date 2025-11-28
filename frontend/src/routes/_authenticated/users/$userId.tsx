@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   RefreshCw,
@@ -7,8 +7,13 @@ import {
   Trash2,
   Copy,
   Check,
+  Pencil,
+  X,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
@@ -34,7 +39,7 @@ import {
   useUserWorkouts,
   useUserRecords,
 } from '@/hooks/api/use-health';
-import { useUser, useDeleteUser } from '@/hooks/api/use-users';
+import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { LoadingState } from '@/components/common/loading-spinner';
 import { ErrorState } from '@/components/common/error-state';
 import {
@@ -47,6 +52,7 @@ import type {
   HeartRateListResponse,
   WorkoutListResponse,
   RecordListResponse,
+  UserUpdate,
 } from '@/lib/api/types';
 
 const emptyHeartRateData: HeartRateListResponse = {
@@ -95,6 +101,9 @@ function UserDetailPage() {
   const navigate = useNavigate();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState<UserUpdate>({});
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const {
     data: user,
@@ -119,12 +128,85 @@ function UserDetailPage() {
   const syncMutation = useSyncUserData();
   const disconnectMutation = useDisconnectProvider();
   const deleteUserMutation = useDeleteUser();
+  const updateUserMutation = useUpdateUser();
+
+  // Initialize edit form when user data loads or when entering edit mode
+  useEffect(() => {
+    if (user && isEditing) {
+      setEditFormData({
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        client_user_id: user.client_user_id,
+      });
+    }
+  }, [user, isEditing]);
 
   const handleCopyId = async () => {
     await navigator.clipboard.writeText(userId);
     setCopiedId(true);
     toast.success('User ID copied to clipboard');
     setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const validateEditForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (
+      editFormData.client_user_id !== undefined &&
+      editFormData.client_user_id !== null
+    ) {
+      if (!editFormData.client_user_id.trim()) {
+        errors.client_user_id = 'Client User ID cannot be empty';
+      } else if (editFormData.client_user_id.length > 255) {
+        errors.client_user_id = 'Client User ID must be 255 characters or less';
+      }
+    }
+
+    if (editFormData.first_name && editFormData.first_name.length > 100) {
+      errors.first_name = 'First name must be 100 characters or less';
+    }
+
+    if (editFormData.last_name && editFormData.last_name.length > 100) {
+      errors.last_name = 'Last name must be 100 characters or less';
+    }
+
+    if (
+      editFormData.email &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email)
+    ) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSaveEdit = () => {
+    if (!validateEditForm()) return;
+
+    const payload: UserUpdate = {
+      first_name: editFormData.first_name?.trim() || null,
+      last_name: editFormData.last_name?.trim() || null,
+      email: editFormData.email?.trim() || null,
+      client_user_id: editFormData.client_user_id?.trim() || null,
+    };
+
+    updateUserMutation.mutate(
+      { id: userId, data: payload },
+      {
+        onSuccess: () => {
+          setIsEditing(false);
+          setFormErrors({});
+        },
+      }
+    );
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditFormData({});
+    setFormErrors({});
   };
 
   const handleGenerateLink = async (providerId: string) => {
@@ -225,20 +307,173 @@ function UserDetailPage() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle>User Information</CardTitle>
+          {!isEditing ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsEditing(true)}
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelEdit}
+                disabled={updateUserMutation.isPending}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveEdit}
+                disabled={updateUserMutation.isPending}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                {updateUserMutation.isPending ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          )}
         </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">User ID</p>
-              <p className="font-mono text-sm">{user.id}</p>
+        <CardContent className="space-y-4">
+          {!isEditing ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">User ID</p>
+                <p className="font-mono text-sm">{user.id}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Client User ID</p>
+                <p className="font-mono text-sm">{user.client_user_id}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">First Name</p>
+                <p className="text-sm">
+                  {user.first_name || (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Last Name</p>
+                <p className="text-sm">
+                  {user.last_name || (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Email</p>
+                <p className="text-sm">
+                  {user.email || (
+                    <span className="text-muted-foreground">Not set</span>
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Created</p>
+                <p className="text-sm">{formatDate(user.created_at)}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Created</p>
-              <p className="text-sm">{formatDate(user.created_at)}</p>
+          ) : (
+            <div className="grid gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">User ID</p>
+                  <p className="font-mono text-sm bg-muted px-2 py-1.5 rounded">
+                    {user.id}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Created</p>
+                  <p className="text-sm bg-muted px-2 py-1.5 rounded">
+                    {formatDate(user.created_at)}
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit_client_user_id">Client User ID</Label>
+                <Input
+                  id="edit_client_user_id"
+                  value={editFormData.client_user_id || ''}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      client_user_id: e.target.value,
+                    })
+                  }
+                  maxLength={255}
+                />
+                {formErrors.client_user_id && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.client_user_id}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_first_name">First Name</Label>
+                  <Input
+                    id="edit_first_name"
+                    value={editFormData.first_name || ''}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        first_name: e.target.value,
+                      })
+                    }
+                    maxLength={100}
+                  />
+                  {formErrors.first_name && (
+                    <p className="text-sm text-destructive">
+                      {formErrors.first_name}
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_last_name">Last Name</Label>
+                  <Input
+                    id="edit_last_name"
+                    value={editFormData.last_name || ''}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        last_name: e.target.value,
+                      })
+                    }
+                    maxLength={100}
+                  />
+                  {formErrors.last_name && (
+                    <p className="text-sm text-destructive">
+                      {formErrors.last_name}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit_email">Email</Label>
+                <Input
+                  id="edit_email"
+                  type="email"
+                  value={editFormData.email || ''}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      email: e.target.value,
+                    })
+                  }
+                />
+                {formErrors.email && (
+                  <p className="text-sm text-destructive">{formErrors.email}</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -340,7 +575,7 @@ function UserDetailPage() {
         </CardContent>
       </Card>
 
-      {!connectionsLoading && (
+      {!connectionsLoading && connections && connections.length > 0 && (
         <>
           <HeartRateChart
             data={heartRateData ?? emptyHeartRateData}

@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
@@ -25,6 +26,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Search, Eye, Trash2, Plus, Copy, Check } from 'lucide-react';
 import { useUsers, useDeleteUser, useCreateUser } from '@/hooks/api/use-users';
 import { TableSkeleton } from '@/components/common/table-skeleton';
@@ -32,6 +40,16 @@ import { ErrorState } from '@/components/common/error-state';
 import { EmptyState } from '@/components/common/empty-state';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import type { UserCreate } from '@/lib/api/types';
+
+type SearchField = 'all' | 'id' | 'email' | 'name' | 'client_user_id';
+
+const initialFormState: UserCreate = {
+  client_user_id: '',
+  first_name: '',
+  last_name: '',
+  email: '',
+};
 
 export const Route = createFileRoute('/_authenticated/users/')({
   component: UsersPage,
@@ -39,9 +57,12 @@ export const Route = createFileRoute('/_authenticated/users/')({
 
 function UsersPage() {
   const [search, setSearch] = useState('');
+  const [searchField, setSearchField] = useState<SearchField>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<UserCreate>(initialFormState);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const { data: users, isLoading, error, refetch } = useUsers({ search });
   const deleteUser = useDeleteUser();
@@ -52,8 +73,29 @@ function UsersPage() {
     if (!search) return users;
 
     const searchLower = search.toLowerCase();
-    return users.filter((user) => user.id.toLowerCase().includes(searchLower));
-  }, [users, search]);
+    return users.filter((user) => {
+      const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+
+      switch (searchField) {
+        case 'id':
+          return user.id.toLowerCase().includes(searchLower);
+        case 'email':
+          return user.email?.toLowerCase().includes(searchLower);
+        case 'name':
+          return fullName.includes(searchLower);
+        case 'client_user_id':
+          return user.client_user_id.toLowerCase().includes(searchLower);
+        case 'all':
+        default:
+          return (
+            user.id.toLowerCase().includes(searchLower) ||
+            user.email?.toLowerCase().includes(searchLower) ||
+            fullName.includes(searchLower) ||
+            user.client_user_id.toLowerCase().includes(searchLower)
+          );
+      }
+    });
+  }, [users, search, searchField]);
 
   const handleCopyId = async (id: string) => {
     await navigator.clipboard.writeText(id);
@@ -62,15 +104,54 @@ function UsersPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!formData.client_user_id.trim()) {
+      errors.client_user_id = 'Client User ID is required';
+    } else if (formData.client_user_id.length > 255) {
+      errors.client_user_id = 'Client User ID must be 255 characters or less';
+    }
+
+    if (formData.first_name && formData.first_name.length > 100) {
+      errors.first_name = 'First name must be 100 characters or less';
+    }
+
+    if (formData.last_name && formData.last_name.length > 100) {
+      errors.last_name = 'Last name must be 100 characters or less';
+    }
+
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCreateUser = () => {
-    createUser.mutate(
-      {},
-      {
-        onSuccess: () => {
-          setIsCreateDialogOpen(false);
-        },
-      }
-    );
+    if (!validateForm()) return;
+
+    const payload: UserCreate = {
+      client_user_id: formData.client_user_id.trim(),
+      first_name: formData.first_name?.trim() || null,
+      last_name: formData.last_name?.trim() || null,
+      email: formData.email?.trim() || null,
+    };
+
+    createUser.mutate(payload, {
+      onSuccess: () => {
+        setIsCreateDialogOpen(false);
+        setFormData(initialFormState);
+        setFormErrors({});
+      },
+    });
+  };
+
+  const handleCloseCreateDialog = () => {
+    setIsCreateDialogOpen(false);
+    setFormData(initialFormState);
+    setFormErrors({});
   };
 
   const handleDeleteUser = () => {
@@ -136,14 +217,35 @@ function UsersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative mb-4">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by user ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
+          <div className="flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={
+                  searchField === 'all'
+                    ? 'Search users...'
+                    : `Search by ${searchField.replace('_', ' ')}...`
+                }
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <Select
+              value={searchField}
+              onValueChange={(value) => setSearchField(value as SearchField)}
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Search field" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All fields</SelectItem>
+                <SelectItem value="id">User ID</SelectItem>
+                <SelectItem value="client_user_id">Client User ID</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="name">Name</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {filteredUsers.length === 0 ? (
@@ -169,6 +271,9 @@ function UsersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>User ID</TableHead>
+                    <TableHead>Client User ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -194,6 +299,29 @@ function UsersPage() {
                             )}
                           </Button>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="font-mono text-sm bg-muted px-2 py-1 rounded">
+                          {truncateId(user.client_user_id)}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        {user.first_name || user.last_name ? (
+                          <span>
+                            {[user.first_name, user.last_name]
+                              .filter(Boolean)
+                              .join(' ')}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {user.email ? (
+                          <span className="text-sm">{user.email}</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDistanceToNow(new Date(user.created_at), {
@@ -229,30 +357,92 @@ function UsersPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
+      <Dialog open={isCreateDialogOpen} onOpenChange={handleCloseCreateDialog}>
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Create New User</DialogTitle>
             <DialogDescription>
-              A new user ID will be automatically generated. Use this ID to
-              connect wearable devices and collect health data.
+              Create a new user to connect wearable devices and collect health
+              data. A unique system ID will be auto-generated.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-muted-foreground">
-              After creating the user, you can:
-            </p>
-            <ul className="list-disc list-inside text-sm text-muted-foreground mt-2 space-y-1">
-              <li>Generate connection links for wearable devices</li>
-              <li>View health data from connected devices</li>
-              <li>Set up automations based on health metrics</li>
-            </ul>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="client_user_id">
+                Client User ID <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="client_user_id"
+                placeholder="e.g., user_12345 or external system ID"
+                value={formData.client_user_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, client_user_id: e.target.value })
+                }
+                maxLength={255}
+              />
+              {formErrors.client_user_id && (
+                <p className="text-sm text-destructive">
+                  {formErrors.client_user_id}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Your unique identifier for this user (max 255 characters)
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="first_name">First Name</Label>
+                <Input
+                  id="first_name"
+                  placeholder="John"
+                  value={formData.first_name || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, first_name: e.target.value })
+                  }
+                  maxLength={100}
+                />
+                {formErrors.first_name && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.first_name}
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="last_name">Last Name</Label>
+                <Input
+                  id="last_name"
+                  placeholder="Doe"
+                  value={formData.last_name || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, last_name: e.target.value })
+                  }
+                  maxLength={100}
+                />
+                {formErrors.last_name && (
+                  <p className="text-sm text-destructive">
+                    {formErrors.last_name}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="john.doe@example.com"
+                value={formData.email || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+              />
+              {formErrors.email && (
+                <p className="text-sm text-destructive">{formErrors.email}</p>
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCreateDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={handleCloseCreateDialog}>
               Cancel
             </Button>
             <Button onClick={handleCreateUser} disabled={createUser.isPending}>
