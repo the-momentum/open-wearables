@@ -18,3 +18,11 @@ class WorkoutStatisticRepository(CrudRepository[WorkoutStatistic, WorkoutStatist
             .filter(self.model.user_id == user_id, self.model.workout_id == workout_id)
             .all()
         )
+        
+    def get_heart_rate_statistics(self, db_session: DbSession, user_id: str, workout_id: UUID) -> list[WorkoutStatistic]:
+        return (
+            db_session.query(self.model)
+            .filter(self.model.user_id == user_id, self.model.workout_id == workout_id, self.model.type == "heartRate")
+            .all()
+        )
+
