@@ -73,7 +73,21 @@ class WorkoutService(AppService[WorkoutRepository, Workout, WorkoutCreate, Worko
         workout_responses = []
         for workout in workouts:
             statistics = await workout_statistic_service.get_statistics(db_session, user_id, workout.id)
-            statistics = [WorkoutStatisticResponse(**stat.model_dump()) for stat in statistics]
+            statistics = [
+                WorkoutStatisticResponse(
+                    id=stat.id,
+                    user_id=stat.user_id,
+                    workout_id=stat.workout_id,
+                    type=stat.type,
+                    start_datetime=stat.start_datetime,
+                    end_datetime=stat.end_datetime,
+                    min=stat.min,
+                    max=stat.max,
+                    avg=stat.avg,
+                    unit=stat.unit,
+                )
+                for stat in statistics
+            ]
 
             workout_response = WorkoutResponse(
                 id=workout.id,
