@@ -19,6 +19,4 @@ class User(BaseDbModel):
     client_user_id: Mapped[Unique[str_255]]
 
     workouts: Mapped[OneToMany["Workout"]]
-    heart_rate_data: Mapped[OneToMany["HeartRateData"]]
-    heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
-    active_energy: Mapped[OneToMany["ActiveEnergy"]]
+    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]

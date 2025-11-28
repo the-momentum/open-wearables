@@ -3,33 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
-from typing import Any
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
-
-from app.schemas.apple.workout_statistics import WorkoutStatisticIn
-
-
-class WorkoutBase(BaseModel):
-    """Base schema for workout."""
-
-    type: str | None = None
-    startDate: datetime
-    endDate: datetime
-    duration: Decimal
-    durationUnit: str
-    sourceName: str | None = None
-
-
-class WorkoutIn(WorkoutBase):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID | None = None
-    provider_id: UUID | None = None
-    user_id: str | None = None
-    workoutStatistics: list[WorkoutStatisticIn] | None = None
+from pydantic import BaseModel
 
 
 class WorkoutJSON(BaseModel):
@@ -39,8 +14,10 @@ class WorkoutJSON(BaseModel):
     startDate: datetime
     endDate: datetime
     sourceName: str | None = None
-    workoutStatistics: list[WorkoutStatisticIn] | None = None
+    workoutStatistics: list[WorkoutStatisticJSON] | None = None
 
 
-class RootJSON(BaseModel):
-    data: dict[str, Any]
+class WorkoutStatisticJSON(BaseModel):
+    type: str
+    unit: str
+    value: float | int

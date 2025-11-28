@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class MetadataEntryIn(BaseModel):
@@ -26,15 +25,6 @@ class RecordBase(BaseModel):
     unit: str
     value: Decimal
     sourceName: str
-
-
-class RecordIn(RecordBase):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    provider_id: UUID | None = None
-    user_id: str | None = None
-    recordMetadata: list[MetadataEntryIn] | None = None
 
 
 class RecordJSON(BaseModel):

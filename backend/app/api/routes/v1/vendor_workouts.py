@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, Query
 
 from app.database import DbSession
-from app.services import ApiKeyDep
+from app.services import ApiKeyDep, polar_import_service, suunto_import_service
 from app.services.garmin_service import garmin_service
 from app.services.polar_service import polar_service
 from app.services.suunto_service import suunto_service
@@ -104,7 +104,7 @@ async def get_user_workouts(
         raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
 
     if provider == "suunto":
-        return service.get_workouts(
+        raw_workouts = service.get_workouts(
             db=db,
             user_id=user_id,
             since=since,
@@ -112,6 +112,10 @@ async def get_user_workouts(
             offset=offset,
             filter_by_modification_time=filter_by_modification_time,
         )
+
+        # temporary, for testing before services refactor
+        suunto_import_service.load_data(db, raw_workouts, user_id)
+        return raw_workouts
 
     if provider == "polar":
         return service.get_exercises(
@@ -165,7 +169,7 @@ async def get_user_workout_detail(
         )
 
     if provider == "polar":
-        return service.get_exercise_detail(
+        raw_workouts = service.get_exercise_detail(
             db=db,
             user_id=user_id,
             exercise_id=workout_id,
@@ -173,6 +177,8 @@ async def get_user_workout_detail(
             zones=zones,
             route=route,
         )
+        polar_import_service.load_data(db, raw_workouts, user_id)
+        return raw_workouts
 
     # provider == "garmin"
     return service.get_activity_detail(

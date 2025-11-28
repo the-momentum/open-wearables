@@ -31,7 +31,7 @@ async def root() -> dict[str, str]:
 
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(_: Request, exc: RequestValidationError) -> None:
-    raise handle_exception(exc, "")
+    raise handle_exception(exc, err_msg=exc.args[0][0]["msg"])
 
 
 api.include_router(head_router)

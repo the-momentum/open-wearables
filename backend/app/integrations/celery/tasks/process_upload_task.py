@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.services import hk_record_service, hk_workout_service, hk_workout_statistic_service
+from app.services import workout_service, workout_statistic_service
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
 from celery import shared_task
@@ -68,8 +68,8 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
 
     for records, workouts, statistics in xml_service.parse_xml(user_id):
         for record in records:
-            hk_record_service.create(db, record)
+            workout_statistic_service.create(db, record)
         for workout in workouts:
-            hk_workout_service.create(db, workout)
+            workout_service.create(db, workout)
         for stat in statistics:
-            hk_workout_statistic_service.create(db, stat)
+            workout_statistic_service.create(db, stat)

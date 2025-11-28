@@ -9,32 +9,23 @@ from app.mappings import (
     OneToMany,
     PrimaryKey,
     datetime_tz,
-    numeric_10_2,
-    str_10,
+    numeric_10_3,
     str_100,
 )
 
 
 class Workout(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
-    provider_id: Mapped[UUID | None] = None
+    provider_id: Mapped[str_100 | None] = None
     user_id: Mapped[FKUser]
 
     type: Mapped[str_100 | None] = None
-    duration: Mapped[numeric_10_2]
-    durationUnit: Mapped[str_10]
-    sourceName: Mapped[str_100]
+    duration_seconds: Mapped[numeric_10_3]
+    source_name: Mapped[str_100]
 
-    startDate: Mapped[datetime_tz]
-    endDate: Mapped[datetime_tz]
+    start_datetime: Mapped[datetime_tz]
+    end_datetime: Mapped[datetime_tz]
 
     user: Mapped[ManyToOne["User"]]
 
-    # np. active_energy, heart_rate_data
-    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]
-    heart_rate_data: Mapped[OneToMany["HeartRateData"]]
-    heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
-    active_energy: Mapped[OneToMany["ActiveEnergy"]]
-
-    # workout_entries: Mapped[OneToMany["WorkoutEntry"]] ??
-    # workout_routes: Mapped[OneToMany["WorkoutRoute"]] ??
+    statistics: Mapped[OneToMany["WorkoutStatistic"]]

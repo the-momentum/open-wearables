@@ -64,7 +64,7 @@ class PolarService(BaseWorkoutService):
         samples: bool = False,
         zones: bool = False,
         route: bool = False,
-    ) -> dict:
+    ) -> list[dict]:
         """Get exercises from Polar API.
 
         Args:
