@@ -9,8 +9,8 @@ from app.database import DbSession
 from app.models import ApiKey, Developer
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
-from app.services.developer_service import current_active_user_optional
 from app.services.services import AppService
+from app.utils.auth import get_current_developer_optional
 
 
 class ApiKeyService(AppService[ApiKeyRepository, ApiKey, ApiKeyCreate, ApiKeyUpdate]):
@@ -58,7 +58,7 @@ api_key_service = ApiKeyService(log=getLogger(__name__))
 
 async def _require_api_key(
     db: DbSession,
-    developer: Developer | None = Depends(current_active_user_optional),
+    developer: Developer | None = Depends(get_current_developer_optional),
     x_open_wearables_api_key: str | None = Header(None, alias="X-Open-Wearables-API-Key"),
 ) -> str:
     if developer:

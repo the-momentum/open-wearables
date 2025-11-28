@@ -97,3 +97,10 @@ class AuthorizationURLResponse(BaseModel):
 
     authorization_url: str
     state: str
+
+
+class Token(BaseModel):
+    """JWT access token response."""
+
+    access_token: str
+    token_type: str

@@ -2,8 +2,6 @@
 
 from base64 import b64encode
 
-import jwt
-
 from app.schemas import OAuthTokenResponse, ProviderConfig
 
 from .base_oauth_strategy import BaseOAuthStrategy
@@ -79,7 +77,7 @@ class SuuntoOAuthStrategy(StandardOAuthStrategy):
     ) -> dict[str, str | None]:
         """Extract Suunto user info from JWT access token."""
         try:
-            decoded = jwt.decode(token_response.access_token, options={"verify_signature": False})
+            decoded = "test"  # gotta be removed in next commit
             provider_username = decoded.get("user")
             provider_user_id = decoded.get("sub")
             return {"user_id": provider_user_id, "username": provider_username}

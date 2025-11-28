@@ -58,6 +58,8 @@ class Settings(BaseSettings):
 
     # AUTH SETTINGS
     secret_key: str
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
 
     # REDIS SETTINGS

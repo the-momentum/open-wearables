@@ -16,7 +16,6 @@ class User(BaseDbModel):
     first_name: Mapped[str_100 | None]
     last_name: Mapped[str_100 | None]
     email: Mapped[email | None]
-    client_user_id: Mapped[Unique[str_255]]
 
     workouts: Mapped[OneToMany["Workout"]]
     heart_rate_data: Mapped[OneToMany["HeartRateData"]]

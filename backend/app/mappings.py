@@ -26,11 +26,12 @@ type ManyToOne[T] = T
 datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
 email = Annotated[EmailStr, mapped_column(String)]
 
-str_10 = Annotated[str, mapped_column(String(10))]
-str_50 = Annotated[str, mapped_column(String(50))]
-str_64 = NewType("str_64", str)  # it's mapped in database.py, because it didn't work with PrimaryKey
-str_100 = Annotated[str, mapped_column(String(100))]
-str_255 = NewType("str_255", str)  # it's mapped in database.py, because it didn't work with Unique
+# it's mapped in database.py, because it didn't work with PrimaryKey/Unique
+str_10 = NewType("str_10", str)
+str_50 = NewType("str_50", str)
+str_64 = NewType("str_64", str)
+str_100 = NewType("str_100", str)
+str_255 = NewType("str_255", str)
 
 numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]

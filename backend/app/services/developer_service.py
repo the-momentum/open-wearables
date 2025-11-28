@@ -1,51 +1,53 @@
-from logging import getLogger
-from typing import Annotated, AsyncGenerator
+from logging import Logger, getLogger
 from uuid import UUID
 
-from fastapi import Depends
-from fastapi_users import BaseUserManager, FastAPIUsers
-from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
-from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
-
-from app.config import settings
-from app.database import AsyncDbSession
+from app.database import DbSession
 from app.models import Developer
-from app.services.services import CustomBaseManager
+from app.repositories.developer_repository import DeveloperRepository
+from app.schemas.developer import DeveloperCreate, DeveloperCreateInternal, DeveloperUpdate, DeveloperUpdateInternal
+from app.services.services import AppService
+from app.utils.security import get_password_hash
 
 
-class DeveloperManager(CustomBaseManager[Developer], BaseUserManager[Developer, UUID]):
-    def __init__(self, user_db: SQLAlchemyUserDatabase):
-        super().__init__(user_db, model=Developer, log=getLogger("developer_manager"))
+class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreateInternal, DeveloperUpdateInternal]):
+    def __init__(self, log: Logger, **kwargs):
+        super().__init__(
+            crud_model=DeveloperRepository,
+            model=Developer,
+            log=log,
+            **kwargs,
+        )
+
+    def create(self, db_session: DbSession, creator: DeveloperCreate) -> Developer:
+        """Create a developer with hashed password and server-generated fields."""
+        creation_data = creator.model_dump(exclude={"password"})
+        hashed_password = get_password_hash(creator.password)
+
+        internal_creator = DeveloperCreateInternal(
+            **creation_data,
+            hashed_password=hashed_password,
+        )
+        return super().create(db_session, internal_creator)
+
+    def update(
+        self,
+        db_session: DbSession,
+        object_id: UUID | int,
+        updater: DeveloperUpdate,
+        raise_404: bool = False,
+    ) -> Developer | None:
+        """Update a developer, hashing password if provided and setting updated_at."""
+        developer = self.get(db_session, object_id, raise_404=raise_404)
+        if not developer:
+            return None
+
+        update_data = updater.model_dump(exclude={"password"}, exclude_unset=True)
+        internal_updater = DeveloperUpdateInternal(**update_data)
+
+        if updater.password:
+            internal_updater.hashed_password = get_password_hash(updater.password)
+
+        return self.crud.update(db_session, developer, internal_updater)
 
 
-async def get_developer_db(session: AsyncDbSession) -> AsyncGenerator[SQLAlchemyUserDatabase, None]:
-    yield SQLAlchemyUserDatabase(session, Developer)
-
-
-async def get_developer_manager(
-    developer_db: SQLAlchemyUserDatabase = Depends(get_developer_db),
-) -> AsyncGenerator[DeveloperManager, None]:
-    yield DeveloperManager(developer_db)
-
-
-def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=settings.secret_key, lifetime_seconds=settings.token_lifetime)
-
-
-bearer_transport = BearerTransport(tokenUrl="/api/v1/auth/login")
-
-developer_auth_backend = AuthenticationBackend(
-    name="jwt",
-    transport=bearer_transport,
-    get_strategy=get_jwt_strategy,
-)
-
-developer_service = FastAPIUsers[Developer, UUID](
-    get_developer_manager,
-    [developer_auth_backend],
-)
-
-current_active_user = developer_service.current_user(active=True)
-current_active_user_optional = developer_service.current_user(active=True, optional=True)
-
-DeveloperDep = Annotated[Developer, Depends(current_active_user)]
+developer_service = DeveloperService(log=getLogger(__name__))

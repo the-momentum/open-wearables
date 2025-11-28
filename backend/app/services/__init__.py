@@ -8,22 +8,16 @@ from .apple.healthkit.import_service import import_service as hk_import_service
 from .apple.healthkit.record_service import record_service as hk_record_service
 from .apple.healthkit.workout_service import workout_service as hk_workout_service
 from .apple.healthkit.workout_statistic_service import workout_statistic_service as hk_workout_statistic_service
-from .developer_service import (
-    DeveloperDep,
-    current_active_user_optional,
-    developer_auth_backend,
-    developer_service,
-)
+from .developer_service import developer_service
 from .services import AppService
 from .user_service import user_service
+from app.utils.auth import DeveloperDep
 
 __all__ = [
     "AppService",
     "api_key_service",
-    "developer_auth_backend",
     "developer_service",
     "DeveloperDep",
-    "current_active_user_optional",
     "ApiKeyDep",
     "user_service",
     "ae_active_energy_service",

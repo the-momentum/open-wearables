@@ -1,14 +1,9 @@
-# type: ignore[unresolved-attribute]
-
 from logging import Logger
-from typing import Any
 from uuid import UUID
 
-from fastapi import Request, Response
-from fastapi_users import UUIDIDMixin
+from fastapi import Request
 from pydantic import BaseModel
 
-from app.config import settings
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas import FilterParams
@@ -101,45 +96,3 @@ class AppService[
             deleted = self.crud.delete(db_session, originator)
             self.logger.debug(f"Deleted {self.name} with ID: {deleted.id}.")
             return deleted
-
-
-class CustomBaseManager[ModelType: BaseDbModel](UUIDIDMixin):
-    reset_password_token_secret = settings.secret_key
-    verification_token_secret = settings.secret_key
-
-    def __init__(self, *args, model: type[ModelType], log: Logger, **kwargs):
-        self.name = model.__name__
-        self.logger = log
-        super().__init__(*args, **kwargs)
-
-    async def on_after_register(self, user: ModelType, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} has registered.")
-
-    async def on_after_update(self, user: ModelType, update_dict: dict[str, Any], request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} has been updated with {update_dict}.")
-
-    async def on_after_login(
-        self,
-        user: ModelType,
-        request: OptRequest = None,
-        response: Response | None = None,
-    ) -> None:
-        self.logger.debug(f"{self.name} {user.id} logged in.")
-
-    async def on_after_request_verify(self, user: ModelType, token: str, request: OptRequest = None) -> None:
-        self.logger.debug(f"Verification requested for {self.name}  {user.id}. Verification token: {token}.")
-
-    async def on_after_verify(self, user: ModelType, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} has been verified.")
-
-    async def on_after_forgot_password(self, user: ModelType, token: str, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} has forgot their password. Reset token: {token}.")
-
-    async def on_after_reset_password(self, user: ModelType, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} has reset their password.")
-
-    async def on_before_delete(self, user: ModelType, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} is going to be deleted.")
-
-    async def on_after_delete(self, user: ModelType, request: OptRequest = None) -> None:
-        self.logger.debug(f"{self.name} {user.id} is successfully deleted.")
