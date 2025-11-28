@@ -40,6 +40,9 @@ services:
         - action: sync
           path: ./backend/app
           target: /root_project/app
+        - action: sync
+          path: ./backend/migrations
+          target: /root_project/migrations
         - action: rebuild
           path: ./backend/uv.lock
     restart: on-failure
