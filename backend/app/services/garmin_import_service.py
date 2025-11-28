@@ -36,9 +36,9 @@ class ImportService:
                 user_id=user_id,
                 type=activity.activityType,
                 duration_seconds=duration_seconds,
-                sourceName=activity.deviceName,
-                startDate=start_date,
-                endDate=end_date,
+                source_name=activity.deviceName,
+                start_datetime=start_date,
+                end_datetime=end_date,
             )
 
             workout_statistics = []
@@ -57,9 +57,8 @@ class ImportService:
                         user_id=user_id,
                         workout_id=workout_id,
                         type=field,
-                        sourceName=activity.deviceName,
-                        startDate=start_date,
-                        endDate=end_date,
+                        start_datetime=start_date,
+                        end_datetime=end_date,
                         min=None,
                         max=None,
                         avg=value,
@@ -73,9 +72,8 @@ class ImportService:
                     user_id=user_id,
                     workout_id=workout_id,
                     type="heartRate",
-                    sourceName=activity.deviceName,
-                    startDate=start_date,
-                    endDate=end_date,
+                    start_datetime=start_date,
+                    end_datetime=end_date,
                     min=None,  # doesnt exist for garmin
                     max=activity.maxHeartRateInBeatsPerMinute,
                     avg=activity.averageHeartRateInBeatsPerMinute,

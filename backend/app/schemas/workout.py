@@ -20,12 +20,11 @@ class WorkoutCreate(BaseModel):
 
     type: str | None = None
 
-    duration: Decimal
-    durationUnit: str
-    sourceName: str
+    duration_seconds: Decimal
+    source_name: str
 
-    startDate: datetime
-    endDate: datetime
+    start_datetime: datetime
+    end_datetime: datetime
 
 
 class WorkoutUpdate(BaseModel):
@@ -33,12 +32,11 @@ class WorkoutUpdate(BaseModel):
 
     type: str | None = None
 
-    duration: Decimal | None = None
-    durationUnit: str | None = None
-    sourceName: str | None = None
+    duration_seconds: Decimal | None = None
+    source_name: str | None = None
 
-    startDate: datetime | None = None
-    endDate: datetime | None = None
+    start_datetime: datetime | None = None
+    end_datetime: datetime | None = None
 
 
 class WorkoutResponse(BaseModel):
@@ -48,12 +46,11 @@ class WorkoutResponse(BaseModel):
 
     type: str | None = None
 
-    duration: Decimal
-    durationUnit: str
-    sourceName: str
+    duration_seconds: Decimal
+    source_name: str
 
-    startDate: datetime
-    endDate: datetime
+    start_datetime: datetime
+    end_datetime: datetime
 
     statistics: list[WorkoutStatisticResponse]
 
@@ -68,8 +65,6 @@ class WorkoutQueryParams(BaseQueryParams):
     source_name: str | None = Field(None, description="Source name of the workout (e.g., 'Apple Watch', 'iPhone')")
     min_duration: int | None = Field(None, description="Minimum duration in seconds")
     max_duration: int | None = Field(None, description="Maximum duration in seconds")
-    duration_unit: str | None = Field(None, description="Duration unit (e.g., 'min', 'hr', 'sec')")
-    sort_by: Literal["startDate", "endDate", "duration", "type", "sourceName"] | None = Field(
-        "startDate",
-        description="Sort field",
+    sort_by: Literal["start_datetime", "end_datetime", "duration_seconds", "type", "source_name"] | None = Field(
+        "start_datetime", description="Sort field"
     )

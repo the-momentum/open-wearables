@@ -21,9 +21,8 @@ class WorkoutStatistic(BaseDbModel):
     workout_id: Mapped[FKWorkout | None] = None
 
     type: Mapped[str_100]
-    sourceName: Mapped[str_100]
-    startDate: Mapped[datetime_tz]
-    endDate: Mapped[datetime_tz]
+    start_datetime: Mapped[datetime_tz]
+    end_datetime: Mapped[datetime_tz]
     min: Mapped[numeric_10_3 | None] = None
     max: Mapped[numeric_10_3 | None] = None
     avg: Mapped[numeric_10_3 | None] = None
