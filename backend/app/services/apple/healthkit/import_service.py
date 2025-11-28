@@ -60,9 +60,8 @@ class ImportService:
                         user_id=user_id,
                         workout_id=workout_create.id,
                         type=stat.type,
-                        sourceName=wjson.sourceName or "Apple Health",
-                        startDate=wjson.startDate,
-                        endDate=wjson.endDate,
+                        start_datetime=wjson.startDate,
+                        end_datetime=wjson.endDate,
                         min=stat.value,
                         max=stat.value,
                         avg=stat.value,
@@ -85,13 +84,12 @@ class ImportService:
                 provider_id=provider_id,
                 user_id=user_id,
                 type=rjson.type or "Unknown",
-                startDate=rjson.startDate,
-                endDate=rjson.endDate,
+                start_datetime=rjson.startDate,
+                end_datetime=rjson.endDate,
                 unit=rjson.unit,
                 min=rjson.value,
                 max=rjson.value,
                 avg=rjson.value,
-                sourceName=rjson.sourceName or "Apple Health",
             )
 
             yield stat_create

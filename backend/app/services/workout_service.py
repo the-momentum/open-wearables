@@ -3,10 +3,11 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.models import Workout
-from app.repositories import HKWorkoutRepository
+from app.repositories import WorkoutRepository
 from app.schemas import (
     WorkoutCreate,
     WorkoutQueryParams,
+    WorkoutStatisticResponse,
     WorkoutResponse,
     WorkoutUpdate,
 )
@@ -15,11 +16,11 @@ from app.services.workout_statistic_service import workout_statistic_service
 from app.utils.exceptions import handle_exceptions
 
 
-class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, WorkoutUpdate]):
+class WorkoutService(AppService[WorkoutRepository, Workout, WorkoutCreate, WorkoutUpdate]):
     """Service for HealthKit workout-related business logic."""
 
     def __init__(self, log: Logger, **kwargs):
-        super().__init__(crud_model=HKWorkoutRepository, model=Workout, log=log, **kwargs)
+        super().__init__(crud_model=WorkoutRepository, model=Workout, log=log, **kwargs)
 
     @handle_exceptions
     async def _get_workouts_with_filters(
@@ -71,17 +72,17 @@ class WorkoutService(AppService[HKWorkoutRepository, Workout, WorkoutCreate, Wor
 
         workout_responses = []
         for workout in workouts:
-            statistics = await workout_statistic_service._get_statistics(db_session, user_id, workout.id)
+            statistics = await workout_statistic_service.get_statistics(db_session, user_id, workout.id)
+            statistics = [WorkoutStatisticResponse(**stat.model_dump()) for stat in statistics]
 
             workout_response = WorkoutResponse(
                 id=workout.id,
                 type=workout.type,
-                duration=float(workout.duration),
-                durationUnit=workout.durationUnit,
-                sourceName=workout.sourceName,
-                startDate=workout.startDate,
-                endDate=workout.endDate,
-                statistics=[],  # statistics,
+                duration_seconds=workout.duration_seconds,
+                source_name=workout.source_name,    
+                start_datetime=workout.start_datetime,
+                end_datetime=workout.end_datetime,
+                statistics=statistics,
             )
             workout_responses.append(workout_response)
 

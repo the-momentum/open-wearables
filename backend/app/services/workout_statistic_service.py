@@ -22,7 +22,7 @@ class WorkoutStatisticService(
         super().__init__(crud_model=WorkoutStatisticRepository, model=WorkoutStatistic, log=log, **kwargs)
 
     @handle_exceptions
-    async def _get_statistics(
+    async def get_statistics(
         self,
         db_session: DbSession,
         user_id: str,
@@ -35,4 +35,17 @@ class WorkoutStatisticService(
         return statistics
 
 
+    @handle_exceptions
+    async def get_heart_rate_statistics(
+        self,
+        db_session: DbSession,
+        user_id: str,
+        workout_id: UUID,
+    ) -> list[WorkoutStatistic]:
+        """
+        Get heart rate statistics.
+        """
+        statistics = self.crud.get_heart_rate_statistics(db_session, user_id, workout_id)
+        return statistics
+    
 workout_statistic_service = WorkoutStatisticService(log=getLogger(__name__))
