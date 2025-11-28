@@ -10,6 +10,15 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 class SuuntoWorkouts(BaseWorkoutsTemplate):
     """Suunto implementation of workouts template."""
 
+    def _get_suunto_headers(self) -> dict[str, str]:
+        """Get Suunto-specific headers including subscription key."""
+        headers = {}
+        if self.oauth and hasattr(self.oauth, "credentials"):
+            subscription_key = self.oauth.credentials.subscription_key
+            if subscription_key:
+                headers["Ocp-Apim-Subscription-Key"] = subscription_key
+        return headers
+
     def get_workouts(
         self,
         db: DbSession,
@@ -24,7 +33,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "since": since,
             "limit": 100,
         }
-        response = self._make_api_request(db, user_id, "/v3/workouts/", params=params)
+        headers = self._get_suunto_headers()
+        response = self._make_api_request(db, user_id, "/v3/workouts/", params=params, headers=headers)
         return response.get("payload", [])
 
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
@@ -40,7 +50,11 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "offset": offset,
             "filter-by-modification-time": str(filter_by_modification_time).lower(),
         }
-        return self._make_api_request(db, user_id, "/v3/workouts/", params=params)
+
+        # Suunto requires subscription key header
+        headers = self._get_suunto_headers()
+
+        return self._make_api_request(db, user_id, "/v3/workouts/", params=params, headers=headers)
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         """Get detailed workout data from Suunto API."""
@@ -67,4 +81,5 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         workout_key: str,
     ) -> dict:
         """Get detailed workout data from Suunto API."""
-        return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}")
+        headers = self._get_suunto_headers()
+        return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", headers=headers)

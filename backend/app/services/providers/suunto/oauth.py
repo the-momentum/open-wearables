@@ -13,13 +13,11 @@ class SuuntoOAuth(BaseOAuthTemplate):
         return ProviderEndpoints(
             authorize_url="https://cloudapi-oauth.suunto.com/oauth/authorize",
             token_url="https://cloudapi-oauth.suunto.com/oauth/token",
-            api_base_url="https://cloudapi.suunto.com",
         )
 
     @property
     def credentials(self) -> ProviderCredentials:
         return ProviderCredentials(
-            name="suunto",
             client_id=settings.suunto_client_id or "",
             client_secret=(settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""),
             redirect_uri=settings.suunto_redirect_uri,

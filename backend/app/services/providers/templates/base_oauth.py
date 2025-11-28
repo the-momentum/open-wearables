@@ -1,11 +1,11 @@
+import hashlib
 import json
 import secrets
 from abc import ABC, abstractmethod
+from base64 import b64encode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
-import hashlib
-from base64 import b64encode, urlsafe_b64encode
 
 import httpx
 import redis
@@ -33,9 +33,11 @@ class BaseOAuthTemplate(ABC):
         self,
         user_repo: UserRepository,
         connection_repo: UserConnectionRepository,
+        provider_name: str,
     ):
         self.user_repo = user_repo
         self.connection_repo = connection_repo
+        self.provider_name = provider_name
         self.redis_client = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
@@ -47,11 +49,13 @@ class BaseOAuthTemplate(ABC):
     @property
     @abstractmethod
     def endpoints(self) -> ProviderEndpoints:
+        """Returns provider OAuth endpoints configuration."""
         pass
 
     @property
     @abstractmethod
     def credentials(self) -> ProviderCredentials:
+        """Returns provider OAuth credentials."""
         pass
 
     use_pkce: bool = False
@@ -67,7 +71,7 @@ class BaseOAuthTemplate(ABC):
 
         oauth_state = OAuthState(
             user_id=user_id,
-            provider=self.credentials.name,
+            provider=self.provider_name,
             redirect_uri=redirect_uri or self.credentials.redirect_uri,
         )
 
@@ -81,21 +85,18 @@ class BaseOAuthTemplate(ABC):
 
         return auth_url, state
 
-    def handle_callback(self, db: DbSession, user_id: UUID, code: str, state: str) -> OAuthState:
+    def handle_callback(self, db: DbSession, code: str, state: str) -> OAuthState:
         """Handles the OAuth callback, exchanges code, and saves the connection."""
         oauth_state, code_verifier = self._validate_state(state)
 
-        if oauth_state.user_id != user_id:
-            raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="User mismatch in state")
-
-        if oauth_state.provider != self.credentials.name:
+        if oauth_state.provider != self.provider_name:
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Provider mismatch in state")
 
         token_response = self._exchange_token(code, code_verifier)
 
-        user_info = self._get_provider_user_info(token_response, str(user_id))
+        user_info = self._get_provider_user_info(token_response, str(oauth_state.user_id))
 
-        self._save_connection(db, user_id, token_response, user_info, oauth_state)
+        self._save_connection(db, oauth_state.user_id, token_response, user_info, oauth_state)
 
         return oauth_state
 
@@ -113,7 +114,7 @@ class BaseOAuthTemplate(ABC):
             response.raise_for_status()
             token_response = OAuthTokenResponse.model_validate(response.json())
 
-            connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.credentials.name)
+            connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.provider_name)
             if connection:
                 self.connection_repo.update_tokens(
                     db,
@@ -273,7 +274,7 @@ class BaseOAuthTemplate(ABC):
         existing_connection = self.connection_repo.get_by_user_and_provider(
             db,
             user_id,
-            self.credentials.name,
+            self.provider_name,
         )
 
         if existing_connection:
@@ -287,7 +288,7 @@ class BaseOAuthTemplate(ABC):
         else:
             connection_create = UserConnectionCreate(
                 user_id=user_id,
-                provider=self.credentials.name,
+                provider=self.provider_name,
                 provider_user_id=provider_user_id,
                 provider_username=provider_username,
                 access_token=token_response.access_token,
@@ -296,91 +297,3 @@ class BaseOAuthTemplate(ABC):
                 scope=token_response.scope,
             )
             self.connection_repo.create(db, connection_create)
-
-    def get_valid_token(self, db: DbSession, user_id: UUID) -> str:
-        """Get a valid access token, refreshing if necessary."""
-        connection = self.connection_repo.get_by_user_and_provider(db, user_id, self.credentials.name)
-        if not connection:
-            raise HTTPException(
-                status_code=401,
-                detail=f"User not connected to {self.credentials.name}",
-            )
-
-        # Check if token is expired (with 5 minute buffer)
-        if connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
-            if not connection.refresh_token:
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"Token expired and no refresh token available for {self.credentials.name}",
-                )
-            token_response = self.refresh_access_token(db, user_id, connection.refresh_token)
-            return token_response.access_token
-
-        return connection.access_token
-
-    def make_api_request(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        endpoint: str,
-        method: str = "GET",
-        params: dict[str, Any] | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> Any:
-        """Make authenticated request to vendor API.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            endpoint: API endpoint path
-            method: HTTP method (default: GET)
-            params: Query parameters
-            headers: Additional headers
-
-        Returns:
-            Any: API response JSON
-
-        Raises:
-            HTTPException: If API request fails
-        """
-        # Get valid access token (will auto-refresh if needed)
-        access_token = self.get_valid_token(db, user_id)
-
-        # Prepare headers
-        request_headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json",
-        }
-        if headers:
-            request_headers.update(headers)
-
-        # Make request
-        url = f"{self.endpoints.api_base_url}{endpoint}"
-
-        try:
-            response = httpx.request(
-                method=method,
-                url=url,
-                headers=request_headers,
-                params=params or {},
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            return response.json()
-
-        except httpx.HTTPStatusError as e:
-            # No logger here, so we just raise
-            if e.response.status_code == 401:
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"{self.credentials.name.capitalize()} authorization expired. Please re-authorize.",
-                )
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail=f"{self.credentials.name.capitalize()} API error: {e.response.text}",
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to fetch data from {self.credentials.name.capitalize()}: {str(e)}",
-            )

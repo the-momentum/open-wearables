@@ -1,24 +1,32 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 
+from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.workout_repository import WorkoutRepository
-from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
 
 class BaseProviderStrategy(ABC):
     """Abstract base class for all fitness data providers."""
 
-    oauth: BaseOAuthTemplate | None = None
-    workouts: BaseWorkoutsTemplate | None = None
-
     def __init__(self):
-        self.user_repo = UserRepository()
+        """Initialize shared repositories used by all provider components."""
+        self.user_repo = UserRepository(User)
         self.connection_repo = UserConnectionRepository()
         self.workout_repo = WorkoutRepository()
 
+        # Components should be initialized by subclasses
+        self.oauth = None
+        self.workouts = None
+
     @property
+    @abstractmethod
     def name(self) -> str:
         """Returns the unique name of the provider (e.g., 'garmin', 'suunto')."""
-        raise NotImplementedError
+        pass
+
+    @property
+    @abstractmethod
+    def api_base_url(self) -> str:
+        """Returns the base URL for the provider's API."""
+        pass

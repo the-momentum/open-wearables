@@ -8,9 +8,23 @@ class GarminStrategy(BaseProviderStrategy):
 
     def __init__(self):
         super().__init__()
-        self.oauth = GarminOAuth(self.user_repo, self.connection_repo)
-        self.workouts = GarminWorkouts(self.workout_repo, self.connection_repo, self.oauth)
+        self.oauth = GarminOAuth(
+            user_repo=self.user_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+        )
+        self.workouts = GarminWorkouts(
+            workout_repo=self.workout_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
 
     @property
     def name(self) -> str:
         return "garmin"
+
+    @property
+    def api_base_url(self) -> str:
+        return "https://apis.garmin.com"

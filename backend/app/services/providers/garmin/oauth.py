@@ -18,13 +18,11 @@ class GarminOAuth(BaseOAuthTemplate):
         return ProviderEndpoints(
             authorize_url="https://connect.garmin.com/oauth2Confirm",
             token_url="https://diauth.garmin.com/di-oauth2-service/oauth/token",
-            api_base_url="https://apis.garmin.com",
         )
 
     @property
     def credentials(self) -> ProviderCredentials:
         return ProviderCredentials(
-            name="garmin",
             client_id=settings.garmin_client_id or "",
             client_secret=(settings.garmin_client_secret.get_secret_value() if settings.garmin_client_secret else ""),
             redirect_uri=settings.garmin_redirect_uri,

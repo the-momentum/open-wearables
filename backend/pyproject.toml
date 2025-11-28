@@ -23,6 +23,7 @@ dependencies = [
     "boto3>=1.40.67",
     "requests>=2.32.5",
     "bcrypt>=5.0.0",
+    "jwt>=1.4.0",
 ]
 
 [dependency-groups]

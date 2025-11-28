@@ -11,13 +11,11 @@ class PolarOAuth(BaseOAuthTemplate):
         return ProviderEndpoints(
             authorize_url="https://flow.polar.com/oauth2/authorization",
             token_url="https://polarremote.com/v2/oauth2/token",
-            api_base_url="https://www.polaraccesslink.com",
         )
 
     @property
     def credentials(self) -> ProviderCredentials:
         return ProviderCredentials(
-            name="polar",
             client_id=settings.polar_client_id or "",
             client_secret=(settings.polar_client_secret.get_secret_value() if settings.polar_client_secret else ""),
             redirect_uri=settings.polar_redirect_uri,

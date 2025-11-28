@@ -99,13 +99,11 @@ class ProviderEndpoints(BaseModel):
 
     authorize_url: str
     token_url: str
-    api_base_url: str
 
 
 class ProviderCredentials(BaseModel):
     """User-configurable credentials for an OAuth provider."""
 
-    name: str
     client_id: str
     client_secret: str
     redirect_uri: str

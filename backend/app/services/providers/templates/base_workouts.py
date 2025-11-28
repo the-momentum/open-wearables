@@ -1,14 +1,15 @@
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.workout_repository import WorkoutRepository
 from app.schemas.workout import WorkoutCreate
-from app.services.providers.templates import BaseOAuthTemplate
+from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 
 class BaseWorkoutsTemplate(ABC):
@@ -18,10 +19,14 @@ class BaseWorkoutsTemplate(ABC):
         self,
         workout_repo: WorkoutRepository,
         connection_repo: UserConnectionRepository,
-        oauth: BaseOAuthTemplate,
+        provider_name: str,
+        api_base_url: str,
+        oauth: "BaseOAuthTemplate",
     ):
         self.workout_repo = workout_repo
         self.connection_repo = connection_repo
+        self.provider_name = provider_name
+        self.api_base_url = api_base_url
         self.oauth = oauth
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -107,21 +112,19 @@ class BaseWorkoutsTemplate(ABC):
         method: str = "GET",
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
     ) -> Any:
-        """Make authenticated request to vendor API.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            endpoint: API endpoint path
-            method: HTTP method (default: GET)
-            params: Query parameters
-            headers: Additional headers
-
-        Returns:
-            Any: API response JSON
-
-        Raises:
-            HTTPException: If API request fails
-        """
-        return self.oauth.make_api_request(db, user_id, endpoint, method, params, headers)
+        """Make authenticated request to vendor API."""
+        return make_authenticated_request(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            api_base_url=self.api_base_url,
+            provider_name=self.provider_name,
+            endpoint=endpoint,
+            method=method,
+            params=params,
+            headers=headers,
+            json_data=json_data,
+        )
