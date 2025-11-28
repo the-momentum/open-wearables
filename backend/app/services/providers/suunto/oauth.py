@@ -1,4 +1,4 @@
-import jwt
+from jose import jwt
 
 from app.config import settings
 from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints

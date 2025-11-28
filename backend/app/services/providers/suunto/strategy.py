@@ -12,6 +12,7 @@ class SuuntoStrategy(BaseProviderStrategy):
             user_repo=self.user_repo,
             connection_repo=self.connection_repo,
             provider_name=self.name,
+            api_base_url=self.api_base_url,
         )
         self.workouts = SuuntoWorkouts(
             workout_repo=self.workout_repo,

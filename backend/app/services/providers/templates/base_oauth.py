@@ -34,10 +34,12 @@ class BaseOAuthTemplate(ABC):
         user_repo: UserRepository,
         connection_repo: UserConnectionRepository,
         provider_name: str,
+        api_base_url: str,
     ):
         self.user_repo = user_repo
         self.connection_repo = connection_repo
         self.provider_name = provider_name
+        self.api_base_url = api_base_url
         self.redis_client = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,

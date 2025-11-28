@@ -36,7 +36,7 @@ class PolarOAuth(BaseOAuthTemplate):
         import httpx
 
         try:
-            register_url = f"{self.endpoints.api_base_url}/v3/users"
+            register_url = f"{self.api_base_url}/v3/users"
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",

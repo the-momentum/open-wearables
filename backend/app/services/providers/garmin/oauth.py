@@ -36,7 +36,7 @@ class GarminOAuth(BaseOAuthTemplate):
         """Fetches Garmin user ID via API."""
         try:
             user_id_response = httpx.get(
-                f"{self.endpoints.api_base_url}/wellness-api/rest/user/id",
+                f"{self.api_base_url}/wellness-api/rest/user/id",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )

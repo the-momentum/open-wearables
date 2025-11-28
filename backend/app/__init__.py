@@ -1,7 +1,7 @@
 import traceback
 
 try:
-    from app.models import *  # noqa: F401
+    from app.models import *  # noqa: F403
 except ImportError:
     traceback.print_exc()
     raise

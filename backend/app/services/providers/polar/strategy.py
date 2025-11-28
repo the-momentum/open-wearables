@@ -12,6 +12,7 @@ class PolarStrategy(BaseProviderStrategy):
             user_repo=self.user_repo,
             connection_repo=self.connection_repo,
             provider_name=self.name,
+            api_base_url=self.api_base_url,
         )
         self.workouts = PolarWorkouts(
             workout_repo=self.workout_repo,
