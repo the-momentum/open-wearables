@@ -12,26 +12,26 @@ router = APIRouter()
 @router.get("/api-keys")
 async def list_api_keys(db: DbSession, _developer: DeveloperDep) -> list[ApiKeyRead]:
     """List all API keys."""
-    return [ApiKeyRead.model_validate(key) for key in api_key_service.list_api_keys(db)]
+    return api_key_service.list_api_keys(db)
 
 
-@router.post("/api-keys", status_code=status.HTTP_201_CREATED)
+@router.post("/api-keys", status_code=status.HTTP_201_CREATED, response_model=ApiKeyRead)
 async def create_api_key(
     db: DbSession,
     _developer: DeveloperDep,
     name: Annotated[str, Body(embed=True, description="Name for the API key")] = "Default",
 ) -> ApiKeyRead:
     """Generate new API key."""
-    return ApiKeyRead.model_validate(api_key_service.create_api_key(db, _developer.id, name))
+    return api_key_service.create_api_key(db, _developer.id, name)
 
 
 @router.delete("/api-keys/{key_id}")
-async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep) -> ApiKeyRead:
+async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep, response_model=ApiKeyRead) -> ApiKeyRead:
     """Delete API key by key value."""
-    return ApiKeyRead.model_validate(api_key_service.delete(db, key_id, raise_404=True))
+    return api_key_service.delete(db, key_id, raise_404=True)
 
 
-@router.patch("/api-keys/{key_id}")
+@router.patch("/api-keys/{key_id}", response_model=ApiKeyRead)
 async def update_api_key(
     key_id: str,
     payload: ApiKeyUpdate,
@@ -39,10 +39,10 @@ async def update_api_key(
     _developer: DeveloperDep,
 ) -> ApiKeyRead:
     """Update API key (future: name, scopes)."""
-    return ApiKeyRead.model_validate(api_key_service.update(db, key_id, payload, raise_404=True))
+    return api_key_service.update(db, key_id, payload, raise_404=True)
 
 
-@router.post("/api-keys/{key_id}/rotate", status_code=status.HTTP_201_CREATED)
+@router.post("/api-keys/{key_id}/rotate", status_code=status.HTTP_201_CREATED, response_model=ApiKeyRead)
 async def rotate_api_key(key_id: str, db: DbSession, _developer: DeveloperDep) -> ApiKeyRead:
     """Rotate API key - delete old and generate new."""
-    return ApiKeyRead.model_validate(api_key_service.rotate_api_key(db, key_id, _developer.id))
+    return api_key_service.rotate_api_key(db, key_id, _developer.id)
