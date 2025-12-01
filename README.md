@@ -63,7 +63,7 @@ docker compose up -d
 make init
 ```
 
-This script prepares the database, applies all migrations, and seeds a default admin developer account. The admin account allows you to immediately access the developer portal without needing to register first.
+This script seeds sample data. The admin account allows you to immediately access the developer portal without needing to register first.
 
 **Default Admin Credentials:**
 - Email: `admin@admin.com`
