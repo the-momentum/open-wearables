@@ -57,6 +57,18 @@ Open Wearables handles this complexity so you can focus on building your product
 docker compose up -d
 ```
 
+### Seed sample data (optional)
+
+```bash
+make init
+```
+
+This script prepares the database, applies all migrations, and seeds a default admin developer account. The admin account allows you to immediately access the developer portal without needing to register first.
+
+**Default Admin Credentials:**
+- Email: `admin@admin.com`
+- Password: `secret123`
+
 ### Access the application
 - 🌐 API: http://localhost:8000
 - 📚 Swagger: http://localhost:8000/docs
