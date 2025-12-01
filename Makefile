@@ -1,5 +1,6 @@
 DOCKER_COMMAND = docker compose -f docker-compose.yml
-ALEMBIC_CMD = cd backend && uv run alembic
+DOCKER_EXEC = $(DOCKER_COMMAND) exec app
+ALEMBIC_CMD = uv run alembic
 
 help:	## Show this help.
 	@echo "============================================================"
@@ -27,15 +28,18 @@ test:	## Run the tests.
 	cd backend && uv run pytest -v --cov=app
 
 migrate:  ## Apply all migrations
-	$(ALEMBIC_CMD) upgrade head
+	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
+
+init:  ## Initialize database (migrations + seed admin user)
+	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
+	$(DOCKER_EXEC) uv run python scripts/init/seed_admin.py
 
 create_migration:  ## Create a new migration. Use 'make create_migration m="Description of the change"'
 	@if [ -z "$(m)" ]; then \
 		echo "Error: You must provide a migration description using 'm=\"Description\"'"; \
 		exit 1; \
 	fi
-	$(ALEMBIC_CMD) revision --autogenerate -m "$(m)"
-
+	$(DOCKER_EXEC) $(ALEMBIC_CMD) revision --autogenerate -m "$(m)"
 
 downgrade:  ## Revert the last migration
-	$(ALEMBIC_CMD) downgrade -1
+	$(DOCKER_EXEC) $(ALEMBIC_CMD) downgrade -1
