@@ -30,8 +30,7 @@ test:	## Run the tests.
 migrate:  ## Apply all migrations
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
 
-init:  ## Initialize database (migrations + seed admin user)
-	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
+init:  ## Seed sample data
 	$(DOCKER_EXEC) uv run python scripts/init/seed_admin.py
 
 create_migration:  ## Create a new migration. Use 'make create_migration m="Description of the change"'
