@@ -3,7 +3,7 @@ from logging import Logger, getLogger
 from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import UserCreate, UserCreateInternal, UserUpdate, UserUpdateInternal
+from app.schemas import UserCreate, UserCreateInternal, UserUpdate, UserUpdateInternal
 from app.services.services import AppService
 
 

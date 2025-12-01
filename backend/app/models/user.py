@@ -17,6 +17,8 @@ class User(BaseDbModel):
     last_name: Mapped[str_100 | None]
     email: Mapped[email | None]
 
+    external_user_id: Mapped[Unique[str_255] | None]
+
     workouts: Mapped[OneToMany["Workout"]]
     heart_rate_data: Mapped[OneToMany["HeartRateData"]]
     heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]

@@ -24,9 +24,9 @@ type ManyToOne[T] = T
 
 # Custom types
 datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
-email = Annotated[EmailStr, mapped_column(String)]
 
 # it's mapped in database.py, because it didn't work with PrimaryKey/Unique
+email = NewType("email", str)
 str_10 = NewType("str_10", str)
 str_50 = NewType("str_50", str)
 str_64 = NewType("str_64", str)

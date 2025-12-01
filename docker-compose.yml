@@ -40,7 +40,7 @@ services:
         - action: sync
           path: ./backend/app
           target: /root_project/app
-        - action: sync
+        - action: sync+restart
           path: ./backend/migrations
           target: /root_project/migrations
         - action: rebuild

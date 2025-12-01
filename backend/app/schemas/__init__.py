@@ -187,7 +187,13 @@ from .apple.workout_statistics import (
 from .apple.workout_statistics import (
     WorkoutStatisticUpdate as HKWorkoutStatisticUpdate,
 )
-from .developer import DeveloperCreate, DeveloperRead, DeveloperUpdate
+from .developer import (
+    DeveloperCreate,
+    DeveloperCreateInternal,
+    DeveloperUpdate,
+    DeveloperUpdateInternal,
+    DeveloperRead,
+)
 from .error_codes import ErrorCode
 from .filter_params import FilterParams
 from .oauth import (
@@ -203,7 +209,13 @@ from .oauth import (
     UserConnectionUpdate,
 )
 from .response import UploadDataResponse
-from .user import UserCreate, UserCreateInternal, UserRead, UserUpdate
+from .user import (
+    UserCreate,
+    UserCreateInternal,
+    UserUpdate,
+    UserUpdateInternal,
+    UserRead,
+)
 
 __all__ = [
     # Common schemas
@@ -212,8 +224,11 @@ __all__ = [
     "UserCreate",
     "UserCreateInternal",
     "UserUpdate",
+    "UserUpdateInternal",
     "DeveloperRead",
     "DeveloperCreate",
+    "DeveloperCreateInternal",
+    "DeveloperUpdateInternal",
     "DeveloperUpdate",
     "ApiKeyCreate",
     "ApiKeyRead",
