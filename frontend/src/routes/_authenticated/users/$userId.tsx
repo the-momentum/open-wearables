@@ -148,17 +148,11 @@ function UserDetailPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
                 <p className="text-xs text-zinc-500 mb-1">User ID</p>
                 <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
                   {user?.id.slice(0, 8)}...
-                </code>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Client User ID</p>
-                <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
-                  {user?.client_user_id}
                 </code>
               </div>
               <div>
@@ -387,14 +381,9 @@ function UserDetailPage() {
           <h2 className="text-sm font-medium text-white">
             Health Data Visualizations
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Charts will be implemented in Phase 3 with Recharts
-          </p>
         </div>
         <div className="h-64 flex items-center justify-center text-zinc-500">
-          <p className="text-sm">
-            Heart Rate, Sleep, and Activity charts coming soon...
-          </p>
+          <p className="text-sm">Charts coming soon...</p>
         </div>
       </div>
 
@@ -404,12 +393,9 @@ function UserDetailPage() {
           <h2 className="text-sm font-medium text-white">
             AI Health Assistant
           </h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Chat interface will be implemented in Phase 3
-          </p>
         </div>
         <div className="h-64 flex items-center justify-center text-zinc-500">
-          <p className="text-sm">AI-powered health insights coming soon...</p>
+          <p className="text-sm">Coming soon...</p>
         </div>
       </div>
     </div>

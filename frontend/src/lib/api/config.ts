@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
 
   apiKeys: '/api/v1/developer/api-keys',
   apiKeyDetail: (id: string) => `/api/v1/developer/api-keys/${id}`,
+  apiKeyRotate: (id: string) => `/api/v1/developer/api-keys/${id}/rotate`,
 
   automations: '/api/v1/automations',
   automationDetail: (id: string) => `/api/v1/automations/${id}`,
