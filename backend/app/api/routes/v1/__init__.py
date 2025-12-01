@@ -8,7 +8,6 @@ from .heart_rate import router as heart_rate_router
 from .import_data import router as import_data_router
 from .oauth import router as oauth_router
 
-from .suunto import router as suunto_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 from .workouts import router as workouts_router

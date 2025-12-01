@@ -1,7 +1,7 @@
 """unified workout duration
 
 Revision ID: 53b02f9426a2
-Revises: 78f7872254c8
+Revises: b76a97bf5a10
 
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '53b02f9426a2'
+revision: str = 'b76a97bf5a10'
 down_revision: Union[str, None] = '78f7872254c8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
