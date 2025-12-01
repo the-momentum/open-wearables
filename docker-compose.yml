@@ -114,13 +114,27 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: frontend__open-wearables
-    image: open-wearables-frontend:latest
+    image: open-wearables-frontend:dev
     ports:
       - "3000:3000"
     depends_on:
       - app
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/pnpm-lock.yaml
+        - action: rebuild
+          path: ./frontend/vite.config.ts
     restart: on-failure
 
 volumes:
