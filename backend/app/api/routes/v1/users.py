@@ -19,7 +19,7 @@ async def get_user(user_id: UUID, db: DbSession, _api_key: ApiKeyDep) -> UserRea
     return user_service.get(db, user_id, raise_404=True)
 
 
-@router.post("/users", status_code=201, response_model=UserRead)
+@router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserRead)
 async def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep) -> UserRead:
     return user_service.create(db, payload)
 
