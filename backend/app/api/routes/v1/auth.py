@@ -20,10 +20,10 @@ async def login(
     db: DbSession,
 ):
     """Authenticate developer and return access token."""
-    # Find developer by username
+    # Find developer by email
     developers = developer_service.crud.get_all(
         db,
-        filters={"username": form_data.username},
+        filters={"email": form_data.username},  # OAuth2PasswordRequestForm uses 'username' field for login
         offset=0,
         limit=1,
         sort_by=None,
@@ -31,7 +31,7 @@ async def login(
     if not developers:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -39,7 +39,7 @@ async def login(
     if not verify_password(form_data.password, developer.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
