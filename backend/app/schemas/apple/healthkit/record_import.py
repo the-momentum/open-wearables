@@ -28,15 +28,6 @@ class RecordBase(BaseModel):
     sourceName: str
 
 
-class RecordIn(RecordBase):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    provider_id: UUID | None = None
-    user_id: str | None = None
-    recordMetadata: list[MetadataEntryIn] | None = None
-
-
 class RecordJSON(BaseModel):
     """Schema for JSON import format from HealthKit."""
 

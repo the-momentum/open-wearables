@@ -17,7 +17,7 @@ from app.mappings import (
 
 class Workout(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
-    provider_id: Mapped[UUID | None] = None
+    provider_id: Mapped[str_100 | None] = None
     user_id: Mapped[FKUser]
 
     type: Mapped[str_100 | None] = None
@@ -30,11 +30,4 @@ class Workout(BaseDbModel):
 
     user: Mapped[ManyToOne["User"]]
 
-    # np. active_energy, heart_rate_data
-    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]
-    heart_rate_data: Mapped[OneToMany["HeartRateData"]]
-    heart_rate_recovery: Mapped[OneToMany["HeartRateRecovery"]]
-    active_energy: Mapped[OneToMany["ActiveEnergy"]]
-
-    # workout_entries: Mapped[OneToMany["WorkoutEntry"]] ??
-    # workout_routes: Mapped[OneToMany["WorkoutRoute"]] ??
+    statistics: Mapped[OneToMany["WorkoutStatistic"]]

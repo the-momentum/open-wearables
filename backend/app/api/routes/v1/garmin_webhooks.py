@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.database import DbSession
+from app.services import garmin_import_service
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -94,9 +95,8 @@ async def garmin_ping_notification(
                     if pull_token:
                         # Save pull token to Redis for later use
                         # Token is associated with user and time range
-                        import redis
-
                         from app.config import settings
+                        import redis
 
                         redis_client = redis.Redis(
                             host=settings.redis_host,
@@ -114,7 +114,7 @@ async def garmin_ping_notification(
                         )
 
                         logger.info(
-                            f"Saved pull token for user {internal_user_id} (time range: {upload_start}-{upload_end})",
+                            f"Saved pull token for user {internal_user_id} (time range: {upload_start}-{upload_end})"
                         )
 
                         # Also save the full callback URL for convenience
@@ -158,6 +158,14 @@ async def garmin_ping_notification(
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
                     results["errors"].append(str(e))
+
+
+            # temporary visual change
+            try:
+                garmin_import_service.load_data(db, payload['activities'], internal_user_id)
+            except Exception as e:
+                logger.error(f"Error loading data from Garmin: {str(e)}")
+                results["errors"].append(f"Error loading data from Garmin: {str(e)}")   
 
         # Process other summary types (activityDetails, dailies, etc.)
         for summary_type in ["activityDetails", "dailies", "epochs", "sleeps"]:
@@ -226,7 +234,7 @@ async def garmin_push_notification(
 
                     logger.info(
                         f"New Garmin activity: {activity_name} ({activity_type}) "
-                        f"ID={activity_id} for user {garmin_user_id}",
+                        f"ID={activity_id} for user {garmin_user_id}"
                     )
 
                     # TODO: Map garmin_user_id to internal user_id
@@ -256,14 +264,22 @@ async def garmin_push_notification(
                             "type": activity_type,
                             "garmin_user_id": garmin_user_id,
                             "status": "received",
-                        },
+                        }
                     )
                     results["processed"] += 1
+                    
 
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
                     results["errors"].append(str(e))
 
+            # no internal user id, just temporary visual change
+            try:
+                garmin_import_service.load_data(db, payload['activities'], internal_user_id)
+            except Exception as e:
+                logger.error(f"Error loading data from Garmin: {str(e)}")
+                results["errors"].append(f"Error loading data from Garmin: {str(e)}")
+            
         return results
 
     except Exception as e:
