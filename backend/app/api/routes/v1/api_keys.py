@@ -25,8 +25,8 @@ async def create_api_key(
     return api_key_service.create_api_key(db, _developer.id, name)
 
 
-@router.delete("/api-keys/{key_id}")
-async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep, response_model=ApiKeyRead) -> ApiKeyRead:
+@router.delete("/api-keys/{key_id}", response_model=ApiKeyRead)
+async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep) -> ApiKeyRead:
     """Delete API key by key value."""
     return api_key_service.delete(db, key_id, raise_404=True)
 
