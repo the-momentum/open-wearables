@@ -2,11 +2,11 @@ from decimal import Decimal
 from uuid import UUID
 
 import isodate
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
-from app.models import Workout
+from app.models import Workout, WorkoutStatistic
 from app.repositories.repositories import CrudRepository
 from app.schemas import WorkoutCreate, WorkoutQueryParams, WorkoutUpdate
 
@@ -73,9 +73,6 @@ class WorkoutRepository(CrudRepository[Workout, WorkoutCreate, WorkoutUpdate]):
 
     def get_workout_summary(self, db_session: DbSession, workout_id: UUID) -> dict:
         """Get workout summary statistics for HealthKit workouts."""
-        from sqlalchemy import func
-
-        from app.models import WorkoutStatistic
 
         # Get workout statistics summary
         stats_summary = (
