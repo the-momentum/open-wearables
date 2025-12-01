@@ -14,7 +14,6 @@ class DeveloperRead(BaseModel):
 
 
 class DeveloperCreate(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
     password: str = Field(..., min_length=8)
     email: EmailStr
 
