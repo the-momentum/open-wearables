@@ -4,7 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
-from app.schemas.developer import DeveloperCreate, DeveloperCreateInternal, DeveloperUpdate, DeveloperUpdateInternal
+from app.schemas import DeveloperCreate, DeveloperCreateInternal, DeveloperUpdate, DeveloperUpdateInternal
 from app.services.services import AppService
 from app.utils.security import get_password_hash
 

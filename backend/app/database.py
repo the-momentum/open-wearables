@@ -19,7 +19,7 @@ from sqlalchemy.orm import (
 )
 
 from app.config import settings
-from app.mappings import str_10, str_50, str_64, str_100, str_255
+from app.mappings import email, str_10, str_50, str_64, str_100, str_255
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -57,6 +57,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
 
     type_annotation_map = {
         str: Text,
+        email: String,
         UUID: SqlUUID,
         str_10: String(10),
         str_50: String(50),

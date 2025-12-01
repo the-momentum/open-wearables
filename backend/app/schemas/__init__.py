@@ -18,7 +18,13 @@ from .apple.healthkit.workout_import import (
 from .common import (
     RootJSON,
 )
-from .developer import DeveloperCreate, DeveloperRead, DeveloperUpdate
+from .developer import (
+    DeveloperCreate,
+    DeveloperCreateInternal,
+    DeveloperUpdate,
+    DeveloperUpdateInternal,
+    DeveloperRead,
+)
 from .error_codes import ErrorCode
 from .filter_params import FilterParams
 from .garmin.activity_import import (
@@ -52,7 +58,6 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
-from .user import UserCreate, UserCreateInternal, UserRead, UserUpdate
 from .workout import (
     WorkoutCreate,
     WorkoutQueryParams,
@@ -64,6 +69,13 @@ from .workout_statistics import (
     WorkoutStatisticResponse,
     WorkoutStatisticUpdate,
 )
+from .user import (
+    UserCreate,
+    UserCreateInternal,
+    UserUpdate,
+    UserUpdateInternal,
+    UserRead,
+)
 
 __all__ = [
     # Common schemas
@@ -72,8 +84,11 @@ __all__ = [
     "UserCreate",
     "UserCreateInternal",
     "UserUpdate",
+    "UserUpdateInternal",
     "DeveloperRead",
     "DeveloperCreate",
+    "DeveloperCreateInternal",
+    "DeveloperUpdateInternal",
     "DeveloperUpdate",
     "ApiKeyCreate",
     "ApiKeyRead",
