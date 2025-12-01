@@ -7,7 +7,6 @@ from app.repositories import WorkoutRepository
 from app.schemas import (
     WorkoutCreate,
     WorkoutQueryParams,
-    WorkoutStatisticResponse,
     WorkoutResponse,
     WorkoutUpdate,
 )
@@ -78,7 +77,7 @@ class WorkoutService(AppService[WorkoutRepository, Workout, WorkoutCreate, Worko
                 id=workout.id,
                 type=workout.type,
                 duration_seconds=workout.duration_seconds,
-                source_name=workout.source_name,    
+                source_name=workout.source_name,
                 start_datetime=workout.start_datetime,
                 end_datetime=workout.end_datetime,
                 statistics=statistics,

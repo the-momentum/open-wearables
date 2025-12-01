@@ -22,7 +22,9 @@ class ImportService:
         self.workout_statistic_service = workout_statistic_service
 
     def _build_bundles(
-        self, raw: list[PolarExerciseJSON], user_id: str
+        self,
+        raw: list[PolarExerciseJSON],
+        user_id: str,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         for exercise in raw:
             workout_id = uuid4()

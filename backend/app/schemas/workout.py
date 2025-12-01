@@ -66,5 +66,6 @@ class WorkoutQueryParams(BaseQueryParams):
     min_duration: int | None = Field(None, description="Minimum duration in seconds")
     max_duration: int | None = Field(None, description="Maximum duration in seconds")
     sort_by: Literal["start_datetime", "end_datetime", "duration_seconds", "type", "source_name"] | None = Field(
-        "start_datetime", description="Sort field"
+        "start_datetime",
+        description="Sort field",
     )

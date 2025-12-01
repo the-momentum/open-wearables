@@ -21,7 +21,9 @@ class ImportService:
         self.workout_statistic_service = workout_statistic_service
 
     def _build_bundles(
-        self, raw: list[GarminActivityJSON], user_id: str
+        self,
+        raw: list[GarminActivityJSON],
+        user_id: str,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         for activity in raw:
             workout_id = uuid4()

@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
 from app.database import DbSession
-from app.services import ApiKeyDep, workout_statistic_service
 from app.schemas import WorkoutStatisticResponse
+from app.services import ApiKeyDep, workout_statistic_service
 
 router = APIRouter()
 

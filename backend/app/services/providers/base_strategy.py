@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 
 from app.models import User
+from app.models.workout import Workout
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.workout_repository import WorkoutRepository
-from app.models.workout import Workout
 
 
 class BaseProviderStrategy(ABC):

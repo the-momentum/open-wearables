@@ -97,7 +97,6 @@ class Settings(BaseSettings):
 
     xml_chunk_size: int = 50_000
 
-
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:

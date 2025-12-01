@@ -36,7 +36,10 @@ class ImportService:
         return None if x is None else Decimal(str(x))
 
     def _get_workout_statistics(
-        self, workout: AEWorkoutJSON, user_id: str, workout_id: UUID
+        self,
+        workout: AEWorkoutJSON,
+        user_id: str,
+        workout_id: UUID,
     ) -> list[WorkoutStatisticCreate]:
         """
         Get workout statistics from workout JSON.
@@ -93,7 +96,9 @@ class ImportService:
         return statistics
 
     def _build_import_bundles(
-        self, raw: dict, user_id: str
+        self,
+        raw: dict,
+        user_id: str,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundles

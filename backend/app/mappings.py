@@ -3,8 +3,7 @@ from decimal import Decimal
 from typing import Annotated, NewType, TypeVar
 from uuid import UUID
 
-from pydantic import EmailStr
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Numeric
 from sqlalchemy.orm import mapped_column
 
 T = TypeVar("T")

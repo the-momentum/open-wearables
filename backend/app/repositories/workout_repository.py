@@ -53,7 +53,6 @@ class WorkoutRepository(CrudRepository[Workout, WorkoutCreate, WorkoutUpdate]):
         if query_params.max_duration is not None:
             filters.append(Workout.duration_seconds <= Decimal(query_params.max_duration))
 
-
         # Apply all filters
         if filters:
             query = query.filter(and_(*filters))
@@ -97,7 +96,6 @@ class WorkoutRepository(CrudRepository[Workout, WorkoutCreate, WorkoutUpdate]):
             .filter(WorkoutStatistic.type == "heartRate")
             .first()
         )
-
 
         return {
             "total_statistics": int(stats_summary.total_statistics or 0),

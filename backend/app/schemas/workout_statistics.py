@@ -2,7 +2,6 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
-from app.schemas.common import BaseQueryParams
 
 
 class WorkoutStatisticCreate(BaseModel):
