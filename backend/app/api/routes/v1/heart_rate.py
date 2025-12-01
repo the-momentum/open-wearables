@@ -7,11 +7,11 @@ from app.services import ApiKeyDep, workout_statistic_service
 router = APIRouter()
 
 
-@router.get("/users/{user_id}/heart-rate")
+@router.get("/users/{user_id}/heart-rate", response_model=list[WorkoutStatisticResponse])
 async def get_heart_rate_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,
-) -> list[WorkoutStatisticResponse]:
+):
     """Get heart rate data with filtering, sorting, and pagination."""
     return await workout_statistic_service.get_user_heart_rate_statistics(db, user_id)

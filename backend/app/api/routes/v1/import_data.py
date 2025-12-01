@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 
 from app.database import DbSession
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
@@ -17,8 +17,12 @@ async def get_content_type(request: Request) -> tuple[str, str]:
         file = form.get("file")
         if not file:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file found")
-        content_str = await file.read()
-        content_str = content_str.decode("utf-8")
+
+        if isinstance(file, UploadFile):
+            content_bytes = await file.read()
+            content_str = content_bytes.decode("utf-8")
+        else:
+            content_str = str(file)
     else:
         body = await request.body()
         content_str = body.decode("utf-8")

@@ -63,7 +63,7 @@ def get_hateoas_list(
     page: int,
     limit: int,
     base_url: str,
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[dict]]:
     name = items[0].__tablename__ if len(items) else ""
     built_url = _build_query(base_url, name)
     return {

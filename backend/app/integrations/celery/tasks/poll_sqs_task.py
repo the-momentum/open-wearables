@@ -45,7 +45,8 @@ def poll_sqs_messages() -> dict[str, Any]:
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
                         logger.info(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, skipping: {message_body[:100]}",
+                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, "
+                            f"skipping: {message_body[:100]}",
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -75,19 +76,18 @@ def poll_sqs_messages() -> dict[str, Any]:
                 failed_count += 1
                 continue
 
-        result = {
+        return {
             "messages_processed": processed_count,
             "messages_failed": failed_count,
             "total_messages": len(messages),
         }
-        return result
 
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
+def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0) -> dict:
     num_polls = expiration_seconds // 20
 
     if iterations_done >= num_polls:
@@ -100,3 +100,4 @@ def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0):
         args=[expiration_seconds, iterations_done + 1],
         countdown=20,
     )
+    return {"status": "scheduled", "iteration": iterations_done + 1}

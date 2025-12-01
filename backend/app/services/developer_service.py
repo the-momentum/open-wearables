@@ -18,18 +18,16 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
             **kwargs,
         )
 
-    def create(self, db_session: DbSession, creator: DeveloperCreate) -> Developer:
+    def register(self, db_session: DbSession, creator: DeveloperCreate) -> Developer:
         """Create a developer with hashed password and server-generated fields."""
         creation_data = creator.model_dump(exclude={"password"})
-        hashed_password = get_password_hash(creator.password)
-
         internal_creator = DeveloperCreateInternal(
             **creation_data,
-            hashed_password=hashed_password,
+            hashed_password=get_password_hash(creator.password),
         )
         return super().create(db_session, internal_creator)
 
-    def update(
+    def update_developer_info(
         self,
         db_session: DbSession,
         object_id: UUID | int,

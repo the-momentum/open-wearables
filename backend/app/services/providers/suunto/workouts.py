@@ -1,6 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas.workout import WorkoutCreate
@@ -64,14 +65,14 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Normalize Suunto workout to WorkoutCreate."""
         # Placeholder mapping
         return WorkoutCreate(
+            id=uuid4(),
             user_id=UUID(int=0),
             provider_id=None,
             type=str(raw_workout.get("activityId", "unknown")),
-            duration=float(raw_workout.get("totalTime", 0)),
-            durationUnit="seconds",
-            sourceName="suunto",
-            startDate=datetime.fromisoformat(raw_workout.get("startTime", datetime.now().isoformat())),
-            endDate=datetime.fromisoformat(raw_workout.get("stopTime", datetime.now().isoformat())),
+            duration_seconds=Decimal(raw_workout.get("totalTime", 0)),
+            source_name="suunto",
+            start_datetime=datetime.fromisoformat(raw_workout.get("startTime", datetime.now().isoformat())),
+            end_datetime=datetime.fromisoformat(raw_workout.get("stopTime", datetime.now().isoformat())),
         )
 
     def get_workout_detail(

@@ -1,7 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ActivityJSON(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     userId: str
     summaryId: str
     activityType: str
@@ -18,3 +20,4 @@ class ActivityJSON(BaseModel):
 
 class RootJSON(BaseModel):
     activities: list[ActivityJSON]
+    error: str | None = None

@@ -1,4 +1,5 @@
 from logging import Logger, getLogger
+from uuid import UUID
 
 from app.database import DbSession
 from app.models import User
@@ -25,7 +26,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
     def update(
         self,
         db_session: DbSession,
-        object_id,
+        object_id: UUID | str | int,
         updater: UserUpdate,
         raise_404: bool = False,
     ) -> User | None:

@@ -53,7 +53,7 @@ async def register(
     db: DbSession,
 ):
     """Register a new developer."""
-    return developer_service.create(db, developer_in)
+    return developer_service.register(db, developer_in)
 
 
 @router.post("/logout")
@@ -78,7 +78,7 @@ async def update_current_developer(
     developer: DeveloperDep,
 ):
     """Update current authenticated developer."""
-    return developer_service.update(db, developer.id, payload, raise_404=True)
+    return developer_service.update_developer_info(db, developer.id, payload)
 
 
 @router.get("/{developer_id}", response_model=DeveloperRead)
@@ -95,7 +95,7 @@ async def update_developer(
     _auth: DeveloperDep,
 ):
     """Update developer by ID (admin only)."""
-    return developer_service.update(db, developer_id, payload, raise_404=True)
+    return developer_service.update_developer_info(db, developer_id, payload, raise_404=True)
 
 
 @router.delete("/{developer_id}", response_model=DeveloperRead)

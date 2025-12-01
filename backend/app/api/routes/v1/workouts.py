@@ -9,12 +9,12 @@ from app.services import ApiKeyDep, workout_service
 router = APIRouter()
 
 
-@router.get("/users/{user_id}/workouts")
+@router.get("/users/{user_id}/workouts", response_model=list[WorkoutResponse])
 async def get_workouts_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,
     query_params: Annotated[WorkoutQueryParams, Depends()],
-) -> list[WorkoutResponse]:
+):
     """Get workouts with filtering, sorting, and pagination."""
     return await workout_service.get_workouts_response(db, query_params, user_id)

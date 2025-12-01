@@ -55,8 +55,8 @@ class ImportService:
                         user_id=UUID(user_id),
                         workout_id=workout_id,
                         type=field,
-                        start_datetime=workout.start,
-                        end_datetime=workout.end,
+                        start_datetime=datetime.strptime(workout.start, APPLE_DT_FORMAT),
+                        end_datetime=datetime.strptime(workout.end, APPLE_DT_FORMAT),
                         min=data.qty or 0,
                         max=data.qty or 0,
                         avg=data.qty or 0,
@@ -71,7 +71,7 @@ class ImportService:
         workout: AEWorkoutJSON,
         workout_id: UUID,
         user_id: str,
-    ) -> tuple[list[WorkoutStatisticCreate]]:
+    ) -> list[WorkoutStatisticCreate]:
         statistics: list[WorkoutStatisticCreate] = []
 
         for field in ["heartRate", "heartRateRecovery", "activeEnergy"]:
@@ -114,7 +114,7 @@ class ImportService:
 
             start_date = self._dt(wjson.start)
             end_date = self._dt(wjson.end)
-            duration_seconds = (end_date - start_date).total_seconds()
+            duration_seconds = Decimal(str((end_date - start_date).total_seconds()))
 
             workout_statistics = self._get_workout_statistics(wjson, user_id, workout_id)
             records = self._get_records(wjson, workout_id, user_id)

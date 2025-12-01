@@ -25,7 +25,7 @@ class CrudRepository[
         return creation
 
     def get(self, db_session: DbSession, object_id: UUID | int) -> ModelType | None:
-        return db_session.query(self.model).filter(self.model.id == object_id).one_or_none()
+        return db_session.query(self.model).filter(getattr(self.model, "id") == object_id).one_or_none()
 
     def get_all(
         self,

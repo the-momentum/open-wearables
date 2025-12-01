@@ -35,7 +35,7 @@ class BaseAdminMeta(ModelViewMeta):
         return cls
 
     @staticmethod
-    def _get_fields_with_default_factory(cls) -> list[str]:
+    def _get_fields_with_default_factory(cls: type) -> list[str]:
         exclude_fields = []
 
         for schema_attr in ["_create_schema", "_update_schema"]:

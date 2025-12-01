@@ -26,7 +26,7 @@ async def create_api_key(
 
 
 @router.delete("/api-keys/{key_id}", response_model=ApiKeyRead)
-async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep) -> ApiKeyRead:
+async def delete_api_key(key_id: str, db: DbSession, _developer: DeveloperDep):
     """Delete API key by key value."""
     return api_key_service.delete(db, key_id, raise_404=True)
 
@@ -43,6 +43,6 @@ async def update_api_key(
 
 
 @router.post("/api-keys/{key_id}/rotate", status_code=status.HTTP_201_CREATED, response_model=ApiKeyRead)
-async def rotate_api_key(key_id: str, db: DbSession, _developer: DeveloperDep) -> ApiKeyRead:
+async def rotate_api_key(key_id: str, db: DbSession, _developer: DeveloperDep):
     """Rotate API key - delete old and generate new."""
     return api_key_service.rotate_api_key(db, key_id, _developer.id)

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
 from app.schemas.oauth import ProviderName
@@ -57,6 +57,12 @@ async def get_user_workouts(
     """
     strategy = factory.get_provider(provider.value)
 
+    if not strategy.workouts:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Provider '{provider.value}' does not support workouts",
+        )
+
     # Collect all parameters
     params = {
         "since": since,
@@ -95,6 +101,12 @@ async def get_user_workout_detail(
     Requires valid API key and active connection for the user.
     """
     strategy = factory.get_provider(provider.value)
+
+    if not strategy.workouts:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Provider '{provider.value}' does not support workouts",
+        )
 
     # Collect all parameters
     params = {

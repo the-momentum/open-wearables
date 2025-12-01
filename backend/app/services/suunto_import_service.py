@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas import (
@@ -32,17 +33,14 @@ class ImportService:
             end_date = datetime.fromtimestamp(workout.stopTime / 1000)
             duration_seconds = workout.totalTime
 
-            if workout.gear:
-                source_name = workout.gear.name
-            else:
-                source_name = "Unknown"
+            source_name = workout.gear.name if workout.gear else "Unknown"
 
             workout_row = WorkoutCreate(
                 id=workout_id,
                 provider_id=str(workout.workoutId),
-                user_id=user_id,
+                user_id=UUID(user_id),
                 type="Unknown",
-                duration_seconds=duration_seconds,
+                duration_seconds=Decimal(duration_seconds),
                 source_name=source_name,
                 start_datetime=start_date,
                 end_datetime=end_date,
@@ -61,7 +59,7 @@ class ImportService:
                 workout_statistics.append(
                     WorkoutStatisticCreate(
                         id=uuid4(),
-                        user_id=user_id,
+                        user_id=UUID(user_id),
                         workout_id=workout_id,
                         type=field,
                         start_datetime=start_date,
@@ -77,7 +75,7 @@ class ImportService:
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),
-                    user_id=user_id,
+                    user_id=UUID(user_id),
                     workout_id=workout_id,
                     type="heartRate",
                     start_datetime=start_date,
