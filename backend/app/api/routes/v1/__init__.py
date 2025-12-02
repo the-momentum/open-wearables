@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
 from .auth import router as auth_router
+from .connections import router as connections_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .heart_rate import router as heart_rate_router
 from .import_data import router as import_data_router
@@ -20,6 +21,7 @@ v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/vendors", tags=["vendor workouts"])
 v1_router.include_router(users_router, tags=["users"])
+v1_router.include_router(connections_router, tags=["data"])
 v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_data_router, tags=["import-data"])

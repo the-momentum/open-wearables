@@ -76,6 +76,19 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .one_or_none()
         )
 
+    def get_by_user_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+    ) -> list[UserConnection]:
+        """Get all connections for a specific user."""
+        return (
+            db_session.query(self.model)
+            .filter(self.model.user_id == user_id)
+            .order_by(self.model.created_at.desc())
+            .all()
+        )
+
     def get_expiring_tokens(self, db_session: DbSession, minutes_threshold: int = 5) -> list[UserConnection]:
         """Get connections with tokens expiring soon (for background refresh)."""
         now = datetime.now(timezone.utc)
