@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import and_
 
 from app.database import DbSession
+from app.mappings import str_64
 from app.models import UserConnection
 from app.repositories.repositories import CrudRepository
 from app.schemas import UserConnectionCreate, UserConnectionUpdate
@@ -95,7 +96,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
 
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Mark connection as revoked (when refresh token fails)."""
-        connection.status = "revoked"
+        connection.status = str_64("revoked")  # type: ignore[assignment]
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
         db_session.commit()

@@ -181,7 +181,9 @@ class BaseOAuthTemplate(ABC):
         # Delete state immediately (one-time use)
         self.redis_client.delete(redis_key)
 
-        state_dict = json.loads(state_data)
+        # Redis data can be str or bytes, ensure it's str
+        state_data_str: str = state_data.decode("utf-8") if isinstance(state_data, bytes) else str(state_data)
+        state_dict = json.loads(state_data_str)
         code_verifier = state_dict.pop("code_verifier", None)
         oauth_state = OAuthState.model_validate(state_dict)
 

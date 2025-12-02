@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.database import DbSession
+from app.repositories import UserConnectionRepository
 from app.services import garmin_import_service
 
 router = APIRouter()
@@ -51,10 +52,9 @@ async def garmin_ping_notification(
         logger.info(f"Received Garmin ping notification: {payload}")
 
         # Process different summary types
-        results = {
-            "processed": 0,
-            "errors": [],
-        }
+        processed_count = 0
+        errors: list[str] = []
+        processed_activities: list[dict] = []
 
         # Process activities
         if "activities" in payload:
@@ -77,7 +77,7 @@ async def garmin_ping_notification(
 
                     if not connection:
                         logger.warning(f"No connection found for Garmin user {garmin_user_id}")
-                        results["errors"].append(f"User {garmin_user_id} not connected")
+                        errors.append(f"User {garmin_user_id} not connected")
                         continue
 
                     internal_user_id = connection.user_id
@@ -141,8 +141,8 @@ async def garmin_ping_notification(
                         # For now, just log the data structure
                         logger.debug(f"Activity data: {activities_data}")
 
-                        results["processed"] += 1
-                        results["activities"].append(
+                        processed_count += 1
+                        processed_activities.append(
                             {
                                 "garmin_user_id": garmin_user_id,
                                 "internal_user_id": str(internal_user_id),
@@ -154,18 +154,31 @@ async def garmin_ping_notification(
 
                     except httpx.HTTPError as e:
                         logger.error(f"Failed to fetch activity data from callback URL: {str(e)}")
-                        results["errors"].append(f"HTTP error: {str(e)}")
+                        errors.append(f"HTTP error: {str(e)}")
 
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
-                    results["errors"].append(str(e))
+                    errors.append(str(e))
 
             # temporary visual change
             try:
-                garmin_import_service.load_data(db, payload["activities"], internal_user_id)
+                internal_user_id = None
+                for activity in payload["activities"]:
+                    garmin_user_id = activity.get("userId")
+                    from app.repositories import UserConnectionRepository
+
+                    repo = UserConnectionRepository()
+                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    if connection:
+                        internal_user_id = connection.user_id
+                        break
+                if internal_user_id:
+                    garmin_import_service.load_data(db, payload["activities"], str(internal_user_id))
+                else:
+                    logger.warning("No internal user id found for activities")
             except Exception as e:
                 logger.error(f"Error loading data from Garmin: {str(e)}")
-                results["errors"].append(f"Error loading data from Garmin: {str(e)}")
+                errors.append(f"Error loading data from Garmin: {str(e)}")
 
         # Process other summary types (activityDetails, dailies, etc.)
         for summary_type in ["activityDetails", "dailies", "epochs", "sleeps"]:
@@ -173,7 +186,11 @@ async def garmin_ping_notification(
                 logger.info(f"Received {len(payload[summary_type])} {summary_type} notifications")
                 # TODO: Process other summary types similarly
 
-        return results
+        return {
+            "processed": processed_count,
+            "errors": errors,
+            "activities": processed_activities,
+        }
 
     except Exception as e:
         logger.error(f"Error processing Garmin webhook: {str(e)}")
@@ -217,11 +234,9 @@ async def garmin_push_notification(
         payload = await request.json()
         logger.info(f"Received Garmin push notification: {payload}")
 
-        results = {
-            "processed": 0,
-            "errors": [],
-            "activities": [],
-        }
+        processed_count = 0
+        errors: list[str] = []
+        processed_activities: list[dict] = []
 
         # Process activities
         if "activities" in payload:
@@ -257,7 +272,7 @@ async def garmin_push_notification(
                     # TODO: Save to database
                     # Parse and store activity data...
 
-                    results["activities"].append(
+                    processed_activities.append(
                         {
                             "activity_id": activity_id,
                             "name": activity_name,
@@ -266,20 +281,38 @@ async def garmin_push_notification(
                             "status": "received",
                         },
                     )
-                    results["processed"] += 1
+                    processed_count += 1
 
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
-                    results["errors"].append(str(e))
+                    errors.append(str(e))
 
             # no internal user id, just temporary visual change
             try:
-                garmin_import_service.load_data(db, payload["activities"], internal_user_id)
+                internal_user_id = None
+                for activity in payload["activities"]:
+                    garmin_user_id = activity.get("userId")
+
+                    repo = UserConnectionRepository()
+                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    if connection:
+                        internal_user_id = connection.user_id
+                        break
+
+                if internal_user_id:
+                    garmin_import_service.load_data(db, payload["activities"], str(internal_user_id))
+                else:
+                    logger.warning("No internal user id found for activities")
+
             except Exception as e:
                 logger.error(f"Error loading data from Garmin: {str(e)}")
-                results["errors"].append(f"Error loading data from Garmin: {str(e)}")
+                errors.append(f"Error loading data from Garmin: {str(e)}")
 
-        return results
+        return {
+            "processed": processed_count,
+            "errors": errors,
+            "activities": processed_activities,
+        }
 
     except Exception as e:
         logger.error(f"Error processing Garmin push webhook: {str(e)}")

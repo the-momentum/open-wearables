@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas import (
@@ -21,7 +22,9 @@ class ImportService:
         self.workout_statistic_service = workout_statistic_service
 
     def _build_bundles(
-        self, raw: list[GarminActivityJSON], user_id: str
+        self,
+        raw: list[GarminActivityJSON],
+        user_id: str,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         for activity in raw:
             workout_id = uuid4()
@@ -33,9 +36,9 @@ class ImportService:
             workout_row = WorkoutCreate(
                 id=workout_id,
                 provider_id=activity.summaryId,
-                user_id=user_id,
+                user_id=UUID(user_id),
                 type=activity.activityType,
-                duration_seconds=duration_seconds,
+                duration_seconds=Decimal(duration_seconds),
                 source_name=activity.deviceName,
                 start_datetime=start_date,
                 end_datetime=end_date,
@@ -54,7 +57,7 @@ class ImportService:
                 workout_statistics.append(
                     WorkoutStatisticCreate(
                         id=uuid4(),
-                        user_id=user_id,
+                        user_id=UUID(user_id),
                         workout_id=workout_id,
                         type=field,
                         start_datetime=start_date,
@@ -69,7 +72,7 @@ class ImportService:
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),
-                    user_id=user_id,
+                    user_id=UUID(user_id),
                     workout_id=workout_id,
                     type="heartRate",
                     start_datetime=start_date,

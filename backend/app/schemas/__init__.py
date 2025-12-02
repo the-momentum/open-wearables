@@ -21,9 +21,9 @@ from .common import (
 from .developer import (
     DeveloperCreate,
     DeveloperCreateInternal,
+    DeveloperRead,
     DeveloperUpdate,
     DeveloperUpdateInternal,
-    DeveloperRead,
 )
 from .error_codes import ErrorCode
 from .filter_params import FilterParams
@@ -58,6 +58,13 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
+from .user import (
+    UserCreate,
+    UserCreateInternal,
+    UserRead,
+    UserUpdate,
+    UserUpdateInternal,
+)
 from .workout import (
     WorkoutCreate,
     WorkoutQueryParams,
@@ -68,13 +75,6 @@ from .workout_statistics import (
     WorkoutStatisticCreate,
     WorkoutStatisticResponse,
     WorkoutStatisticUpdate,
-)
-from .user import (
-    UserCreate,
-    UserCreateInternal,
-    UserUpdate,
-    UserUpdateInternal,
-    UserRead,
 )
 
 __all__ = [

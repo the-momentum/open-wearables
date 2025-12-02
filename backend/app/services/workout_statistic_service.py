@@ -4,7 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import WorkoutStatistic
 from app.repositories import WorkoutStatisticRepository
-from app.schemas import WorkoutStatisticCreate, WorkoutStatisticUpdate, WorkoutStatisticResponse
+from app.schemas import WorkoutStatisticCreate, WorkoutStatisticResponse, WorkoutStatisticUpdate
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -48,7 +48,6 @@ class WorkoutStatisticService(
             for stat in statistics
         ]
 
-
     @handle_exceptions
     async def get_workout_heart_rate_statistics(
         self,
@@ -75,8 +74,7 @@ class WorkoutStatisticService(
             )
             for stat in statistics
         ]
-    
-    
+
     @handle_exceptions
     async def get_user_heart_rate_statistics(
         self,
@@ -102,5 +100,6 @@ class WorkoutStatisticService(
             )
             for stat in statistics
         ]
-    
+
+
 workout_statistic_service = WorkoutStatisticService(log=getLogger(__name__))

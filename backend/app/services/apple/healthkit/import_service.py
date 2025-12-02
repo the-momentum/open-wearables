@@ -1,7 +1,8 @@
 import json
+from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas import (
@@ -43,9 +44,9 @@ class ImportService:
             workout_create = WorkoutCreate(
                 id=uuid4(),
                 provider_id=provider_id,
-                user_id=user_id,
+                user_id=UUID(user_id),
                 type=wjson.type or "Unknown",
-                duration_seconds=duration_seconds,
+                duration_seconds=Decimal(duration_seconds),
                 source_name=wjson.sourceName or "Apple Health",
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
@@ -57,39 +58,39 @@ class ImportService:
                 for stat in wjson.workoutStatistics:
                     stat_create = WorkoutStatisticCreate(
                         id=uuid4(),
-                        user_id=user_id,
+                        user_id=UUID(user_id),
                         workout_id=workout_create.id,
                         type=stat.type,
                         start_datetime=wjson.startDate,
                         end_datetime=wjson.endDate,
-                        min=stat.value,
-                        max=stat.value,
-                        avg=stat.value,
+                        min=float(stat.value) if stat.value is not None else None,
+                        max=float(stat.value) if stat.value is not None else None,
+                        avg=float(stat.value) if stat.value is not None else None,
                         unit=stat.unit,
                     )
                     workout_statistics.append(stat_create)
 
             yield workout_create, workout_statistics
 
-    def _build_statistic_bundles(self, raw: dict, user_id: str) -> Iterable[tuple[WorkoutStatisticCreate]]:
+    def _build_statistic_bundles(self, raw: dict, user_id: str) -> Iterable[WorkoutStatisticCreate]:
         root = RootJSON(**raw)
         records_raw = root.data.get("records", [])
         for r in records_raw:
             rjson = HKRecordJSON(**r)
 
-            provider_id = rjson.uuid if rjson.uuid else None
+            # provider_id = rjson.uuid if rjson.uuid else None # Unused
 
             stat_create = WorkoutStatisticCreate(
                 id=uuid4(),
-                provider_id=provider_id,
-                user_id=user_id,
+                # provider_id=provider_id, # Removed
+                user_id=UUID(user_id),
                 type=rjson.type or "Unknown",
                 start_datetime=rjson.startDate,
                 end_datetime=rjson.endDate,
                 unit=rjson.unit,
-                min=rjson.value,
-                max=rjson.value,
-                avg=rjson.value,
+                min=float(rjson.value) if rjson.value is not None else None,
+                max=float(rjson.value) if rjson.value is not None else None,
+                avg=float(rjson.value) if rjson.value is not None else None,
             )
 
             yield stat_create

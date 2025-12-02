@@ -44,8 +44,17 @@ class AppService[
         raise_404: bool = False,
         print_log: bool = True,
     ) -> ModelType | None:
-        if not (fetched := self.crud.get(db_session, object_id)) and raise_404:
-            raise ResourceNotFoundError(self.name, object_id)
+        # For str IDs, try to convert to UUID if it looks like one, otherwise pass as-is
+        if isinstance(object_id, str):
+            try:
+                id_to_fetch: UUID | int | str = UUID(object_id)
+            except ValueError:
+                id_to_fetch = object_id
+        else:
+            id_to_fetch = object_id
+
+        if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:  # type: ignore[arg-type]
+            raise ResourceNotFoundError(self.name, id_to_fetch)  # type: ignore[arg-type]
 
         if fetched and print_log:
             self.logger.debug(f"Fetched {self.name} with ID: {fetched.id}.")

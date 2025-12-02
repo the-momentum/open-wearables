@@ -1,6 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas.workout import WorkoutCreate
@@ -43,17 +44,18 @@ class PolarWorkouts(BaseWorkoutsTemplate):
     def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
         """Normalize Polar exercise to WorkoutCreate."""
         # Placeholder mapping
+        duration_str = raw_workout.get("duration", "PT0S").replace("PT", "").replace("S", "")
+        duration_val = Decimal(duration_str) if duration_str else Decimal(0)
+
         return WorkoutCreate(
+            id=uuid4(),
             user_id=UUID(int=0),
             provider_id=None,
             type=raw_workout.get("sport", "unknown"),
-            duration=float(
-                raw_workout.get("duration", "PT0S").replace("PT", "").replace("S", ""),
-            ),  # ISO duration parsing needed properly
-            durationUnit="seconds",
-            sourceName="polar",
-            startDate=datetime.fromisoformat(raw_workout.get("startTime", datetime.now().isoformat())),
-            endDate=datetime.now(),  # Calculate from duration
+            duration_seconds=duration_val,
+            source_name="polar",
+            start_datetime=datetime.fromisoformat(raw_workout.get("startTime", datetime.now().isoformat())),
+            end_datetime=datetime.now(),  # Calculate from duration
         )
 
     def get_exercise_detail(

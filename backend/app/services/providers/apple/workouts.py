@@ -20,7 +20,13 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         workout_repo: WorkoutRepository,
         connection_repo: UserConnectionRepository,
     ):
-        super().__init__(workout_repo, connection_repo)
+        super().__init__(
+            workout_repo,
+            connection_repo,
+            provider_name="apple",
+            api_base_url="",
+            oauth=None,  # type: ignore[arg-type]
+        )
         self.handlers: dict[str, AppleSourceHandler] = {
             "auto_export": AutoExportHandler(),
             "healthkit": HealthKitHandler(),

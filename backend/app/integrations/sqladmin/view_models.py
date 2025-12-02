@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy import inspect
 
 
-def _get_model_fields(cls) -> list[str]:
+def _get_model_fields(cls: Any) -> list[str]:
     inspector = inspect(cls.model)
     return [attr.key for attr in inspector.attrs]
 
@@ -17,7 +17,7 @@ class BaseConfig(BaseModel):
         if self.include is not None and self.exclude is not None:
             raise ValueError("Cannot use both 'include' and 'exclude' in configuration")
 
-    def _all_or_value(self, val) -> str | list[str] | None:
+    def _all_or_value(self, val: Any) -> str | list[str] | None:
         """Convert '*' or ['*'] to '__all__', otherwise return value."""
         return "__all__" if val == "*" or val == ["*"] else val
 

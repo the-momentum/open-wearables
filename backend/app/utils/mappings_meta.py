@@ -1,4 +1,4 @@
-from typing import Any, TypeAliasType, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
@@ -7,7 +7,7 @@ from app.mappings import ManyToOne, OneToMany
 
 DEFAULT_ONE_TO_MANY = dict(cascade="all, delete-orphan", passive_deletes=True)
 DEFAULT_MANY_TO_ONE = dict()
-RELATION_TYPES: dict[TypeAliasType, dict] = {
+RELATION_TYPES: dict[Any, dict] = {
     ManyToOne: DEFAULT_MANY_TO_ONE,
     OneToMany: DEFAULT_ONE_TO_MANY,
 }
@@ -18,7 +18,7 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
 
     _registry: dict[str, dict[str, tuple[str, str]]] = {}
 
-    def __new__(mcls, name, bases, namespace, **kw):
+    def __new__(mcls, name: str, bases: tuple, namespace: dict, **kw):
         annotations = dict(namespace.get("__annotations__", {}))
         local_rels = {}
 
@@ -50,7 +50,7 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         return cls
 
     @staticmethod
-    def _extract_target_name(tp) -> str | None:
+    def _extract_target_name(tp: Any) -> str | None:
         """Extract the string name of target class, handling ForwardRef and str literals."""
         if isinstance(tp, str):
             return tp
@@ -61,7 +61,7 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         return None
 
     @classmethod
-    def _add_relation(cls, attr: str, inner: Any, namespace: dict, local_rels: dict):
+    def _add_relation(cls, attr: str, inner: Any, namespace: dict, local_rels: dict) -> None:
         """Add relationship from inner type using registered RELATION_TYPES."""
         inner_origin = get_origin(inner)
         inner_args = get_args(inner)
@@ -81,7 +81,7 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         local_rels[attr] = (kind, target_name)
 
     @classmethod
-    def _handle_back_populates(cls, mapped_cls, local_rels: dict):
+    def _handle_back_populates(cls, mapped_cls: type, local_rels: dict) -> None:
         """Optionally auto-link back_populates for opposite relations."""
         for my_attr, (my_type, target_name) in local_rels.items():
             target_rels = cls._registry.get(target_name, {})

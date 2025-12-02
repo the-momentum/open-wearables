@@ -1,6 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.schemas.workout import WorkoutCreate
@@ -83,14 +84,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         # This is a placeholder implementation.
         # You should map actual Garmin fields to WorkoutCreate fields.
         return WorkoutCreate(
+            id=uuid4(),
             user_id=UUID(int=0),  # Will be overwritten by _process_single_workout
             provider_id=None,  # Map from raw_workout
             type=raw_workout.get("activityType", "unknown"),
-            duration=float(raw_workout.get("durationInSeconds", 0)),
-            durationUnit="seconds",
-            sourceName="garmin",
-            startDate=datetime.fromtimestamp(raw_workout.get("startTimeInSeconds", 0)),
-            endDate=datetime.fromtimestamp(
+            duration_seconds=Decimal(raw_workout.get("durationInSeconds", 0)),
+            source_name="garmin",
+            start_datetime=datetime.fromtimestamp(raw_workout.get("startTimeInSeconds", 0)),
+            end_datetime=datetime.fromtimestamp(
                 raw_workout.get("startTimeInSeconds", 0) + raw_workout.get("durationInSeconds", 0),
             ),
         )

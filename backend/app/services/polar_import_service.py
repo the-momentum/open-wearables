@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
+from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import isodate
 
@@ -22,7 +23,9 @@ class ImportService:
         self.workout_statistic_service = workout_statistic_service
 
     def _build_bundles(
-        self, raw: list[PolarExerciseJSON], user_id: str
+        self,
+        raw: list[PolarExerciseJSON],
+        user_id: str,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         for exercise in raw:
             workout_id = uuid4()
@@ -30,7 +33,10 @@ class ImportService:
             start_date: datetime = isodate.parse_datetime(exercise.start_time)
             offset: timedelta = timedelta(minutes=exercise.start_time_utc_offset)
             start_date: datetime = start_date + offset
-            end_date: datetime = start_date + timedelta(seconds=exercise.duration)
+
+            duration_td = isodate.parse_duration(exercise.duration)
+            end_date: datetime = start_date + duration_td
+            duration_seconds = duration_td.total_seconds()
 
             hr_avg = exercise.heart_rate.average
             hr_max = exercise.heart_rate.maximum
@@ -38,9 +44,9 @@ class ImportService:
             workout_row = WorkoutCreate(
                 id=workout_id,
                 provider_id=exercise.id,
-                user_id=user_id,
+                user_id=UUID(user_id),
                 type=exercise.sport,
-                duration_seconds=exercise.duration,
+                duration_seconds=Decimal(duration_seconds),
                 source_name=exercise.device,
                 start_datetime=start_date,
                 end_datetime=end_date,
@@ -57,7 +63,7 @@ class ImportService:
                 workout_statistics.append(
                     WorkoutStatisticCreate(
                         id=uuid4(),
-                        user_id=user_id,
+                        user_id=UUID(user_id),
                         workout_id=workout_id,
                         type=field,
                         start_datetime=start_date,
@@ -72,7 +78,7 @@ class ImportService:
             workout_statistics.append(
                 WorkoutStatisticCreate(
                     id=uuid4(),
-                    user_id=user_id,
+                    user_id=UUID(user_id),
                     workout_id=workout_id,
                     type="heartRate",
                     start_datetime=start_date,

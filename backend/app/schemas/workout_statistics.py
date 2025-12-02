@@ -1,8 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel
-from app.schemas.common import BaseQueryParams
 
 
 class WorkoutStatisticCreate(BaseModel):
@@ -39,12 +39,12 @@ class WorkoutStatisticResponse(BaseModel):
 
     id: UUID
     user_id: UUID
-    workout_id: UUID
+    workout_id: UUID | None
 
     type: str
     start_datetime: datetime
     end_datetime: datetime
-    min: float | int | None = None
-    max: float | int | None = None
-    avg: float | int | None = None
+    min: Decimal | float | int | None = None
+    max: Decimal | float | int | None = None
+    avg: Decimal | float | int | None = None
     unit: str

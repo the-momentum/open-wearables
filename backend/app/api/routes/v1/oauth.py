@@ -38,6 +38,7 @@ async def authorize_provider(
     """
     strategy = get_oauth_strategy(provider)
 
+    assert strategy.oauth
     auth_url, state = strategy.oauth.get_authorization_url(user_id, redirect_uri)
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
@@ -56,6 +57,7 @@ async def oauth_callback(
     """
     strategy = get_oauth_strategy(provider)
 
+    assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
     # Redirect to success page or developer's redirect_uri

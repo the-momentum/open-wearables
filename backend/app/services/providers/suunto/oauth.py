@@ -30,7 +30,12 @@ class SuuntoOAuth(BaseOAuthTemplate):
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts Suunto user info from JWT access token."""
         try:
-            decoded = jwt.decode(token_response.access_token, options={"verify_signature": False})
+            # jwt.decode requires a key parameter, but we're not verifying signature
+            decoded = jwt.decode(
+                token_response.access_token,
+                key="",  # Empty key since we're not verifying
+                options={"verify_signature": False},
+            )
             provider_username = decoded.get("user")
             provider_user_id = decoded.get("sub")
             return {"user_id": provider_user_id, "username": provider_username}

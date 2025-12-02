@@ -40,15 +40,13 @@ def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
                 db.rollback()
                 raise e
 
-            result = {
+            return {
                 "bucket": bucket_name,
                 "input_key": object_key,
                 "user_id": user_id,
                 "status": "success",
                 "message": "Import completed successfully",
             }
-
-            return result
 
         finally:
             if temp_xml_file and os.path.exists(temp_xml_file):
