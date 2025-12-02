@@ -1,6 +1,8 @@
 from logging import Logger, getLogger
 from uuid import UUID
 
+from fastapi import HTTPException, status
+
 from app.database import DbSession
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
@@ -20,6 +22,20 @@ class DeveloperService(AppService[DeveloperRepository, Developer, DeveloperCreat
 
     def register(self, db_session: DbSession, creator: DeveloperCreate) -> Developer:
         """Create a developer with hashed password and server-generated fields."""
+        # Check if developer with this email already exists
+        existing_developers = self.crud.get_all(
+            db_session,
+            filters={"email": creator.email},
+            offset=0,
+            limit=1,
+            sort_by=None,
+        )
+        if existing_developers:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Developer with email {creator.email} already exists",
+            )
+
         creation_data = creator.model_dump(exclude={"password"})
         internal_creator = DeveloperCreateInternal(
             **creation_data,
