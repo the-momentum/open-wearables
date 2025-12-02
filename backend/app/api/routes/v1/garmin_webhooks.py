@@ -6,8 +6,6 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.database import DbSession
-from app.repositories import UserConnectionRepository
-from app.services import garmin_import_service
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -160,26 +158,6 @@ async def garmin_ping_notification(
                     logger.error(f"Error processing activity notification: {str(e)}")
                     errors.append(str(e))
 
-            # temporary visual change
-            try:
-                internal_user_id = None
-                for activity in payload["activities"]:
-                    garmin_user_id = activity.get("userId")
-                    from app.repositories import UserConnectionRepository
-
-                    repo = UserConnectionRepository()
-                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
-                    if connection:
-                        internal_user_id = connection.user_id
-                        break
-                if internal_user_id:
-                    garmin_import_service.load_data(db, payload["activities"], str(internal_user_id))
-                else:
-                    logger.warning("No internal user id found for activities")
-            except Exception as e:
-                logger.error(f"Error loading data from Garmin: {str(e)}")
-                errors.append(f"Error loading data from Garmin: {str(e)}")
-
         # Process other summary types (activityDetails, dailies, etc.)
         for summary_type in ["activityDetails", "dailies", "epochs", "sleeps"]:
             if summary_type in payload:
@@ -286,27 +264,6 @@ async def garmin_push_notification(
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
                     errors.append(str(e))
-
-            # no internal user id, just temporary visual change
-            try:
-                internal_user_id = None
-                for activity in payload["activities"]:
-                    garmin_user_id = activity.get("userId")
-
-                    repo = UserConnectionRepository()
-                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
-                    if connection:
-                        internal_user_id = connection.user_id
-                        break
-
-                if internal_user_id:
-                    garmin_import_service.load_data(db, payload["activities"], str(internal_user_id))
-                else:
-                    logger.warning("No internal user id found for activities")
-
-            except Exception as e:
-                logger.error(f"Error loading data from Garmin: {str(e)}")
-                errors.append(f"Error loading data from Garmin: {str(e)}")
 
         return {
             "processed": processed_count,
