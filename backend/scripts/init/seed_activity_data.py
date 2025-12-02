@@ -69,8 +69,7 @@ def generate_workout(user_id: UUID, fake_instance: Faker) -> WorkoutCreate:
 
 def seed_activity_data() -> None:
     """Create 10 users with 100 workouts each."""
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         users_created = 0
         workouts_created = 0
 
@@ -100,12 +99,6 @@ def seed_activity_data() -> None:
             print(f"  ✓ Completed 100 workouts for user {user_num}\n")
 
         print(f"✓ Successfully created {users_created} users with {workouts_created} total workouts")
-    except Exception as exc:
-        db.rollback()
-        print(f"✗ Error occurred: {exc}")
-        raise exc
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":
