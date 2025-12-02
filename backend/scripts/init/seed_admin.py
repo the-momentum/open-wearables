@@ -11,8 +11,7 @@ ADMIN_PASSWORD = "secret123"
 
 def seed_admin() -> None:
     """Create default admin developer if it doesn't exist."""
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         existing = developer_service.crud.get_all(
             db,
             filters={"email": ADMIN_EMAIL},
@@ -26,11 +25,6 @@ def seed_admin() -> None:
 
         developer_service.register(db, DeveloperCreate(email=ADMIN_EMAIL, password=ADMIN_PASSWORD))
         print(f"✓ Created default admin developer: {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
-    except Exception as exc:
-        db.rollback()
-        raise exc
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":
