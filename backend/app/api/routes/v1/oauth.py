@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
+<<<<<<< HEAD
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
@@ -14,6 +15,10 @@ from app.schemas import (
 )
 from app.services import DeveloperDep
 from app.services.provider_settings_service import ProviderSettingsService
+=======
+from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
+from app.schemas import AuthorizationURLResponse, ProviderName
+>>>>>>> db5924e (add task to callback)
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 
@@ -71,6 +76,9 @@ async def oauth_callback(
 
     # Redirect to success page or developer's redirect_uri
     redirect_url = oauth_state.redirect_uri or f"/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}"
+
+    # schedule sync task
+    sync_vendor_data.delay(str(oauth_state.user_id), start_date=None, end_date=None)
 
     return RedirectResponse(url=redirect_url)
 
