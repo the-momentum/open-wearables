@@ -67,9 +67,6 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
 
                     if not strategy.workouts:
-                        logger.warning(
-                            f"[sync_vendor_data] Provider {provider_name} does not support workouts",
-                        )
                         results["errors"][provider_name] = "Workouts not supported"
                         continue
 

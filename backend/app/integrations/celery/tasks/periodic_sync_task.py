@@ -26,4 +26,4 @@ def sync_all_users(start_date: str | None = None, end_date: str | None = None) -
         for user_id in user_ids:
             sync_vendor_data.delay(str(user_id), start_date, end_date)
 
-        return {"users_synced": len(user_ids)}
+        return {"users_for_sync": len(user_ids)}
