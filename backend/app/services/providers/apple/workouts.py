@@ -61,6 +61,27 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """
         return None
 
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps.
+
+        Not used for Apple Health as it's push-based, but required by base template.
+        """
+        raise NotImplementedError("Apple Health doesn't use API-based date extraction")
+
+    def _normalize_workout(self, raw_workout: Any, user_id: UUID) -> WorkoutCreate:
+        """Converts a provider-specific workout object into WorkoutCreate.
+
+        Not used directly for Apple Health - use handlers instead via process_payload.
+        """
+        raise NotImplementedError("Use process_payload with handlers for Apple Health")
+
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+        """Load data from provider API.
+
+        Apple Health doesn't support API-based data loading - it's push-based only.
+        """
+        return False
+
     def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
         """Normalizes Apple Health workout data.
 

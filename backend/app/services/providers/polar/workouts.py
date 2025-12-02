@@ -49,6 +49,14 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         route = kwargs.get("route", False)
         return self.get_exercise_detail(db, user_id, workout_id, samples, zones, route)
 
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps.
+
+        Note: Polar uses a different format with offset, so this delegates to _extract_dates_with_offset.
+        This is required by the base template but not used directly.
+        """
+        raise NotImplementedError("Use _extract_dates_with_offset for Polar workouts")
+
     def _extract_dates_with_offset(
         self,
         start_time: str,
