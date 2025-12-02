@@ -72,7 +72,6 @@ def sync_vendor_data(
                 logger.info(f"[sync_vendor_data] Syncing data from {provider_name} for user {user_id}")
 
                 try:
-                    # Get provider strategy
                     strategy = factory.get_provider(provider_name)
 
                     if not strategy.workouts:
@@ -82,14 +81,11 @@ def sync_vendor_data(
                         results["errors"][provider_name] = "Workouts not supported"
                         continue
 
-                    # Build provider-specific parameters
                     params = _build_sync_params(provider_name, start_date, end_date)
 
-                    # Sync data
                     success = strategy.workouts.load_data(db, user_uuid, **params)
 
                     if success:
-                        # Update last_synced_at timestamp
                         connection.last_synced_at = datetime.now()
                         db.add(connection)
                         db.commit()
@@ -113,7 +109,6 @@ def sync_vendor_data(
                         exc_info=True,
                     )
                     results["errors"][provider_name] = str(e)
-                    # Continue with next provider even if one fails
                     continue
 
             return results
