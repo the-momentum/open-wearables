@@ -1,11 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Iterable
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.schemas.workout import WorkoutCreate
+from app.schemas import (
+    SuuntoWorkoutJSON,
+    WorkoutCreate,
+    WorkoutStatisticCreate,
+)
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.workout_service import workout_service
+from app.services.workout_statistic_service import workout_statistic_service
 
 
 class SuuntoWorkouts(BaseWorkoutsTemplate):
@@ -61,19 +67,113 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Suunto API."""
         return self.get_workout_detail(db, user_id, workout_id)
 
-    def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
+    def _normalize_workout(
+        self,
+        raw_workout: SuuntoWorkoutJSON,
+        user_id: UUID,
+    ) -> WorkoutCreate:
         """Normalize Suunto workout to WorkoutCreate."""
-        # Placeholder mapping
+        workout_id = uuid4()
+
+        start_date = datetime.fromtimestamp(raw_workout.startTime / 1000)
+        end_date = datetime.fromtimestamp(raw_workout.stopTime / 1000)
+        duration_seconds = raw_workout.totalTime
+
+        source_name = raw_workout.gear.name if raw_workout.gear else "Unknown"
+
         return WorkoutCreate(
-            id=uuid4(),
-            user_id=UUID(int=0),
-            provider_id=None,
-            type=str(raw_workout.get("activityId", "unknown")),
-            duration_seconds=Decimal(raw_workout.get("totalTime", 0)),
-            source_name="suunto",
-            start_datetime=datetime.fromisoformat(raw_workout.get("startTime", datetime.now().isoformat())),
-            end_datetime=datetime.fromisoformat(raw_workout.get("stopTime", datetime.now().isoformat())),
+            id=workout_id,
+            provider_id=str(raw_workout.workoutId),
+            user_id=user_id,
+            type="Unknown",
+            duration_seconds=Decimal(duration_seconds),
+            source_name=source_name,
+            start_datetime=start_date,
+            end_datetime=end_date,
         )
+
+    def _normalize_workout_statistics(
+        self,
+        raw_workout: SuuntoWorkoutJSON,
+        user_id: UUID,
+        workout_id: UUID,
+    ) -> list[WorkoutStatisticCreate]:
+        """Normalize Suunto workout statistics to WorkoutStatisticCreate."""
+        workout_statistics = []
+
+        units = {
+            "totalDistance": "km",
+            "stepCount": "count",
+            "energyConsumption": "kcal",
+        }
+
+        start_date = datetime.fromtimestamp(raw_workout.startTime / 1000)
+        end_date = datetime.fromtimestamp(raw_workout.stopTime / 1000)
+
+        for field in ["totalDistance", "stepCount", "energyConsumption"]:
+            value = getattr(raw_workout, field)
+            workout_statistics.append(
+                WorkoutStatisticCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    workout_id=workout_id,
+                    type=field,
+                    start_datetime=start_date,
+                    end_datetime=end_date,
+                    min=value,
+                    max=value,
+                    avg=value,
+                    unit=units[field],
+                ),
+            )
+
+        hr_data = raw_workout.hrdata
+        if hr_data:
+            workout_statistics.append(
+                WorkoutStatisticCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    workout_id=workout_id,
+                    type="heartRate",
+                    start_datetime=start_date,
+                    end_datetime=end_date,
+                    min=None,  # doesnt exist for suunto
+                    max=hr_data.max,
+                    avg=hr_data.avg,
+                    unit="bpm",
+                ),
+            )
+
+        return workout_statistics
+
+    def _build_bundles(
+        self,
+        raw: list[SuuntoWorkoutJSON],
+        user_id: UUID,
+    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
+        """Build bundles of WorkoutCreate and WorkoutStatisticCreate."""
+        for raw_workout in raw:
+            workout = self._normalize_workout(raw_workout, user_id)
+            statistics = self._normalize_workout_statistics(raw_workout, user_id, workout.id)
+            yield workout, statistics
+
+    def load_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> bool:
+        """Load data from Suunto API."""
+        workouts_data = self.get_workouts(db, user_id, start_date, end_date)
+        workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
+
+        for workout_row, workout_statistics in self._build_bundles(workouts, user_id):
+            workout_service.create(db, workout_row)
+            for stat in workout_statistics:
+                workout_statistic_service.create(db, stat)
+
+        return True
 
     def get_workout_detail(
         self,
