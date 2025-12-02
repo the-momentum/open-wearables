@@ -1,10 +1,9 @@
 from logging import getLogger
 
-from celery import shared_task
-
 from app.database import SessionLocal
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.repositories.user_connection_repository import UserConnectionRepository
+from celery import shared_task
 
 logger = getLogger(__name__)
 

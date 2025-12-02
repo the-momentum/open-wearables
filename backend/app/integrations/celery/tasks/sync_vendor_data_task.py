@@ -3,11 +3,10 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
-from celery import shared_task
-
 from app.database import SessionLocal
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.factory import ProviderFactory
+from celery import shared_task
 
 logger = getLogger(__name__)
 
@@ -31,7 +30,7 @@ def sync_vendor_data(
     """
     factory = ProviderFactory()
     user_connection_repo = UserConnectionRepository()
-    
+
     results: dict[str, Any] = {
         "user_id": user_id,
         "start_date": start_date,
