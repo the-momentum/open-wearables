@@ -20,7 +20,7 @@ v1_router.include_router(oauth_router, prefix="/oauth", tags=["vendors oauth"])
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/vendors", tags=["vendor workouts"])
-v1_router.include_router(sync_data_router, prefix="/sync", tags=["sync data"])
+v1_router.include_router(sync_data_router, prefix="/vendors", tags=["sync data"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])

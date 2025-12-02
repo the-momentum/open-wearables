@@ -12,7 +12,7 @@ router = APIRouter()
 factory = ProviderFactory()
 
 
-@router.get("/{provider}/users/{user_id}/workouts")
+@router.get("/{provider}/users/{user_id}/sync")
 async def sync_user_workouts(
     provider: Annotated[ProviderName, Path(description="Workout data provider")],
     user_id: UUID,
