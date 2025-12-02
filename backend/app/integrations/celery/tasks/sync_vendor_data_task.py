@@ -3,11 +3,10 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
-from celery import shared_task
-
 from app.database import SessionLocal
 from app.models import UserConnection
 from app.services.providers.factory import ProviderFactory
+from celery import shared_task
 
 logger = getLogger(__name__)
 
@@ -183,4 +182,3 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
         params["until"] = end_timestamp
 
     return params
-

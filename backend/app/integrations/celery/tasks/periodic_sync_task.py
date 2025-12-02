@@ -1,10 +1,9 @@
 from logging import getLogger
 
-from celery import shared_task
-
 from app.database import SessionLocal
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.models import UserConnection
+from celery import shared_task
 
 logger = getLogger(__name__)
 
@@ -20,10 +19,7 @@ def sync_all_users(start_date: str | None = None, end_date: str | None = None) -
     with SessionLocal() as db:
         user_ids = [
             str(conn.user_id)
-            for conn in db.query(UserConnection.user_id)
-            .filter(UserConnection.status == "active")
-            .distinct()
-            .all()
+            for conn in db.query(UserConnection.user_id).filter(UserConnection.status == "active").distinct().all()
         ]
 
         logger.info(f"[sync_all_users] Found {len(user_ids)} users with active connections")
