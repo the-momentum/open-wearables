@@ -36,6 +36,7 @@ from .garmin.activity_import import (
 from .oauth import (
     AuthenticationMethod,
     AuthorizationURLResponse,
+    ConnectionStatus,
     OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,
@@ -97,6 +98,7 @@ __all__ = [
     "UploadDataResponse",
     # OAuth schemas
     "AuthenticationMethod",
+    "ConnectionStatus",
     "ProviderName",
     "OAuthState",
     "OAuthTokenResponse",

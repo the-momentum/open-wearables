@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from sqlalchemy import Index, UniqueConstraint
-from sqlalchemy.orm import Mapped
+from sqlalchemy import Enum, Index, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, PrimaryKey, datetime_tz, str_64
+from app.schemas.oauth import ConnectionStatus
 
 
 class UserConnection(BaseDbModel):
@@ -35,7 +36,7 @@ class UserConnection(BaseDbModel):
     scope: Mapped[str | None]
 
     # Metadata
-    status: Mapped[str_64]  # 'active', 'revoked', 'expired'
+    status: Mapped[ConnectionStatus] = mapped_column(Enum(ConnectionStatus, name="connection_status"))
     last_synced_at: Mapped[datetime_tz | None]
     created_at: Mapped[datetime_tz]
     updated_at: Mapped[datetime_tz]

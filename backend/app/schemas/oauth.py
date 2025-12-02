@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuthenticationMethod(str, Enum):
@@ -19,6 +19,14 @@ class ProviderName(str, Enum):
     GARMIN = "garmin"
     POLAR = "polar"
     SUUNTO = "suunto"
+
+
+class ConnectionStatus(str, Enum):
+    """Status of a user connection to a provider."""
+
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    EXPIRED = "expired"
 
 
 # OAuth State (Redis)
@@ -45,11 +53,13 @@ class UserConnectionBase(BaseModel):
 class UserConnectionCreate(UserConnectionBase):
     """Schema for creating a new UserConnection."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     id: UUID = Field(default_factory=uuid4)
     access_token: str
     refresh_token: str | None = None
     token_expires_at: datetime
-    status: str = "active"
+    status: ConnectionStatus = ConnectionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -57,13 +67,15 @@ class UserConnectionCreate(UserConnectionBase):
 class UserConnectionUpdate(BaseModel):
     """Schema for updating UserConnection."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     access_token: str | None = None
     refresh_token: str | None = None
     token_expires_at: datetime | None = None
     provider_user_id: str | None = None
     provider_username: str | None = None
     scope: str | None = None
-    status: str | None = None
+    status: ConnectionStatus | None = None
     last_synced_at: datetime | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -71,14 +83,13 @@ class UserConnectionUpdate(BaseModel):
 class UserConnectionRead(UserConnectionBase):
     """Schema for reading UserConnection (without sensitive tokens)."""
 
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: UUID
-    status: str
+    status: ConnectionStatus
     last_synced_at: datetime | None
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # OAuth Token Response

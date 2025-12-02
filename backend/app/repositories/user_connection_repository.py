@@ -4,10 +4,9 @@ from uuid import UUID
 from sqlalchemy import and_
 
 from app.database import DbSession
-from app.mappings import str_64
 from app.models import UserConnection
 from app.repositories.repositories import CrudRepository
-from app.schemas import UserConnectionCreate, UserConnectionUpdate
+from app.schemas import ConnectionStatus, UserConnectionCreate, UserConnectionUpdate
 
 
 class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCreate, UserConnectionUpdate]):
@@ -47,7 +46,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 and_(
                     self.model.user_id == user_id,
                     self.model.provider == provider,
-                    self.model.status == "active",
+                    self.model.status == ConnectionStatus.ACTIVE,
                 ),
             )
             .one_or_none()
@@ -70,7 +69,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 and_(
                     self.model.provider == provider,
                     self.model.provider_user_id == provider_user_id,
-                    self.model.status == "active",
+                    self.model.status == ConnectionStatus.ACTIVE,
                 ),
             )
             .one_or_none()
@@ -100,7 +99,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             db_session.query(self.model)
             .filter(
                 and_(
-                    self.model.status == "active",
+                    self.model.status == ConnectionStatus.ACTIVE,
                     self.model.token_expires_at <= threshold_time,
                 ),
             )
@@ -109,7 +108,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
 
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Mark connection as revoked (when refresh token fails)."""
-        connection.status = str_64("revoked")  # type: ignore[assignment]
+        connection.status = ConnectionStatus.REVOKED
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
         db_session.commit()
