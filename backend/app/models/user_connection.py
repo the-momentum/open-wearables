@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Enum, Index, UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
@@ -36,7 +36,7 @@ class UserConnection(BaseDbModel):
     scope: Mapped[str | None]
 
     # Metadata
-    status: Mapped[ConnectionStatus] = mapped_column(Enum(ConnectionStatus, name="connection_status"))
+    status: Mapped[ConnectionStatus]
     last_synced_at: Mapped[datetime_tz | None]
     created_at: Mapped[datetime_tz]
     updated_at: Mapped[datetime_tz]

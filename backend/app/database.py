@@ -20,6 +20,7 @@ from sqlalchemy.orm import (
 
 from app.config import settings
 from app.mappings import email, str_10, str_50, str_64, str_100, str_255
+from app.schemas.oauth import ConnectionStatus
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -64,6 +65,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         str_64: String(64),
         str_100: String(100),
         str_255: String(255),
+        ConnectionStatus: String(64),
     }
 
 
