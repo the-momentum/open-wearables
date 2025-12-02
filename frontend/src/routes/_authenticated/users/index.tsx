@@ -138,7 +138,8 @@ function UsersPage() {
     }
   };
 
-  const truncateId = (id: string) => {
+  const truncateId = (id: string | null | undefined) => {
+    if (!id) return '—';
     if (id.length <= 12) return id;
     return `${id.slice(0, 8)}...${id.slice(-4)}`;
   };
@@ -267,9 +268,6 @@ function UsersPage() {
                     User ID
                   </th>
                   <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    Client User ID
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
                     Name
                   </th>
                   <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
@@ -305,11 +303,6 @@ function UsersPage() {
                           )}
                         </button>
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
-                        {truncateId(user.client_user_id)}
-                      </code>
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-300">
                       {user.first_name || user.last_name ? (

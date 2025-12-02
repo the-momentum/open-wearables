@@ -204,27 +204,16 @@ export interface ActivitySummary {
 export interface ApiKey {
   id: string;
   name: string;
-  key: string;
-  type: 'live' | 'test' | 'widget';
-  status: 'active' | 'revoked';
-  lastUsed: string | null;
-  createdAt: string;
-  expiresAt: string | null;
-}
-
-export interface ApiKeyRead {
-  id: string;
-  name: string;
-  key: string;
-  type: 'developer' | 'widget';
-  status: 'active' | 'revoked';
-  lastUsed?: string;
-  createdAt: string;
+  created_by: string | null;
+  created_at: string;
 }
 
 export interface ApiKeyCreate {
   name: string;
-  type: 'live' | 'test' | 'widget';
+}
+
+export interface ApiKeyUpdate {
+  name?: string;
 }
 
 export interface Automation {
