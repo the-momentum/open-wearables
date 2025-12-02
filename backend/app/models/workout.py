@@ -8,6 +8,7 @@ from app.mappings import (
     ManyToOne,
     OneToMany,
     PrimaryKey,
+    Unique,
     datetime_tz,
     numeric_10_3,
     str_100,
@@ -16,7 +17,7 @@ from app.mappings import (
 
 class Workout(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
-    provider_id: Mapped[str_100 | None] = None
+    provider_id: Mapped[Unique[str_100 | None]] = None
     user_id: Mapped[FKUser]
 
     type: Mapped[str_100 | None] = None

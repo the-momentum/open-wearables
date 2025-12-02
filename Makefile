@@ -31,7 +31,9 @@ migrate:  ## Apply all migrations
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) upgrade head
 
 init:  ## Seed sample data
+	$(DOCKER_EXEC) uv sync --group dev
 	$(DOCKER_EXEC) uv run python scripts/init/seed_admin.py
+	$(DOCKER_EXEC) uv run python scripts/init/seed_activity_data.py
 
 create_migration:  ## Create a new migration. Use 'make create_migration m="Description of the change"'
 	@if [ -z "$(m)" ]; then \
