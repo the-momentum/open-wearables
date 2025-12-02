@@ -77,6 +77,7 @@ class BaseWorkoutsTemplate(ABC):
         """Fetch detailed workout from API (for API endpoint)."""
         pass
 
+    @abstractmethod
     def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
         """Load data from provider API."""
         pass

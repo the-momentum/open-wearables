@@ -6,9 +6,9 @@ from .garmin_webhooks import router as garmin_webhooks_router
 from .heart_rate import router as heart_rate_router
 from .import_data import router as import_data_router
 from .oauth import router as oauth_router
+from .sync_data import router as sync_data_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
-from .sync_data import router as sync_data_router
 from .workouts import router as workouts_router
 
 v1_router = APIRouter()
