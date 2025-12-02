@@ -3,10 +3,11 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
-from app.database import SessionLocal
-from app.models import UserConnection
-from app.services.providers.factory import ProviderFactory
 from celery import shared_task
+
+from app.database import SessionLocal
+from app.repositories.user_connection_repository import UserConnectionRepository
+from app.services.providers.factory import ProviderFactory
 
 logger = getLogger(__name__)
 
@@ -29,6 +30,8 @@ def sync_vendor_data(
         dict with sync results per provider
     """
     factory = ProviderFactory()
+    user_connection_repo = UserConnectionRepository()
+    
     results: dict[str, Any] = {
         "user_id": user_id,
         "start_date": start_date,
@@ -46,15 +49,7 @@ def sync_vendor_data(
 
     with SessionLocal() as db:
         try:
-            # Get all active connections for the user
-            connections = (
-                db.query(UserConnection)
-                .filter(
-                    UserConnection.user_id == user_uuid,
-                    UserConnection.status == "active",
-                )
-                .all()
-            )
+            connections = user_connection_repo.get_all_active_by_user(db, user_uuid)
 
             if not connections:
                 logger.info(f"[sync_vendor_data] No active connections found for user {user_id}")
@@ -65,7 +60,6 @@ def sync_vendor_data(
                 f"[sync_vendor_data] Found {len(connections)} active connections for user {user_id}",
             )
 
-            # Sync data from each provider
             for connection in connections:
                 provider_name = connection.provider
                 logger.info(f"[sync_vendor_data] Syncing data from {provider_name} for user {user_id}")
