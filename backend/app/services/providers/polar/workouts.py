@@ -49,6 +49,20 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         route = kwargs.get("route", False)
         return self.get_exercise_detail(db, user_id, workout_id, samples, zones, route)
 
+    def _extract_dates_with_offset(
+        self,
+        start_time: str,
+        start_time_utc_offset: int,
+        duration: str,
+    ) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps with UTC offset."""
+        start_date = isodate.parse_datetime(start_time)
+        offset = timedelta(minutes=start_time_utc_offset)
+        start_date = start_date + offset
+        duration_td = isodate.parse_duration(duration)
+        end_date = start_date + duration_td
+        return start_date, end_date
+
     def _normalize_workout(
         self,
         raw_workout: PolarExerciseJSON,
@@ -57,13 +71,12 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         """Normalize Polar exercise to WorkoutCreate."""
         workout_id = uuid4()
 
-        start_date: datetime = isodate.parse_datetime(raw_workout.start_time)
-        offset: timedelta = timedelta(minutes=raw_workout.start_time_utc_offset)
-        start_date = start_date + offset
-
-        duration_td = isodate.parse_duration(raw_workout.duration)
-        end_date: datetime = start_date + duration_td
-        duration_seconds = duration_td.total_seconds()
+        start_date, end_date = self._extract_dates_with_offset(
+            raw_workout.start_time,
+            raw_workout.start_time_utc_offset,
+            raw_workout.duration,
+        )
+        duration_seconds = (end_date - start_date).total_seconds()
 
         return WorkoutCreate(
             id=workout_id,
@@ -85,12 +98,11 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         """Normalize Polar exercise statistics to WorkoutStatisticCreate."""
         workout_statistics = []
 
-        start_date: datetime = isodate.parse_datetime(raw_workout.start_time)
-        offset: timedelta = timedelta(minutes=raw_workout.start_time_utc_offset)
-        start_date = start_date + offset
-
-        duration_td = isodate.parse_duration(raw_workout.duration)
-        end_date: datetime = start_date + duration_td
+        start_date, end_date = self._extract_dates_with_offset(
+            raw_workout.start_time,
+            raw_workout.start_time_utc_offset,
+            raw_workout.duration,
+        )
 
         units = {
             "calories": "kcal",

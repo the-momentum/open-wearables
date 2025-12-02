@@ -85,6 +85,12 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             # Let's assume the caller handles validation or we just ignore invalid values.
             return None
 
+    def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps."""
+        start_date = datetime.fromtimestamp(start_timestamp)
+        end_date = datetime.fromtimestamp(end_timestamp)
+        return start_date, end_date
+
     def _normalize_workout(
         self,
         raw_workout: GarminActivityJSON,
@@ -93,8 +99,10 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         """Normalize Garmin activity to WorkoutCreate."""
         workout_id = uuid4()
 
-        start_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds)
-        end_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds + raw_workout.durationInSeconds)
+        start_date, end_date = self._extract_dates(
+            raw_workout.startTimeInSeconds,
+            raw_workout.startTimeInSeconds + raw_workout.durationInSeconds,
+        )
         duration_seconds = raw_workout.durationInSeconds
 
         return WorkoutCreate(
@@ -123,8 +131,10 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "activeKilocalories": "kcal",
         }
 
-        start_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds)
-        end_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds + raw_workout.durationInSeconds)
+        start_date, end_date = self._extract_dates(
+            raw_workout.startTimeInSeconds,
+            raw_workout.startTimeInSeconds + raw_workout.durationInSeconds,
+        )
 
         for field in ["distanceInMeters", "steps", "activeKilocalories"]:
             value = getattr(raw_workout, field)

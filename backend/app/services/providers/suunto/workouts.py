@@ -67,6 +67,12 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Suunto API."""
         return self.get_workout_detail(db, user_id, workout_id)
 
+    def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps."""
+        start_date = datetime.fromtimestamp(start_timestamp / 1000)
+        end_date = datetime.fromtimestamp(end_timestamp / 1000)
+        return start_date, end_date
+
     def _normalize_workout(
         self,
         raw_workout: SuuntoWorkoutJSON,
@@ -75,8 +81,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Normalize Suunto workout to WorkoutCreate."""
         workout_id = uuid4()
 
-        start_date = datetime.fromtimestamp(raw_workout.startTime / 1000)
-        end_date = datetime.fromtimestamp(raw_workout.stopTime / 1000)
+        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = raw_workout.totalTime
 
         source_name = raw_workout.gear.name if raw_workout.gear else "Unknown"
@@ -107,8 +112,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "energyConsumption": "kcal",
         }
 
-        start_date = datetime.fromtimestamp(raw_workout.startTime / 1000)
-        end_date = datetime.fromtimestamp(raw_workout.stopTime / 1000)
+        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
 
         for field in ["totalDistance", "stepCount", "energyConsumption"]:
             value = getattr(raw_workout, field)

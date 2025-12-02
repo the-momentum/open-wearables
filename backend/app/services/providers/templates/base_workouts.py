@@ -42,6 +42,11 @@ class BaseWorkoutsTemplate(ABC):
         pass
 
     @abstractmethod
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps."""
+        pass
+
+    @abstractmethod
     def _normalize_workout(self, raw_workout: Any, user_id: UUID) -> WorkoutCreate:
         """Converts a provider-specific workout object into a standardized WorkoutCreate schema.
 
