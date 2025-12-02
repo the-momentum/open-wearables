@@ -5,12 +5,22 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
-from app.schemas import AuthorizationURLResponse, ProviderName
+from app.schemas import (
+    AuthorizationURLResponse,
+    AvailableProvidersResponse,
+    BulkProviderSettingsUpdate,
+    ProviderName,
+    ProviderSettingRead,
+    ProviderSettingUpdate,
+)
+from app.services import DeveloperDep
+from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
 factory = ProviderFactory()
+settings_service = ProviderSettingsService()
 
 
 def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
@@ -78,3 +88,61 @@ async def oauth_success(
         "user_id": user_id,
         "provider": provider,
     }
+
+
+@router.get("/available_providers")
+async def get_available_providers(
+    db: DbSession,
+    only_cloud: Annotated[bool, Query(description="Return only cloud (OAuth) providers")] = False,
+) -> AvailableProvidersResponse:
+    """
+    Get list of available providers.
+
+    Returns the list of providers that are currently enabled by the administrator.
+    By default, all implemented providers are available unless restricted via configuration.
+    """
+    all_providers = settings_service.get_all_providers(db)
+
+    enabled_providers = [
+        ProviderName(p.provider) for p in all_providers if p.is_enabled and (not only_cloud or p.has_cloud_api)
+    ]
+    return AvailableProvidersResponse(providers=enabled_providers)
+
+
+@router.get("/providers")
+async def get_providers_settings(
+    db: DbSession,
+    _developer: DeveloperDep,
+) -> list[ProviderSettingRead]:
+    """
+    Get all providers with their configuration (Admin).
+    """
+    return settings_service.get_all_providers(db)
+
+
+@router.put("/providers/{provider}")
+async def update_provider_status(
+    provider: str,
+    update: ProviderSettingUpdate,
+    db: DbSession,
+    _developer: DeveloperDep,
+) -> ProviderSettingRead:
+    """
+    Update single provider enabled status (Admin).
+    """
+    return settings_service.update_provider_status(db, provider, update)
+
+
+@router.put("/providers")
+async def bulk_update_providers(
+    updates: BulkProviderSettingsUpdate,
+    db: DbSession,
+    _developer: DeveloperDep,
+) -> list[ProviderSettingRead]:
+    """
+    Bulk update provider settings (Admin).
+
+    Accepts a map of provider_id -> is_enabled and updates all providers at once.
+    This is the primary endpoint for the admin UI to save checkbox states.
+    """
+    return settings_service.bulk_update_providers(db, updates.providers)

@@ -1,9 +1,13 @@
 #!/bin/bash
 set -e -x
 
-    # Init database
-    echo 'Applying migrations...'
-    uv run alembic upgrade head
+# Init database
+echo 'Applying migrations...'
+uv run alembic upgrade head
+
+# Initialize provider settings
+echo 'Initializing provider settings...'
+uv run python scripts/init_provider_settings.py
 
 # Init app
 echo "Starting the FastAPI application..."

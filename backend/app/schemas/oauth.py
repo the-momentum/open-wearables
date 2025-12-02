@@ -135,3 +135,13 @@ class Token(BaseModel):
 
     access_token: str
     token_type: str
+
+
+class AvailableProvidersResponse(BaseModel):
+    """Response containing list of available providers."""
+
+    providers: list[ProviderName] = Field(
+        ...,
+        description="List of available provider names that are enabled by the administrator",
+        examples=[[ProviderName.APPLE, ProviderName.GARMIN, ProviderName.POLAR, ProviderName.SUUNTO]],
+    )

@@ -47,6 +47,20 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """
         return []
 
+    def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
+        """Apple Health doesn't support pulling workouts from API.
+
+        Apple Health is push-based only - data comes from device uploads.
+        """
+        return []
+
+    def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
+        """Apple Health doesn't support pulling workout details from API.
+
+        Apple Health is push-based only - data comes from device uploads.
+        """
+        return None
+
     def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
         """Normalizes Apple Health workout data.
 

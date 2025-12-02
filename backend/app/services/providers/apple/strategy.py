@@ -12,3 +12,11 @@ class AppleStrategy(BaseProviderStrategy):
     @property
     def name(self) -> str:
         return "apple"
+
+    @property
+    def display_name(self) -> str:
+        return "Apple Health"
+
+    @property
+    def api_base_url(self) -> str:
+        return ""  # Apple Health doesn't have a cloud API

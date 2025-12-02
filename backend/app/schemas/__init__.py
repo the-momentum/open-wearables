@@ -37,6 +37,7 @@ from .oauth import (
     AuthenticationMethod,
     AuthorizationURLResponse,
     ConnectionStatus,
+    AvailableProvidersResponse,
     OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,
@@ -48,6 +49,11 @@ from .oauth import (
 )
 from .polar.exercise_import import (
     ExerciseJSON as PolarExerciseJSON,
+)
+from .provider_setting import (
+    BulkProviderSettingsUpdate,
+    ProviderSettingRead,
+    ProviderSettingUpdate,
 )
 from .response import UploadDataResponse
 from .suunto.workout_import import (
@@ -108,6 +114,10 @@ __all__ = [
     "UserConnectionRead",
     "UserConnectionUpdate",
     "AuthorizationURLResponse",
+    "AvailableProvidersResponse",
+    "ProviderSettingRead",
+    "ProviderSettingUpdate",
+    "BulkProviderSettingsUpdate",
     "RootJSON",
     "WorkoutCreate",
     "WorkoutUpdate",
