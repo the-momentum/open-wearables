@@ -107,7 +107,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             start_datetime=start_date,
             end_datetime=end_date,
         )
-    
+
     def _normalize_workout_statistics(
         self,
         raw_workout: GarminActivityJSON,
@@ -122,7 +122,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "steps": "count",
             "activeKilocalories": "kcal",
         }
-        
+
         start_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds)
         end_date = datetime.fromtimestamp(raw_workout.startTimeInSeconds + raw_workout.durationInSeconds)
 
@@ -157,22 +157,20 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                 unit="bpm",
             ),
         )
-            
+
         return workout_statistics
-    
-    
+
     def _build_bundles(
         self,
         raw: list[GarminActivityJSON],
-        user_id: str,
+        user_id: UUID,
     ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
         """Build bundles of WorkoutCreate and WorkoutStatisticCreate."""
         for raw_workout in raw:
             workout = self._normalize_workout(raw_workout, user_id)
             statistics = self._normalize_workout_statistics(raw_workout, user_id, workout.id)
             yield workout, statistics
-    
-    
+
     def load_data(
         self,
         db: DbSession,
@@ -190,7 +188,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                 workout_statistic_service.create(db, stat)
 
         return True
-        
+
     def get_activity_detail(
         self,
         db: DbSession,
