@@ -40,15 +40,6 @@ export const WEARABLE_PROVIDERS: WearableProvider[] = [
     isAvailable: true,
     features: ['GPS', 'Heart Rate', 'Activity'],
   },
-  {
-    id: 'apple',
-    name: 'Apple Health',
-    description: 'iPhone and Apple Watch health data',
-    logoPath: '/apple-health.svg',
-    brandColor: '#FF2D55',
-    isAvailable: true,
-    features: ['Heart Rate', 'Activity', 'Sleep', 'Workouts'],
-  },
 ] as const;
 
 export type WearableProviderId = (typeof WEARABLE_PROVIDERS)[number]['id'];

@@ -100,8 +100,6 @@ export type WearableProvider =
   | 'oura'
   | 'whoop'
   | 'strava'
-  | 'apple'
-  | 'apple-health'
   | 'google-fit'
   | 'withings';
 
