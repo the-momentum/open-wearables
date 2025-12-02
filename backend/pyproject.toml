@@ -24,7 +24,6 @@ dependencies = [
     "requests>=2.32.5",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
-    "faker>=33.1.0",
 ]
 
 [dependency-groups]
@@ -37,6 +36,7 @@ dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
+    "faker>=33.1.0",
 ]
 
 [tool.ruff]
