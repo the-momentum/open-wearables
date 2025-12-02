@@ -34,6 +34,7 @@ class ProviderSettingsService:
                     name=strategy.display_name,
                     has_cloud_api=strategy.has_cloud_api,
                     is_enabled=is_enabled,
+                    icon_url=strategy.icon_url,
                 ),
             )
 
@@ -60,6 +61,7 @@ class ProviderSettingsService:
             name=strategy.display_name,
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
+            icon_url=strategy.icon_url,
         )
 
     def bulk_update_providers(self, db: DbSession, updates: dict[str, bool]) -> list[ProviderSettingRead]:

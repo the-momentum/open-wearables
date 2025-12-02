@@ -1,0 +1,3 @@
+# Provider icon files
+# Supported formats: .svg (preferred), .png
+# Files should be named: {provider_id}.svg (e.g., apple.svg, garmin.svg, polar.svg, suunto.svg)

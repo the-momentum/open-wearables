@@ -7,7 +7,6 @@ from fastapi.responses import RedirectResponse
 from app.database import DbSession
 from app.schemas import (
     AuthorizationURLResponse,
-    AvailableProvidersResponse,
     BulkProviderSettingsUpdate,
     ProviderName,
     ProviderSettingRead,
@@ -35,12 +34,12 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
     return strategy
 
 
-@router.get("/{provider}/authorize")
+@router.get("/{provider}/authorize", response_model=AuthorizationURLResponse)
 async def authorize_provider(
     provider: ProviderName,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
     redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
-) -> AuthorizationURLResponse:
+):
     """
     Initiate OAuth flow for a provider.
 
@@ -53,13 +52,13 @@ async def authorize_provider(
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
-@router.get("/{provider}/callback")
+@router.get("/{provider}/callback", response_model=RedirectResponse)
 async def oauth_callback(
     provider: ProviderName,
     code: Annotated[str, Query(description="Authorization code from provider")],
     state: Annotated[str, Query(description="State parameter for CSRF protection")],
     db: DbSession,
-) -> RedirectResponse:
+):
     """
     OAuth callback endpoint.
 
@@ -90,57 +89,47 @@ async def oauth_success(
     }
 
 
-@router.get("/available_providers")
-async def get_available_providers(
+@router.get("/providers", response_model=list[ProviderSettingRead])
+async def get_providers(
     db: DbSession,
-    only_cloud: Annotated[bool, Query(description="Return only cloud (OAuth) providers")] = False,
-) -> AvailableProvidersResponse:
+    enabled_only: Annotated[bool, Query(description="Return only enabled providers")] = False,
+    cloud_only: Annotated[bool, Query(description="Return only cloud (OAuth) providers")] = False,
+):
     """
-    Get list of available providers.
+    Get providers with their configuration and metadata.
 
-    Returns the list of providers that are currently enabled by the administrator.
-    By default, all implemented providers are available unless restricted via configuration.
+    Query params:
+    - enabled_only: Filter to only enabled providers (default: False, returns all)
+    - cloud_only: Filter to only providers with cloud OAuth API (default: False)
+
+    Returns full provider details including name, icon_url, has_cloud_api, is_enabled.
     """
     all_providers = settings_service.get_all_providers(db)
 
-    enabled_providers = [
-        ProviderName(p.provider) for p in all_providers if p.is_enabled and (not only_cloud or p.has_cloud_api)
-    ]
-    return AvailableProvidersResponse(providers=enabled_providers)
+    return [p for p in all_providers if (not enabled_only or p.is_enabled) and (not cloud_only or p.has_cloud_api)]
 
 
-@router.get("/providers")
-async def get_providers_settings(
-    db: DbSession,
-    _developer: DeveloperDep,
-) -> list[ProviderSettingRead]:
-    """
-    Get all providers with their configuration (Admin).
-    """
-    return settings_service.get_all_providers(db)
-
-
-@router.put("/providers/{provider}")
+@router.put("/providers/{provider}", response_model=ProviderSettingRead)
 async def update_provider_status(
     provider: str,
     update: ProviderSettingUpdate,
     db: DbSession,
     _developer: DeveloperDep,
-) -> ProviderSettingRead:
+):
     """
-    Update single provider enabled status (Admin).
+    Update single provider enabled status.
     """
     return settings_service.update_provider_status(db, provider, update)
 
 
-@router.put("/providers")
+@router.put("/providers", response_model=ProviderSettingRead)
 async def bulk_update_providers(
     updates: BulkProviderSettingsUpdate,
     db: DbSession,
     _developer: DeveloperDep,
-) -> list[ProviderSettingRead]:
+):
     """
-    Bulk update provider settings (Admin).
+    Bulk update provider settings.
 
     Accepts a map of provider_id -> is_enabled and updates all providers at once.
     This is the primary endpoint for the admin UI to save checkbox states.

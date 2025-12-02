@@ -8,6 +8,7 @@ class ProviderSettingRead(BaseModel):
     name: str = Field(..., description="Display name (e.g., 'Apple Health', 'Garmin')")
     has_cloud_api: bool = Field(..., description="Whether provider uses cloud OAuth API")
     is_enabled: bool = Field(..., description="Whether provider is enabled by admin")
+    icon_url: str = Field(..., description="URL to provider icon")
 
 
 class ProviderSettingUpdate(BaseModel):
