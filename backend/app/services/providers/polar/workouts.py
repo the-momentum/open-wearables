@@ -148,11 +148,10 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        **kwargs: Any,
     ) -> bool:
         """Load data from Polar API."""
-        workouts_data = self.get_workouts(db, user_id, start_date, end_date)
+        workouts_data = self.get_workouts_from_api(db, user_id, **kwargs)
         workouts = [PolarExerciseJSON(**w) for w in workouts_data]
 
         for workout_row, workout_statistics in self._build_bundles(workouts, user_id):

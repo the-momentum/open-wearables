@@ -42,11 +42,12 @@ class BaseWorkoutsTemplate(ABC):
         pass
 
     @abstractmethod
-    def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
+    def _normalize_workout(self, raw_workout: Any, user_id: UUID) -> WorkoutCreate:
         """Converts a provider-specific workout object into a standardized WorkoutCreate schema.
 
         Args:
             raw_workout: The raw workout object from the provider.
+            user_id: The user ID to associate with the workout.
 
         Returns:
             WorkoutCreate: The standardized workout data.
@@ -76,6 +77,10 @@ class BaseWorkoutsTemplate(ABC):
         """Fetch detailed workout from API (for API endpoint)."""
         pass
 
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+        """Load data from provider API."""
+        pass
+
     def process_payload(self, db: DbSession, user_id: UUID, payload: Any, source_type: str) -> None:
         """Template method to process a pushed payload (Push flow).
 
@@ -95,8 +100,8 @@ class BaseWorkoutsTemplate(ABC):
 
     def _process_single_workout(self, db: DbSession, user_id: UUID, raw_workout: Any) -> None:
         """Internal method to normalize and save a single workout."""
-        workout_data = self.normalize_workout(raw_workout)
-        workout_data.user_id = user_id
+        workout_data = self._normalize_workout(raw_workout, user_id)
+        # workout_data.user_id = user_id # Already set in _normalize_workout
         self._save_workout(db, workout_data)
 
     def _save_workout(self, db: DbSession, workout_data: WorkoutCreate) -> None:

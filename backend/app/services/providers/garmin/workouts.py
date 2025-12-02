@@ -175,11 +175,10 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        **kwargs: Any,
     ) -> bool:
         """Load data from Garmin API."""
-        workouts = self.get_workouts(db, user_id, start_date, end_date)
+        workouts = self.get_workouts_from_api(db, user_id, **kwargs)
         activities = [GarminActivityJSON(**activity) for activity in workouts]
 
         for workout_row, workout_statistics in self._build_bundles(activities, user_id):
