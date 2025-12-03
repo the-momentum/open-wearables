@@ -24,7 +24,7 @@ class WorkoutJSON(BaseModel):
     startTime: int
     stopTime: int
     # seconds
-    totalTime: int
+    totalTime: float
 
     totalDistance: int
     stepCount: int

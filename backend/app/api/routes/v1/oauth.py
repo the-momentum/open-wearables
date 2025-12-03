@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
+from app.integrations.celery.tasks import sync_vendor_data
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
