@@ -24,6 +24,7 @@ export const API_ENDPOINTS = {
   oauthAuthorize: (provider: string) => `/api/v1/oauth/${provider}/authorize`,
   oauthCallback: (provider: string) => `/api/v1/oauth/${provider}/callback`,
   oauthSuccess: '/api/v1/oauth/success',
+  oauthProviders: '/api/v1/oauth/providers',
 
   // API Keys endpoints
   apiKeys: '/api/v1/developer/api-keys',

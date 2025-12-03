@@ -85,13 +85,11 @@ export interface DashboardStats {
 }
 
 export interface Provider {
-  id: string;
+  provider: string;
   name: string;
-  description: string;
-  logoUrl: string;
-  isAvailable: boolean;
-  features: string[];
-  authType: 'oauth2' | 'api_key';
+  has_cloud_api: boolean;
+  is_enabled: boolean;
+  icon_url: string;
 }
 
 export type WearableProvider =
