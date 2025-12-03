@@ -27,6 +27,18 @@ export interface WorkoutsParams {
 
 export const healthService = {
   /**
+   * Synchronize workouts/exercises/activities from fitness provider API for a specific user
+   */
+  async synchronizeDataFromProvider(
+    provider: string,
+    userId: string
+  ): Promise<void> {
+    return apiClient.post<void>(
+      API_ENDPOINTS.dataFromProviderSynchronization(provider, userId)
+    );
+  },
+
+  /**
    * Get user connections for a user
    */
   async getUserConnections(userId: string): Promise<UserConnection[]> {

@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   EllipsisVertical,
+  Loader2,
   RefreshCw,
   TriangleAlert,
   Unlink,
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useSynchronizeDataFromProvider } from '@/hooks/api/use-health';
 
 interface ConnectionCardProps {
   connection: UserConnection;
@@ -27,6 +29,8 @@ interface ConnectionCardProps {
 }
 
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
+  const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
+    useSynchronizeDataFromProvider(connection.provider, connection.userId);
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -107,9 +111,14 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={() => toast.error('Syncing not implemented yet')} // TODO: Implement sync
+          onClick={() => synchronizeDataFromProvider()}
+          disabled={isSynchronizing}
         >
-          <RefreshCw className="h-4 w-4" />
+          {isSynchronizing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
           Sync Now
         </Button>
       </CardContent>

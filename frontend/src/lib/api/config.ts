@@ -32,6 +32,8 @@ export const API_ENDPOINTS = {
   apiKeyRotate: (id: string) => `/api/v1/developer/api-keys/${id}/rotate`,
 
   // Vendor workouts endpoints
+  dataFromProviderSynchronization: (provider: string, userId: string) =>
+    `/api/v1/vendors/${provider}/users/${userId}/sync`,
   vendorWorkouts: (provider: string, userId: string) =>
     `/api/v1/vendors/${provider}/users/${userId}/workouts`,
   vendorWorkoutDetail: (provider: string, userId: string, workoutId: string) =>
