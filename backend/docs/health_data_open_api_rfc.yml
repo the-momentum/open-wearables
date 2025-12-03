@@ -1,0 +1,981 @@
+openapi: 3.0.3
+info:
+  title: Open Wearables API
+  description: Open source platform for wearable health data integration
+  version: 0.2.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.openwearables.dev/v1
+    description: Production
+  - url: https://sandbox.api.openwearables.dev/v1
+    description: Sandbox
+
+tags:
+  - name: Summaries
+    description: Daily aggregated health metrics
+  - name: Timeseries
+    description: Granular time-based health data
+  - name: Events
+    description: Discrete health occurrences (workouts, meals, measurements)
+
+paths:
+  # ============================================================
+  # SUMMARIES - Daily Aggregates
+  # ============================================================
+
+  /users/{user_id}/summaries/activity:
+    get:
+      tags: [Summaries]
+      summary: Get activity summary
+      description: Returns daily aggregated activity metrics (steps, calories, distance, active minutes)
+      operationId: getActivitySummary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Activity summary data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivitySummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{user_id}/summaries/sleep:
+    get:
+      tags: [Summaries]
+      summary: Get sleep summary
+      description: Returns daily sleep metrics (duration, efficiency, stages breakdown)
+      operationId: getSleepSummary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Sleep summary data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SleepSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /users/{user_id}/summaries/body:
+    get:
+      tags: [Summaries]
+      summary: Get body summary
+      description: Returns daily body metrics (weight, body composition, vitals)
+      operationId: getBodySummary
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Body summary data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BodySummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # ============================================================
+  # TIMESERIES - Granular Data
+  # ============================================================
+
+  /users/{user_id}/timeseries/heart_rate:
+    get:
+      tags: [Timeseries]
+      summary: Get heart rate timeseries
+      description: Returns granular heart rate measurements
+      operationId: getHeartRateTimeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Resolution'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Heart rate timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HeartRateSample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /users/{user_id}/timeseries/steps:
+    get:
+      tags: [Timeseries]
+      summary: Get steps timeseries
+      description: Returns granular step count data
+      operationId: getStepsTimeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Resolution'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Steps timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StepsSample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /users/{user_id}/timeseries/sleep_stages:
+    get:
+      tags: [Timeseries]
+      summary: Get sleep stages timeseries
+      description: Returns granular sleep stage transitions (awake, light, deep, rem)
+      operationId: getSleepStagesTimeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Sleep stages timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SleepStageSample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+
+  /users/{user_id}/timeseries/blood_glucose:
+    get:
+      tags: [Timeseries]
+      summary: Get blood glucose timeseries
+      description: Returns blood glucose readings (CGM or manual)
+      operationId: getBloodGlucoseTimeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Blood glucose timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BloodGlucoseSample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+
+  /users/{user_id}/timeseries/hrv:
+    get:
+      tags: [Timeseries]
+      summary: Get HRV timeseries
+      description: Returns heart rate variability measurements (RMSSD, SDNN)
+      operationId: getHrvTimeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: HRV timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HrvSample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+
+  /users/{user_id}/timeseries/spo2:
+    get:
+      tags: [Timeseries]
+      summary: Get SpO2 timeseries
+      description: Returns blood oxygen saturation measurements
+      operationId: getSpo2Timeseries
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDateTime'
+        - $ref: '#/components/parameters/EndDateTime'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: SpO2 timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Spo2Sample'
+                  metadata:
+                    $ref: '#/components/schemas/TimeseriesMetadata'
+
+  # ============================================================
+  # EVENTS - Discrete Occurrences
+  # ============================================================
+
+  /users/{user_id}/events/workouts:
+    get:
+      tags: [Events]
+      summary: List workouts
+      description: Returns workout sessions with duration, type, and metrics
+      operationId: listWorkouts
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkoutType'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: List of workouts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workout'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /users/{user_id}/events/workouts/{workout_id}:
+    get:
+      tags: [Events]
+      summary: Get workout details
+      description: Returns detailed workout data including samples
+      operationId: getWorkout
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: workout_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: include_samples
+          in: query
+          description: Include granular HR, GPS, pace samples
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Workout details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutDetailed'
+
+  /users/{user_id}/events/meals:
+    get:
+      tags: [Events]
+      summary: List meals
+      description: Returns logged meals with nutritional data
+      operationId: listMeals
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: List of meals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Meal'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /users/{user_id}/events/measurements:
+    get:
+      tags: [Events]
+      summary: List measurements
+      description: Returns discrete health measurements (weight, blood pressure, etc.)
+      operationId: listMeasurements
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/StartDate'
+        - $ref: '#/components/parameters/EndDate'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/MeasurementType'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: List of measurements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Measurement'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+components:
+  # ============================================================
+  # PARAMETERS
+  # ============================================================
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique user identifier
+
+    StartDate:
+      name: start_date
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      example: "2024-01-01"
+
+    EndDate:
+      name: end_date
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      example: "2024-01-31"
+
+    StartDateTime:
+      name: start_time
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+      example: "2024-01-01T00:00:00Z"
+
+    EndDateTime:
+      name: end_time
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+      example: "2024-01-01T23:59:59Z"
+
+    Resolution:
+      name: resolution
+      in: query
+      description: Data resolution for timeseries
+      schema:
+        type: string
+        enum: [raw, 1min, 5min, 15min, 1hour]
+        default: raw
+
+    Cursor:
+      name: cursor
+      in: query
+      description: Pagination cursor from previous response
+      schema:
+        type: string
+
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+
+  # ============================================================
+  # SCHEMAS - Summaries
+  # ============================================================
+  schemas:
+    ActivitySummary:
+      type: object
+      required: [date, source]
+      properties:
+        date:
+          type: string
+          format: date
+        source:
+          $ref: '#/components/schemas/DataSource'
+        steps:
+          type: integer
+          description: Total step count
+          example: 8432
+        distance_meters:
+          type: number
+          format: float
+          example: 6240.5
+        floors_climbed:
+          type: integer
+          example: 12
+        active_calories_kcal:
+          type: number
+          format: float
+          example: 342.5
+        total_calories_kcal:
+          type: number
+          format: float
+          example: 2150.0
+        active_duration_seconds:
+          type: integer
+          description: Total active time
+          example: 3600
+        sedentary_duration_seconds:
+          type: integer
+          example: 28800
+        intensity_minutes:
+          type: object
+          properties:
+            light:
+              type: integer
+            moderate:
+              type: integer
+            vigorous:
+              type: integer
+
+    SleepSummary:
+      type: object
+      required: [date, source]
+      properties:
+        date:
+          type: string
+          format: date
+        source:
+          $ref: '#/components/schemas/DataSource'
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_seconds:
+          type: integer
+          example: 27000
+        time_in_bed_seconds:
+          type: integer
+          example: 28800
+        efficiency_percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 89.5
+        latency_seconds:
+          type: integer
+          description: Time to fall asleep
+          example: 480
+        stages:
+          type: object
+          properties:
+            awake_seconds:
+              type: integer
+            light_seconds:
+              type: integer
+            deep_seconds:
+              type: integer
+            rem_seconds:
+              type: integer
+        interruptions_count:
+          type: integer
+        avg_heart_rate_bpm:
+          type: integer
+        avg_hrv_rmssd_ms:
+          type: number
+          format: float
+        avg_respiratory_rate:
+          type: number
+          format: float
+        avg_spo2_percent:
+          type: number
+          format: float
+
+    BodySummary:
+      type: object
+      required: [date, source]
+      properties:
+        date:
+          type: string
+          format: date
+        source:
+          $ref: '#/components/schemas/DataSource'
+        weight_kg:
+          type: number
+          format: float
+          example: 72.5
+        body_fat_percent:
+          type: number
+          format: float
+        muscle_mass_kg:
+          type: number
+          format: float
+        bmi:
+          type: number
+          format: float
+        resting_heart_rate_bpm:
+          type: integer
+          example: 62
+        avg_hrv_rmssd_ms:
+          type: number
+          format: float
+          example: 45.2
+        blood_pressure:
+          type: object
+          properties:
+            systolic_mmhg:
+              type: integer
+            diastolic_mmhg:
+              type: integer
+        basal_body_temperature_celsius:
+          type: number
+          format: float
+
+    # ============================================================
+    # SCHEMAS - Timeseries Samples
+    # ============================================================
+    HeartRateSample:
+      type: object
+      required: [timestamp, bpm]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        bpm:
+          type: integer
+          minimum: 20
+          maximum: 250
+          example: 72
+        context:
+          type: string
+          enum: [rest, sleep, active, workout]
+          description: Context when measurement was taken
+
+    StepsSample:
+      type: object
+      required: [timestamp, count]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        count:
+          type: integer
+          minimum: 0
+        duration_seconds:
+          type: integer
+          description: Duration of this sample bucket
+
+    SleepStageSample:
+      type: object
+      required: [start_time, end_time, stage]
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        stage:
+          type: string
+          enum: [awake, light, deep, rem]
+
+    BloodGlucoseSample:
+      type: object
+      required: [timestamp, value_mg_dl]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value_mg_dl:
+          type: number
+          format: float
+          example: 95.0
+        measurement_type:
+          type: string
+          enum: [cgm, fingerstick, manual]
+        trend:
+          type: string
+          enum: [rising_fast, rising, stable, falling, falling_fast]
+          description: CGM trend arrow
+
+    HrvSample:
+      type: object
+      required: [timestamp]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        rmssd_ms:
+          type: number
+          format: float
+          example: 42.5
+        sdnn_ms:
+          type: number
+          format: float
+          example: 55.2
+        context:
+          type: string
+          enum: [rest, sleep, post_workout]
+
+    Spo2Sample:
+      type: object
+      required: [timestamp, percent]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 97.5
+        context:
+          type: string
+          enum: [rest, sleep, active]
+
+    # ============================================================
+    # SCHEMAS - Events
+    # ============================================================
+    Workout:
+      type: object
+      required: [id, type, start_time, end_time, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        name:
+          type: string
+          example: "Morning Run"
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration_seconds:
+          type: integer
+        source:
+          $ref: '#/components/schemas/DataSource'
+        calories_kcal:
+          type: number
+          format: float
+        distance_meters:
+          type: number
+          format: float
+        avg_heart_rate_bpm:
+          type: integer
+        max_heart_rate_bpm:
+          type: integer
+        avg_pace_sec_per_km:
+          type: integer
+        elevation_gain_meters:
+          type: number
+          format: float
+
+    WorkoutDetailed:
+      allOf:
+        - $ref: '#/components/schemas/Workout'
+        - type: object
+          properties:
+            heart_rate_samples:
+              type: array
+              items:
+                $ref: '#/components/schemas/HeartRateSample'
+            route:
+              type: array
+              items:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  lat:
+                    type: number
+                  lng:
+                    type: number
+                  elevation_meters:
+                    type: number
+            laps:
+              type: array
+              items:
+                type: object
+                properties:
+                  index:
+                    type: integer
+                  start_time:
+                    type: string
+                    format: date-time
+                  duration_seconds:
+                    type: integer
+                  distance_meters:
+                    type: number
+
+    WorkoutType:
+      type: string
+      enum:
+        - running
+        - walking
+        - cycling
+        - swimming
+        - strength_training
+        - hiit
+        - yoga
+        - pilates
+        - rowing
+        - elliptical
+        - hiking
+        - other
+
+    Meal:
+      type: object
+      required: [id, timestamp, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        name:
+          type: string
+        source:
+          $ref: '#/components/schemas/DataSource'
+        calories_kcal:
+          type: number
+          format: float
+        macros:
+          type: object
+          properties:
+            protein_g:
+              type: number
+              format: float
+            carbohydrates_g:
+              type: number
+              format: float
+            fat_g:
+              type: number
+              format: float
+            fiber_g:
+              type: number
+              format: float
+        water_ml:
+          type: number
+          format: float
+
+    Measurement:
+      type: object
+      required: [id, type, timestamp, source]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/MeasurementType'
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          $ref: '#/components/schemas/DataSource'
+        values:
+          type: object
+          additionalProperties: true
+          description: Measurement-specific values
+          example:
+            weight_kg: 72.5
+            body_fat_percent: 18.2
+
+    MeasurementType:
+      type: string
+      enum:
+        - weight
+        - blood_pressure
+        - body_composition
+        - temperature
+        - blood_glucose
+
+    # ============================================================
+    # SCHEMAS - Common
+    # ============================================================
+    DataSource:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          example: "apple_health"
+        device:
+          type: string
+          example: "Apple Watch Series 9"
+
+    TimeseriesMetadata:
+      type: object
+      properties:
+        resolution:
+          type: string
+          enum: [raw, 1min, 5min, 15min, 1hour]
+        sample_count:
+          type: integer
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      required: [has_more]
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: Cursor to fetch next page, null if no more data
+          example: "eyJpZCI6IjEyMzQ1Njc4OTAiLCJ0cyI6MTcwNDA2NzIwMH0"
+        previous_cursor:
+          type: string
+          nullable: true
+          description: Cursor to fetch previous page
+        has_more:
+          type: boolean
+          description: Whether more data is available
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  # ============================================================
+  # RESPONSES
+  # ============================================================
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "not_found"
+            message: "User not found"
+
+  # ============================================================
+  # SECURITY
+  # ============================================================
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
