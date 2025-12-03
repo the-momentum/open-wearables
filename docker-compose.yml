@@ -53,17 +53,23 @@ services:
     command: scripts/start/worker.sh
     env_file:
       - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
     depends_on:
       - redis
       - db
       - app
     develop:
       watch:
+        - action: sync+restart
+          path: ./backend/app
+          target: /root_project/app
         - action: sync
-          path: ./backend
-          target: /root_project
-          ignore:
-            - .venv/
+          path: ./backend/scripts
+          target: /root_project/scripts
+        - action: rebuild
+          path: ./backend/uv.lock
 
   celery-beat:
     container_name: celery-beat__open-wearables
@@ -71,17 +77,23 @@ services:
     command: scripts/start/beat.sh
     env_file:
       - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
     depends_on:
       - redis
       - db
       - app
     develop:
       watch:
+        - action: sync+restart
+          path: ./backend/app
+          target: /root_project/app
         - action: sync
-          path: ./backend
-          target: /root_project
-          ignore:
-            - .venv/
+          path: ./backend/scripts
+          target: /root_project/scripts
+        - action: rebuild
+          path: ./backend/uv.lock
 
   flower:
     container_name: flower__open-wearables
@@ -89,6 +101,9 @@ services:
     command: scripts/start/flower.sh
     env_file:
       - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
     ports:
       - 5555:5555
     depends_on:
