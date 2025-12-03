@@ -5,6 +5,19 @@ import {
 } from '@/lib/api/services/health.service';
 import { queryKeys } from '@/lib/query/keys';
 
+
+/**
+ * Get user connections for a user
+ * Uses GET /api/v1/users/{user_id}/connections
+ */
+export function useUserConnections(userId: string) {
+  return useQuery({
+    queryKey: queryKeys.connections.all(userId),
+    queryFn: () => healthService.getUserConnections(userId),
+    enabled: !!userId,
+  });
+}
+
 /**
  * Get heart rate data for a user
  * Uses GET /api/v1/users/{user_id}/heart-rate

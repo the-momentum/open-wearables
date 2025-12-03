@@ -1,5 +1,6 @@
 import { apiClient } from '../client';
-import type { WorkoutStatisticResponse, WorkoutResponse } from '../types';
+import { API_ENDPOINTS } from '../config';
+import type { WorkoutStatisticResponse, WorkoutResponse, UserConnection } from '../types';
 
 export interface WorkoutsParams {
   start_date?: string;
@@ -22,25 +23,30 @@ export interface WorkoutsParams {
 
 export const healthService = {
   /**
+   * Get user connections for a user
+   */
+  async getUserConnections(userId: string): Promise<UserConnection[]> {
+    return apiClient.get<UserConnection[]>(API_ENDPOINTS.userConnections(userId));
+  },
+
+  /**
    * Get heart rate data for a user
-   * GET /api/v1/users/{user_id}/heart-rate
    */
   async getHeartRate(userId: string): Promise<WorkoutStatisticResponse[]> {
     return apiClient.get<WorkoutStatisticResponse[]>(
-      `/api/v1/users/${userId}/heart-rate`
+      API_ENDPOINTS.userHeartRate(userId)
     );
   },
 
   /**
    * Get workouts for a user
-   * GET /api/v1/users/{user_id}/workouts
    */
   async getWorkouts(
     userId: string,
     params?: WorkoutsParams
   ): Promise<WorkoutResponse[]> {
     return apiClient.get<WorkoutResponse[]>(
-      `/api/v1/users/${userId}/workouts`,
+      API_ENDPOINTS.userWorkouts(userId),
       { params }
     );
   },

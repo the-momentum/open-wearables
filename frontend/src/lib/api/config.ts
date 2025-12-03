@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   // User endpoints
   users: '/api/v1/users',
   userDetail: (id: string) => `/api/v1/users/${id}`,
+  userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userHeartRate: (userId: string) => `/api/v1/users/${userId}/heart-rate`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/workouts`,
 
