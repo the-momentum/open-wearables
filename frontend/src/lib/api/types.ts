@@ -104,16 +104,16 @@ export type WearableProvider =
   | 'withings';
 
 export interface UserConnection {
-  userId: string
-  provider: string
-  providerUserId?: string ;
+  userId: string;
+  provider: string;
+  providerUserId?: string;
   providerUsername?: string;
-  scope?: string
-  id: string
-  status: 'active' | 'revoked' | 'expired'
-  lastSyncedAt?: string
-  createdAt: string
-  updatedAt: string
+  scope?: string;
+  id: string;
+  status: 'active' | 'revoked' | 'expired';
+  lastSyncedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HeartRateData {
