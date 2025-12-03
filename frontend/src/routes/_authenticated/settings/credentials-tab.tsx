@@ -1,4 +1,3 @@
-import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Plus, Eye, EyeOff, Copy, Trash2, Key } from 'lucide-react';
 import {
@@ -8,11 +7,7 @@ import {
 } from '@/hooks/api/use-credentials';
 import { toast } from 'sonner';
 
-export const Route = createFileRoute('/_authenticated/credentials')({
-  component: CredentialsPage,
-});
-
-function CredentialsPage() {
+export function CredentialsTab() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [keyName, setKeyName] = useState('');
@@ -73,21 +68,13 @@ function CredentialsPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-medium text-white">API Credentials</h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Manage your API keys and widget embed codes
-          </p>
-        </div>
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-10 bg-zinc-800 rounded-md w-full" />
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-zinc-800/50 rounded-md" />
-              ))}
-            </div>
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-10 bg-zinc-800 rounded-md w-full" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 bg-zinc-800/50 rounded-md" />
+            ))}
           </div>
         </div>
       </div>
@@ -96,26 +83,24 @@ function CredentialsPage() {
 
   if (error) {
     return (
-      <div className="p-8">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-          <p className="text-zinc-400 mb-4">Failed to load API keys</p>
-          <button
-            onClick={() => refetch()}
-            className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+        <p className="text-zinc-400 mb-4">Failed to load API keys</p>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-medium text-white">API Credentials</h1>
+          <h2 className="text-xl font-medium text-white">API Credentials</h2>
           <p className="text-sm text-zinc-500 mt-1">
             Manage your API keys and widget embed codes
           </p>
@@ -132,7 +117,7 @@ function CredentialsPage() {
       {/* API Keys Table */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-medium text-white">API Keys</h2>
+          <h3 className="text-sm font-medium text-white">API Keys</h3>
           <p className="text-xs text-zinc-500 mt-1">
             Use these keys to authenticate API requests and embed widgets
           </p>
@@ -280,3 +265,4 @@ function CredentialsPage() {
     </div>
   );
 }
+

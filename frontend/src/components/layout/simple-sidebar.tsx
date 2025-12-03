@@ -7,6 +7,7 @@ import {
   FileText,
   DollarSign,
   LogOut,
+  Settings,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -32,6 +33,11 @@ const menuItems = [
     title: 'Credentials',
     url: '/credentials',
     icon: Key,
+  },
+  {
+    title: 'Settings',
+    url: '/settings',
+    icon: Settings,
   },
   {
     title: 'Pricing',
