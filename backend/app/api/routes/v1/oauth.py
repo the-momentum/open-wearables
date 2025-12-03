@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
-<<<<<<< HEAD
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
@@ -15,10 +14,6 @@ from app.schemas import (
 )
 from app.services import DeveloperDep
 from app.services.provider_settings_service import ProviderSettingsService
-=======
-from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
-from app.schemas import AuthorizationURLResponse, ProviderName
->>>>>>> db5924e (add task to callback)
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 
