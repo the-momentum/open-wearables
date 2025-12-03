@@ -9,13 +9,13 @@ interface ProviderItemProps {
 
 export function ProviderItem({ provider, localToggleState, onToggle }: ProviderItemProps) {
     const isEnabledInBackend = provider.is_enabled;
-    const iconUrl = import.meta.env.VITE_API_URL + provider.icon_url;
+    const iconUrl = provider.icon_url ? new URL(provider.icon_url, import.meta.env.VITE_API_URL).toString() : null;
     return (
       <div className="px-6 py-4 hover:bg-zinc-800/30 transition-colors">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
-            <div className="flex-shrink-0 p-2 rounded-lg overflow-hidden bg-white">
-              {provider.icon_url ? (
+            <div className="flex-shrink-0 p-2 rounded-lg overflow-hidden bg-white" data-has-icon={!!provider.icon_url}>
+              {iconUrl ? (
                 <img
                   src={iconUrl}
                   alt={provider.name}
@@ -25,10 +25,8 @@ export function ProviderItem({ provider, localToggleState, onToggle }: ProviderI
                   }}
                 />
               ) : (
-                <div className="h-12 w-12 bg-zinc-800 rounded-lg flex items-center justify-center">
-                  <span className="text-zinc-500 text-xs font-medium">
+                <div className="h-12 w-12 bg-white text-zinc-500 font-medium rounded-lg flex items-center justify-center">
                     {provider.name.charAt(0).toUpperCase()}
-                  </span>
                 </div>
               )}
             </div>
