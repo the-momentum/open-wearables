@@ -1,6 +1,10 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
-import type { WorkoutStatisticResponse, WorkoutResponse, UserConnection } from '../types';
+import type {
+  WorkoutStatisticResponse,
+  WorkoutResponse,
+  UserConnection,
+} from '../types';
 
 export interface WorkoutsParams {
   start_date?: string;
@@ -26,7 +30,9 @@ export const healthService = {
    * Get user connections for a user
    */
   async getUserConnections(userId: string): Promise<UserConnection[]> {
-    return apiClient.get<UserConnection[]>(API_ENDPOINTS.userConnections(userId));
+    return apiClient.get<UserConnection[]>(
+      API_ENDPOINTS.userConnections(userId)
+    );
   },
 
   /**

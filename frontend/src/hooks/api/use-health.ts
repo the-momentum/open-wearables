@@ -5,7 +5,6 @@ import {
 } from '@/lib/api/services/health.service';
 import { queryKeys } from '@/lib/query/keys';
 
-
 /**
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections

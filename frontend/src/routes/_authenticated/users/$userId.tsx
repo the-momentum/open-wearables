@@ -12,7 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useHeartRate, useUserConnections, useWorkouts } from '@/hooks/api/use-health';
+import {
+  useHeartRate,
+  useUserConnections,
+  useWorkouts,
+} from '@/hooks/api/use-health';
 import { useUsers, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,7 +49,8 @@ function UserDetailPage() {
     limit: 10,
     sort_order: 'desc',
   });
-  const { data: connections, isLoading: connectionsLoading } = useUserConnections(userId);
+  const { data: connections, isLoading: connectionsLoading } =
+    useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
 
@@ -257,7 +262,9 @@ function UserDetailPage() {
       {/* Connected Providers */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-medium text-white">Connected Providers</h2>
+          <h2 className="text-sm font-medium text-white">
+            Connected Providers
+          </h2>
           <p className="text-xs text-zinc-500 mt-1">
             Wearable devices and health platforms connected to this user
           </p>
@@ -284,10 +291,7 @@ function UserDetailPage() {
           ) : connections && connections.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {connections.map((connection) => (
-                <ConnectionCard
-                  key={connection.id}
-                  connection={connection}
-                />
+                <ConnectionCard key={connection.id} connection={connection} />
               ))}
             </div>
           ) : (
