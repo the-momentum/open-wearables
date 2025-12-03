@@ -16,11 +16,11 @@ v1_router = APIRouter()
 
 v1_router.include_router(auth_router, prefix="/auth", tags=["developer"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
-v1_router.include_router(oauth_router, prefix="/oauth", tags=["vendors oauth"])
+v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
 # New unified vendor workouts endpoint
-v1_router.include_router(vendor_workouts_router, prefix="/vendors", tags=["vendor workouts"])
+v1_router.include_router(vendor_workouts_router, prefix="/vendors", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/vendors", tags=["sync data"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])

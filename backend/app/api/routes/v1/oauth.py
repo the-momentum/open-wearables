@@ -52,7 +52,7 @@ async def authorize_provider(
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
-@router.get("/{provider}/callback", response_model=RedirectResponse)
+@router.get("/{provider}/callback", response_class=RedirectResponse)
 async def oauth_callback(
     provider: ProviderName,
     code: Annotated[str, Query(description="Authorization code from provider")],
@@ -122,7 +122,7 @@ async def update_provider_status(
     return settings_service.update_provider_status(db, provider, update)
 
 
-@router.put("/providers", response_model=ProviderSettingRead)
+@router.put("/providers", response_model=list[ProviderSettingRead])
 async def bulk_update_providers(
     updates: BulkProviderSettingsUpdate,
     db: DbSession,
