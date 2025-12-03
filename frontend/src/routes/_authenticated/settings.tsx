@@ -11,19 +11,19 @@ export const Route = createFileRoute('/_authenticated/settings')({
 interface TabConfig {
   id: string;
   label: string;
-  component: React.ReactNode;
+  component: React.ComponentType;
 }
 
 const tabs: TabConfig[] = [
   {
     id: 'credentials',
     label: 'Credentials',
-    component: <CredentialsTab />,
+    component: CredentialsTab,
   },
   {
     id: 'providers',
     label: 'Providers',
-    component: <ProvidersTab />,
+    component: ProvidersTab,
   },
 ];
 
@@ -50,7 +50,7 @@ function SettingsPage() {
 
         {tabs.map((tab) => (
           <TabsContent key={tab.id} value={tab.id}>
-            {tab.component}
+            <tab.component />
           </TabsContent>
         ))}
       </Tabs>

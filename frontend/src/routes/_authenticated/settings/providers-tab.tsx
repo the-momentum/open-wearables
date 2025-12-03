@@ -25,7 +25,7 @@ export function ProvidersTab() {
     return providers.some(
       (provider) => localToggleStates[provider.provider] !== provider.is_enabled
     );
-  }, [providers, localToggleStates, updateMutation.isPending]);
+  }, [providers, localToggleStates]);
 
   const handleToggleProvider = (providerId: string) => {
     setLocalToggleStates((prev) => ({
