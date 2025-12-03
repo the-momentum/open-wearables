@@ -74,7 +74,7 @@ class BaseOAuthTemplate(ABC):
         oauth_state = OAuthState(
             user_id=user_id,
             provider=self.provider_name,
-            redirect_uri=redirect_uri or self.credentials.redirect_uri,
+            redirect_uri=redirect_uri,  # Only store if explicitly provided by frontend
         )
 
         auth_url, pkce_data = self._build_auth_url(state)

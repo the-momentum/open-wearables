@@ -68,8 +68,6 @@ services:
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts
-        - action: rebuild
-          path: ./backend/uv.lock
 
   celery-beat:
     container_name: celery-beat__open-wearables
@@ -92,8 +90,6 @@ services:
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts
-        - action: rebuild
-          path: ./backend/uv.lock
 
   flower:
     container_name: flower__open-wearables

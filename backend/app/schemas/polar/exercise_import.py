@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class HeartRateJSON(BaseModel):
-    average: int
-    maximum: int
+    average: int | None = None
+    maximum: int | None = None
 
 
 # unused for now - time series data
@@ -29,6 +29,6 @@ class ExerciseJSON(BaseModel):
     start_time_utc_offset: int
     duration: str
 
-    calories: int
-    distance: int
-    heart_rate: HeartRateJSON
+    calories: int | None = None
+    distance: int | None = None
+    heart_rate: HeartRateJSON | None = None

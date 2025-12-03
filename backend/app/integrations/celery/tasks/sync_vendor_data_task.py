@@ -131,14 +131,20 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
 
     if start_date:
         try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            if isinstance(start_date, datetime):
+                start_dt = start_date
+            else:
+                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
             start_timestamp = int(start_dt.timestamp())
         except (ValueError, AttributeError) as e:
             logger.warning(f"[_build_sync_params] Invalid start_date format: {start_date}, error: {e}")
 
     if end_date:
         try:
-            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            if isinstance(end_date, datetime):
+                end_dt = end_date
+            else:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
             end_timestamp = int(end_dt.timestamp())
         except (ValueError, AttributeError) as e:
             logger.warning(f"[_build_sync_params] Invalid end_date format: {end_date}, error: {e}")
