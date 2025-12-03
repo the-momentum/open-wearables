@@ -7,15 +7,18 @@ export interface OAuthProvidersUpdate {
 }
 
 export const oauthService = {
-  async getProviders(cloudOnly: boolean = false, enabledOnly: boolean = false): Promise<Provider[]> {
+  async getProviders(
+    cloudOnly: boolean = false,
+    enabledOnly: boolean = false
+  ): Promise<Provider[]> {
     const params = new URLSearchParams();
     if (cloudOnly) params.append('cloud_only', 'true');
     if (enabledOnly) params.append('enabled_only', 'true');
-    
+
     const endpoint = params.toString()
       ? `${API_ENDPOINTS.oauthProviders}?${params}`
       : API_ENDPOINTS.oauthProviders;
-    
+
     return apiClient.get<Provider[]>(endpoint);
   },
 
@@ -28,4 +31,3 @@ export const oauthService = {
     );
   },
 };
-

@@ -98,6 +98,10 @@ export const queryKeys = {
   oauthProviders: {
     all: ['oauthProviders'] as const,
     list: (cloudOnly?: boolean, enabledOnly?: boolean) =>
-      [...queryKeys.oauthProviders.all, 'list', { cloudOnly, enabledOnly }] as const,
+      [
+        ...queryKeys.oauthProviders.all,
+        'list',
+        { cloudOnly, enabledOnly },
+      ] as const,
   },
 } as const;

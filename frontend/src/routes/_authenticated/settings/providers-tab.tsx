@@ -1,14 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useOAuthProviders, useUpdateOAuthProviders } from '@/hooks/api/use-oauth-providers';
+import {
+  useOAuthProviders,
+  useUpdateOAuthProviders,
+} from '@/hooks/api/use-oauth-providers';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { ProviderItem } from '@/components/settings/providers/provider-item';
 
 export function ProvidersTab() {
-  const { data: providers, isLoading, error, refetch } = useOAuthProviders(true);
+  const {
+    data: providers,
+    isLoading,
+    error,
+    refetch,
+  } = useOAuthProviders(true);
   const updateMutation = useUpdateOAuthProviders();
-  
-  const [localToggleStates, setLocalToggleStates] = useState<Record<string, boolean>>({});
-  
+
+  const [localToggleStates, setLocalToggleStates] = useState<
+    Record<string, boolean>
+  >({});
+
   useEffect(() => {
     if (providers && providers.length > 0) {
       const initial: Record<string, boolean> = {};
@@ -21,7 +31,7 @@ export function ProvidersTab() {
 
   const hasChanges = useMemo(() => {
     if (!providers) return false;
-    
+
     return providers.some(
       (provider) => localToggleStates[provider.provider] !== provider.is_enabled
     );
@@ -41,8 +51,7 @@ export function ProvidersTab() {
       await updateMutation.mutateAsync({
         providers: localToggleStates,
       });
-    } catch (error) {
-    }
+    } catch (error) {}
   };
 
   if (isLoading) {
@@ -109,7 +118,9 @@ export function ProvidersTab() {
 
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800">
-          <h3 className="text-sm font-medium text-white">Available Providers</h3>
+          <h3 className="text-sm font-medium text-white">
+            Available Providers
+          </h3>
           <p className="text-xs text-zinc-500 mt-1">
             Enable or disable OAuth providers for your application
           </p>
@@ -120,7 +131,9 @@ export function ProvidersTab() {
             <ProviderItem
               key={provider.provider}
               provider={provider}
-              localToggleState={localToggleStates[provider.provider] ?? provider.is_enabled}
+              localToggleState={
+                localToggleStates[provider.provider] ?? provider.is_enabled
+              }
               onToggle={() => handleToggleProvider(provider.provider)}
             />
           ))}
