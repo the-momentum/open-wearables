@@ -51,11 +51,13 @@ export function useSynchronizeDataFromProvider(
   userId: string
 ) {
   return useMutation({
-    mutationFn: () =>
-      healthService.synchronizeDataFromProvider(provider, userId),
+    mutationFn: () => healthService.synchronizeProvider(provider, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.connections.all(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.workouts(userId),
       });
       toast.success('Data synchronized successfully');
     },

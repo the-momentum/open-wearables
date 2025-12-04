@@ -30,7 +30,7 @@ interface ConnectionCardProps {
 
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
-    useSynchronizeDataFromProvider(connection.provider, connection.userId);
+    useSynchronizeDataFromProvider(connection.provider, connection.user_id);
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -74,8 +74,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
                 Last sync:{' '}
-                {connection.lastSyncedAt
-                  ? formatDistanceToNow(new Date(connection.lastSyncedAt), {
+                {connection.last_synced_at
+                  ? formatDistanceToNow(new Date(connection.last_synced_at), {
                       addSuffix: true,
                     })
                   : 'Never'}
