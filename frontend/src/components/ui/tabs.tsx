@@ -58,7 +58,9 @@ export function TabsTrigger({ value, children, className }: TabsTriggerProps) {
     <button
       type="button"
       role="tab"
+      id={`tab-${value}`}
       aria-selected={isActive}
+      aria-controls={`panel-${value}`}
       onClick={() => context.onValueChange(value)}
       className={`inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-zinc-950 transition-all focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${
         isActive
@@ -90,6 +92,8 @@ export function TabsContent({ value, children, className }: TabsContentProps) {
   return (
     <div
       role="tabpanel"
+      id={`panel-${value}`}
+      aria-labelledby={`tab-${value}`}
       tabIndex={0}
       className={`mt-6 ring-offset-zinc-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 ${className || ''}`}
     >
