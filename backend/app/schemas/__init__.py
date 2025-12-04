@@ -77,6 +77,11 @@ from .workout import (
     WorkoutResponse,
     WorkoutUpdate,
 )
+from .system_info import (
+    CountWithGrowth,
+    DataPointsInfo,
+    SystemInfoResponse,
+)
 from .workout_statistics import (
     WorkoutStatisticCreate,
     WorkoutStatisticResponse,
@@ -124,6 +129,9 @@ __all__ = [
     "WorkoutStatisticCreate",
     "WorkoutStatisticUpdate",
     "WorkoutStatisticResponse",
+    "SystemInfoResponse",
+    "CountWithGrowth",
+    "DataPointsInfo",
     "HKWorkoutJSON",
     "HKRecordJSON",
     "AEWorkoutJSON",

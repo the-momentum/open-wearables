@@ -6,6 +6,7 @@ from .apple.auto_export.import_service import import_service as ae_import_servic
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .developer_service import developer_service
 from .services import AppService
+from .system_info_service import system_info_service
 from .user_service import user_service
 from .workout_service import workout_service
 from .workout_statistic_service import workout_statistic_service
@@ -22,4 +23,5 @@ __all__ = [
     "workout_service",
     "workout_statistic_service",
     "pre_url_service",
+    "system_info_service",
 ]
