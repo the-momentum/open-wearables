@@ -64,6 +64,11 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
+from .sync import (
+    ProviderSyncResult,
+    SyncAllUsersResult,
+    SyncVendorDataResult,
+)
 from .user import (
     UserCreate,
     UserCreateInternal,
@@ -81,11 +86,6 @@ from .workout_statistics import (
     WorkoutStatisticCreate,
     WorkoutStatisticResponse,
     WorkoutStatisticUpdate,
-)
-from .sync import (
-    ProviderSyncResult,
-    SyncAllUsersResult,
-    SyncVendorDataResult,
 )
 
 __all__ = [
