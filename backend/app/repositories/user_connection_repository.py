@@ -151,8 +151,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         return (
             db_session.query(func.count(self.model.id))
             .filter(
-                # self.model.status == ConnectionStatus.ACTIVE, ## TODO: Implement this when we have a way to get active connections
-                self.model.created_at <= week_ago,
+                self.model.last_synced_at is not None and self.model.last_synced_at <= week_ago, ## TODO: Change this when we have a way to get active connections
             )
             .scalar()
             or 0
