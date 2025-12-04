@@ -22,4 +22,3 @@ class SystemInfoResponse(BaseModel):
     total_users: CountWithGrowth
     active_conn: CountWithGrowth
     data_points: DataPointsInfo
-

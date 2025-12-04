@@ -64,6 +64,11 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
+from .system_info import (
+    CountWithGrowth,
+    DataPointsInfo,
+    SystemInfoResponse,
+)
 from .user import (
     UserCreate,
     UserCreateInternal,
@@ -76,11 +81,6 @@ from .workout import (
     WorkoutQueryParams,
     WorkoutResponse,
     WorkoutUpdate,
-)
-from .system_info import (
-    CountWithGrowth,
-    DataPointsInfo,
-    SystemInfoResponse,
 )
 from .workout_statistics import (
     WorkoutStatisticCreate,

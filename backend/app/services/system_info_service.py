@@ -50,4 +50,3 @@ class SystemInfoService:
 
 
 system_info_service = SystemInfoService(log=getLogger(__name__))
-

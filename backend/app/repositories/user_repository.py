@@ -19,9 +19,4 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
     def get_total_count_week_ago(self, db_session: DbSession) -> int:
         """Get total count of users from 7 days ago."""
         week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-        return (
-            db_session.query(func.count(self.model.id))
-            .filter(self.model.created_at <= week_ago)
-            .scalar()
-            or 0
-        )
+        return db_session.query(func.count(self.model.id)).filter(self.model.created_at <= week_ago).scalar() or 0
