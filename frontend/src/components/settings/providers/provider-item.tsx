@@ -1,5 +1,6 @@
 import { Provider } from '@/lib/api/types';
 import { Switch } from '@/components/ui/switch';
+import { useState } from 'react';
 
 interface ProviderItemProps {
   provider: Provider;
@@ -12,25 +13,26 @@ export function ProviderItem({
   localToggleState,
   onToggle,
 }: ProviderItemProps) {
+  const [imageError, setImageError] = useState(false);
   const isEnabledInBackend = provider.is_enabled;
-  const iconUrl = provider.icon_url
-    ? new URL(provider.icon_url, import.meta.env.VITE_API_URL).toString()
-    : null;
+  const apiUrl = import.meta.env.VITE_API_URL;
+  const iconUrl =
+    provider.icon_url && apiUrl
+      ? new URL(provider.icon_url, apiUrl).toString()
+      : null;
+
   return (
     <div className="px-6 py-4 hover:bg-zinc-800/30 transition-colors">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 flex-1">
-          <div
-            className="flex-shrink-0 p-2 rounded-lg overflow-hidden bg-white"
-            data-has-icon={!!provider.icon_url}
-          >
-            {iconUrl ? (
+          <div className="flex-shrink-0 p-2 rounded-lg overflow-hidden bg-white">
+            {iconUrl && !imageError ? (
               <img
                 src={iconUrl}
                 alt={provider.name}
                 className="h-12 w-12 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
+                onError={() => {
+                  setImageError(true);
                 }}
               />
             ) : (
@@ -59,7 +61,11 @@ export function ProviderItem({
         </div>
 
         <div className="flex-shrink-0 ml-4">
-          <Switch checked={localToggleState} onCheckedChange={onToggle} />
+          <Switch
+            checked={localToggleState}
+            onCheckedChange={onToggle}
+            aria-label={`Toggle ${provider.name} provider`}
+          />
         </div>
       </div>
     </div>
