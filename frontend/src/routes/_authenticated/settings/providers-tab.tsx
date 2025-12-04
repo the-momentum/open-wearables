@@ -18,16 +18,18 @@ export function ProvidersTab() {
   const [localToggleStates, setLocalToggleStates] = useState<
     Record<string, boolean>
   >({});
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   useEffect(() => {
-    if (providers && providers.length > 0) {
+    if (providers && providers.length > 0 && !hasInitialized) {
       const initial: Record<string, boolean> = {};
       providers.forEach((provider) => {
         initial[provider.provider] = provider.is_enabled;
       });
       setLocalToggleStates(initial);
+      setHasInitialized(true);
     }
-  }, [providers]);
+  }, [providers, hasInitialized]);
 
   const hasChanges = useMemo(() => {
     if (!providers) return false;
@@ -46,12 +48,7 @@ export function ProvidersTab() {
 
   const handleSave = async () => {
     if (!providers) return;
-
-    try {
-      await updateMutation.mutateAsync({
-        providers: localToggleStates,
-      });
-    } catch (error) {}
+    await updateMutation.mutateAsync({ providers: localToggleStates });
   };
 
   if (isLoading) {
