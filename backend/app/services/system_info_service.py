@@ -1,15 +1,15 @@
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.repositories.system_info_repository import SystemInfoRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.system_info import CountWithGrowth, DataPointsInfo, SystemInfoResponse
+from app.services import user_service
 
 
 class SystemInfoService:
     """Service for system dashboard information."""
 
     def __init__(self, log: Logger):
-        self.repository = SystemInfoRepository()
         self.logger = log
 
     def _calculate_weekly_growth(self, current: int, previous: int) -> float:
@@ -21,13 +21,14 @@ class SystemInfoService:
     def get_system_info(self, db_session: DbSession) -> SystemInfoResponse:
         """Get system dashboard information."""
         # Get total users data
-        total_users_current = self.repository.get_total_users_count(db_session)
-        total_users_week_ago = self.repository.get_total_users_count_week_ago(db_session)
+        total_users_current = user_service.crud.get_total_count(db_session)
+        total_users_week_ago = user_service.crud.get_total_count_week_ago(db_session)
         total_users_growth = self._calculate_weekly_growth(total_users_current, total_users_week_ago)
 
         # Get active connections data
-        active_conn_current = self.repository.get_active_connections_count(db_session)
-        active_conn_week_ago = self.repository.get_active_connections_count_week_ago(db_session)
+        connection_repo = UserConnectionRepository()
+        active_conn_current = connection_repo.get_active_count(db_session)
+        active_conn_week_ago = connection_repo.get_active_count_week_ago(db_session)
         active_conn_growth = self._calculate_weekly_growth(active_conn_current, active_conn_week_ago)
 
         # Mock data points for now

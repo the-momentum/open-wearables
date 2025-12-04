@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from app.database import DbSession
 from app.models import UserConnection
@@ -135,3 +135,25 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.commit()
         db_session.refresh(connection)
         return connection
+
+    def get_active_count(self, db_session: DbSession) -> int:
+        """Get count of active connections."""
+        return (
+            db_session.query(func.count(self.model.id))
+            .filter(self.model.status == ConnectionStatus.ACTIVE)
+            .scalar()
+            or 0
+        )
+
+    def get_active_count_week_ago(self, db_session: DbSession) -> int:
+        """Get count of active connections from 7 days ago."""
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        return (
+            db_session.query(func.count(self.model.id))
+            .filter(
+                # self.model.status == ConnectionStatus.ACTIVE, ## TODO: Implement this when we have a way to get active connections
+                self.model.created_at <= week_ago,
+            )
+            .scalar()
+            or 0
+        )
