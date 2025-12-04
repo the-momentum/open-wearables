@@ -289,7 +289,7 @@ function UserDetailPage() {
               ))}
             </div>
           ) : connections && connections.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
               {connections.map((connection) => (
                 <ConnectionCard key={connection.id} connection={connection} />
               ))}
