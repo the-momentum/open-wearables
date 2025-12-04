@@ -3,6 +3,7 @@ from logging import getLogger
 from app.database import SessionLocal
 from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas import SyncAllUsersResult
 from celery import shared_task
 
 logger = getLogger(__name__)
@@ -26,4 +27,4 @@ def sync_all_users(start_date: str | None = None, end_date: str | None = None) -
         for user_id in user_ids:
             sync_vendor_data.delay(str(user_id), start_date, end_date)
 
-        return {"users_for_sync": len(user_ids)}
+        return SyncAllUsersResult(users_for_sync=len(user_ids)).model_dump()

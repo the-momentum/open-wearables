@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.database import SessionLocal
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
 from celery import shared_task
 
@@ -16,6 +17,7 @@ def sync_vendor_data(
     user_id: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    providers: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
@@ -24,6 +26,7 @@ def sync_vendor_data(
         user_id: UUID of the user to sync data for
         start_date: ISO 8601 date string for start of sync period (None = full history)
         end_date: ISO 8601 date string for end of sync period (None = current time)
+        providers: Optional list of provider names to sync (None = all active providers)
 
     Returns:
         dict with sync results per provider
@@ -31,29 +34,34 @@ def sync_vendor_data(
     factory = ProviderFactory()
     user_connection_repo = UserConnectionRepository()
 
-    results: dict[str, Any] = {
-        "user_id": user_id,
-        "start_date": start_date,
-        "end_date": end_date,
-        "providers_synced": {},
-        "errors": {},
-    }
-
     try:
         user_uuid = UUID(user_id)
     except ValueError as e:
         logger.error(f"[sync_vendor_data] Invalid user_id format: {user_id}")
-        results["errors"]["user_id"] = f"Invalid UUID format: {str(e)}"
-        return results
+        return SyncVendorDataResult(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            errors={"user_id": f"Invalid UUID format: {str(e)}"},
+        ).model_dump()
+
+    result = SyncVendorDataResult(
+        user_id=user_uuid,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
     with SessionLocal() as db:
         try:
             connections = user_connection_repo.get_all_active_by_user(db, user_uuid)
 
+            if providers:
+                connections = [c for c in connections if c.provider in providers]
+
             if not connections:
                 logger.info(f"[sync_vendor_data] No active connections found for user {user_id}")
-                results["message"] = "No active provider connections found"
-                return results
+                result.message = "No active provider connections found"
+                return result.model_dump()
 
             logger.info(
                 f"[sync_vendor_data] Found {len(connections)} active connections for user {user_id}",
@@ -67,7 +75,7 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
 
                     if not strategy.workouts:
-                        results["errors"][provider_name] = "Workouts not supported"
+                        result.errors[provider_name] = "Workouts not supported"
                         continue
 
                     params = _build_sync_params(provider_name, start_date, end_date)
@@ -79,15 +87,15 @@ def sync_vendor_data(
                         db.add(connection)
                         db.commit()
 
-                        results["providers_synced"][provider_name] = {
-                            "success": True,
-                            "params": params,
-                        }
+                        result.providers_synced[provider_name] = ProviderSyncResult(
+                            success=True,
+                            params=params,
+                        )
                         logger.info(
                             f"[sync_vendor_data] Successfully synced {provider_name} for user {user_id}",
                         )
                     else:
-                        results["errors"][provider_name] = "Sync returned False"
+                        result.errors[provider_name] = "Sync returned False"
                         logger.warning(
                             f"[sync_vendor_data] Sync returned False for {provider_name}, user {user_id}",
                         )
@@ -97,18 +105,18 @@ def sync_vendor_data(
                         f"[sync_vendor_data] Error syncing {provider_name} for user {user_id}: {str(e)}",
                         exc_info=True,
                     )
-                    results["errors"][provider_name] = str(e)
+                    result.errors[provider_name] = str(e)
                     continue
 
-            return results
+            return result.model_dump()
 
         except Exception as e:
             logger.error(
                 f"[sync_vendor_data] Error processing user {user_id}: {str(e)}",
                 exc_info=True,
             )
-            results["errors"]["general"] = str(e)
-            return results
+            result.errors["general"] = str(e)
+            return result.model_dump()
 
 
 def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:

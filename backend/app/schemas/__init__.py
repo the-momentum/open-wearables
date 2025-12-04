@@ -82,6 +82,11 @@ from .workout_statistics import (
     WorkoutStatisticResponse,
     WorkoutStatisticUpdate,
 )
+from .sync import (
+    ProviderSyncResult,
+    SyncAllUsersResult,
+    SyncVendorDataResult,
+)
 
 __all__ = [
     # Common schemas
@@ -141,4 +146,8 @@ __all__ = [
     # AWS schemas
     "PresignedURLRequest",
     "PresignedURLResponse",
+    # Sync schemas
+    "ProviderSyncResult",
+    "SyncAllUsersResult",
+    "SyncVendorDataResult",
 ]

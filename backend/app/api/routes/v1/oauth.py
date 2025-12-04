@@ -77,7 +77,12 @@ async def oauth_callback(
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
     # schedule sync task
-    sync_vendor_data.delay(str(oauth_state.user_id), start_date=None, end_date=None)
+    sync_vendor_data.delay(
+        str(oauth_state.user_id),
+        start_date=None,
+        end_date=None,
+        providers=[provider.value],
+    )
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

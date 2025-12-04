@@ -143,7 +143,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .filter(
                 and_(
                     self.model.user_id == user_id,
-                    self.model.status == "active",
+                    self.model.status == ConnectionStatus.ACTIVE,
                 ),
             )
             .all()
@@ -153,5 +153,8 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         """Get all unique user IDs that have active connections."""
         return [
             row.user_id
-            for row in db_session.query(self.model.user_id).filter(self.model.status == "active").distinct().all()
+            for row in db_session.query(self.model.user_id)
+            .filter(self.model.status == ConnectionStatus.ACTIVE)
+            .distinct()
+            .all()
         ]
