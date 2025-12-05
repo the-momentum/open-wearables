@@ -118,38 +118,42 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         }
 
         for field in ["calories", "distance"]:
-            workout_statistics.append(
-                WorkoutStatisticCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    workout_id=workout_id,
-                    type=field,
-                    start_datetime=start_date,
-                    end_datetime=end_date,
-                    min=None,
-                    max=None,
-                    avg=getattr(raw_workout, field),
-                    unit=units[field],
-                ),
-            )
+            val = getattr(raw_workout, field)
+            if val is not None:
+                workout_statistics.append(
+                    WorkoutStatisticCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        workout_id=workout_id,
+                        type=field,
+                        start_datetime=start_date,
+                        end_datetime=end_date,
+                        min=None,
+                        max=None,
+                        avg=val,
+                        unit=units[field],
+                    ),
+                )
 
-        hr_avg = raw_workout.heart_rate.average
-        hr_max = raw_workout.heart_rate.maximum
+        if raw_workout.heart_rate:
+            hr_avg = raw_workout.heart_rate.average
+            hr_max = raw_workout.heart_rate.maximum
 
-        workout_statistics.append(
-            WorkoutStatisticCreate(
-                id=uuid4(),
-                user_id=user_id,
-                workout_id=workout_id,
-                type="heartRate",
-                start_datetime=start_date,
-                end_datetime=end_date,
-                min=None,
-                max=hr_max,
-                avg=hr_avg,
-                unit="bpm",
-            ),
-        )
+            if hr_avg is not None or hr_max is not None:
+                workout_statistics.append(
+                    WorkoutStatisticCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        workout_id=workout_id,
+                        type="heartRate",
+                        start_datetime=start_date,
+                        end_datetime=end_date,
+                        min=None,
+                        max=hr_max,
+                        avg=hr_avg,
+                        unit="bpm",
+                    ),
+                )
 
         return workout_statistics
 

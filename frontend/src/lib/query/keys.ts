@@ -94,4 +94,14 @@ export const queryKeys = {
     history: (userId?: string) =>
       [...queryKeys.chat.all(userId), 'history'] as const,
   },
+
+  oauthProviders: {
+    all: ['oauthProviders'] as const,
+    list: (cloudOnly?: boolean, enabledOnly?: boolean) =>
+      [
+        ...queryKeys.oauthProviders.all,
+        'list',
+        { cloudOnly, enabledOnly },
+      ] as const,
+  },
 } as const;

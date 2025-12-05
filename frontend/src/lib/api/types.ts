@@ -85,13 +85,11 @@ export interface DashboardStats {
 }
 
 export interface Provider {
-  id: string;
+  provider: string;
   name: string;
-  description: string;
-  logoUrl: string;
-  isAvailable: boolean;
-  features: string[];
-  authType: 'oauth2' | 'api_key';
+  has_cloud_api: boolean;
+  is_enabled: boolean;
+  icon_url: string;
 }
 
 export type WearableProvider =
@@ -104,16 +102,16 @@ export type WearableProvider =
   | 'withings';
 
 export interface UserConnection {
+  user_id: string;
+  provider: string;
+  provider_user_id?: string;
+  provider_username?: string;
+  scope?: string;
   id: string;
-  userId: string;
-  providerId: string;
-  providerName: string;
-  status: 'active' | 'error' | 'pending' | 'disconnected';
-  connectedAt: string;
-  lastSyncAt: string | null;
-  syncStatus: 'success' | 'failed' | 'pending' | 'syncing';
-  syncError?: string;
-  dataPoints: number;
+  status: 'active' | 'revoked' | 'expired';
+  last_synced_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface HeartRateData {

@@ -10,7 +10,7 @@ export const Route = createFileRoute('/login')({
   component: LoginPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: '/users' });
     }
   },
 });

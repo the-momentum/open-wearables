@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
+from app.integrations.celery.tasks import sync_vendor_data
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
@@ -52,27 +53,46 @@ async def authorize_provider(
     return AuthorizationURLResponse(authorization_url=auth_url, state=state)
 
 
-@router.get("/{provider}/callback", response_class=RedirectResponse)
+@router.get("/{provider}/callback")
 async def oauth_callback(
     provider: ProviderName,
-    code: Annotated[str, Query(description="Authorization code from provider")],
-    state: Annotated[str, Query(description="State parameter for CSRF protection")],
     db: DbSession,
+    code: Annotated[str | None, Query(description="Authorization code from provider")] = None,
+    state: Annotated[str | None, Query(description="State parameter for CSRF protection")] = None,
 ):
     """
     OAuth callback endpoint.
 
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
+    if not code or not state:
+        return RedirectResponse(
+            url="/api/v1/oauth/error?message=Missing+OAuth+parameters",
+            status_code=303,
+        )
+
     strategy = get_oauth_strategy(provider)
 
     assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
-    # Redirect to success page or developer's redirect_uri
-    redirect_url = oauth_state.redirect_uri or f"/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}"
+    # schedule sync task
+    sync_vendor_data.delay(
+        str(oauth_state.user_id),
+        start_date=None,
+        end_date=None,
+        providers=[provider.value],
+    )
 
-    return RedirectResponse(url=redirect_url)
+    # If a specific redirect_uri was requested (e.g. by frontend), redirect there
+    if oauth_state.redirect_uri:
+        return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+
+    # Otherwise, redirect to internal success page
+    return RedirectResponse(
+        url=f"/api/v1/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}",
+        status_code=303,
+    )
 
 
 @router.get("/success")
@@ -86,6 +106,17 @@ async def oauth_success(
         "message": f"Successfully connected to {provider}",
         "user_id": user_id,
         "provider": provider,
+    }
+
+
+@router.get("/error")
+async def oauth_error(
+    message: Annotated[str, Query()] = "OAuth authentication failed",
+) -> dict:
+    """OAuth error page."""
+    return {
+        "success": False,
+        "message": message,
     }
 
 

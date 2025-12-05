@@ -68,6 +68,10 @@ from .system_info import (
     CountWithGrowth,
     DataPointsInfo,
     SystemInfoResponse,
+from .sync import (
+    ProviderSyncResult,
+    SyncAllUsersResult,
+    SyncVendorDataResult,
 )
 from .user import (
     UserCreate,
@@ -149,4 +153,8 @@ __all__ = [
     # AWS schemas
     "PresignedURLRequest",
     "PresignedURLResponse",
+    # Sync schemas
+    "ProviderSyncResult",
+    "SyncAllUsersResult",
+    "SyncVendorDataResult",
 ]
