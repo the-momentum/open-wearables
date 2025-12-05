@@ -14,7 +14,7 @@ export const Route = createFileRoute('/forgot-password')({
   component: ForgotPasswordPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: '/users' });
     }
   },
 });

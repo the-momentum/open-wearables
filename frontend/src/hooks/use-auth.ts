@@ -18,7 +18,7 @@ export function useAuth() {
     onSuccess: (data) => {
       setSession(data.access_token, data.developer_id);
       toast.success('Logged in successfully');
-      navigate({ to: '/dashboard' });
+      navigate({ to: '/users' });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -38,7 +38,7 @@ export function useAuth() {
     onSuccess: (data) => {
       setSession(data.access_token, data.developer_id);
       toast.success('Account created successfully');
-      navigate({ to: '/dashboard' });
+      navigate({ to: '/users' });
     },
     onError: (error: unknown) => {
       const message =

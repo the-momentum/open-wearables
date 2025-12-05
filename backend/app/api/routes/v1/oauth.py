@@ -69,10 +69,10 @@ async def oauth_callback(
     assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
-    # Redirect to success page or developer's redirect_uri
-    redirect_url = oauth_state.redirect_uri or f"/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}"
+    # Redirect to frontend success page or internal API success endpoint
+    redirect_url = oauth_state.redirect_uri or f"/api/v1/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}"
 
-    return RedirectResponse(url=redirect_url)
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.get("/success")

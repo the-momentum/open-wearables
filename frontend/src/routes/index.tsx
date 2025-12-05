@@ -8,10 +8,10 @@ export const Route = createFileRoute('/')({
     if (typeof window === 'undefined') {
       return;
     }
-    // Redirect to dashboard if authenticated, otherwise to login
+    // Redirect to users if authenticated, otherwise to login
     if (isAuthenticated()) {
       throw redirect({
-        to: '/dashboard',
+        to: '/users',
       });
     } else {
       throw redirect({
@@ -30,7 +30,7 @@ function IndexRedirect() {
     // Client-side: beforeLoad should have already redirected
     // If we get here, fall back to Navigate
     if (isAuthenticated()) {
-      return <Navigate to="/dashboard" />;
+      return <Navigate to="/users" />;
     }
     return <Navigate to="/login" />;
   }

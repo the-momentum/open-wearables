@@ -2,12 +2,10 @@ import { Link, useLocation } from '@tanstack/react-router';
 import {
   Home,
   Users,
-  Activity,
-  Key,
   FileText,
-  DollarSign,
   LogOut,
   Settings,
+  ExternalLink,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -25,30 +23,15 @@ const menuItems = [
     icon: Users,
   },
   {
-    title: 'Health Insights',
-    url: '/health-insights',
-    icon: Activity,
-  },
-  {
-    title: 'Credentials',
-    url: '/credentials',
-    icon: Key,
-  },
-  {
     title: 'Settings',
     url: '/settings',
     icon: Settings,
   },
   {
-    title: 'Pricing',
-    url: '/pricing',
-    icon: DollarSign,
-  },
-  {
     title: 'Documentation',
-    url: '/docs',
+    url: 'https://docs.openwearables.io/',
     icon: FileText,
-    comingSoon: true,
+    external: true,
   },
 ];
 
@@ -68,18 +51,19 @@ export function SimpleSidebar() {
         {menuItems.map((item) => {
           const isActive = location.pathname.startsWith(item.url);
 
-          if (item.comingSoon) {
+          if (item.external) {
             return (
-              <div
+              <a
                 key={item.title}
-                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-zinc-600 cursor-not-allowed"
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-zinc-400 hover:bg-zinc-900/50 hover:text-zinc-200 transition-all duration-200"
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-4 w-4 text-zinc-500" />
                 <span>{item.title}</span>
-                <span className="ml-auto text-[10px] text-zinc-700">
-                  (Soon)
-                </span>
-              </div>
+                <ExternalLink className="ml-auto h-3 w-3 text-zinc-600" />
+              </a>
             );
           }
 
