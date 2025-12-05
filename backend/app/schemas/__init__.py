@@ -64,14 +64,15 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
-from .system_info import (
-    CountWithGrowth,
-    DataPointsInfo,
-    SystemInfoResponse,
 from .sync import (
     ProviderSyncResult,
     SyncAllUsersResult,
     SyncVendorDataResult,
+)
+from .system_info import (
+    CountWithGrowth,
+    DataPointsInfo,
+    SystemInfoResponse,
 )
 from .user import (
     UserCreate,
