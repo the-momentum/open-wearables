@@ -8,7 +8,7 @@ from .heart_rate import router as heart_rate_router
 from .import_data import router as import_data_router
 from .oauth import router as oauth_router
 from .sync_data import router as sync_data_router
-from .system_info import router as system_info_router
+from .dashboard import router as dashboard_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 from .workouts import router as workouts_router
@@ -28,6 +28,6 @@ v1_router.include_router(connections_router, tags=["data"])
 v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_data_router, tags=["import-data"])
-v1_router.include_router(system_info_router, tags=["dashboard"])
+v1_router.include_router(dashboard_router, tags=["dashboard"])
 
 __all__ = ["v1_router"]

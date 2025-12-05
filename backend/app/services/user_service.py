@@ -1,3 +1,4 @@
+from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -16,6 +17,10 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             log=log,
             **kwargs,
         )
+
+    def get_count_in_range(self, db_session: DbSession, start_date: datetime, end_date: datetime) -> int:
+        """Get count of users created within a date range."""
+        return self.crud.get_count_in_range(db_session, start_date, end_date)
 
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""

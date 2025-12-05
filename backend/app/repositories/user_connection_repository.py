@@ -12,8 +12,30 @@ from app.schemas import ConnectionStatus, UserConnectionCreate, UserConnectionUp
 class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCreate, UserConnectionUpdate]):
     """Repository for managing OAuth user connections to fitness providers."""
 
-    def __init__(self):
-        super().__init__(model=UserConnection)
+    def __init__(self, model: type[UserConnection] = UserConnection):
+        super().__init__(model)
+
+    def get_active_count(self, db_session: DbSession) -> int:
+        """Get total count of active connections."""
+        return (
+            db_session.query(func.count(self.model.id)).filter(self.model.status == ConnectionStatus.ACTIVE).scalar()
+            or 0
+        )
+
+    def get_active_count_in_range(self, db_session: DbSession, start_date: datetime, end_date: datetime) -> int:
+        """Get count of active connections created within a date range."""
+        return (
+            db_session.query(func.count(self.model.id))
+            .filter(
+                and_(
+                    self.model.status == ConnectionStatus.ACTIVE,
+                    self.model.created_at >= start_date,
+                    self.model.created_at < end_date,
+                ),
+            )
+            .scalar()
+            or 0
+        )
 
     def get_by_user_and_provider(
         self,
@@ -135,24 +157,3 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.commit()
         db_session.refresh(connection)
         return connection
-
-    def get_active_count(self, db_session: DbSession) -> int:
-        """Get count of active connections."""
-        return (
-            db_session.query(func.count(self.model.id)).filter(self.model.status == ConnectionStatus.ACTIVE).scalar()
-            or 0
-        )
-
-    def get_active_count_week_ago(self, db_session: DbSession) -> int:
-        """Get count of active connections from 7 days ago."""
-        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-        return (
-            db_session.query(func.count(self.model.id))
-            .filter(
-                self.model.last_synced_at is not None
-                and self.model.last_synced_at
-                <= week_ago,  ## TODO: Change this when we have a way to get active connections
-            )
-            .scalar()
-            or 0
-        )

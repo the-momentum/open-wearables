@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from sqlalchemy import func
 
@@ -16,7 +16,11 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
         """Get total count of users."""
         return db_session.query(func.count(self.model.id)).scalar() or 0
 
-    def get_total_count_week_ago(self, db_session: DbSession) -> int:
-        """Get total count of users from 7 days ago."""
-        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-        return db_session.query(func.count(self.model.id)).filter(self.model.created_at <= week_ago).scalar() or 0
+    def get_count_in_range(self, db_session: DbSession, start_date: datetime, end_date: datetime) -> int:
+        """Get count of users created within a date range."""
+        return (
+            db_session.query(func.count(self.model.id))
+            .filter(self.model.created_at >= start_date, self.model.created_at < end_date)
+            .scalar()
+            or 0
+        )
