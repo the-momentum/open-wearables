@@ -12,12 +12,17 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useHeartRate, useWorkouts } from '@/hooks/api/use-health';
+import {
+  useHeartRate,
+  useUserConnections,
+  useWorkouts,
+} from '@/hooks/api/use-health';
 import { useUsers, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
 import { calculateHeartRateStats } from '@/lib/utils/health';
+import { ConnectionCard } from '@/components/user/connection-card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +49,8 @@ function UserDetailPage() {
     limit: 10,
     sort_order: 'desc',
   });
+  const { data: connections, isLoading: connectionsLoading } =
+    useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
 
@@ -247,6 +254,65 @@ function UserDetailPage() {
                   {formatDate(user?.created_at)}
                 </p>
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Connected Providers */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800">
+          <h2 className="text-sm font-medium text-white">
+            Connected Providers
+          </h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Wearable devices and health platforms connected to this user
+          </p>
+        </div>
+        <div className="p-6">
+          {connectionsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="p-4 border border-zinc-800 rounded-lg space-y-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-6 w-24 bg-zinc-800 rounded animate-pulse" />
+                    <div className="h-5 w-16 bg-zinc-800/50 rounded animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 w-40 bg-zinc-800/50 rounded animate-pulse" />
+                    <div className="h-4 w-36 bg-zinc-800/50 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : connections && connections.length > 0 ? (
+            <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
+              {connections.map((connection) => (
+                <ConnectionCard key={connection.id} connection={connection} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-zinc-500 mb-4">No providers connected yet</p>
+              <button
+                onClick={handleCopyPairLink}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4 text-emerald-500" />
+                    Link Copied!
+                  </>
+                ) : (
+                  <>
+                    <LinkIcon className="h-4 w-4" />
+                    Copy Pairing Link
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>
