@@ -1,7 +1,7 @@
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.models import EventRecord, EventRecordDetail
+from app.models import EventRecord, EventRecordDetail, ExternalDeviceMapping
 from app.repositories import EventRecordDetailRepository, EventRecordRepository
 from app.schemas import (
     EventRecordCreate,
@@ -22,6 +22,25 @@ class EventRecordService(
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
 
+    def _build_response(
+        self,
+        record: EventRecord,
+        mapping: ExternalDeviceMapping,
+    ) -> EventRecordResponse:
+        return EventRecordResponse(
+            id=record.id,
+            category=record.category,
+            type=record.type,
+            source_name=record.source_name,
+            duration_seconds=record.duration_seconds,
+            start_datetime=record.start_datetime,
+            end_datetime=record.end_datetime,
+            external_mapping_id=record.external_mapping_id,
+            user_id=mapping.user_id if mapping else None,
+            provider_id=mapping.provider_id if mapping else None,
+            device_id=mapping.device_id if mapping else None,
+        )
+
     def create_detail(self, db_session: DbSession, detail: EventRecordDetailCreate) -> EventRecordDetail:
         repo = EventRecordDetailRepository(EventRecordDetail)
         return repo.create(db_session, detail)
@@ -32,7 +51,7 @@ class EventRecordService(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-    ) -> tuple[list[EventRecord], int]:
+    ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
         self.logger.debug(f"Fetching event records with filters: {query_params.model_dump()}")
 
         records, total_count = self.crud.get_records_with_filters(db_session, query_params, user_id)
@@ -50,7 +69,7 @@ class EventRecordService(
     ) -> list[EventRecordResponse]:
         records, _ = await self._get_records_with_filters(db_session, query_params, user_id)
 
-        return [EventRecordResponse(**record.model_dump()) for record in records]
+        return [self._build_response(record, mapping) for record, mapping in records]
 
 
 event_record_service = EventRecordService(log=getLogger(__name__))

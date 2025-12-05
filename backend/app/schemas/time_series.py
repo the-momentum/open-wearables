@@ -11,10 +11,27 @@ class SeriesType(str, Enum):
     steps = "steps"
     heart_rate = "heart_rate"
     energy = "energy"
+    height = "height"
+    weight = "weight"
+    body_fat_percentage = "body_fat_percentage"
+    resting_heart_rate = "resting_heart_rate"
+    body_temperature = "body_temperature"
+    distance_walking_running = "distance_walking_running"
+    distance_cycling = "distance_cycling"
+    respiratory_rate = "respiratory_rate"
+    walking_heart_rate_average = "walking_heart_rate_average"
+    heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
+    oxygen_saturation = "oxygen_saturation"
 
 
 class TimeSeriesSampleBase(BaseModel):
+    user_id: UUID
+    provider_id: str | None = None
     device_id: str | None = None
+    external_mapping_id: UUID | None = Field(
+        None,
+        description="Existing mapping identifier if already created upstream.",
+    )
     recorded_at: datetime
     value: Decimal | float | int
     series_type: SeriesType
@@ -34,6 +51,7 @@ class TimeSeriesSampleResponse(TimeSeriesSampleBase):
     """Generic response payload for data point series."""
 
     id: UUID
+    external_mapping_id: UUID
 
 
 class HeartRateSampleCreate(TimeSeriesSampleCreate):
@@ -68,4 +86,9 @@ class TimeSeriesQueryParams(BaseModel):
     device_id: str | None = Field(
         None,
         description="Device identifier filter; required to retrieve samples",
+    )
+    provider_id: str | None = Field(None, description="Optional provider identifier filter")
+    external_mapping_id: UUID | None = Field(
+        None,
+        description="Direct mapping identifier filter (skips device lookup).",
     )

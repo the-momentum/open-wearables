@@ -55,12 +55,14 @@ class ImportService:
             "steps_min": None,
             "steps_max": None,
             "steps_avg": None,
+            "steps_total": None,
         }
 
     def _get_records(
         self,
         workout: AEWorkoutJSON,
-        _user_id: str,
+        user_id: UUID,
+        provider_id: str | None,
     ) -> list[HeartRateSampleCreate]:
         samples: list[HeartRateSampleCreate] = []
 
@@ -76,6 +78,8 @@ class ImportService:
                 samples.append(
                     HeartRateSampleCreate(
                         id=uuid4(),
+                        user_id=user_id,
+                        provider_id=provider_id,
                         device_id=source_name,
                         recorded_at=self._dt(entry.date),
                         value=self._dec(value) or 0,
@@ -96,6 +100,7 @@ class ImportService:
         root = RootJSON(**raw)
         workouts_raw = root.data.get("workouts", [])
 
+        user_uuid = UUID(user_id)
         for w in workouts_raw:
             wjson = AEWorkoutJSON(**w)
 
@@ -106,16 +111,18 @@ class ImportService:
             duration_seconds = Decimal(str((end_date - start_date).total_seconds()))
 
             metrics = self._compute_metrics(wjson)
-            hr_samples = self._get_records(wjson, user_id)
+            hr_samples = self._get_records(wjson, user_uuid, wjson.id)
 
             workout_type = wjson.name or "Unknown Workout"
 
             record = EventRecordCreate(
                 id=workout_id,
-                user_id=UUID(user_id),
+                provider_id=wjson.id,
+                user_id=user_uuid,
                 type=workout_type,
                 duration_seconds=duration_seconds,
                 source_name="Auto Export",
+                device_id=None,
                 start_datetime=start_date,
                 end_datetime=end_date,
             )

@@ -6,7 +6,8 @@ from sqlalchemy import and_, desc
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
-from app.models import EventRecord
+from app.models import EventRecord, ExternalDeviceMapping
+from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
 
@@ -16,16 +17,43 @@ class EventRecordRepository(
 ):
     def __init__(self, model: type[EventRecord]):
         super().__init__(model)
+        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+
+    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+        mapping = self.mapping_repo.ensure_mapping(
+            db_session,
+            creator.user_id,
+            creator.provider_id,
+            creator.device_id,
+            creator.external_mapping_id,
+        )
+
+        creation_data = creator.model_dump()
+        creation_data["external_mapping_id"] = mapping.id
+        for redundant_key in ("user_id", "provider_id", "device_id", "external_mapping_id"):
+            creation_data.pop(redundant_key, None)
+
+        creation = self.model(**creation_data)
+        db_session.add(creation)
+        db_session.commit()
+        db_session.refresh(creation)
+        return creation
 
     def get_records_with_filters(
         self,
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-    ) -> tuple[list[EventRecord], int]:
-        query: Query = db_session.query(EventRecord)
+    ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
+        query: Query = (
+            db_session.query(EventRecord, ExternalDeviceMapping)
+            .join(
+                ExternalDeviceMapping,
+                EventRecord.external_mapping_id == ExternalDeviceMapping.id,
+            )
+        )
 
-        filters = [EventRecord.user_id == UUID(user_id)]
+        filters = [ExternalDeviceMapping.user_id == UUID(user_id)]
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
@@ -37,7 +65,13 @@ class EventRecordRepository(
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
 
         if query_params.device_id:
-            filters.append(EventRecord.device_id == query_params.device_id)
+            filters.append(ExternalDeviceMapping.device_id == query_params.device_id)
+
+        if getattr(query_params, "provider_id", None):
+            filters.append(ExternalDeviceMapping.provider_id == query_params.provider_id)
+
+        if getattr(query_params, "external_mapping_id", None):
+            filters.append(EventRecord.external_mapping_id == query_params.external_mapping_id)
 
         if query_params.start_date:
             start_dt = isodate.parse_datetime(query_params.start_date)
@@ -59,8 +93,8 @@ class EventRecordRepository(
         total_count = query.count()
 
         sort_column = getattr(EventRecord, query_params.sort_by or "start_datetime")
-        query = query.order_by(sort_column) if query_params.sort_order == "asc" else query.order_by(desc(sort_column))
+        order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
 
-        query = query.offset(query_params.offset).limit(query_params.limit)
+        paged_query = query.order_by(order_column).offset(query_params.offset).limit(query_params.limit)
 
-        return query.all(), total_count
+        return paged_query.all(), total_count

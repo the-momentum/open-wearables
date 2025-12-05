@@ -66,7 +66,7 @@ class XMLService:
     def _create_record(
         self,
         document: dict[str, Any],
-        _user_id: str,
+        user_id: UUID,
     ) -> HeartRateSampleCreate | StepSampleCreate | None:
         document = self._parse_date_fields(document)
 
@@ -76,6 +76,8 @@ class XMLService:
         if "HKQuantityTypeIdentifierHeartRate" in metric_type:
             return HeartRateSampleCreate(
                 id=uuid4(),
+                user_id=user_id,
+                provider_id=None,
                 device_id=document["device"],
                 recorded_at=document["startDate"],
                 value=value,
@@ -83,6 +85,8 @@ class XMLService:
         if "HKQuantityTypeIdentifierStepCount" in metric_type:
             return StepSampleCreate(
                 id=uuid4(),
+                user_id=user_id,
+                provider_id=None,
                 device_id=document["device"],
                 recorded_at=document["startDate"],
                 value=value,
@@ -93,7 +97,7 @@ class XMLService:
     def _create_workout(
         self,
         document: dict[str, Any],
-        user_id: str,
+        user_id: UUID,
         metrics: EventRecordMetrics | None = None,
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         document = self._parse_date_fields(document)
@@ -106,7 +110,7 @@ class XMLService:
         record = EventRecordCreate(
             id=workout_id,
             provider_id=None,
-            user_id=UUID(user_id),
+            user_id=user_id,
             type=document["type"],
             duration_seconds=duration_seconds,
             source_name=document["sourceName"],
@@ -131,6 +135,7 @@ class XMLService:
             "steps_min": None,
             "steps_max": None,
             "steps_avg": None,
+            "steps_total": None,
         }
 
     def _decimal_from_stat(self, value: str | None) -> Decimal | None:
@@ -182,6 +187,7 @@ class XMLService:
         heart_rate_records: list[HeartRateSampleCreate] = []
         step_records: list[StepSampleCreate] = []
         workouts: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
+        uuid_user = UUID(user_id)
 
         for event, elem in ET.iterparse(self.xml_path, events=("end",)):
             if elem.tag == "Record" and event == "end":
@@ -197,7 +203,7 @@ class XMLService:
                     step_records = []
                     workouts = []
                 record: dict[str, Any] = elem.attrib.copy()
-                record_create = self._create_record(record, user_id)
+                record_create = self._create_record(record, uuid_user)
                 if isinstance(record_create, HeartRateSampleCreate):
                     heart_rate_records.append(record_create)
                 elif isinstance(record_create, StepSampleCreate):
@@ -223,7 +229,7 @@ class XMLService:
                         continue
                     statistic = stat.attrib.copy()
                     self._update_metrics_from_stat(metrics, statistic)
-                workout_record, workout_detail = self._create_workout(workout, user_id, metrics)
+                workout_record, workout_detail = self._create_workout(workout, uuid_user, metrics)
                 workouts.append((workout_record, workout_detail))
                 elem.clear()
 

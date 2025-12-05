@@ -12,19 +12,20 @@ class WorkoutDetails(EventRecordDetail):
 
     record_id: Mapped[FKEventRecordDetail]
 
-    heart_rate_min: Mapped[numeric_10_3 | None] = None
-    heart_rate_max: Mapped[numeric_10_3 | None] = None
-    heart_rate_avg: Mapped[numeric_10_3 | None] = None
-    steps_min: Mapped[numeric_10_3 | None] = None
-    steps_max: Mapped[numeric_10_3 | None] = None
-    steps_avg: Mapped[numeric_10_3 | None] = None
+    heart_rate_min: Mapped[numeric_10_3 | None]
+    heart_rate_max: Mapped[numeric_10_3 | None]
+    heart_rate_avg: Mapped[numeric_10_3 | None]
+    steps_min: Mapped[numeric_10_3 | None]
+    steps_max: Mapped[numeric_10_3 | None]
+    steps_avg: Mapped[numeric_10_3 | None]
+    steps_total: Mapped[numeric_10_3 | None]
 
-    max_speed: Mapped[numeric_10_3 | None] = None
-    max_watts: Mapped[numeric_10_3 | None] = None
-    moving_time_seconds: Mapped[numeric_10_3 | None] = None
-    total_elevation_gain: Mapped[numeric_10_3 | None] = None
-    average_speed: Mapped[numeric_10_3 | None] = None
-    average_watts: Mapped[numeric_10_3 | None] = None
-    elev_high: Mapped[numeric_10_3 | None] = None
-    elev_low: Mapped[numeric_10_3 | None] = None
+    max_speed: Mapped[numeric_10_3 | None]
+    max_watts: Mapped[numeric_10_3 | None]
+    moving_time_seconds: Mapped[numeric_10_3 | None]
+    total_elevation_gain: Mapped[numeric_10_3 | None]
+    average_speed: Mapped[numeric_10_3 | None]
+    average_watts: Mapped[numeric_10_3 | None]
+    elev_high: Mapped[numeric_10_3 | None]
+    elev_low: Mapped[numeric_10_3 | None]
 

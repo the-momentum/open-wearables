@@ -15,11 +15,6 @@ from .apple.healthkit.record_import import (
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
 )
-from .body_state import (
-    BodyStateCreate,
-    BodyStateResponse,
-    BodyStateUpdate,
-)
 from .common import (
     RootJSON,
 )
@@ -43,6 +38,11 @@ from .event_record_detail import (
     EventRecordDetailCreate,
     EventRecordDetailResponse,
     EventRecordDetailUpdate,
+)
+from .external_mapping import (
+    ExternalMappingCreate,
+    ExternalMappingResponse,
+    ExternalMappingUpdate,
 )
 from .filter_params import FilterParams
 from .garmin.activity_import import (
@@ -139,6 +139,9 @@ __all__ = [
     "EventRecordDetailResponse",
     "EventRecordDetailUpdate",
     "WorkoutType",
+    "ExternalMappingCreate",
+    "ExternalMappingUpdate",
+    "ExternalMappingResponse",
     "HeartRateSampleCreate",
     "HeartRateSampleResponse",
     "TimeSeriesSampleCreate",
@@ -156,9 +159,6 @@ __all__ = [
     "PersonalRecordCreate",
     "PersonalRecordUpdate",
     "PersonalRecordResponse",
-    "BodyStateCreate",
-    "BodyStateUpdate",
-    "BodyStateResponse",
     # Suunto schemas
     "SuuntoRootJSON",
     "SuuntoWorkoutJSON",

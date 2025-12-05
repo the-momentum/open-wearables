@@ -69,6 +69,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             "steps_min": None,
             "steps_max": None,
             "steps_avg": None,
+            "steps_total": None,
         }
 
     def _normalize_workout(

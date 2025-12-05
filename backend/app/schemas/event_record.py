@@ -26,6 +26,7 @@ class EventRecordMetrics(TypedDict, total=False):
     steps_min: Decimal | None
     steps_max: Decimal | None
     steps_avg: Decimal | None
+    steps_total: Decimal | None
     max_speed: Decimal | None
     max_watts: Decimal | None
     moving_time_seconds: Decimal | None
@@ -50,7 +51,10 @@ class EventRecordBase(BaseModel):
     type: str | None = Field(None, description="Provider-specific subtype, e.g. running")
 
     source_name: str = Field(description="Source/app name")
-    device_id: str | None = Field(None, description="Optional device identifier")
+    device_id: str | None = Field(
+        None,
+        description="Optional device identifier used to resolve the external mapping",
+    )
 
     duration_seconds: Decimal | None = None
     start_datetime: datetime
@@ -63,6 +67,10 @@ class EventRecordCreate(EventRecordBase):
     id: UUID
     provider_id: str | None = None
     user_id: UUID
+    external_mapping_id: UUID | None = Field(
+        None,
+        description="Existing mapping identifier if the caller has already created one.",
+    )
 
 
 class EventRecordUpdate(EventRecordBase):
@@ -75,6 +83,7 @@ class EventRecordResponse(EventRecordBase):
     id: UUID
     user_id: UUID
     provider_id: str | None
+    external_mapping_id: UUID
 
 
 class EventRecordQueryParams(BaseQueryParams):
@@ -87,6 +96,8 @@ class EventRecordQueryParams(BaseQueryParams):
     record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
     device_id: str | None = Field(None, description="Filter by originating device id")
     source_name: str | None = Field(None, description="Filter by source/app name")
+    provider_id: str | None = Field(None, description="Filter by provider identifier")
+    external_mapping_id: UUID | None = Field(None, description="Filter by mapping identifier")
     min_duration: int | None = Field(None, description="Minimum duration in seconds")
     max_duration: int | None = Field(None, description="Maximum duration in seconds")
     sort_by: (

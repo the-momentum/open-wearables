@@ -8,10 +8,9 @@ from uuid import UUID, uuid4
 from faker import Faker
 
 from app.database import SessionLocal
-from app.models import BodyState, EventRecordDetail, PersonalRecord
+from app.models import EventRecordDetail, PersonalRecord
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
-from app.schemas.body_state import BodyStateCreate
 from app.schemas.event_record import EventRecordCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.personal_record import PersonalRecordCreate
@@ -73,6 +72,11 @@ def generate_workout(
     heart_rate_avg = Decimal((float(heart_rate_min) + float(heart_rate_max)) / 2)
 
     workout_id = uuid4()
+    device_id = (
+        f"device_{fake_instance.random_int(min=1, max=5)}"
+        if fake_instance.boolean(chance_of_getting_true=50)
+        else None
+    )
 
     record = EventRecordCreate(
         id=workout_id,
@@ -82,6 +86,7 @@ def generate_workout(
         type=fake_instance.random.choice(WORKOUT_TYPES),
         duration_seconds=duration_seconds,
         source_name=fake_instance.random.choice(SOURCE_NAMES),
+        device_id=device_id,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -94,6 +99,7 @@ def generate_workout(
         steps_min=steps,
         steps_max=steps,
         steps_avg=steps,
+        steps_total=steps,
     )
 
     return record, detail
@@ -128,6 +134,11 @@ def generate_sleep(
     awake_minutes = Decimal(sleep_duration_minutes - int(deep_minutes) - int(rem_minutes) - int(light_minutes))
 
     sleep_id = uuid4()
+    device_id = (
+        f"device_{fake_instance.random_int(min=1, max=3)}"
+        if fake_instance.boolean(chance_of_getting_true=60)
+        else None
+    )
 
     record = EventRecordCreate(
         id=sleep_id,
@@ -137,6 +148,7 @@ def generate_sleep(
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=fake_instance.random.choice(SOURCE_NAMES),
+        device_id=device_id,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -171,37 +183,13 @@ def generate_personal_record(
     )
 
 
-def generate_body_state(
-    user_id: UUID,
-    fake_instance: Faker,
-) -> BodyStateCreate:
-    """Generate body state measurements for a user."""
-    return BodyStateCreate(
-        id=uuid4(),
-        user_id=user_id,
-        height_cm=Decimal(fake_instance.random_int(min=150, max=200))
-        if fake_instance.boolean(chance_of_getting_true=90)
-        else None,
-        weight_kg=Decimal(
-            fake_instance.pyfloat(left_digits=3, right_digits=1, positive=True, min_value=45, max_value=120),
-        )
-        if fake_instance.boolean(chance_of_getting_true=90)
-        else None,
-        body_fat_percentage=Decimal(
-            fake_instance.pyfloat(left_digits=2, right_digits=1, positive=True, min_value=8, max_value=35),
-        )
-        if fake_instance.boolean(chance_of_getting_true=60)
-        else None,
-        resting_heart_rate=Decimal(fake_instance.random_int(min=50, max=75))
-        if fake_instance.boolean(chance_of_getting_true=80)
-        else None,
-    )
-
-
 def generate_time_series_samples(
     workout_start: datetime,
     workout_end: datetime,
     fake_instance: Faker,
+    *,
+    user_id: UUID,
+    provider_id: str | None = None,
     device_id: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time series samples (heart rate and steps) for a workout period."""
@@ -215,6 +203,8 @@ def generate_time_series_samples(
             samples.append(
                 HeartRateSampleCreate(
                     id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=90, max=180)),
@@ -227,6 +217,8 @@ def generate_time_series_samples(
             samples.append(
                 StepSampleCreate(
                     id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=10, max=50)),
@@ -245,12 +237,10 @@ def seed_activity_data() -> None:
         users_created = 0
         workouts_created = 0
         sleeps_created = 0
-        body_states_created = 0
         time_series_samples_created = 0
 
         # Initialize repositories
         personal_record_repo = CrudRepository(PersonalRecord)
-        body_state_repo = CrudRepository(BodyState)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
 
         for user_num in range(1, 11):
@@ -271,14 +261,6 @@ def seed_activity_data() -> None:
             personal_record_repo.create(db, personal_record_data)
             print(f"  ✓ Created personal record for user {user_num}")
 
-            # Create 2-4 body state measurements per user (historical measurements)
-            num_body_states = fake.random_int(min=2, max=4)
-            for _ in range(num_body_states):
-                body_state_data = generate_body_state(user.id, fake)
-                body_state_repo.create(db, body_state_data)
-                body_states_created += 1
-            print(f"  ✓ Created {num_body_states} body state measurements for user {user_num}")
-
             # Create 80 workouts for this user
             for workout_num in range(1, 81):
                 record, detail = generate_workout(user.id, fake)
@@ -293,6 +275,8 @@ def seed_activity_data() -> None:
                         record.start_datetime,
                         record.end_datetime,
                         fake,
+                        user_id=user.id,
+                        provider_id=record.provider_id,
                         device_id=device_id,
                     )
                     if samples:
@@ -319,7 +303,6 @@ def seed_activity_data() -> None:
         print(f"  - {users_created} users")
         print(f"  - {workouts_created} workouts")
         print(f"  - {sleeps_created} sleep records")
-        print(f"  - {body_states_created} body state measurements")
         print(f"  - {time_series_samples_created} time series samples")
 
 

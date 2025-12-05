@@ -8,7 +8,8 @@ from .sleep_details import SleepDetails
 from .workout_details import WorkoutDetails
 from .personal_record import PersonalRecord
 from .data_point_series import DataPointSeries
-from .body_state import BodyState
+from .external_device_mapping import ExternalDeviceMapping
+from .series_type_definition import SeriesTypeDefinition
 
 __all__ = [
     "ApiKey",
@@ -21,5 +22,6 @@ __all__ = [
     "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",
-    "BodyState",
+    "ExternalDeviceMapping",
+    "SeriesTypeDefinition",
 ]

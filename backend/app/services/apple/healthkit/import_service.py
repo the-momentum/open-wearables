@@ -40,6 +40,7 @@ class ImportService:
         """
         root = RootJSON(**raw)
         workouts_raw = root.data.get("workouts", [])
+        user_uuid = UUID(user_id)
         for w in workouts_raw:
             wjson = HKWorkoutJSON(**w)
 
@@ -53,10 +54,11 @@ class ImportService:
             record = EventRecordCreate(
                 id=workout_id,
                 provider_id=provider_id,
-                user_id=UUID(user_id),
+                user_id=user_uuid,
                 type=wjson.type or "Unknown",
                 duration_seconds=Decimal(duration_seconds),
                 source_name=wjson.sourceName or "Apple Health",
+                device_id=wjson.sourceName or None,
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
             )
@@ -71,12 +73,13 @@ class ImportService:
     def _build_statistic_bundles(
         self,
         raw: dict,
-        _user_id: str,
+        user_id: str,
     ) -> Iterable[tuple[list[HeartRateSampleCreate], list[StepSampleCreate]]]:
         root = RootJSON(**raw)
         records_raw = root.data.get("records", [])
         heart_rate_samples: list[HeartRateSampleCreate] = []
         step_samples: list[StepSampleCreate] = []
+        user_uuid = UUID(user_id)
 
         for r in records_raw:
             rjson = HKRecordJSON(**r)
@@ -87,6 +90,8 @@ class ImportService:
                 heart_rate_samples.append(
                     HeartRateSampleCreate(
                         id=uuid4(),
+                        user_id=user_uuid,
+                        provider_id=rjson.uuid,
                         device_id=rjson.sourceName or None,
                         recorded_at=rjson.startDate,
                         value=value,
@@ -96,6 +101,8 @@ class ImportService:
                 step_samples.append(
                     StepSampleCreate(
                         id=uuid4(),
+                        user_id=user_uuid,
+                        provider_id=rjson.uuid,
                         device_id=rjson.sourceName or None,
                         recorded_at=rjson.startDate,
                         value=value,
@@ -129,6 +136,7 @@ class ImportService:
 
         hr_min, hr_max, hr_avg = _compute(heart_rate_values)
         steps_min, steps_max, steps_avg = _compute(step_values)
+        steps_total = sum(step_values) if step_values else None
 
         return {
             "heart_rate_min": hr_min,
@@ -137,6 +145,7 @@ class ImportService:
             "steps_min": steps_min,
             "steps_max": steps_max,
             "steps_avg": steps_avg,
+            "steps_total": steps_total,
         }
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:

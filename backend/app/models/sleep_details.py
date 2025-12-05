@@ -11,11 +11,11 @@ class SleepDetails(EventRecordDetail):
 
     record_id: Mapped[FKEventRecordDetail]
 
-    sleep_total_duration_minutes: Mapped[numeric_10_3 | None] = None
-    sleep_time_in_bed_minutes: Mapped[numeric_10_3 | None] = None
-    sleep_efficiency_score: Mapped[numeric_10_3 | None] = None
-    sleep_deep_minutes: Mapped[numeric_10_3 | None] = None
-    sleep_rem_minutes: Mapped[numeric_10_3 | None] = None
-    sleep_light_minutes: Mapped[numeric_10_3 | None] = None
-    sleep_awake_minutes: Mapped[numeric_10_3 | None] = None
+    sleep_total_duration_minutes: Mapped[numeric_10_3 | None]
+    sleep_time_in_bed_minutes: Mapped[numeric_10_3 | None]
+    sleep_efficiency_score: Mapped[numeric_10_3 | None]
+    sleep_deep_minutes: Mapped[numeric_10_3 | None]
+    sleep_rem_minutes: Mapped[numeric_10_3 | None]
+    sleep_light_minutes: Mapped[numeric_10_3 | None]
+    sleep_awake_minutes: Mapped[numeric_10_3 | None]
 

@@ -107,6 +107,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "steps_min": steps_value,
             "steps_max": steps_value,
             "steps_avg": steps_value,
+            "steps_total": steps_value,
         }
 
     def _normalize_workout(

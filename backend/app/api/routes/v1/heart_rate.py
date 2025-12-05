@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.database import DbSession
 from app.schemas import HeartRateSampleResponse, TimeSeriesQueryParams
@@ -17,6 +17,4 @@ async def get_heart_rate_endpoint(
     query_params: Annotated[TimeSeriesQueryParams, Depends()],
 ):
     """Get heart rate data with filtering, sorting, and pagination."""
-    if not query_params.device_id:
-        raise HTTPException(status_code=400, detail="device_id query parameter is required")
     return await time_series_service.get_user_heart_rate_series(db, user_id, query_params)

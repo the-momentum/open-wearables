@@ -14,6 +14,7 @@ class EventRecordDetailBase(BaseModel):
     steps_min: Decimal | None = None
     steps_max: Decimal | None = None
     steps_avg: Decimal | None = None
+    steps_total: Decimal | None = None
 
     max_speed: Decimal | None = None
     max_watts: Decimal | None = None
