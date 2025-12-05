@@ -1,3 +1,4 @@
+from datetime import datetime
 from logging import Logger, getLogger
 
 from app.database import DbSession
@@ -18,7 +19,7 @@ class UserConnectionService(
             **kwargs,
         )
 
-    def get_active_count_in_range(self, db_session: DbSession, start_date: str, end_date: str) -> int:
+    def get_active_count_in_range(self, db_session: DbSession, start_date: datetime, end_date: datetime) -> int:
         """Get count of active connections created within a date range."""
         return self.crud.get_active_count_in_range(db_session, start_date, end_date)
 

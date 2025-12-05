@@ -113,7 +113,6 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
     def get_expiring_tokens(self, db_session: DbSession, minutes_threshold: int = 5) -> list[UserConnection]:
         """Get connections with tokens expiring soon (for background refresh)."""
         now = datetime.now(timezone.utc)
-        from datetime import timedelta
 
         threshold_time = now + timedelta(minutes=minutes_threshold)
 
@@ -146,7 +145,6 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         expires_in: int,
     ) -> UserConnection:
         """Update connection with new tokens after refresh."""
-        from datetime import timedelta
 
         connection.access_token = access_token
         if refresh_token:
