@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   // User endpoints
   users: '/api/v1/users',
   userDetail: (id: string) => `/api/v1/users/${id}`,
+  userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userHeartRate: (userId: string) => `/api/v1/users/${userId}/heart-rate`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/workouts`,
 
@@ -31,11 +32,16 @@ export const API_ENDPOINTS = {
   apiKeyDetail: (id: string) => `/api/v1/developer/api-keys/${id}`,
   apiKeyRotate: (id: string) => `/api/v1/developer/api-keys/${id}/rotate`,
 
-  // Vendor workouts endpoints
-  vendorWorkouts: (provider: string, userId: string) =>
-    `/api/v1/vendors/${provider}/users/${userId}/workouts`,
-  vendorWorkoutDetail: (provider: string, userId: string, workoutId: string) =>
-    `/api/v1/vendors/${provider}/users/${userId}/workouts/${workoutId}`,
+  // Provider workouts endpoints
+  providerSynchronization: (provider: string, userId: string) =>
+    `/api/v1/providers/${provider}/users/${userId}/sync`,
+  providerWorkouts: (provider: string, userId: string) =>
+    `/api/v1/providers/${provider}/users/${userId}/workouts`,
+  providerWorkoutDetail: (
+    provider: string,
+    userId: string,
+    workoutId: string
+  ) => `/api/v1/providers/${provider}/users/${userId}/workouts/${workoutId}`,
 
   // Dashboard endpoints (may not exist in backend yet)
   dashboardStats: '/api/v1/dashboard/stats',

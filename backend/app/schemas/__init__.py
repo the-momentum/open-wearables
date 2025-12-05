@@ -64,6 +64,11 @@ from .suunto.workout_import import (
 from .suunto.workout_import import (
     WorkoutJSON as SuuntoWorkoutJSON,
 )
+from .sync import (
+    ProviderSyncResult,
+    SyncAllUsersResult,
+    SyncVendorDataResult,
+)
 from .user import (
     UserCreate,
     UserCreateInternal,
@@ -141,4 +146,8 @@ __all__ = [
     # AWS schemas
     "PresignedURLRequest",
     "PresignedURLResponse",
+    # Sync schemas
+    "ProviderSyncResult",
+    "SyncAllUsersResult",
+    "SyncVendorDataResult",
 ]

@@ -50,12 +50,6 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
 
-    # AUTH0 SETTINGS (deprecated, will be removed)
-    auth0_domain: str = ""
-    auth0_audience: str = ""
-    auth0_issuer: str = ""
-    auth0_algorithms: list[str] = ["RS256"]
-
     # AUTH SETTINGS
     secret_key: str
     algorithm: str = "HS256"
@@ -136,10 +130,6 @@ class Settings(BaseSettings):
             f"{self.db_user}:{self.db_password.get_secret_value()}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
-
-    @property
-    def auth0_issuer_url(self) -> str:
-        return f"https://{self.auth0_domain}/"
 
     # 0. pytest ini_options
     # 1. environment variables
