@@ -90,9 +90,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "steps_total": steps_value,
         }
 
-    def _get_workout_type(self, raw_workout: SuuntoWorkoutJSON) -> WorkoutType:
+    def _get_workout_type(self, workout_id: int) -> WorkoutType:
         """Get workout type from Suunto workout."""
-        match raw_workout.workoutId:
+        match workout_id:
             case 0:
                 return WorkoutType.WALKING
             case 1:
@@ -125,7 +125,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             id=workout_id,
             provider_id=str(raw_workout.workoutId),
             user_id=user_id,
-            type=self._get_workout_type(raw_workout).value,
+            type=self._get_workout_type(raw_workout.workoutId).value,
             source_name=source_name,
             device_id=device_id,
             duration_seconds=Decimal(duration_seconds),

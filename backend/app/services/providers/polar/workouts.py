@@ -6,7 +6,13 @@ from uuid import UUID, uuid4
 import isodate
 
 from app.database import DbSession
-from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics, PolarExerciseJSON
+from app.schemas import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
+    PolarExerciseJSON,
+    WorkoutType,
+)
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
@@ -71,6 +77,20 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             "steps_avg": None,
             "steps_total": None,
         }
+        
+    def _get_workout_type(self, type: str) -> WorkoutType:
+        """Get workout type from Polar exercise."""
+        match type:
+            case "RUNNING":
+                return WorkoutType.RUNNING
+            case "WALKING":
+                return WorkoutType.WALKING
+            case "CYCLING":
+                return WorkoutType.CYCLING
+            case "SWIMMING":
+                return WorkoutType.SWIMMING
+            case _:
+                return WorkoutType.OTHER
 
     def _normalize_workout(
         self,
@@ -93,7 +113,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             id=workout_id,
             provider_id=raw_workout.id,
             user_id=user_id,
-            type=raw_workout.sport,
+            type=self._get_workout_type(raw_workout.sport).value,
             duration_seconds=Decimal(duration_seconds),
             source_name=raw_workout.device,
             device_id=raw_workout.device,
