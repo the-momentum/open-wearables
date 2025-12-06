@@ -5,11 +5,11 @@ from .apple.apple_xml.presigned_url_service import import_service as pre_url_ser
 from .apple.auto_export.import_service import import_service as ae_import_service
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .developer_service import developer_service
+from .event_record_service import event_record_service
 from .services import AppService
 from .system_info_service import system_info_service
+from .time_series_service import time_series_service
 from .user_service import user_service
-from .workout_service import workout_service
-from .workout_statistic_service import workout_statistic_service
 
 __all__ = [
     "AppService",
@@ -20,8 +20,8 @@ __all__ = [
     "user_service",
     "ae_import_service",
     "hk_import_service",
-    "workout_service",
-    "workout_statistic_service",
+    "event_record_service",
+    "time_series_service",
     "pre_url_service",
     "system_info_service",
 ]

@@ -5,9 +5,10 @@ from typing import Any
 from uuid import UUID
 
 from app.database import DbSession
+from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.repositories.workout_repository import WorkoutRepository
-from app.schemas.workout import WorkoutCreate
+from app.schemas.event_record import EventRecordCreate
+from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
@@ -17,7 +18,7 @@ class BaseWorkoutsTemplate(ABC):
 
     def __init__(
         self,
-        workout_repo: WorkoutRepository,
+        workout_repo: EventRecordRepository,
         connection_repo: UserConnectionRepository,
         provider_name: str,
         api_base_url: str,
@@ -47,15 +48,19 @@ class BaseWorkoutsTemplate(ABC):
         pass
 
     @abstractmethod
-    def _normalize_workout(self, raw_workout: Any, user_id: UUID) -> WorkoutCreate:
-        """Converts a provider-specific workout object into a standardized WorkoutCreate schema.
+    def _normalize_workout(
+        self,
+        raw_workout: Any,
+        user_id: UUID,
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        """Converts a provider-specific workout object into a standardized EventRecordCreate schema.
 
         Args:
             raw_workout: The raw workout object from the provider.
             user_id: The user ID to associate with the workout.
 
         Returns:
-            WorkoutCreate: The standardized workout data.
+            Tuple of EventRecordCreate and EventRecordDetailCreate.
         """
         pass
 
@@ -106,14 +111,19 @@ class BaseWorkoutsTemplate(ABC):
 
     def _process_single_workout(self, db: DbSession, user_id: UUID, raw_workout: Any) -> None:
         """Internal method to normalize and save a single workout."""
-        workout_data = self._normalize_workout(raw_workout, user_id)
-        # workout_data.user_id = user_id # Already set in _normalize_workout
-        self._save_workout(db, workout_data)
+        record, detail = self._normalize_workout(raw_workout, user_id)
+        self._save_workout(db, record, detail)
 
-    def _save_workout(self, db: DbSession, workout_data: WorkoutCreate) -> None:
+    def _save_workout(
+        self,
+        db: DbSession,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+    ) -> None:
         """Internal method to save the workout to the database."""
         # TODO: Add logic to check if workout already exists to avoid duplicates
-        self.workout_repo.create(db, workout_data)
+        self.workout_repo.create(db, record)
+        # Detail saving is handled by services in load_data implementations
 
     def _make_api_request(
         self,

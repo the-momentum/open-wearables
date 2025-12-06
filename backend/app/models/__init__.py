@@ -3,8 +3,14 @@ from .developer import Developer
 from .provider_setting import ProviderSetting
 from .user import User
 from .user_connection import UserConnection
-from .workout import Workout
-from .workout_statistic import WorkoutStatistic
+from .event_record import EventRecord
+from .event_record_detail import EventRecordDetail
+from .sleep_details import SleepDetails
+from .workout_details import WorkoutDetails
+from .personal_record import PersonalRecord
+from .data_point_series import DataPointSeries
+from .external_device_mapping import ExternalDeviceMapping
+from .series_type_definition import SeriesTypeDefinition
 
 __all__ = [
     "ApiKey",
@@ -12,6 +18,12 @@ __all__ = [
     "ProviderSetting",
     "User",
     "UserConnection",
-    "Workout",
-    "WorkoutStatistic",
+    "EventRecord",
+    "EventRecordDetail",
+    "SleepDetails",
+    "WorkoutDetails",
+    "PersonalRecord",
+    "DataPointSeries",
+    "ExternalDeviceMapping",
+    "SeriesTypeDefinition",
 ]

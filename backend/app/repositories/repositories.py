@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Query
 
 from app.database import BaseDbModel, DbSession
+from app.utils.exceptions import handle_exceptions
 
 
 class CrudRepository[
@@ -16,6 +17,7 @@ class CrudRepository[
     def __init__(self, model: type[ModelType]):
         self.model = model
 
+    @handle_exceptions
     def create(self, db_session: DbSession, creator: CreateSchemaType) -> ModelType:
         creation_data = creator.model_dump()
         creation = self.model(**creation_data)

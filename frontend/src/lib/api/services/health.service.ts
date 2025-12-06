@@ -4,6 +4,9 @@ import type {
   WorkoutStatisticResponse,
   WorkoutResponse,
   UserConnection,
+  HeartRateSampleResponse,
+  EventRecordResponse,
+  HealthDataParams,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -58,11 +61,88 @@ export const healthService = {
    */
   async getWorkouts(
     userId: string,
-    params?: WorkoutsParams
-  ): Promise<WorkoutResponse[]> {
-    return apiClient.get<WorkoutResponse[]>(
-      API_ENDPOINTS.userWorkouts(userId),
+    deviceId: string,
+    days: number = 7
+  ): Promise<HeartRateData[]> {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(end.getDate() - days);
+
+    const samples = await apiClient.get<HeartRateSampleResponse[]>(
+      `/v1/users/${userId}/heart-rate`,
+      {
+        params: {
+          start_datetime: start.toISOString(),
+          end_datetime: end.toISOString(),
+          device_id: deviceId,
+        },
+      }
+    );
+
+    return samples.map((sample) => ({
+      id: sample.id,
+      userId,
+      timestamp: sample.recorded_at,
+      value: Number(sample.value),
+      source: sample.device_id ?? 'unknown',
+    }));
+  },
+
+  async getSleepData(userId: string, days: number = 7): Promise<SleepData[]> {
+    return apiClient.get<SleepData[]>(`/v1/users/${userId}/sleep`, {
+      params: { days },
+    });
+  },
+
+  async getActivityData(
+    userId: string,
+    days: number = 7
+  ): Promise<ActivityData[]> {
+    return apiClient.get<ActivityData[]>(`/v1/users/${userId}/activity`, {
+      params: { days },
+    });
+  },
+
+  async getHealthSummary(
+    userId: string,
+    period: string = '7d'
+  ): Promise<HealthDataSummary> {
+    return apiClient.get<HealthDataSummary>(
+      `/v1/users/${userId}/health-summary`,
+      {
+        params: { period },
+      }
+    );
+  },
+
+  async syncUserData(
+    userId: string
+  ): Promise<{ message: string; jobId: string }> {
+    return apiClient.post<{ message: string; jobId: string }>(
+      `/v1/users/${userId}/sync`,
+      {}
+    );
+  },
+
+  async getHeartRateList(
+    userId: string,
+    params?: HealthDataParams
+  ): Promise<HeartRateSampleResponse[]> {
+    return apiClient.get<HeartRateSampleResponse[]>(
+      `/v1/users/${userId}/heart-rate`,
       { params }
+    );
+  },
+
+  async getWorkouts(
+    userId: string,
+    params?: HealthDataParams
+  ): Promise<EventRecordResponse[]> {
+    return apiClient.get<EventRecordResponse[]>(
+      `/v1/users/${userId}/workouts`,
+      {
+        params,
+      }
     );
   },
 };

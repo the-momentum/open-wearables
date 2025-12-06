@@ -43,6 +43,9 @@ services:
         - action: sync+restart
           path: ./backend/migrations
           target: /root_project/migrations
+        - action: sync
+          path: ./backend/scripts
+          target: /root_project/scripts
         - action: rebuild
           path: ./backend/uv.lock
     restart: on-failure

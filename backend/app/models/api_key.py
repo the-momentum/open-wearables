@@ -9,5 +9,5 @@ class ApiKey(BaseDbModel):
 
     id: Mapped[PrimaryKey[str_64]]  # The actual key value (sk-...)
     name: Mapped[str]
-    created_by: Mapped[FKDeveloper | None] = None
+    created_by: Mapped[FKDeveloper | None]
     created_at: Mapped[datetime_tz]

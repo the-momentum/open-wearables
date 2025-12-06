@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from logging import Logger
 from pathlib import Path
 from typing import Any, Generator
@@ -6,7 +7,13 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.schemas import WorkoutCreate, WorkoutStatisticCreate
+from app.schemas import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
+    HeartRateSampleCreate,
+    StepSampleCreate,
+)
 
 
 class XMLService:
@@ -16,18 +23,6 @@ class XMLService:
         self.log: Logger = log
 
     DATE_FIELDS: tuple[str, ...] = ("startDate", "endDate", "creationDate")
-    DEFAULT_VALUES: dict[str, str] = {
-        "unit": "",
-        "sourceVersion": "",
-        "device": "",
-        "value": "",
-    }
-    DEFAULT_STATS: dict[str, float] = {
-        "sum": 0.0,
-        "average": 0.0,
-        "maximum": 0.0,
-        "minimum": 0.0,
-    }
     RECORD_COLUMNS: tuple[str, ...] = (
         "type",
         "sourceVersion",
@@ -68,67 +63,126 @@ class XMLService:
                     raise ValueError(f"Invalid date format for field {field}: {document[field]}") from e
         return document
 
-    def _create_record(self, document: dict[str, Any], user_id: str) -> WorkoutStatisticCreate:
+    def _create_record(
+        self,
+        document: dict[str, Any],
+        user_id: UUID,
+    ) -> HeartRateSampleCreate | StepSampleCreate | None:
         document = self._parse_date_fields(document)
 
-        return WorkoutStatisticCreate(
-            id=uuid4(),
-            user_id=UUID(user_id),
-            workout_id=None,
-            type=document["type"],
-            start_datetime=document["startDate"],
-            end_datetime=document["endDate"],
-            min=document["value"],
-            max=document["value"],
-            avg=document["value"],
-            unit=document["unit"],
-        )
+        metric_type = document.get("type", "")
+        value = Decimal(document["value"])
 
-    def _create_workout(self, document: dict[str, Any], user_id: str) -> WorkoutCreate:
+        if "HKQuantityTypeIdentifierHeartRate" in metric_type:
+            return HeartRateSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider_id=None,
+                device_id=document["device"],
+                recorded_at=document["startDate"],
+                value=value,
+            )
+        if "HKQuantityTypeIdentifierStepCount" in metric_type:
+            return StepSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider_id=None,
+                device_id=document["device"],
+                recorded_at=document["startDate"],
+                value=value,
+            )
+
+        return None
+
+    def _create_workout(
+        self,
+        document: dict[str, Any],
+        user_id: UUID,
+        metrics: EventRecordMetrics | None = None,
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         document = self._parse_date_fields(document)
 
         document["type"] = document.pop("workoutActivityType")
 
-        duration_seconds = (document["endDate"] - document["startDate"]).total_seconds()
+        workout_id = uuid4()
+        duration_seconds = int((document["endDate"] - document["startDate"]).total_seconds())
 
-        return WorkoutCreate(
-            id=uuid4(),
+        record = EventRecordCreate(
+            id=workout_id,
             provider_id=None,
-            user_id=UUID(user_id),
+            user_id=user_id,
             type=document["type"],
             duration_seconds=duration_seconds,
             source_name=document["sourceName"],
+            device_id=document["device"],
             start_datetime=document["startDate"],
             end_datetime=document["endDate"],
         )
 
-    def _create_statistics(self, document: dict[str, Any], user_id: str) -> list[WorkoutStatisticCreate]:
-        document = self._parse_date_fields(document)
+        actual_metrics = metrics if metrics is not None else self._init_metrics()
+        detail = EventRecordDetailCreate(
+            record_id=workout_id,
+            **actual_metrics,
+        )
 
-        statistics: list[WorkoutStatisticCreate] = []
-        for field in ["sum", "average", "maximum", "minimum"]:
-            if field in document:
-                statistics.append(
-                    WorkoutStatisticCreate(
-                        id=uuid4(),
-                        user_id=UUID(user_id),
-                        workout_id=None,
-                        type=document["type"],
-                        start_datetime=document["startDate"],
-                        end_datetime=document["endDate"],
-                        min=document[field],
-                        max=document[field],
-                        avg=document[field],
-                        unit=document["unit"],
-                    ),
-                )
+        return record, detail
 
-        return statistics if statistics else []
+    def _init_metrics(self) -> EventRecordMetrics:
+        return {
+            "heart_rate_min": None,
+            "heart_rate_max": None,
+            "heart_rate_avg": None,
+            "steps_min": None,
+            "steps_max": None,
+            "steps_avg": None,
+            "steps_total": None,
+        }
+
+    def _decimal_from_stat(self, value: str | None) -> Decimal | None:
+        if value is None:
+            return None
+        try:
+            return Decimal(str(value))
+        except (ValueError, ArithmeticError):
+            return None
+
+    def _update_metrics_from_stat(self, metrics: EventRecordMetrics, statistic: dict[str, Any]) -> None:
+        stat_type = statistic.get("type", "")
+        if not stat_type:
+            return
+        lowered = stat_type.lower()
+
+        min_value = self._decimal_from_stat(statistic.get("minimum"))
+        max_value = self._decimal_from_stat(statistic.get("maximum"))
+        avg_value = self._decimal_from_stat(statistic.get("average"))
+
+        if "heart" in lowered:
+            if min_value is not None:
+                metrics["heart_rate_min"] = int(min_value)
+            if max_value is not None:
+                metrics["heart_rate_max"] = int(max_value)
+            if avg_value is not None:
+                metrics["heart_rate_avg"] = avg_value
+        elif "step" in lowered:
+            if min_value is not None:
+                metrics["steps_min"] = int(min_value)
+            if max_value is not None:
+                metrics["steps_max"] = int(max_value)
+            if avg_value is not None:
+                metrics["steps_avg"] = avg_value
 
     def parse_xml(
         self,
         user_id: str,
-    ) -> Generator[tuple[list[WorkoutStatisticCreate], list[WorkoutCreate], list[WorkoutStatisticCreate]], None, None]:
+    ) -> Generator[
+        tuple[
+            list[HeartRateSampleCreate],
+            list[StepSampleCreate],
+            list[tuple[EventRecordCreate, EventRecordDetailCreate]],
+        ],
+        None,
+        None,
+    ]:
         """
         Parses the XML file and yields tuples of workouts and statistics.
         Extracts attributes from each Record/Workout element.
@@ -136,57 +190,60 @@ class XMLService:
         Args:
             user_id: User ID to associate with parsed records
         """
-        records: list[WorkoutStatisticCreate] = []
-        workouts: list[WorkoutCreate] = []
-        statistics: list[WorkoutStatisticCreate] = []
+        heart_rate_records: list[HeartRateSampleCreate] = []
+        step_records: list[StepSampleCreate] = []
+        workouts: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
+        uuid_user = UUID(user_id)
 
         for event, elem in ET.iterparse(self.xml_path, events=("end",)):
             if elem.tag == "Record" and event == "end":
-                if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
+                if len(workouts) + len(heart_rate_records) + len(step_records) >= self.chunk_size:
                     self.log.info(
-                        f"Lengths of records, workouts, statistics: \
-                        {len(records)}, {len(workouts)}, {len(statistics)}",
+                        "Lengths of records, workouts: %s, %s, %s",
+                        len(heart_rate_records),
+                        len(step_records),
+                        len(workouts),
                     )
-                    yield records, workouts, statistics
-                    records = []
+                    yield heart_rate_records, step_records, workouts
+                    heart_rate_records = []
+                    step_records = []
                     workouts = []
-                    statistics = []
                 record: dict[str, Any] = elem.attrib.copy()
-                record_create = self._create_record(record, user_id)
-                if record_create:
-                    records.append(record_create)
+                record_create = self._create_record(record, uuid_user)
+                if isinstance(record_create, HeartRateSampleCreate):
+                    heart_rate_records.append(record_create)
+                elif isinstance(record_create, StepSampleCreate):
+                    step_records.append(record_create)
                 elem.clear()
 
             elif elem.tag == "Workout" and event == "end":
-                if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
+                if len(workouts) + len(heart_rate_records) + len(step_records) >= self.chunk_size:
                     self.log.info(
-                        f"Lengths of records, workouts, statistics: \
-                        {len(records)}, {len(workouts)}, {len(statistics)}",
+                        "Lengths of records, workouts: %s, %s, %s",
+                        len(heart_rate_records),
+                        len(step_records),
+                        len(workouts),
                     )
-                    yield records, workouts, statistics
-                    records = []
+                    yield heart_rate_records, step_records, workouts
+                    heart_rate_records = []
+                    step_records = []
                     workouts = []
-                    statistics = []
                 workout: dict[str, Any] = elem.attrib.copy()
-                workout_create: WorkoutCreate = self._create_workout(workout, user_id)
-                if workout_create:
-                    workouts.append(workout_create)
-
-                # append workout statistics to workout
+                metrics = self._init_metrics()
                 for stat in elem:
-                    if len(workouts) + len(records) + len(statistics) >= self.chunk_size:
-                        self.log.info(
-                            f"Lengths of records, workouts, statistics: \
-                            {len(records)}, {len(workouts)}, {len(statistics)}",
-                        )
-                        yield records, workouts, statistics
                     if stat.tag != "WorkoutStatistics":
                         continue
                     statistic = stat.attrib.copy()
-                    statistic["workout_id"] = str(workout_create.id)
-                    statistics.extend(self._create_statistics(statistic, user_id))
+                    self._update_metrics_from_stat(metrics, statistic)
+                workout_record, workout_detail = self._create_workout(workout, uuid_user, metrics)
+                workouts.append((workout_record, workout_detail))
                 elem.clear()
 
         # yield remaining records and workout pairs
-        self.log.info(f"Lengths of records, workouts, statistics: {len(records)}, {len(workouts)}, {len(statistics)}")
-        yield records, workouts, statistics
+        self.log.info(
+            "Lengths of records, workouts: %s, %s, %s",
+            len(heart_rate_records),
+            len(step_records),
+            len(workouts),
+        )
+        yield heart_rate_records, step_records, workouts

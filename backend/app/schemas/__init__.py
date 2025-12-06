@@ -26,6 +26,24 @@ from .developer import (
     DeveloperUpdateInternal,
 )
 from .error_codes import ErrorCode
+from .event_record import (
+    EventRecordCreate,
+    EventRecordMetrics,
+    EventRecordQueryParams,
+    EventRecordResponse,
+    EventRecordUpdate,
+    WorkoutType,
+)
+from .event_record_detail import (
+    EventRecordDetailCreate,
+    EventRecordDetailResponse,
+    EventRecordDetailUpdate,
+)
+from .external_mapping import (
+    ExternalMappingCreate,
+    ExternalMappingResponse,
+    ExternalMappingUpdate,
+)
 from .filter_params import FilterParams
 from .garmin.activity_import import (
     ActivityJSON as GarminActivityJSON,
@@ -45,6 +63,11 @@ from .oauth import (
     UserConnectionCreate,
     UserConnectionRead,
     UserConnectionUpdate,
+)
+from .personal_record import (
+    PersonalRecordCreate,
+    PersonalRecordResponse,
+    PersonalRecordUpdate,
 )
 from .polar.exercise_import import (
     ExerciseJSON as PolarExerciseJSON,
@@ -74,23 +97,23 @@ from .system_info import (
     DataPointsInfo,
     SystemInfoResponse,
 )
+from .time_series import (
+    HeartRateSampleCreate,
+    HeartRateSampleResponse,
+    SeriesType,
+    StepSampleCreate,
+    StepSampleResponse,
+    TimeSeriesQueryParams,
+    TimeSeriesSampleCreate,
+    TimeSeriesSampleResponse,
+    TimeSeriesSampleUpdate,
+)
 from .user import (
     UserCreate,
     UserCreateInternal,
     UserRead,
     UserUpdate,
     UserUpdateInternal,
-)
-from .workout import (
-    WorkoutCreate,
-    WorkoutQueryParams,
-    WorkoutResponse,
-    WorkoutUpdate,
-)
-from .workout_statistics import (
-    WorkoutStatisticCreate,
-    WorkoutStatisticResponse,
-    WorkoutStatisticUpdate,
 )
 
 __all__ = [
@@ -127,13 +150,27 @@ __all__ = [
     "ProviderSettingUpdate",
     "BulkProviderSettingsUpdate",
     "RootJSON",
-    "WorkoutCreate",
-    "WorkoutUpdate",
-    "WorkoutResponse",
-    "WorkoutQueryParams",
-    "WorkoutStatisticCreate",
-    "WorkoutStatisticUpdate",
-    "WorkoutStatisticResponse",
+    "EventRecordCreate",
+    "EventRecordUpdate",
+    "EventRecordResponse",
+    "EventRecordQueryParams",
+    "EventRecordMetrics",
+    "EventRecordDetailCreate",
+    "EventRecordDetailResponse",
+    "EventRecordDetailUpdate",
+    "WorkoutType",
+    "ExternalMappingCreate",
+    "ExternalMappingUpdate",
+    "ExternalMappingResponse",
+    "HeartRateSampleCreate",
+    "HeartRateSampleResponse",
+    "TimeSeriesSampleCreate",
+    "TimeSeriesSampleResponse",
+    "TimeSeriesSampleUpdate",
+    "SeriesType",
+    "StepSampleCreate",
+    "StepSampleResponse",
+    "TimeSeriesQueryParams",
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
@@ -142,6 +179,9 @@ __all__ = [
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",
+    "PersonalRecordCreate",
+    "PersonalRecordUpdate",
+    "PersonalRecordResponse",
     # Suunto schemas
     "SuuntoRootJSON",
     "SuuntoWorkoutJSON",
