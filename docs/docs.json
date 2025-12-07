@@ -21,6 +21,13 @@
             ]
           },
           {
+            "group": "Architecture",
+            "pages": [
+              "architecture/system-overview",
+              "architecture/data-model"
+            ]
+          },
+          {
             "group": "Provider setup",
             "pages": [
               "provider-setup/index"
