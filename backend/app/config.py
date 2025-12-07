@@ -40,10 +40,6 @@ class Settings(BaseSettings):
     db_user: str = "open-wearables"
     db_password: SecretStr = SecretStr("open-wearables")
 
-    # CELERY SETTINGS
-    CELERY_BROKER_URL: str
-    CELERY_RESULT_BACKEND: str
-
     # Sentry
     SENTRY_ENABLED: bool = False
     SENTRY_DSN: str | None = None
