@@ -159,38 +159,6 @@ Get Open Wearables running locally and start integrating wearable device data.
      ```
 </Accordion>
 
-## Core Concepts
-
-### Authentication
-
-Open Wearables uses API key authentication. Generate API keys through the admin panel or via the API:
-
-```http
-POST /api/v1/developer/api-keys
-Authorization: Bearer YOUR_TOKEN
-```
-
-### OAuth Flow
-
-Connect user wearables through OAuth:
-
-1. Generate a connection link for your user
-2. User authenticates with their wearable provider
-3. Data automatically syncs to your platform
-4. Access via unified API
-
-### Data Types
-
-The platform supports various health data types:
-- ❤️ Heart rate (BPM)
-- 😴 Sleep (stages, duration, quality)
-- 🏃 Activity (workouts, exercises)
-- 👣 Steps and distance
-- 🔥 Calories burned
-- 📈 Heart rate variability (HRV)
-- 🫁 Blood oxygen (SpO2)
-- ⚖️ Body metrics (weight, BMI)
-- 📍 GPS/location data
 
 ## Next steps
 
