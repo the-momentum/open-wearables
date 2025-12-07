@@ -10,7 +10,7 @@ from app.database import DbSession
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 developer_repository = DeveloperRepository(Developer)
 
 

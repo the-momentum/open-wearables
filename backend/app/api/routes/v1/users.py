@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/users", response_model=list[UserRead])
-async def list_users(db: DbSession, _developer: DeveloperDep):
+async def list_users(db: DbSession, _api_key: ApiKeyDep):
     return db.query(user_service.crud.model).all()
 
 
