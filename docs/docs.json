@@ -23,10 +23,14 @@
           {
             "group": "Provider setup",
             "pages": [
-              "provider-setup/suunto",
-              "provider-setup/apple-health",
-              "provider-setup/garmin",
-              "provider-setup/polar"
+              "provider-setup/index"
+            ]
+          },
+          {
+            "group": "Support",
+            "pages": [
+              "support",
+              "faqs"
             ]
           }
         ]
