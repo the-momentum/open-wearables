@@ -1,5 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { Users, Activity, Database, TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  Users,
+  Activity,
+  Database,
+  TrendingUp,
+  TrendingDown,
+} from 'lucide-react';
 import { useDashboardStats } from '@/hooks/api/use-dashboard';
 import { useUsers } from '@/hooks/api/use-users';
 import { NumberTicker } from '@/components/ui/number-ticker';
@@ -142,7 +148,9 @@ function DashboardPage() {
         {/* Data Points Metrics */}
         <div className="lg:col-span-4 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800">
-            <h2 className="text-sm font-medium text-white">Data Points Metrics</h2>
+            <h2 className="text-sm font-medium text-white">
+              Data Points Metrics
+            </h2>
             <p className="text-xs text-zinc-500 mt-1">
               Breakdown by series type and workout type
             </p>
@@ -150,13 +158,20 @@ function DashboardPage() {
           <div className="p-6 space-y-6">
             {/* Top Series Types */}
             <div>
-              <h3 className="text-xs font-medium text-zinc-400 mb-3">Top Series Types</h3>
+              <h3 className="text-xs font-medium text-zinc-400 mb-3">
+                Top Series Types
+              </h3>
               <div className="space-y-2">
                 {stats.data_points.top_series_types.length > 0 ? (
                   stats.data_points.top_series_types.map((metric, index) => (
-                    <div key={metric.series_type} className="flex items-center justify-between">
+                    <div
+                      key={metric.series_type}
+                      className="flex items-center justify-between"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500 w-4">{index + 1}.</span>
+                        <span className="text-xs text-zinc-500 w-4">
+                          {index + 1}.
+                        </span>
                         <span className="text-sm text-zinc-300 capitalize">
                           {metric.series_type.replace(/_/g, ' ')}
                         </span>
@@ -174,13 +189,20 @@ function DashboardPage() {
 
             {/* Top Workout Types */}
             <div>
-              <h3 className="text-xs font-medium text-zinc-400 mb-3">Top Workout Types</h3>
+              <h3 className="text-xs font-medium text-zinc-400 mb-3">
+                Top Workout Types
+              </h3>
               <div className="space-y-2">
                 {stats.data_points.top_workout_types.length > 0 ? (
                   stats.data_points.top_workout_types.map((metric, index) => (
-                    <div key={metric.workout_type || 'unknown'} className="flex items-center justify-between">
+                    <div
+                      key={metric.workout_type || 'unknown'}
+                      className="flex items-center justify-between"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500 w-4">{index + 1}.</span>
+                        <span className="text-xs text-zinc-500 w-4">
+                          {index + 1}.
+                        </span>
                         <span className="text-sm text-zinc-300">
                           {metric.workout_type || 'Unknown'}
                         </span>
@@ -218,22 +240,35 @@ function DashboardPage() {
               </div>
             ) : users && users.length > 0 ? (
               users
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .sort(
+                  (a, b) =>
+                    new Date(b.created_at).getTime() -
+                    new Date(a.created_at).getTime()
+                )
                 .slice(0, 5)
                 .map((user) => {
-                  const userName = user.first_name || user.last_name
-                    ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
-                    : user.email || 'Unknown User';
+                  const userName =
+                    user.first_name || user.last_name
+                      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                      : user.email || 'Unknown User';
                   const createdDate = new Date(user.created_at);
-                  const formattedDate = createdDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  });
+                  const formattedDate = createdDate.toLocaleDateString(
+                    'en-US',
+                    {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    }
+                  );
                   return (
-                    <div key={user.id} className="flex items-center justify-between">
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between"
+                    >
                       <div>
-                        <p className="text-sm font-medium text-zinc-300">{userName}</p>
+                        <p className="text-sm font-medium text-zinc-300">
+                          {userName}
+                        </p>
                         <p className="text-xs text-zinc-500">
                           {user.email || user.external_user_id || 'No email'}
                         </p>
