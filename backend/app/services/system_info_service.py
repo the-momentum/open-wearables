@@ -73,10 +73,14 @@ class SystemInfoService:
         )
 
         # Data Points - Calculate actual counts and histogram
-        data_points_count = self.time_series_service.get_total_count(db_session)
-        data_points_this_week = self.time_series_service.get_count_in_range(db_session, week_ago, now)
-        data_points_last_week = self.time_series_service.get_count_in_range(db_session, two_weeks_ago, week_ago)
-        data_points_growth = self._calculate_weekly_growth(data_points_this_week, data_points_last_week)
+        data_points_stats = self._get_growth_stats(
+            db_session,
+            self.time_series_service.crud.get_total_count,
+            self.time_series_service.get_count_in_range,
+            week_ago,
+            two_weeks_ago,
+            now,
+        )
 
         # Get daily histogram for the last 7 days
         data_points_histogram = self.time_series_service.get_daily_histogram(db_session, week_ago, now)
@@ -90,8 +94,8 @@ class SystemInfoService:
             active_conn=active_conn_stats,
             data_points=DataPointsInfo(
                 weekly_histogram=data_points_histogram,
-                count=data_points_count,
-                weekly_growth=data_points_growth,
+                count=data_points_stats.count,
+                weekly_growth=data_points_stats.weekly_growth,
             ),
         )
 
