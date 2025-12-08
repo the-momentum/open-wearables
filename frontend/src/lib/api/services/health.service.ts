@@ -139,7 +139,7 @@ export const healthService = {
     params?: HealthDataParams
   ): Promise<EventRecordResponse[]> {
     return apiClient.get<EventRecordResponse[]>(
-      `/v1/users/${userId}/workouts`,
+      API_ENDPOINTS.userWorkouts(userId),
       {
         params,
       }

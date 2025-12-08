@@ -417,7 +417,7 @@ function UserDetailPage() {
               {workouts.map((workout) => (
                 <div
                   key={workout.id}
-                  className="flex items-center justify-between p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
+                  className="p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
                 >
                   <div>
                     <h4 className="font-medium text-white">
@@ -425,13 +425,10 @@ function UserDetailPage() {
                     </h4>
                     <p className="text-xs text-zinc-500 mt-1">
                       {formatDate(workout.start_datetime)} •{' '}
-                      {formatDuration(workout.duration_seconds)} •{' '}
-                      {workout.source_name}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-zinc-400">
-                      {workout.statistics.length} metrics
+                      {workout.duration_seconds
+                        ? formatDuration(workout.duration_seconds)
+                        : '—'}{' '}
+                      • {workout.source_name}
                     </p>
                   </div>
                 </div>
