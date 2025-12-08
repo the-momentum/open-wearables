@@ -225,7 +225,7 @@ You'll need to register as a developer with each provider you want to support. T
 
 Join our Discord community to connect with other developers, get help, share ideas, and stay updated on the latest developments:
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.com/channels/1447029996269998218/1447029996949602419)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.gg/qrcfFnNE6H)
 
 ## Contributing
 
