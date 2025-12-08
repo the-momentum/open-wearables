@@ -177,7 +177,6 @@ def get_unified_workout_type(garmin_activity_type: str) -> WorkoutType:
         WorkoutType.INDOOR_CYCLING
         >>> get_unified_workout_type("UNKNOWN_ACTIVITY")
         WorkoutType.OTHER
-
     Note:
         Some Garmin activities have _V2 variants (e.g., BOATING and BOATING_V2).
         Both variants map to the same unified type.
