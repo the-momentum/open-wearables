@@ -117,19 +117,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "steps_total": steps_total,
         }
 
-    def _get_workout_type(self, activity_type: str) -> WorkoutType:
-        """Get workout type from Garmin activity."""
-        match activity_type:
-            case "RUNNING":
-                return WorkoutType.RUNNING
-            case "WALKING":
-                return WorkoutType.WALKING
-            case "CYCLING":
-                return WorkoutType.CYCLING
-            case "SWIMMING":
-                return WorkoutType.SWIMMING
-            case _:
-                return WorkoutType.OTHER
 
     def _normalize_workout(
         self,
