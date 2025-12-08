@@ -16,18 +16,15 @@ class WorkoutType(StrEnum):
     WALKING = "walking"
     HIKING = "hiking"
     MOUNTAINEERING = "mountaineering"
-
     # Cycling
     CYCLING = "cycling"
     MOUNTAIN_BIKING = "mountain_biking"
     INDOOR_CYCLING = "indoor_cycling"
     CYCLOCROSS = "cyclocross"
-
     # Swimming
     SWIMMING = "swimming"
     POOL_SWIMMING = "pool_swimming"
     OPEN_WATER_SWIMMING = "open_water_swimming"
-
     # Strength & Gym
     STRENGTH_TRAINING = "strength_training"
     CARDIO_TRAINING = "cardio_training"
@@ -35,12 +32,10 @@ class WorkoutType(StrEnum):
     ELLIPTICAL = "elliptical"
     ROWING_MACHINE = "rowing_machine"
     STAIR_CLIMBING = "stair_climbing"
-
     # Flexibility & Mind-Body
     YOGA = "yoga"
     PILATES = "pilates"
     STRETCHING = "stretching"
-
     # Winter Sports
     CROSS_COUNTRY_SKIING = "cross_country_skiing"
     ALPINE_SKIING = "alpine_skiing"
@@ -49,7 +44,6 @@ class WorkoutType(StrEnum):
     SNOWBOARDING = "snowboarding"
     SNOWSHOEING = "snowshoeing"
     ICE_SKATING = "ice_skating"
-
     # Water Sports
     ROWING = "rowing"
     KAYAKING = "kayaking"
@@ -60,7 +54,6 @@ class WorkoutType(StrEnum):
     KITESURFING = "kitesurfing"
     WINDSURFING = "windsurfing"
     SAILING = "sailing"
-
     # Team Sports
     SOCCER = "soccer"
     BASKETBALL = "basketball"
@@ -74,7 +67,6 @@ class WorkoutType(StrEnum):
     RUGBY = "rugby"
     HOCKEY = "hockey"
     FLOORBALL = "floorball"
-
     # Racket Sports
     SQUASH = "squash"
     TABLE_TENNIS = "table_tennis"
@@ -91,7 +83,6 @@ class WorkoutType(StrEnum):
     BOULDERING = "bouldering"
     TRAIL_HIKING = "trail_hiking"
     ORIENTEERING = "orienteering"
-
     # Other Sports
     GOLF = "golf"
     SKATING = "skating"
