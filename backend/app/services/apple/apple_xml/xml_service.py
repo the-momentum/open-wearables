@@ -108,15 +108,16 @@ class XMLService:
         duration_seconds = int((document["endDate"] - document["startDate"]).total_seconds())
 
         record = EventRecordCreate(
+            category="workout",
+            type=document["type"],
+            source_name=document["sourceName"],
+            device_id=document["device"],
+            duration_seconds=duration_seconds,
+            start_datetime=document["startDate"],
+            end_datetime=document["endDate"],
             id=workout_id,
             provider_id=None,
             user_id=user_id,
-            type=document["type"],
-            duration_seconds=duration_seconds,
-            source_name=document["sourceName"],
-            device_id=document["device"],
-            start_datetime=document["startDate"],
-            end_datetime=document["endDate"],
         )
 
         actual_metrics = metrics if metrics is not None else self._init_metrics()
