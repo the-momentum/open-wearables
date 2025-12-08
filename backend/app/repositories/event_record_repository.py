@@ -29,7 +29,7 @@ class EventRecordRepository(
 
         creation_data = creator.model_dump()
         creation_data["external_mapping_id"] = mapping.id
-        for redundant_key in ("user_id", "provider_id", "device_id", "external_mapping_id"):
+        for redundant_key in ("user_id", "provider_id", "device_id"):
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)

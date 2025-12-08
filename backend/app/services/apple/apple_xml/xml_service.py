@@ -78,7 +78,7 @@ class XMLService:
                 id=uuid4(),
                 user_id=user_id,
                 provider_id=None,
-                device_id=document["device"],
+                device_id=document.get("device"),
                 recorded_at=document["startDate"],
                 value=value,
             )
@@ -87,7 +87,7 @@ class XMLService:
                 id=uuid4(),
                 user_id=user_id,
                 provider_id=None,
-                device_id=document["device"],
+                device_id=document.get("device"),
                 recorded_at=document["startDate"],
                 value=value,
             )
@@ -111,7 +111,7 @@ class XMLService:
             category="workout",
             type=document["type"],
             source_name=document["sourceName"],
-            device_id=document["device"],
+            device_id=document.get("device"),
             duration_seconds=duration_seconds,
             start_datetime=document["startDate"],
             end_datetime=document["endDate"],
