@@ -94,7 +94,6 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             "steps_total": None,
         }
 
-
     def _normalize_workout(
         self,
         raw_workout: PolarExerciseJSON,
