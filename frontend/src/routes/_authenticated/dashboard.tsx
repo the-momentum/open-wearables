@@ -178,12 +178,21 @@ function DashboardPage() {
                   const userName = user.first_name || user.last_name
                     ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
                     : user.email || 'Unknown User';
+                  const createdDate = new Date(user.created_at);
+                  const formattedDate = createdDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  });
                   return (
                     <div key={user.id} className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium text-zinc-300">{userName}</p>
                         <p className="text-xs text-zinc-500">
                           {user.email || user.external_user_id || 'No email'}
+                        </p>
+                        <p className="text-xs text-zinc-600 mt-0.5">
+                          Created on {formattedDate}
                         </p>
                       </div>
                       <span className="text-xs text-emerald-400">Active</span>
