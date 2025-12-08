@@ -95,19 +95,6 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             "steps_total": None,
         }
 
-    def _get_workout_type(self, type: str) -> WorkoutType:
-        """Get workout type from Polar exercise."""
-        match type:
-            case "RUNNING":
-                return WorkoutType.RUNNING
-            case "WALKING":
-                return WorkoutType.WALKING
-            case "CYCLING":
-                return WorkoutType.CYCLING
-            case "SWIMMING":
-                return WorkoutType.SWIMMING
-            case _:
-                return WorkoutType.OTHER
 
     def _normalize_workout(
         self,
