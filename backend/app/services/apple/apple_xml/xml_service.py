@@ -105,11 +105,6 @@ class XMLService:
         document = self._parse_date_fields(document)
 
         workout_id = uuid4()
-<<<<<<< HEAD
-
-=======
-        
->>>>>>> 8417ce1 (add apple mappings)
         raw_type = document.pop("workoutActivityType")
 
         workout_type = get_unified_workout_type(raw_type)

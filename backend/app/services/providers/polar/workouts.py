@@ -15,7 +15,6 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.constants.workout_types.polar import get_unified_workout_type
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
