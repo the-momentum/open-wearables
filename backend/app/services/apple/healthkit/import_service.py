@@ -52,15 +52,16 @@ class ImportService:
             metrics = self._extract_metrics_from_workout_stats(wjson.workoutStatistics)
 
             record = EventRecordCreate(
+                category="workout",
+                type=wjson.type or "Unknown",
+                source_name=wjson.sourceName or "Apple Health",
+                device_id=wjson.sourceName or None,
+                duration_seconds=duration_seconds,
+                start_datetime=wjson.startDate,
+                end_datetime=wjson.endDate,
                 id=workout_id,
                 provider_id=provider_id,
                 user_id=user_uuid,
-                type=wjson.type or "Unknown",
-                duration_seconds=duration_seconds,
-                source_name=wjson.sourceName or "Apple Health",
-                device_id=wjson.sourceName or None,
-                start_datetime=wjson.startDate,
-                end_datetime=wjson.endDate,
             )
 
             detail = EventRecordDetailCreate(

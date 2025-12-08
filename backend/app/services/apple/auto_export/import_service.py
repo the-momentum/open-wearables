@@ -118,15 +118,16 @@ class ImportService:
             workout_type = wjson.name or "Unknown Workout"
 
             record = EventRecordCreate(
+                category="workout",
+                type=workout_type,
+                source_name="Auto Export",
+                device_id=None,
+                duration_seconds=duration_seconds,
+                start_datetime=start_date,
+                end_datetime=end_date,
                 id=workout_id,
                 provider_id=wjson.id,
                 user_id=user_uuid,
-                type=workout_type,
-                duration_seconds=duration_seconds,
-                source_name="Auto Export",
-                device_id=None,
-                start_datetime=start_date,
-                end_datetime=end_date,
             )
 
             detail = EventRecordDetailCreate(
