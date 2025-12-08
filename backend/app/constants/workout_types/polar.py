@@ -119,7 +119,6 @@ def get_unified_workout_type(polar_sport: str, polar_detailed_sport_info: str | 
         key = (polar_sport, polar_detailed_sport_info)
         if key in POLAR_TO_UNIFIED:
             return POLAR_TO_UNIFIED[key]
-
     # Fall back to sport-only match
     key = (polar_sport, None)
     if key in POLAR_TO_UNIFIED:

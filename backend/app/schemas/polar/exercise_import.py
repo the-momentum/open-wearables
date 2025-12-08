@@ -23,6 +23,9 @@ class HRZoneJSON(BaseModel):
 class ExerciseJSON(BaseModel):
     id: str
     device: str
+    
+    sport: str
+    detailed_sport_info: str | None = None
 
     sport: str
     detailed_sport_info: str | None = None
