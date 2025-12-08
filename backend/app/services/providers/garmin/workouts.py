@@ -10,7 +10,6 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     GarminActivityJSON,
-    WorkoutType,
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
