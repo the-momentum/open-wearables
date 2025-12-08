@@ -10,7 +10,6 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     SuuntoWorkoutJSON,
-    WorkoutType,
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
@@ -92,19 +91,6 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "steps_total": steps_count,
         }
 
-    def _get_workout_type(self, workout_id: int) -> WorkoutType:
-        """Get workout type from Suunto workout."""
-        match workout_id:
-            case 0:
-                return WorkoutType.WALKING
-            case 1:
-                return WorkoutType.RUNNING
-            case 2:
-                return WorkoutType.CYCLING
-            case 21:
-                return WorkoutType.SWIMMING
-            case _:
-                return WorkoutType.OTHER
 
     def _normalize_workout(
         self,
@@ -114,7 +100,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Normalize Suunto workout to EventRecordCreate."""
         workout_id = uuid4()
 
-        workout_type = get_unified_workout_type(raw_workout.workoutId)
+        workout_type = get_unified_workout_type(raw_workout.activityId)
 
         start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = int(raw_workout.totalTime)
