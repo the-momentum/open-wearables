@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/Docs-PRs%20Welcome-blue.svg)](https://github.com/the-momentum/open-wearables/issues)
 ![Built with: FastAPI + React + Tanstack](https://img.shields.io/badge/Built%20with-FastAPI%20%2B%20React%20%2B%20Tanstack-green.svg)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)](https://discord.com/channels/1447029996269998218/1447029996949602419)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Chat-5865F2?logo=discord&logoColor=white)]([https://discord.com/channels/1447029996269998218/1447029996949602419](https://discord.gg/qrcfFnNE6H))
 
 </div>
 
