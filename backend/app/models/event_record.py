@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Index
+from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
@@ -16,6 +16,12 @@ class EventRecord(BaseDbModel):
     __table_args__ = (
         Index("idx_event_record_mapping_category", "external_mapping_id", "category"),
         Index("idx_event_record_mapping_time", "external_mapping_id", "start_datetime", "end_datetime"),
+        UniqueConstraint(
+            "external_mapping_id",
+            "start_datetime",
+            "category",
+            name="uq_event_record_datetime_category",
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]

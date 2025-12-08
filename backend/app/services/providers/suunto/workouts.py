@@ -105,20 +105,6 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             case _:
                 return WorkoutType.OTHER
 
-    def _get_workout_type(self, workout_id: int) -> WorkoutType:
-        """Get workout type from Suunto workout."""
-        match workout_id:
-            case 0:
-                return WorkoutType.WALKING
-            case 1:
-                return WorkoutType.RUNNING
-            case 2:
-                return WorkoutType.CYCLING
-            case 21:
-                return WorkoutType.SWIMMING
-            case _:
-                return WorkoutType.OTHER
-
     def _normalize_workout(
         self,
         raw_workout: SuuntoWorkoutJSON,
