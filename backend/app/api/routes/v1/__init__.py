@@ -28,6 +28,6 @@ v1_router.include_router(connections_router, tags=["data"])
 v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_data_router, tags=["import-data"])
-v1_router.include_router(dashboard_router, tags=["dashboard"])
+v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 
 __all__ = ["v1_router"]

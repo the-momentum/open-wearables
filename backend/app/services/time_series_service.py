@@ -1,3 +1,4 @@
+from datetime import datetime
 from logging import Logger, getLogger
 from typing import TypeVar
 from uuid import UUID
@@ -77,6 +78,23 @@ class TimeSeriesService(
     ) -> list[StepSampleResponse]:
         samples = self.crud.get_samples(db_session, params, self.STEP_TYPE, UUID(user_id))
         return [self._build_response(sample, mapping, StepSampleResponse) for sample, mapping in samples]
+
+    def get_total_count(self, db_session: DbSession) -> int:
+        """Get total count of all data points."""
+        return self.crud.get_total_count(db_session)
+
+    def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
+        """Get count of data points within a datetime range."""
+        return self.crud.get_count_in_range(db_session, start_datetime, end_datetime)
+
+    def get_daily_histogram(
+        self,
+        db_session: DbSession,
+        start_datetime: datetime,
+        end_datetime: datetime,
+    ) -> list[int]:
+        """Get daily histogram of data points for the given date range."""
+        return self.crud.get_daily_histogram(db_session, start_datetime, end_datetime)
 
 
 time_series_service = TimeSeriesService(log=getLogger(__name__))

@@ -14,7 +14,7 @@ from app.schemas import SeriesType, TimeSeriesQueryParams, TimeSeriesSampleCreat
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
 ):
-"""Repository for unified device data point series."""
+    """Repository for unified device data point series."""
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)
@@ -96,7 +96,7 @@ class DataPointSeriesRepository(
 
         Returns a list of counts, one per day, ordered chronologically.
         """
-        from sqlalchemy import cast, Date
+        from sqlalchemy import Date, cast
 
         daily_counts = (
             db_session.query(cast(self.model.recorded_at, Date).label("date"), func.count(self.model.id).label("count"))
@@ -111,5 +111,4 @@ class DataPointSeriesRepository(
         if not daily_counts:
             return []
 
-        result = [count for _, count in daily_counts]
-        return result
+        return [count for _, count in daily_counts]

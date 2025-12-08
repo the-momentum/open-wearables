@@ -77,11 +77,21 @@ export interface ResetPasswordRequest {
   password: string;
 }
 
+export interface CountWithGrowth {
+  count: number;
+  weekly_growth: number;
+}
+
+export interface DataPointsInfo {
+  weekly_histogram: number[];
+  count: number;
+  weekly_growth: number;
+}
+
 export interface DashboardStats {
-  totalUsers: number;
-  activeConnections: number;
-  dataPoints: number;
-  apiCalls: number;
+  total_users: CountWithGrowth;
+  active_conn: CountWithGrowth;
+  data_points: DataPointsInfo;
 }
 
 export interface Provider {
