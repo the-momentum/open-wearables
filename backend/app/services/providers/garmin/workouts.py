@@ -13,6 +13,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.constants.workout_types.garmin import get_unified_workout_type
 
 
 class GarminWorkouts(BaseWorkoutsTemplate):
@@ -138,6 +139,8 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         """Normalize Garmin activity to EventRecordCreate and EventRecordDetailCreate."""
         workout_id = uuid4()
 
+        workout_type = get_unified_workout_type(raw_workout.activityType)
+
         start_date, end_date = self._extract_dates(
             raw_workout.startTimeInSeconds,
             raw_workout.startTimeInSeconds + raw_workout.durationInSeconds,
@@ -148,14 +151,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             category="workout",
-            type=self._get_workout_type(raw_workout.activityType).value,
+            type=workout_type.value,
             source_name=raw_workout.deviceName,
-            device_id=None,
+            device_id=raw_workout.deviceName,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            provider_id=raw_workout.summaryId,
+            provider_id=raw_workout.activityId,
             user_id=user_id,
         )
 

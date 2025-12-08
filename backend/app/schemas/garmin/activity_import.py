@@ -5,6 +5,7 @@ class ActivityJSON(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     userId: str
+    activityId: str
     summaryId: str
     activityType: str
     startTimeInSeconds: int
