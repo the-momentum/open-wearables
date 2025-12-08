@@ -91,7 +91,6 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             "steps_total": steps_count,
         }
 
-
     def _normalize_workout(
         self,
         raw_workout: SuuntoWorkoutJSON,
