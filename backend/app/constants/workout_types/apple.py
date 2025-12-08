@@ -130,7 +130,6 @@ def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
         WorkoutType.YOGA
         >>> get_unified_workout_type("HKWorkoutActivityTypeOther")
         WorkoutType.OTHER
-
     Note:
         Some deprecated types are still supported for backward compatibility:
         - HKWorkoutActivityTypeDance
@@ -143,7 +142,6 @@ def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
 def get_healthkit_activity_name(healthkit_activity_type: str) -> str:
     """
     Extract human-readable name from HealthKit activity type.
-
     Examples:
         >>> get_healthkit_activity_name("HKWorkoutActivityTypeRunning")
         "Running"
