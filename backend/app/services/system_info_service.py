@@ -72,7 +72,7 @@ class SystemInfoService:
             now,
         )
 
-        # Data Points - Calculate actual counts and histogram
+        # Data Points
         data_points_stats = self._get_growth_stats(
             db_session,
             self.time_series_service.crud.get_total_count,
@@ -82,18 +82,10 @@ class SystemInfoService:
             now,
         )
 
-        # Get daily histogram for the last 7 days
-        data_points_histogram = self.time_series_service.get_daily_histogram(db_session, week_ago, now)
-
-        # Ensure we have exactly 7 days (fill with zeros if needed)
-        if len(data_points_histogram) < 7:
-            data_points_histogram.extend([0] * (7 - len(data_points_histogram)))
-
         return SystemInfoResponse(
             total_users=users_stats,
             active_conn=active_conn_stats,
             data_points=DataPointsInfo(
-                weekly_histogram=data_points_histogram,
                 count=data_points_stats.count,
                 weekly_growth=data_points_stats.weekly_growth,
             ),

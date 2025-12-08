@@ -9,9 +9,8 @@ class CountWithGrowth(BaseModel):
 
 
 class DataPointsInfo(BaseModel):
-    """Data points information with weekly histogram."""
+    """Data points information."""
 
-    weekly_histogram: list[int]  # 7 integers, one per day for the last week
     count: int
     weekly_growth: float
 

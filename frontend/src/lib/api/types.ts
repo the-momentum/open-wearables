@@ -83,7 +83,6 @@ export interface CountWithGrowth {
 }
 
 export interface DataPointsInfo {
-  weekly_histogram: number[];
   count: number;
   weekly_growth: number;
 }
