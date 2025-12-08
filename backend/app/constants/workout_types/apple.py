@@ -51,7 +51,7 @@ HEALTHKIT_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("HKWorkoutActivityTypeVolleyball", WorkoutType.VOLLEYBALL),
     # Racket Sports
     ("HKWorkoutActivityTypeBadminton", WorkoutType.BADMINTON),
-    ("HKWorkoutActivityTypePickleball", WorkoutType.OTHER),
+    ("HKWorkoutActivityTypePickleball", WorkoutType.PICKLEBALL),
     ("HKWorkoutActivityTypeRacquetball", WorkoutType.OTHER),
     ("HKWorkoutActivityTypeSquash", WorkoutType.SQUASH),
     ("HKWorkoutActivityTypeTableTennis", WorkoutType.TABLE_TENNIS),
