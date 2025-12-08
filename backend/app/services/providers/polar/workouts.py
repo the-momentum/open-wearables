@@ -15,6 +15,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.constants.workout_types.polar import get_unified_workout_type
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
@@ -116,6 +117,8 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         """Normalize Polar exercise to EventRecordCreate and EventRecordDetailCreate."""
         workout_id = uuid4()
 
+        workout_type = get_unified_workout_type(raw_workout.sport, raw_workout.detailed_sport_info)
+
         start_date, end_date = self._extract_dates_with_offset(
             raw_workout.start_time,
             raw_workout.start_time_utc_offset,
@@ -127,7 +130,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
 
         record = EventRecordCreate(
             category="workout",
-            type=self._get_workout_type(raw_workout.sport).value,
+            type=workout_type.value,
             source_name=raw_workout.device,
             device_id=raw_workout.device,
             duration_seconds=duration_seconds,
