@@ -32,7 +32,6 @@ from .event_record import (
     EventRecordQueryParams,
     EventRecordResponse,
     EventRecordUpdate,
-    WorkoutType,
 )
 from .event_record_detail import (
     EventRecordDetailCreate,
@@ -115,6 +114,7 @@ from .user import (
     UserUpdate,
     UserUpdateInternal,
 )
+from .workout_types import WorkoutType
 
 __all__ = [
     # Common schemas

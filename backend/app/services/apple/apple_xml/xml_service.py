@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
+from app.constants.workout_types.apple import get_unified_workout_type
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -14,7 +15,6 @@ from app.schemas import (
     HeartRateSampleCreate,
     StepSampleCreate,
 )
-from app.constants.workout_types.apple import get_unified_workout_type
 
 
 class XMLService:
@@ -104,7 +104,7 @@ class XMLService:
         document = self._parse_date_fields(document)
 
         workout_id = uuid4()
-        
+
         raw_type = document.pop("workoutActivityType")
 
         workout_type = get_unified_workout_type(raw_type)
