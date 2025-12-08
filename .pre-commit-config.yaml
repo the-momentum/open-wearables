@@ -1,3 +1,5 @@
+exclude: ^backend/(migrations/|app/models/|README.md|.python-version|LICENSE|.cursor/)
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.2
