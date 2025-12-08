@@ -9,6 +9,7 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.utils.exceptions import handle_exceptions
 
 
 class EventRecordRepository(
@@ -18,6 +19,7 @@ class EventRecordRepository(
         super().__init__(model)
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
+    @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
