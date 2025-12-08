@@ -93,14 +93,9 @@ async def garmin_ping_notification(
                     if pull_token:
                         # Save pull token to Redis for later use
                         # Token is associated with user and time range
-                        import redis
+                        from app.integrations.redis_client import get_redis_client
 
-                        from app.config import settings
-
-                        redis_client = redis.from_url(
-                            settings.redis_url,
-                            decode_responses=True,
-                        )
+                        redis_client = get_redis_client()
 
                         # Create key: garmin_token:{user_id}:{timestamp_range}
                         token_key = f"garmin_pull_token:{internal_user_id}:{upload_start}_{upload_end}"

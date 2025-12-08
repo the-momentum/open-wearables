@@ -8,11 +8,11 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-import redis
 from fastapi import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.config import settings
+from app.integrations.redis_client import get_redis_client
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
@@ -40,10 +40,7 @@ class BaseOAuthTemplate(ABC):
         self.connection_repo = connection_repo
         self.provider_name = provider_name
         self.api_base_url = api_base_url
-        self.redis_client = redis.from_url(
-            settings.redis_url,
-            decode_responses=True,
-        )
+        self.redis_client = get_redis_client()
         self.state_ttl = 900  # 15 minutes
 
     @property
