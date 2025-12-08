@@ -42,10 +42,15 @@ class BaseWorkoutsTemplate(ABC):
         """Fetches workouts from the provider API."""
         pass
 
-    @abstractmethod
     def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
-        """Extract start and end dates from timestamps."""
-        pass
+        """Extract start and end dates from timestamps.
+
+        Override this method in subclasses to handle provider-specific timestamp formats.
+        Default implementation expects datetime objects.
+        """
+        if isinstance(start_timestamp, datetime) and isinstance(end_timestamp, datetime):
+            return start_timestamp, end_timestamp
+        raise NotImplementedError(f"{self.__class__.__name__} must implement _extract_dates for its timestamp format")
 
     @abstractmethod
     def _normalize_workout(
@@ -77,20 +82,29 @@ class BaseWorkoutsTemplate(ABC):
         for raw in raw_workouts:
             self._process_single_workout(db, user_id, raw)
 
-    @abstractmethod
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
-        """Fetch workouts from API with flexible parameters (for API endpoint)."""
-        pass
+        """Fetch workouts from API with flexible parameters (for API endpoint).
 
-    @abstractmethod
+        Override this method in subclasses that support cloud API access.
+        For push-only providers (like Apple Health), this can return an empty result.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout fetching")
+
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
-        """Fetch detailed workout from API (for API endpoint)."""
-        pass
+        """Fetch detailed workout from API (for API endpoint).
 
-    @abstractmethod
+        Override this method in subclasses that support cloud API access.
+        For push-only providers (like Apple Health), this is not supported.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout detail fetching")
+
     def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
-        """Load data from provider API."""
-        pass
+        """Load data from provider API.
+
+        Override this method in subclasses that support cloud API access.
+        For push-only providers (like Apple Health), use process_payload instead.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support API-based data loading")
 
     def process_payload(self, db: DbSession, user_id: UUID, payload: Any, source_type: str) -> None:
         """Template method to process a pushed payload (Push flow).

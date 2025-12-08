@@ -56,6 +56,24 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """Apple payloads are normalized directly in handler classes."""
         raise NotImplementedError("Direct normalization not supported. Use process_push_data.")
 
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Apple Health uses datetime objects directly."""
+        if isinstance(start_timestamp, datetime) and isinstance(end_timestamp, datetime):
+            return start_timestamp, end_timestamp
+        raise ValueError("Apple Health expects datetime objects for timestamps")
+
+    def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
+        """Apple Health does not support cloud API - data is push-only."""
+        return []
+
+    def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
+        """Apple Health does not support cloud API - data is push-only."""
+        raise NotImplementedError("Apple Health does not support API-based workout detail fetching")
+
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+        """Apple Health uses push-based data ingestion via process_payload."""
+        raise NotImplementedError("Apple Health uses process_payload for data ingestion, not load_data")
+
     def process_payload(
         self,
         db: DbSession,
