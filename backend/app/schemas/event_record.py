@@ -1,20 +1,11 @@
 from datetime import datetime
 from decimal import Decimal
-from enum import StrEnum
 from typing import Literal, TypedDict
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.schemas.common import BaseQueryParams
-
-
-class WorkoutType(StrEnum):
-    RUNNING = "running"
-    WALKING = "walking"
-    CYCLING = "cycling"
-    SWIMMING = "swimming"
-    OTHER = "other"
 
 
 class EventRecordMetrics(TypedDict, total=False):
