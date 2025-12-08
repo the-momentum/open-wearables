@@ -137,15 +137,16 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         metrics = self._build_metrics(raw_workout)
 
         workout_create = EventRecordCreate(
-            id=workout_id,
-            provider_id=str(raw_workout.workoutId),
-            user_id=user_id,
+            category="workout",
             type=self._get_workout_type(raw_workout.workoutId).value,
             source_name=source_name,
             device_id=device_id,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            id=workout_id,
+            provider_id=str(raw_workout.workoutId),
+            user_id=user_id,
         )
 
         workout_detail_create = EventRecordDetailCreate(
