@@ -15,7 +15,6 @@ from app.schemas import (
     HeartRateSampleCreate,
     StepSampleCreate,
 )
-from app.constants.workout_types.apple import get_unified_workout_type
 
 
 class XMLService:
