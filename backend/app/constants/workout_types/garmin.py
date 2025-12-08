@@ -14,7 +14,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("TREADMILL_RUNNING", WorkoutType.TREADMILL),
     ("ULTRA_RUN", WorkoutType.RUNNING),
     ("VIRTUAL_RUN", WorkoutType.RUNNING),
-    
     # Cycling
     ("CYCLING", WorkoutType.CYCLING),
     ("BMX", WorkoutType.CYCLING),
@@ -33,7 +32,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("VIRTUAL_RIDE", WorkoutType.INDOOR_CYCLING),
     ("HANDCYCLING", WorkoutType.CYCLING),
     ("INDOOR_HANDCYCLING", WorkoutType.INDOOR_CYCLING),
-    
     # Gym & Fitness Equipment
     ("FITNESS_EQUIPMENT", WorkoutType.FITNESS_EQUIPMENT),
     ("BOULDERING", WorkoutType.INDOOR_CLIMBING),
@@ -48,19 +46,16 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("STRENGTH_TRAINING", WorkoutType.STRENGTH_TRAINING),
     ("YOGA", WorkoutType.YOGA),
     ("MEDITATION", WorkoutType.STRETCHING),
-    
     # Swimming
     ("SWIMMING", WorkoutType.SWIMMING),
     ("LAP_SWIMMING", WorkoutType.POOL_SWIMMING),
     ("OPEN_WATER_SWIMMING", WorkoutType.OPEN_WATER_SWIMMING),
-    
     # Walking & Hiking
     ("WALKING", WorkoutType.WALKING),
     ("CASUAL_WALKING", WorkoutType.WALKING),
     ("SPEED_WALKING", WorkoutType.WALKING),
     ("HIKING", WorkoutType.HIKING),
     ("RUCKING", WorkoutType.HIKING),
-    
     # Winter Sports
     ("WINTER_SPORTS", WorkoutType.OTHER),
     ("BACKCOUNTRY_SNOWBOARDING", WorkoutType.SNOWBOARDING),
@@ -73,7 +68,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("SKATING_WS", WorkoutType.ICE_SKATING),
     ("SNOW_SHOE_WS", WorkoutType.SNOWSHOEING),
     ("SNOWMOBILING_WS", WorkoutType.OTHER),
-    
     # Water Sports (note: some have _V2 variants)
     ("WATER_SPORTS", WorkoutType.OTHER),
     ("BOATING_V2", WorkoutType.OTHER),
@@ -106,7 +100,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("WHITEWATER_RAFTING", WorkoutType.KAYAKING),
     ("WINDSURFING_V2", WorkoutType.WINDSURFING),
     ("WINDSURFING", WorkoutType.WINDSURFING),
-    
     # Transitions
     ("TRANSITION_V2", WorkoutType.TRANSITION),
     ("BIKE_TO_RUN_TRANSITION_V2", WorkoutType.TRANSITION),
@@ -115,7 +108,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("RUN_TO_BIKE_TRANSITION", WorkoutType.TRANSITION),
     ("SWIM_TO_BIKE_TRANSITION_V2", WorkoutType.TRANSITION),
     ("SWIM_TO_BIKE_TRANSITION", WorkoutType.TRANSITION),
-    
     # Team Sports
     ("TEAM_SPORTS", WorkoutType.OTHER),
     ("AMERICAN_FOOTBALL", WorkoutType.AMERICAN_FOOTBALL),
@@ -130,7 +122,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("SOFTBALL", WorkoutType.BASEBALL),
     ("ULTIMATE_DISC", WorkoutType.OTHER),
     ("VOLLEYBALL", WorkoutType.VOLLEYBALL),
-    
     # Racket Sports
     ("RACKET_SPORTS", WorkoutType.OTHER),
     ("BADMINTON", WorkoutType.BADMINTON),
@@ -142,7 +133,6 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("TABLE_TENNIS", WorkoutType.TABLE_TENNIS),
     ("TENNIS_V2", WorkoutType.TENNIS),
     ("TENNIS", WorkoutType.TENNIS),
-    
     # Other
     ("OTHER", WorkoutType.OTHER),
     ("BOXING", WorkoutType.BOXING),
@@ -164,21 +154,20 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
 
 # Create lookup dictionary
 GARMIN_WELLNESS_TO_UNIFIED: dict[str, WorkoutType] = {
-    activity_type: unified_type
-    for activity_type, unified_type in GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS
+    activity_type: unified_type for activity_type, unified_type in GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS
 }
 
 
 def get_unified_workout_type(garmin_activity_type: str) -> WorkoutType:
     """
     Convert Garmin Wellness API activity type to unified WorkoutType.
-    
+
     Args:
         garmin_activity_type: Garmin activity type string (e.g., "RUNNING", "TRAIL_RUNNING")
-    
+
     Returns:
         Unified WorkoutType enum value
-    
+
     Examples:
         >>> get_unified_workout_type("RUNNING")
         WorkoutType.RUNNING
@@ -188,7 +177,7 @@ def get_unified_workout_type(garmin_activity_type: str) -> WorkoutType:
         WorkoutType.INDOOR_CYCLING
         >>> get_unified_workout_type("UNKNOWN_ACTIVITY")
         WorkoutType.OTHER
-    
+
     Note:
         Some Garmin activities have _V2 variants (e.g., BOATING and BOATING_V2).
         Both variants map to the same unified type.
