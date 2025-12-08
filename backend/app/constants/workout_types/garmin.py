@@ -126,7 +126,7 @@ GARMIN_WELLNESS_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     ("RACKET_SPORTS", WorkoutType.OTHER),
     ("BADMINTON", WorkoutType.BADMINTON),
     ("PADDELBALL", WorkoutType.PADEL),  # Note: Garmin spells it "PADDELBALL" for Padel
-    ("PICKLEBALL", WorkoutType.OTHER),
+    ("PICKLEBALL", WorkoutType.PICKLEBALL),
     ("PLATFORM_TENNIS", WorkoutType.TENNIS),
     ("RACQUETBALL", WorkoutType.OTHER),
     ("SQUASH", WorkoutType.SQUASH),
