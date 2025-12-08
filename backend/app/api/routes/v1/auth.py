@@ -47,15 +47,6 @@ async def login(
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=DeveloperRead)
-async def register(
-    developer_in: DeveloperCreate,
-    db: DbSession,
-):
-    """Register a new developer."""
-    return developer_service.register(db, developer_in)
-
-
 @router.post("/logout")
 async def logout(_developer: DeveloperDep):
     """Logout developer (token invalidation should be handled client-side)."""
