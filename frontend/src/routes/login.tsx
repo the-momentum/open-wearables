@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { isAuthenticated } from '@/lib/auth/session';
@@ -76,20 +76,12 @@ function LoginPage() {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="password"
-                    className="text-xs font-medium text-zinc-300"
-                  >
-                    Password
-                  </label>
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs text-zinc-500 hover:text-white transition-colors"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                <label
+                  htmlFor="password"
+                  className="text-xs font-medium text-zinc-300"
+                >
+                  Password
+                </label>
                 <div className="relative group">
                   <input
                     type="password"
