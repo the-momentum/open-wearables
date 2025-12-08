@@ -71,5 +71,9 @@ class EventRecordService(
 
         return [self._build_response(record, mapping) for record, mapping in records]
 
+    def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
+        """Get count of workouts grouped by workout type."""
+        return self.crud.get_count_by_workout_type(db_session)
+
 
 event_record_service = EventRecordService(log=getLogger(__name__))

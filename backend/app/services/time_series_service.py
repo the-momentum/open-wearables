@@ -96,5 +96,13 @@ class TimeSeriesService(
         """Get daily histogram of data points for the given date range."""
         return self.crud.get_daily_histogram(db_session, start_datetime, end_datetime)
 
+    def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
+        """Get count of data points grouped by series type ID."""
+        return self.crud.get_count_by_series_type(db_session)
+
+    def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
+        """Get count of data points grouped by provider."""
+        return self.crud.get_count_by_provider(db_session)
+
 
 time_series_service = TimeSeriesService(log=getLogger(__name__))

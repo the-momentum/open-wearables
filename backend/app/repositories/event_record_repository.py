@@ -96,3 +96,20 @@ class EventRecordRepository(
         paged_query = query.order_by(order_column).offset(query_params.offset).limit(query_params.limit)
 
         return paged_query.all(), total_count
+
+    def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
+        """Get count of workouts grouped by workout type.
+
+        Returns list of (workout_type, count) tuples ordered by count descending.
+        Only includes records with category='workout'.
+        """
+        from sqlalchemy import func
+
+        results = (
+            db_session.query(self.model.type, func.count(self.model.id).label("count"))
+            .filter(self.model.category == "workout")
+            .group_by(self.model.type)
+            .order_by(func.count(self.model.id).desc())
+            .all()
+        )
+        return [(workout_type, count) for workout_type, count in results]

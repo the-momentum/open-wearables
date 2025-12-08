@@ -82,9 +82,21 @@ export interface CountWithGrowth {
   weekly_growth: number;
 }
 
+export interface SeriesTypeMetric {
+  series_type: string;
+  count: number;
+}
+
+export interface WorkoutTypeMetric {
+  workout_type: string | null;
+  count: number;
+}
+
 export interface DataPointsInfo {
   count: number;
   weekly_growth: number;
+  top_series_types: SeriesTypeMetric[];
+  top_workout_types: WorkoutTypeMetric[];
 }
 
 export interface DashboardStats {

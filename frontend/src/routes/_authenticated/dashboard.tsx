@@ -139,16 +139,62 @@ function DashboardPage() {
 
       {/* Charts Section */}
       <div className="grid gap-6 lg:grid-cols-7">
-        {/* Overview Chart */}
+        {/* Data Points Metrics */}
         <div className="lg:col-span-4 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800">
-            <h2 className="text-sm font-medium text-white">Overview</h2>
+            <h2 className="text-sm font-medium text-white">Data Points Metrics</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Your platform performance this month
+              Breakdown by series type and workout type
             </p>
           </div>
-          <div className="h-[300px] flex items-center justify-center text-zinc-600">
-            <p className="text-sm">Chart will be rendered here</p>
+          <div className="p-6 space-y-6">
+            {/* Top Series Types */}
+            <div>
+              <h3 className="text-xs font-medium text-zinc-400 mb-3">Top Series Types</h3>
+              <div className="space-y-2">
+                {stats.data_points.top_series_types.length > 0 ? (
+                  stats.data_points.top_series_types.map((metric, index) => (
+                    <div key={metric.series_type} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500 w-4">{index + 1}.</span>
+                        <span className="text-sm text-zinc-300 capitalize">
+                          {metric.series_type.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <span className="text-sm font-medium text-white">
+                        {metric.count.toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-zinc-600">No data available</p>
+                )}
+              </div>
+            </div>
+
+            {/* Top Workout Types */}
+            <div>
+              <h3 className="text-xs font-medium text-zinc-400 mb-3">Top Workout Types</h3>
+              <div className="space-y-2">
+                {stats.data_points.top_workout_types.length > 0 ? (
+                  stats.data_points.top_workout_types.map((metric, index) => (
+                    <div key={metric.workout_type || 'unknown'} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-zinc-500 w-4">{index + 1}.</span>
+                        <span className="text-sm text-zinc-300">
+                          {metric.workout_type || 'Unknown'}
+                        </span>
+                      </div>
+                      <span className="text-sm font-medium text-white">
+                        {metric.count.toLocaleString()}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-zinc-600">No data available</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

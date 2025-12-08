@@ -2,8 +2,16 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 
+from app.constants.series_types import get_series_type_from_id
 from app.database import DbSession
-from app.schemas.system_info import CountWithGrowth, DataPointsInfo, SystemInfoResponse
+from app.schemas.system_info import (
+    CountWithGrowth,
+    DataPointsInfo,
+    SeriesTypeMetric,
+    SystemInfoResponse,
+    WorkoutTypeMetric,
+)
+from app.services.event_record_service import EventRecordService, event_record_service
 from app.services.time_series_service import TimeSeriesService, time_series_service
 from app.services.user_connection_service import UserConnectionService, user_connection_service
 from app.services.user_service import UserService, user_service
@@ -18,11 +26,13 @@ class SystemInfoService:
         user_service: UserService,
         user_connection_service: UserConnectionService,
         time_series_service: TimeSeriesService,
+        event_record_service: EventRecordService,
     ):
         self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
         self.time_series_service = time_series_service
+        self.event_record_service = event_record_service
 
     def _calculate_weekly_growth(self, current: int, previous: int) -> float:
         """Calculate weekly growth percentage."""
@@ -82,12 +92,34 @@ class SystemInfoService:
             now,
         )
 
+        # Get metrics by series type
+        series_type_counts = self.time_series_service.get_count_by_series_type(db_session)
+        top_series_types = [
+            SeriesTypeMetric(
+                series_type=get_series_type_from_id(series_type_id).value,
+                count=count,
+            )
+            for series_type_id, count in series_type_counts[:5]  # Top 5
+        ]
+
+        # Get metrics by workout type
+        workout_type_counts = self.event_record_service.get_count_by_workout_type(db_session)
+        top_workout_types = [
+            WorkoutTypeMetric(
+                workout_type=workout_type or "Unknown",
+                count=count,
+            )
+            for workout_type, count in workout_type_counts[:5]  # Top 5
+        ]
+
         return SystemInfoResponse(
             total_users=users_stats,
             active_conn=active_conn_stats,
             data_points=DataPointsInfo(
                 count=data_points_stats.count,
                 weekly_growth=data_points_stats.weekly_growth,
+                top_series_types=top_series_types,
+                top_workout_types=top_workout_types,
             ),
         )
 
@@ -97,4 +129,5 @@ system_info_service = SystemInfoService(
     user_service=user_service,
     user_connection_service=user_connection_service,
     time_series_service=time_series_service,
+    event_record_service=event_record_service,
 )
