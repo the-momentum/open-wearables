@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from app.constants.series_types import get_series_type_id
 from app.database import DbSession
@@ -13,7 +14,7 @@ from app.schemas import SeriesType, TimeSeriesQueryParams, TimeSeriesSampleCreat
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
 ):
-    """Repository for unified device data point series."""
+"""Repository for unified device data point series."""
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)
@@ -75,3 +76,40 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.recorded_at <= params.end_datetime)
 
         return query.order_by(desc(self.model.recorded_at)).limit(1000).all()
+
+    def get_total_count(self, db_session: DbSession) -> int:
+        """Get total count of all data points."""
+        return db_session.query(func.count(self.model.id)).scalar() or 0
+
+    def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
+        """Get count of data points within a datetime range."""
+        return (
+            db_session.query(func.count(self.model.id))
+            .filter(self.model.recorded_at >= start_datetime)
+            .filter(self.model.recorded_at < end_datetime)
+            .scalar()
+            or 0
+        )
+
+    def get_daily_histogram(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> list[int]:
+        """Get daily histogram of data points for the given date range.
+
+        Returns a list of counts, one per day, ordered chronologically.
+        """
+        from sqlalchemy import cast, Date
+
+        daily_counts = (
+            db_session.query(cast(self.model.recorded_at, Date).label("date"), func.count(self.model.id).label("count"))
+            .filter(self.model.recorded_at >= start_datetime)
+            .filter(self.model.recorded_at < end_datetime)
+            .group_by(cast(self.model.recorded_at, Date))
+            .order_by(cast(self.model.recorded_at, Date))
+            .all()
+        )
+
+        # Convert to list of counts, filling in zeros for missing days
+        if not daily_counts:
+            return []
+
+        result = [count for _, count in daily_counts]
+        return result

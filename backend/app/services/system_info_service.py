@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 
 from app.database import DbSession
+from app.repositories.data_point_series_repository import DataPointSeriesRepository
+from app.models.data_point_series import DataPointSeries
 from app.schemas.system_info import CountWithGrowth, DataPointsInfo, SystemInfoResponse
 from app.services.user_connection_service import UserConnectionService, user_connection_service
 from app.services.user_service import UserService, user_service
@@ -16,10 +18,12 @@ class SystemInfoService:
         log: Logger,
         user_service: UserService,
         user_connection_service: UserConnectionService,
+        data_point_series_repository: DataPointSeriesRepository,
     ):
         self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
+        self.data_point_series_repository = data_point_series_repository
 
     def _calculate_weekly_growth(self, current: int, previous: int) -> float:
         """Calculate weekly growth percentage."""
@@ -69,12 +73,20 @@ class SystemInfoService:
             now,
         )
 
-        # Mock data points for now
-        # TODO: Replace with actual data points query when ready
-        data_points_histogram = [100, 120, 95, 110, 130, 115, 125]  # Mock: 7 days of data
-        data_points_count = sum(data_points_histogram)
-        data_points_week_ago_count = 700  # Mock previous week total
-        data_points_growth = self._calculate_weekly_growth(data_points_count, data_points_week_ago_count)
+        # Data Points - Calculate actual counts and histogram
+        data_points_count = self.data_point_series_repository.get_total_count(db_session)
+        data_points_this_week = self.data_point_series_repository.get_count_in_range(db_session, week_ago, now)
+        data_points_last_week = self.data_point_series_repository.get_count_in_range(
+            db_session, two_weeks_ago, week_ago
+        )
+        data_points_growth = self._calculate_weekly_growth(data_points_this_week, data_points_last_week)
+
+        # Get daily histogram for the last 7 days
+        data_points_histogram = self.data_point_series_repository.get_daily_histogram(db_session, week_ago, now)
+
+        # Ensure we have exactly 7 days (fill with zeros if needed)
+        if len(data_points_histogram) < 7:
+            data_points_histogram.extend([0] * (7 - len(data_points_histogram)))
 
         return SystemInfoResponse(
             total_users=users_stats,
@@ -91,4 +103,5 @@ system_info_service = SystemInfoService(
     log=getLogger(__name__),
     user_service=user_service,
     user_connection_service=user_connection_service,
+    data_point_series_repository=DataPointSeriesRepository(DataPointSeries),
 )
