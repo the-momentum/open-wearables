@@ -14,6 +14,7 @@ from app.schemas import (
     HeartRateSampleCreate,
     StepSampleCreate,
 )
+from app.constants.workout_types.apple import get_unified_workout_type
 
 
 class XMLService:
@@ -102,14 +103,17 @@ class XMLService:
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         document = self._parse_date_fields(document)
 
-        document["type"] = document.pop("workoutActivityType")
-
         workout_id = uuid4()
+        
+        raw_type = document.pop("workoutActivityType")
+
+        workout_type = get_unified_workout_type(raw_type)
+
         duration_seconds = int((document["endDate"] - document["startDate"]).total_seconds())
 
         record = EventRecordCreate(
             category="workout",
-            type=document["type"],
+            type=workout_type.value,
             source_name=document["sourceName"],
             device_id=document.get("device"),
             duration_seconds=duration_seconds,
