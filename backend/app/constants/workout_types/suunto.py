@@ -56,6 +56,10 @@ SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
     (46, "Bowling", WorkoutType.OTHER),
     (47, "Cricket", WorkoutType.OTHER),
     (48, "Rugby", WorkoutType.RUGBY),
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 2fb28ae (add suunto mappings)
     # Winter & Indoor (49-58)
     (49, "Ice skating", WorkoutType.ICE_SKATING),
     (50, "Ice hockey", WorkoutType.HOCKEY),
@@ -67,6 +71,10 @@ SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
     (56, "Roller skiing", WorkoutType.CROSS_COUNTRY_SKIING),
     (57, "Indoor rowing", WorkoutType.ROWING_MACHINE),
     (58, "Stretching", WorkoutType.STRETCHING),
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 2fb28ae (add suunto mappings)
     # Running & Combat (59-64)
     (59, "Track and field", WorkoutType.RUNNING),
     (60, "Orienteering", WorkoutType.ORIENTEERING),
@@ -74,6 +82,10 @@ SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
     (62, "Combat sport", WorkoutType.MARTIAL_ARTS),
     (63, "Kettlebell", WorkoutType.STRENGTH_TRAINING),
     (64, "Dancing", WorkoutType.DANCE),
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 2fb28ae (add suunto mappings)
     # Additional Activities (65-87)
     (65, "Snow shoeing", WorkoutType.SNOWSHOEING),
     (66, "Frisbee golf", WorkoutType.OTHER),
@@ -98,6 +110,10 @@ SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
     (85, "Openwater swimming", WorkoutType.OPEN_WATER_SWIMMING),
     (86, "Windsurfing", WorkoutType.WINDSURFING),
     (87, "Kitesurfing", WorkoutType.KITESURFING),
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 2fb28ae (add suunto mappings)
     # Extended Activities (88-121)
     (88, "Paragliding", WorkoutType.OTHER),
     (90, "Snorkeling", WorkoutType.DIVING),
