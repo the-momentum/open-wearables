@@ -126,15 +126,16 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         metrics = self._build_metrics(raw_workout)
 
         record = EventRecordCreate(
+            category="workout",
+            type=self._get_workout_type(raw_workout.sport).value,
+            source_name=raw_workout.device,
+            device_id=raw_workout.device,
+            duration_seconds=duration_seconds,
+            start_datetime=start_date,
+            end_datetime=end_date,
             id=workout_id,
             provider_id=raw_workout.id,
             user_id=user_id,
-            type=self._get_workout_type(raw_workout.sport).value,
-            duration_seconds=duration_seconds,
-            source_name=raw_workout.device,
-            device_id=raw_workout.device,
-            start_datetime=start_date,
-            end_datetime=end_date,
         )
 
         detail = EventRecordDetailCreate(
