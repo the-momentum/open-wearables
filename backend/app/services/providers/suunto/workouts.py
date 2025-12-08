@@ -13,6 +13,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.constants.workout_types.suunto import get_unified_workout_type
 
 
 class SuuntoWorkouts(BaseWorkoutsTemplate):
@@ -113,6 +114,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Normalize Suunto workout to EventRecordCreate."""
         workout_id = uuid4()
 
+        workout_type = get_unified_workout_type(raw_workout.workoutId)
+
         start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = int(raw_workout.totalTime)
 
@@ -124,7 +127,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         workout_create = EventRecordCreate(
             category="workout",
-            type=self._get_workout_type(raw_workout.workoutId).value,
+            type=workout_type.value,
             source_name=source_name,
             device_id=device_id,
             duration_seconds=duration_seconds,
