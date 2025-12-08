@@ -116,7 +116,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             "steps_total": steps_total,
         }
 
-
     def _normalize_workout(
         self,
         raw_workout: GarminActivityJSON,

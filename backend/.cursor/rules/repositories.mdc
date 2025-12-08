@@ -43,10 +43,10 @@ Add custom database methods by extending the base repository:
 class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
     def __init__(self, model: type[User]):
         super().__init__(model)
-    
+
     def get_by_email(self, db_session: DbSession, email: str) -> User | None:
         return db_session.query(self.model).filter(self.model.email == email).one_or_none()
-    
+
     def get_active_users(self, db_session: DbSession) -> list[User]:
         return db_session.query(self.model).filter(self.model.is_active == True).all()
 ```
@@ -58,7 +58,7 @@ Create separate mixin repositories for specific functionality:
 class ActivityMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-    
+
     def is_user_active(self, db_session: DbSession, user_id: UUID) -> bool:
         user = db_session.query(self.model).filter(self.model.id == user_id).one_or_none()
         return user.is_active if user else False

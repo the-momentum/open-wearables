@@ -35,10 +35,10 @@ from logging import Logger
 
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
     def __init__(
-        self, 
-        crud_model: type[UserRepository], 
-        model: type[User], 
-        log: Logger, 
+        self,
+        crud_model: type[UserRepository],
+        model: type[User],
+        log: Logger,
         **kwargs
     ) -> None:
         super().__init__(crud_model, model, log, **kwargs)
@@ -63,10 +63,10 @@ class ActivityMixin:
 
 class UserService(AppService[UserRepository, User, UserCreate, UserUpdate], ActivityMixin):
     def __init__(
-        self, 
-        crud_model: type[UserRepository], 
-        model: type[User], 
-        log: Logger, 
+        self,
+        crud_model: type[UserRepository],
+        model: type[User],
+        log: Logger,
         **kwargs
     ) -> None:
         super().__init__(crud_model, model, log, **kwargs)
