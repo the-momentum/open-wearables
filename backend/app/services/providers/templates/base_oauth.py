@@ -40,10 +40,8 @@ class BaseOAuthTemplate(ABC):
         self.connection_repo = connection_repo
         self.provider_name = provider_name
         self.api_base_url = api_base_url
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            db=settings.redis_db,
+        self.redis_client = redis.from_url(
+            settings.redis_url,
             decode_responses=True,
         )
         self.state_ttl = 900  # 15 minutes
