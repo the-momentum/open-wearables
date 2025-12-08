@@ -143,19 +143,8 @@ function LoginPage() {
           </div>
 
           {/* Footer Links */}
-          <div className="flex items-center justify-between text-xs text-zinc-600">
+          <div className="flex items-center text-xs text-zinc-600">
             <p>© 2025 Open Wearables</p>
-            <div className="flex gap-3">
-              <a href="#" className="hover:text-zinc-400 transition-colors">
-                Privacy
-              </a>
-              <Link
-                to="/register"
-                className="text-white hover:text-zinc-200 transition-colors"
-              >
-                Sign up
-              </Link>
-            </div>
           </div>
         </div>
 
