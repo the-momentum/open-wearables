@@ -407,7 +407,7 @@ def seed_activity_data() -> None:
         personal_record_repo = CrudRepository(PersonalRecord)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
 
-        for user_num in range(1, 11):
+        for user_num in range(1, 3):
             # Create user
             user_data = UserCreate(
                 first_name=fake.first_name(),
@@ -418,7 +418,7 @@ def seed_activity_data() -> None:
 
             user = user_service.create(db, user_data)
             users_created += 1
-            print(f"✓ Created user {user_num}/10: {user.email} (ID: {user.id})")
+            print(f"✓ Created user {user_num}/2: {user.email} (ID: {user.id})")
 
             # Create personal record (one per user)
             personal_record_data = generate_personal_record(user.id, fake)
