@@ -5,10 +5,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
-  pull_request_target:
-    paths:
-      - "backend/**"
-      - "frontend/**"
+  workflow_dispatch:
 
 jobs:
   # Detect which parts of the codebase changed
