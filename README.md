@@ -52,40 +52,58 @@ Open Wearables handles this complexity so you can focus on building your product
 - 🧪 **Product Pilots**: Non-technical product owners can test platform functionality by sharing connection links with users without needing their own app
 - 👤 **Personal Use**: Individuals can self-host the platform to connect their own wearables, chat with their health data using the AI Health Assistant, and set up personal health insights - all with complete data privacy and control
 
-## Setup
+## Getting Started
 
-1. **Create environment file**
+Get Open Wearables up and running in minutes.
+
+1. **Clone the repository:**
    ```bash
-   cp ./config/.env.example ./config/.env
-   # Edit .env file with your configuration
+   git clone https://github.com/the-momentum/open-wearables.git
+   cd open-wearables
    ```
 
-## Running the Application
+2. **Configure environment variables:**
+   
+   **Backend configuration:**
+   ```bash
+   cp ./backend/config/.env.example ./backend/config/.env
+   ```
+   
+   **Frontend configuration:**
+   ```bash
+   cp ./frontend/.env.example ./frontend/.env
+   ```
 
-### Docker (Recommended)
+3. **Start the application**
+   
+   **Using Docker (Recommended):**
+   
+   The easiest way to get started is with Docker Compose:
+   ```bash
+   docker compose up -d
+   ```
+   
+   For local development setup without Docker take a look at [docs](https://docs.openwearables.io/quickstart#local-development-setup)
 
-```bash
-# Start services
-docker compose up -d
-```
+4. **Seed sample data** (optional but recommended):
+   If you're using Docker, seed the database with sample data including an admin account:
+   ```bash
+   make init
+   ```
+   
+   This will create:
+   - An admin user account (`admin@admin.com` / `secret123`)
+   - 10 test users
+   - Sample activity data for test users
 
-### Seed sample data (optional)
 
-```bash
-make init
-```
+5. **Access the developer portal:**
 
-This script seeds sample data. The admin account allows you to immediately access the developer portal without needing to register first.
+   Open http://localhost:3000 to access the developer portal and create API keys.
 
-**Default Admin Credentials:**
-- Email: `admin@admin.com`
-- Password: `secret123`
+6. **View API documentation:**
 
-### Access the application
-- 🌐 API: http://localhost:8000
-- 📚 Swagger: http://localhost:8000/docs
-
-Default credentials are provided in the `.env.example` file.
+   Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
 
 ## Core Features
 
