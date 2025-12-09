@@ -1,7 +1,7 @@
 from uuid import UUID
 
 import isodate
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
@@ -103,7 +103,6 @@ class EventRecordRepository(
         Returns list of (workout_type, count) tuples ordered by count descending.
         Only includes records with category='workout'.
         """
-        from sqlalchemy import func
 
         results = (
             db_session.query(self.model.type, func.count(self.model.id).label("count"))

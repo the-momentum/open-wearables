@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import desc, func
+from sqlalchemy import Date, cast, desc, func
 
 from app.constants.series_types import get_series_type_id
 from app.database import DbSession
@@ -96,7 +96,6 @@ class DataPointSeriesRepository(
 
         Returns a list of counts, one per day, ordered chronologically.
         """
-        from sqlalchemy import Date, cast
 
         daily_counts = (
             db_session.query(cast(self.model.recorded_at, Date).label("date"), func.count(self.model.id).label("count"))
