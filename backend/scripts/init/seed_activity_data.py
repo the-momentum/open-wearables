@@ -188,13 +188,13 @@ def generate_time_series_samples(
     provider_id: str | None = None,
     device_id: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
-    """Generate time series samples (heart rate and steps) for a workout period."""
+    """Generate time series samples for a workout period with realistic frequencies."""
     samples = []
     current_time = workout_start
 
     # Generate samples every 30 seconds during the workout
     while current_time <= workout_end:
-        # Heart rate sample
+        # Heart rate sample (very common during workouts)
         if fake_instance.boolean(chance_of_getting_true=80):
             samples.append(
                 HeartRateSampleCreate(
@@ -208,7 +208,7 @@ def generate_time_series_samples(
                 ),
             )
 
-        # Step sample (less frequent, every 2 minutes)
+        # Step sample (common during walking/running workouts)
         if fake_instance.boolean(chance_of_getting_true=30):
             samples.append(
                 StepSampleCreate(
@@ -219,6 +219,174 @@ def generate_time_series_samples(
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=10, max=50)),
                     series_type=SeriesType.steps,
+                ),
+            )
+
+        # Energy/calories burned (moderately frequent)
+        if fake_instance.boolean(chance_of_getting_true=25):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=5, max=20)),
+                    series_type=SeriesType.energy,
+                ),
+            )
+
+        # Distance walking/running (common for running/walking workouts)
+        if fake_instance.boolean(chance_of_getting_true=20):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=10, max=100)),
+                    series_type=SeriesType.distance_walking_running,
+                ),
+            )
+
+        # Distance cycling (less common, only for cycling workouts)
+        if fake_instance.boolean(chance_of_getting_true=10):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=20, max=200)),
+                    series_type=SeriesType.distance_cycling,
+                ),
+            )
+
+        # Respiratory rate (moderately frequent during exercise)
+        if fake_instance.boolean(chance_of_getting_true=25):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=12, max=30)),
+                    series_type=SeriesType.respiratory_rate,
+                ),
+            )
+
+        # Walking heart rate average (less frequent, calculated metric)
+        if fake_instance.boolean(chance_of_getting_true=8):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=100, max=140)),
+                    series_type=SeriesType.walking_heart_rate_average,
+                ),
+            )
+
+        # Heart rate variability SDNN (less frequent, requires special sensors)
+        if fake_instance.boolean(chance_of_getting_true=5):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=20, max=80)),
+                    series_type=SeriesType.heart_rate_variability_sdnn,
+                ),
+            )
+
+        # Oxygen saturation (less frequent, requires special sensors)
+        if fake_instance.boolean(chance_of_getting_true=5):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=95, max=100)),
+                    series_type=SeriesType.oxygen_saturation,
+                ),
+            )
+
+        # Resting heart rate (very infrequent during workout, but occasionally measured)
+        if fake_instance.boolean(chance_of_getting_true=1):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=55, max=75)),
+                    series_type=SeriesType.resting_heart_rate,
+                ),
+            )
+
+        # Body temperature (very infrequent, measured occasionally)
+        if fake_instance.boolean(chance_of_getting_true=2):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=360, max=375)) / Decimal(10),  # 36.0-37.5°C
+                    series_type=SeriesType.body_temperature,
+                ),
+            )
+
+        # Weight (very infrequent, measured occasionally, not during workout)
+        if fake_instance.boolean(chance_of_getting_true=1):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=500, max=1200)) / Decimal(10),  # 50.0-120.0 kg
+                    series_type=SeriesType.weight,
+                ),
+            )
+
+        # Body fat percentage (very infrequent, measured rarely)
+        if fake_instance.boolean(chance_of_getting_true=1):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=100, max=300)) / Decimal(10),  # 10.0-30.0%
+                    series_type=SeriesType.body_fat_percentage,
+                ),
+            )
+
+        # Height (extremely infrequent, rarely changes)
+        if fake_instance.boolean(chance_of_getting_true=1):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider_id=provider_id,
+                    device_id=device_id,
+                    recorded_at=current_time,
+                    value=Decimal(fake_instance.random_int(min=150, max=200)),  # 150-200 cm
+                    series_type=SeriesType.height,
                 ),
             )
 
