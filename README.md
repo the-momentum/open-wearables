@@ -10,6 +10,12 @@
 
 </div>
 
+---
+
+**Documentation**: https://docs.openwearables.io
+
+---
+
 Open-source platform that unifies wearable device data from multiple providers and enables AI-powered health insights through natural language automations. Build health applications faster with a single API, embeddable widgets, and intelligent webhook notifications.
 
 ## What It Does
