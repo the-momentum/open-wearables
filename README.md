@@ -143,6 +143,11 @@ Simplified connection process for end users:
 3. Data automatically syncs to your platform
 4. Access via unified API
 
+### SDK & Widgets (coming soon)
+- 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
+- 🤖 **AI Health Assistant Widget**: Embed the AI chat interface for user health queries
+- 🍏 **Flutter SDK**: Handles HealthKit permissions, background sync, and data normalization
+
 ## Architecture
 
 Built with:
@@ -153,15 +158,9 @@ Built with:
 
 The platform is designed for self-hosting, meaning each deployment serves a single organization. No multi-tenancy complexity.
 
-## SDK & Widgets (coming soon)
-
-- 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
-- 🤖 **AI Health Assistant Widget**: Embed the AI chat interface for user health queries
-- 🍏 **Flutter SDK**: Handles HealthKit permissions, background sync, and data normalization
-
 ## Development Roadmap
 
-**✅ Available**:
+**Available**:
 - Developer portal
 - User management (via API and developer portal)
 - OAuth flow for Garmin, Polar, and Suunto
@@ -173,12 +172,6 @@ The platform is designed for self-hosting, meaning each deployment serves a sing
 - AI Health Assistant
 - Mobile SDK (Flutter)
 - Enhanced widget integration
-
-**Planned**:
-- 📤 Advanced data export features
-- 📚 Enhanced documentation site
-- 📝 API request logging
-- 🎨 Prompt-based view regeneration for user metrics
 
 ## Join the Discord
 
