@@ -20,10 +20,8 @@ Open Wearables provides a unified API and developer portal to connect and sync d
 <img width="597" height="449" alt="image" src="https://github.com/user-attachments/assets/b626405d-99a3-4ff7-b044-442483a3edea" />
 </div>
 
-**Vision**: Health Insights automations unlock the potential of user data and allow you to drive businesses in a completely new way. By defining conditions in natural language, developers can create intelligent notifications and insights that respond to user health patterns, enabling new types of health applications and services.
-
 > [!IMPORTANT]
-> **For Individuals**: This platform can also be used by individuals who want to interact with their own wearable data. Connect your devices, use the AI Health Assistant to chat with your health data, and set up personal health insights automations - all while keeping your data on your own infrastructure.
+> **For Individuals**: This platform isn't just for developers - individuals can self-host it to take control of their own wearable data. Connect your devices, explore your health metrics through the unified API, and stay tuned for upcoming features like the AI Health Assistant and personal health insights automations. Best of all, your data stays on your own infrastructure, giving you complete privacy and control.
 
 ## Why Use It
 
