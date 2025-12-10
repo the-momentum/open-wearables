@@ -286,7 +286,10 @@ function UsersPage() {
               <Button variant="outline" onClick={handleCloseCreateDialog}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateUser} disabled={createUser.isPending}>
+              <Button
+                onClick={handleCreateUser}
+                disabled={createUser.isPending}
+              >
                 {createUser.isPending ? 'Creating...' : 'Create User'}
               </Button>
             </div>

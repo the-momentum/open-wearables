@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class UserQueryParams(BaseModel):
     """Query parameters for filtering and searching users.
-    
+
     Args:
         page: The page number (1-based).
         limit: The number of results per page.
