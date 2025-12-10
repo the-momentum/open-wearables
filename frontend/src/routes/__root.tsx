@@ -50,6 +50,45 @@ export const Route = createRootRoute({
         rel: 'stylesheet',
         href: appCss,
       },
+      // Fallback for browsers that don't support media queries
+      {
+        rel: 'icon',
+        href: '/favicon.ico',
+      },
+      {
+        rel: 'apple-touch-icon',
+        href: '/apple-touch-icon.png',
+      },
+      // Favicons - Light theme (dark icons for light backgrounds)
+      {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: '/favicon-light-32x32.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '16x16',
+        href: '/favicon-light-16x16.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      // Favicons - Dark theme (light icons for dark backgrounds)
+      {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: '/favicon-dark-32x32.png',
+        media: '(prefers-color-scheme: dark)',
+      },
+      {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '16x16',
+        href: '/favicon-dark-16x16.png',
+        media: '(prefers-color-scheme: dark)',
+      },
     ],
   }),
 
