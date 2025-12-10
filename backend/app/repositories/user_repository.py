@@ -62,7 +62,12 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
 
         total_count = query.count()
 
-        sort_column = getattr(self.model, query_params.sort_by or "created_at")
+        # Validate sort_by column exists
+        sort_by_column = query_params.sort_by or "created_at"
+        if not hasattr(self.model, sort_by_column):
+            raise ValueError(f"Invalid sort_by column: {sort_by_column}")
+
+        sort_column = getattr(self.model, sort_by_column)
         order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
         query = query.order_by(order_column)
 
