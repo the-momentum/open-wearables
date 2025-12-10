@@ -1,6 +1,8 @@
 from typing import Literal
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.database import DbSession
 from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
 from app.repositories.repositories import CrudRepository
@@ -32,12 +34,21 @@ class EventRecordDetailRepository(
             detail = SleepDetails(**creation_data)
         else:
             raise ValueError(f"Unknown detail type: {detail_type}")
-
-        db_session.add(detail)
-        db_session.commit()
-        db_session.refresh(detail)
-        return detail
-
+        
+        try:
+            db_session.add(detail)
+            db_session.commit()
+            db_session.refresh(detail)
+            return detail
+        except IntegrityError:
+            db_session.rollback()
+            existing = db_session.query(self.model).filter(
+                self.model.record_id == detail.record_id,
+            ).one_or_none()
+            if existing:
+                return existing
+            raise
+    
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
         """Get detail by its associated event record ID."""
         return db_session.query(EventRecordDetail).filter(EventRecordDetail.record_id == record_id).one_or_none()

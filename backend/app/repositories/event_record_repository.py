@@ -3,6 +3,7 @@ from uuid import UUID
 import isodate
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Query
+from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.models import EventRecord, ExternalDeviceMapping
@@ -35,10 +36,25 @@ class EventRecordRepository(
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
-        db_session.add(creation)
-        db_session.commit()
-        db_session.refresh(creation)
-        return creation
+        try:
+            db_session.add(creation)
+            db_session.commit()
+            db_session.refresh(creation)
+            return creation
+        except IntegrityError:
+            db_session.rollback()
+            existing = (
+                db_session.query(self.model)
+                .filter(
+                    self.model.external_mapping_id == creation.external_mapping_id,
+                    self.model.start_datetime == creation.start_datetime,
+                    self.model.category == creation.category,
+                )
+                .one_or_none()
+            )
+            if existing:
+                return existing
+            raise
 
     def get_records_with_filters(
         self,
