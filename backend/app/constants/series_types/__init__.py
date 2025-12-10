@@ -7,4 +7,3 @@ __all__ = [
     "get_series_type_from_id",
     "get_series_type_from_apple_metric_type",
 ]
-

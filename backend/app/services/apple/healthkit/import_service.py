@@ -4,8 +4,8 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
-from app.constants.workout_types import get_unified_workout_type
 from app.constants.series_types import get_series_type_from_apple_metric_type
+from app.constants.workout_types import get_unified_workout_type
 from app.database import DbSession
 from app.schemas import (
     EventRecordCreate,
@@ -15,10 +15,10 @@ from app.schemas import (
     HKRecordJSON,
     HKWorkoutJSON,
     RootJSON,
-    StepSampleCreate,
-    UploadDataResponse,
-    TimeSeriesSampleCreate,
     SeriesType,
+    StepSampleCreate,
+    TimeSeriesSampleCreate,
+    UploadDataResponse,
 )
 from app.services.event_record_service import event_record_service
 from app.services.time_series_service import time_series_service
@@ -93,23 +93,24 @@ class ImportService:
             series_type = get_series_type_from_apple_metric_type(record_type)
             if series_type is None:
                 continue
-            
-            time_series_data = {
-                "id": uuid4(),
-                "user_id": user_uuid,
-                "provider_id": rjson.uuid,
-                "device_id": rjson.sourceName or None,
-                "recorded_at": rjson.startDate,
-                "value": value,
-            }
+
+            sample = TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_uuid,
+                provider_id=rjson.uuid,
+                device_id=rjson.sourceName or None,
+                recorded_at=rjson.startDate,
+                value=value,
+                series_type=series_type,
+            )
 
             match series_type:
                 case SeriesType.heart_rate:
-                    time_series_samples.append(HeartRateSampleCreate(**time_series_data))
+                    time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
                 case SeriesType.steps:
-                    time_series_samples.append(StepSampleCreate(**time_series_data))
+                    time_series_samples.append(StepSampleCreate(**sample.model_dump()))
                 case _:
-                    time_series_samples.append(TimeSeriesSampleCreate(series_type=series_type, **time_series_data))
+                    time_series_samples.append(sample)
 
         return time_series_samples
 

@@ -2,8 +2,8 @@ from uuid import UUID
 
 import isodate
 from sqlalchemy import and_, desc, func
-from sqlalchemy.orm import Query
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Query
 
 from app.database import DbSession
 from app.models import EventRecord, ExternalDeviceMapping

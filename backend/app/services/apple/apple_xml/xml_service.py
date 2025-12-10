@@ -14,9 +14,9 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
+    SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
-    SeriesType,
 )
 
 
@@ -78,23 +78,26 @@ class XMLService:
         series_type = get_series_type_from_apple_metric_type(metric_type)
         value = Decimal(document["value"])
 
-        # Build common fields as a dictionary to avoid creating invalid objects
-        sample_data = {
-            "id": uuid4(),
-            "user_id": user_id,
-            "provider_id": None,
-            "device_id": document.get("device", "")[:100],
-            "recorded_at": document["startDate"],
-            "value": value,
-        }
+        if series_type is None:
+            return None
+
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            provider_id=None,
+            device_id=document.get("device", "")[:100],
+            recorded_at=document["startDate"],
+            value=value,
+            series_type=series_type,
+        )
 
         match series_type:
             case SeriesType.heart_rate:
-                return HeartRateSampleCreate(**sample_data)
+                return HeartRateSampleCreate(**sample.model_dump())
             case SeriesType.steps:
-                return StepSampleCreate(**sample_data)
+                return StepSampleCreate(**sample.model_dump())
             case _:
-                return TimeSeriesSampleCreate(series_type=series_type, **sample_data)
+                return sample
 
     def _create_workout(
         self,
