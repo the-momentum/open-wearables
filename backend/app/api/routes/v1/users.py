@@ -4,21 +4,21 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from app.database import DbSession
-from app.schemas.filter_params import FilterParams
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.common import PaginatedResponse
+from app.schemas.user import UserCreate, UserQueryParams, UserRead, UserUpdate
 from app.services import ApiKeyDep, DeveloperDep, user_service
 
 router = APIRouter()
 
 
-@router.get("/users", response_model=list[UserRead])
+@router.get("/users", response_model=PaginatedResponse[UserRead])
 async def list_users(
     db: DbSession,
     _api_key: ApiKeyDep,
-    filter_params: Annotated[FilterParams, Depends()],
+    query_params: Annotated[UserQueryParams, Depends()],
 ):
-    """List users with pagination, sorting, and filtering."""
-    return user_service.get_all(db, filter_params)
+    """List users with pagination, sorting, and search."""
+    return user_service.get_users_paginated(db, query_params)
 
 
 @router.get("/users/{user_id}", response_model=UserRead)

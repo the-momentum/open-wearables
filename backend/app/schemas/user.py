@@ -1,7 +1,39 @@
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class UserQueryParams(BaseModel):
+    """Query parameters for filtering and searching users.
+    
+    Args:
+        page: The page number (1-based).
+        limit: The number of results per page.
+        sort_by: The field to sort by.
+        sort_order: The sort order.
+        search: The search term.
+        email: Filter by exact email match.
+        external_user_id: Filter by external user ID.
+    """
+
+    page: int = Field(1, ge=1, description="Page number (1-based)")
+    limit: int = Field(20, ge=1, le=100, description="Number of results per page")
+
+    sort_by: Literal["created_at", "email", "first_name", "last_name"] | None = Field(
+        "created_at",
+        description="Field to sort by",
+    )
+    sort_order: Literal["asc", "desc"] = Field("desc", description="Sort order")
+
+    search: str | None = Field(
+        None,
+        description="Search across first_name, last_name, and email (partial match)",
+    )
+
+    email: EmailStr | None = Field(None, description="Filter by exact email")
+    external_user_id: str | None = Field(None, description="Filter by external user ID")
 
 
 class UserRead(BaseModel):
