@@ -208,4 +208,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ---
 
-This project was generated from the [Python AI Kit](https://github.com/the-momentum/python-ai-kit).
+The backend part of this project was generated from the [Python AI Kit](https://github.com/the-momentum/python-ai-kit).
