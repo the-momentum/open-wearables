@@ -32,7 +32,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         query_params: UserQueryParams,
     ) -> PaginatedResponse[UserRead]:
         """Get users with filtering, searching, and pagination.
-        
+
         Args:
             db_session: The database session.
             query_params: The query parameters.
@@ -47,7 +47,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         self.logger.debug(f"Retrieved {len(users)} users out of {total_count} total")
 
         return PaginatedResponse[UserRead](
-            items=users,
+            items=[UserRead.model_validate(user) for user in users],
             total=total_count,
             page=query_params.page,
             limit=query_params.limit,

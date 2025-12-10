@@ -13,7 +13,8 @@ export const usersService = {
     const searchParams = new URLSearchParams();
 
     if (params?.page != null) searchParams.set('page', params.page.toString());
-    if (params?.limit != null) searchParams.set('limit', params.limit.toString());
+    if (params?.limit != null)
+      searchParams.set('limit', params.limit.toString());
     if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
     if (params?.sort_order) searchParams.set('sort_order', params.sort_order);
     if (params?.search) searchParams.set('search', params.search);

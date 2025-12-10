@@ -32,7 +32,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
         query_params: UserQueryParams,
     ) -> tuple[list[User], int]:
         """Get users with filtering, searching, and pagination.
-        
+
         Args:
             db_session: The database session.
             query_params: The query parameters.
@@ -51,7 +51,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
                     self.model.email.ilike(search_term, escape="\\"),
                     self.model.first_name.ilike(search_term, escape="\\"),
                     self.model.last_name.ilike(search_term, escape="\\"),
-                )
+                ),
             )
 
         if query_params.email:
