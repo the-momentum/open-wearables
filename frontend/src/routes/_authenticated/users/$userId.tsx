@@ -17,7 +17,7 @@ import {
   useUserConnections,
   useWorkouts,
 } from '@/hooks/api/use-health';
-import { useUsers, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
+import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
@@ -42,7 +42,7 @@ export const Route = createFileRoute('/_authenticated/users/$userId')({
 function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
-  const { data: users, isLoading: usersLoading } = useUsers();
+  const { data: user, isLoading: userLoading } = useUser(userId);
   const { data: heartRateData, isLoading: heartRateLoading } =
     useHeartRate(userId);
   const { data: workouts, isLoading: workoutsLoading } = useWorkouts(userId, {
@@ -53,8 +53,6 @@ function UserDetailPage() {
     useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
-
-  const user = users?.find((u) => u.id === userId);
   const heartRateStats = calculateHeartRateStats(heartRateData);
   const [copied, setCopied] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -111,7 +109,7 @@ function UserDetailPage() {
     );
   };
 
-  if (!usersLoading && !user) {
+  if (!userLoading && !user) {
     return (
       <div className="p-8">
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
@@ -139,7 +137,7 @@ function UserDetailPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          {usersLoading ? (
+          {userLoading ? (
             <div className="space-y-2">
               <div className="h-7 w-48 bg-zinc-800 rounded animate-pulse" />
               <div className="h-4 w-32 bg-zinc-800/50 rounded animate-pulse" />
@@ -219,7 +217,7 @@ function UserDetailPage() {
           </button>
         </div>
         <div className="p-6">
-          {usersLoading ? (
+          {userLoading ? (
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                 <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
