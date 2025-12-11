@@ -31,7 +31,8 @@
           {
             "group": "Providers",
             "pages": [
-              "provider-setup/index"
+              "provider-setup/index",
+              "provider-setup/how-to-add-new-provider"
             ]
           },
           {

@@ -1,0 +1,690 @@
+---
+title: 'Adding a new provider integration'
+description: 'Step-by-step guide to integrating a new fitness data provider into OpenWearables'
+---
+
+# How to Add a New Provider Integration
+
+This guide walks you through the process of adding a new fitness data provider (e.g. Strava, Samsung Health, Xiaomi, WHOOP) to the OpenWearables platform. The architecture uses design patterns like **Strategy**, **Factory**, and **Template Method** to make adding new providers straightforward and consistent.
+
+## Architecture Overview
+
+Before diving into implementation, understand the three main components:
+
+1. **Strategy** - Defines the provider's capabilities and configuration
+2. **Strategy Factory** - Central managment of strategies initialisation (used by routes)
+2. **OAuth Handler** - Manages authentication flow (if the provider uses cloud API)
+3. **Workouts Handler** - Fetches and normalizes workout data
+4. more in the future...
+
+Each provider supports one or both data flow patterns:
+- **PULL**: Fetch data from provider's cloud API using OAuth tokens
+- **PUSH**: Receive data via webhooks or file uploads
+
+<Note>
+For reference: Suunto and Polar are PUSH-only, while Garmin supports both PULL and PUSH patterns.
+</Note>
+
+<img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture" />
+
+---
+
+## Prerequisites
+
+Before starting, gather the following information about your provider:
+
+<AccordionGroup>
+  <Accordion title="Provider API Information">
+    - Base API URL (e.g. `https://cloudapi.suunto.com`)
+    - Authentication method (usually OAuth 2.0)
+    - Available data endpoints (activities, workouts, health metrics)
+    - Rate limits and pagination
+  </Accordion>
+
+  <Accordion title="OAuth Configuration (if applicable)">
+    - Authorization URL
+    - Token exchange URL
+    - Required scopes
+    - PKCE required (yes/no)
+    - Credentials being sent via `Authorization` header or request body
+    - Client credentials (ID and Secret)
+    - Where redirect URL should be registered
+  </Accordion>
+
+  <Accordion title="Data Format">
+    - Workout/activity data structure
+    - Timestamp format (Unix, ISO 8601, etc.)
+    - Available metrics (heart rate, distance, calories, etc.)
+    - Workout type mappings
+  </Accordion>
+</AccordionGroup>
+
+<Callout icon="key" color="#FFC107" iconType="regular">Please, remember to provide `svg` icon for a new provider. It should be named `<lowercase_provider_name>.svg` and be placed in `/backend/app/static/provider-icons`.</Callout>
+
+---
+
+## Step 1: Create Provider Directory Structure
+
+Create a new directory for your provider in `backend/app/services/providers/`.
+
+For a provider named **Suunto**, create:
+
+```bash
+backend/app/services/providers/suunto/
+├── __init__.py
+├── strategy.py     # Provider strategy implementation
+├── oauth.py        # OAuth handler (skip if PUSH-only)
+└── workouts.py     # Workouts data handler
+```
+
+<Tip>
+Use lowercase for the provider name in directory and file names to maintain consistency with existing providers.
+</Tip>
+
+---
+
+## Step 2: Implement the Strategy Class
+
+The strategy class is the entry point for your provider. It defines the provider's identity and initializes its components.
+
+Create `backend/app/services/providers/suunto/strategy.py`:
+
+```python
+from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.suunto.oauth import SuuntoOAuth
+from app.services.providers.suunto.workouts import SuuntoWorkouts
+
+
+class SuuntoStrategy(BaseProviderStrategy):
+    """Suunto provider implementation."""
+
+    def __init__(self):
+        super().__init__()
+        
+        # Initialize OAuth component (skip if PUSH-only provider)
+        self.oauth = SuuntoOAuth(
+            user_repo=self.user_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+        )
+        
+        # Initialize workouts component
+        self.workouts = SuuntoWorkouts(
+            workout_repo=self.workout_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,  # Pass None for PUSH-only providers
+        )
+
+    @property
+    def name(self) -> str:
+        """Unique identifier for the provider (lowercase)."""
+        return "suunto"
+
+    @property
+    def api_base_url(self) -> str:
+        """Base URL for the provider's API."""
+        return "https://cloudapi.suunto.com"
+```
+
+### Key Points:
+
+- `name`: Must be unique and lowercase (used in URLs and database)
+- `api_base_url`: Used by the API client to construct requests
+- `display_name`: Optional, shown in UI (defaults to `name.capitalize()`)
+- Set `self.oauth = None` for PUSH-only providers like Apple Health
+
+<img src="/images/providers/provider-strategy.png" alt="Custom providers strategy" />
+
+<Check>
+Inherited `BaseProviderStrategy` will init all required repositories so you don't need to take care about database manipulations. You can read more about repositories role in our [System Overview](/architecture/system-overview).
+</Check>
+---
+
+## Step 3: Implement OAuth Handler (PULL providers)
+
+If your provider uses OAuth 2.0 for authentication, implement the OAuth handler.
+
+Create `backend/app/services/providers/suunto/oauth.py`:
+
+```python
+import httpx
+from app.config import settings
+from app.schemas import (
+    AuthenticationMethod,
+    OAuthTokenResponse,
+    ProviderCredentials,
+    ProviderEndpoints,
+)
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+
+
+class SuuntoOAuth(BaseOAuthTemplate):
+    """Suunto OAuth 2.0 implementation."""
+
+    @property
+    def endpoints(self) -> ProviderEndpoints:
+        """OAuth endpoints for authorization and token exchange."""
+        return ProviderEndpoints(
+            authorize_url="https://cloudapi-oauth.suunto.com/oauth/authorize",
+            token_url="https://cloudapi-oauth.suunto.com/oauth/token",
+        )
+
+    @property
+    def credentials(self) -> ProviderCredentials:
+        """OAuth credentials from environment variables."""
+         return ProviderCredentials(
+            client_id=settings.suunto_client_id or "",
+            client_secret=(settings.suunto_client_secret.get_secret_value() if settings.suunto_client_secret else ""),
+            redirect_uri=settings.suunto_redirect_uri,
+            default_scope=settings.suunto_default_scope,
+            subscription_key=(
+                settings.suunto_subscription_key.get_secret_value() if settings.suunto_subscription_key else ""
+            ),
+        )
+
+    # OAuth configuration
+    use_pkce: bool = False  # Set True if provider requires PKCE
+    auth_method: AuthenticationMethod = AuthenticationMethod.BASIC_AUTH  # or BODY
+
+    def _get_provider_user_info(
+        self, 
+        token_response: OAuthTokenResponse, 
+        user_id: str
+    ) -> dict[str, str | None]:
+        # implement your method here
+        pass
+```
+<Info>Here you can also create all provider-specific methods, like `_register_user` in Polar's case.</Info>
+
+### Configuration Options:
+
+<CardGroup cols={2}>
+  <Card title="use_pkce" icon="shield-halved">
+    Set to `True` if provider requires PKCE (Proof Key for Code Exchange). Garmin enforces PKCE, Polar and Suunto don't.
+  </Card>
+  
+  <Card title="auth_method" icon="key">
+    - `BASIC_AUTH`: Credentials in Authorization header (Polar, Suunto)
+    - `BODY`: Credentials in request body (Garmin)
+  </Card>
+</CardGroup>
+
+### Add Environment Variables:
+
+Add your OAuth credentials to `.env`:
+
+```bash
+SUUNTO_CLIENT_ID=your_client_id
+SUUNTO_CLIENT_SECRET=your_client_secret
+SUUNTO_REDIRECT_URI=https://yourdomain.com/api/v1/oauth/suunto/callback
+SUUNTO_DEFAULT_SCOPE=activity:read_all
+```
+
+And update `backend/app/config.py`:
+
+```python
+class Settings(BaseSettings):
+    # ... existing settings ...
+    
+    # Suunto OAuth
+    suunto_client_id: str | None = None
+    suunto_client_secret: SecretStr | None = None
+    suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
+    suunto_default_scope: str = "activity:read_all"
+```
+
+---
+
+## Step 4: Implement Workouts Handler
+
+The workouts handler fetches and normalizes workout data from the provider's API.
+
+Create `backend/app/services/providers/suunto/workouts.py`:
+
+```python
+from datetime import datetime
+from decimal import Decimal
+from typing import Any
+from uuid import UUID, uuid4
+
+from app.database import DbSession
+from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+
+
+class SuuntoWorkouts(BaseWorkoutsTemplate):
+    """Suunto workouts implementation."""
+
+    def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
+        """Extract start and end dates from timestamps."""
+        start_date = datetime.fromtimestamp(start_timestamp / 1000)
+        end_date = datetime.fromtimestamp(end_timestamp / 1000)
+        return start_date, end_date
+
+    def _build_metrics(self, raw_workout: SuuntoWorkoutJSON) -> EventRecordMetrics:
+        hr_data = ...
+        heart_rate_avg = ...
+        heart_rate_max = ...
+        steps_count = ...
+        steps_avg = ...
+
+        return {
+            "heart_rate_min": ...
+            "heart_rate_max": ...
+            "heart_rate_avg": heart_rate_avg,
+            "steps_min": steps_count,
+            "steps_max": steps_count,
+            "steps_avg": steps_avg,
+            "steps_total": steps_count,
+        }
+
+    def _normalize_workout(
+        self,
+        raw_workout: SuuntoWorkoutJSON,
+        user_id: UUID,
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        """Normalize Suunto workout to EventRecordCreate."""
+        workout_id = uuid4()
+
+        workout_type = get_unified_workout_type(raw_workout.activityId)
+
+        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
+        duration_seconds = int(raw_workout.totalTime)
+
+        source_name = ...
+
+        device_id = ...
+
+        metrics = self._build_metrics(raw_workout)
+
+        workout_create = EventRecordCreate(
+            category="workout",
+            type=workout_type.value,
+            source_name=source_name,
+            device_id=device_id,
+            duration_seconds=duration_seconds,
+            start_datetime=start_date,
+            end_datetime=end_date,
+            id=workout_id,
+            provider_id=str(raw_workout.workoutId),
+            user_id=user_id,
+        )
+
+        workout_detail_create = EventRecordDetailCreate(
+            record_id=workout_id,
+            **metrics,
+        )
+
+        return workout_create, workout_detail_create
+
+    def _build_bundles(
+        self,
+        raw: list[SuuntoWorkoutJSON],
+        user_id: UUID,
+    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
+        """Build event record payloads for Suunto workouts."""
+        for raw_workout in raw:
+            record, details = self._normalize_workout(raw_workout, user_id)
+            yield record, details
+
+    def load_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        **kwargs: Any,
+    ) -> bool:
+        """Load data from Suunto API."""
+        response = self.get_workouts_from_api(db, user_id, **kwargs)
+        workouts_data = response.get("payload", [])
+        workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
+
+        for record, details in self._build_bundles(workouts, user_id):
+            event_record_service.create(db, record)
+            event_record_service.create_detail(db, details)
+
+        return True
+```
+
+### Key Methods to Implement:
+
+<Steps>  
+  <Step title="_normalize_workout()">
+    **Most important!** Convert provider's data format to OpenWearables [unified schema](/architecture/unified-data-model).
+  </Step>
+  
+  <Step title="_extract_dates()">
+    Handle provider-specific timestamp formats (Unix, ISO 8601, custom strings)
+  </Step>
+
+  <Step title="_build_metrics()">
+    Creates statistics for Workout.
+  </Step>
+
+  <Step title="_build_bundles()">
+    Optimize query by bundling workout records into packages.
+  </Step>
+  
+  <Step title="load_data()">
+    Main sync method that orchestrates fetching and saving data
+  </Step>
+</Steps>
+
+<Warning>There are also utils modules, like `app/backend/services/providers/api_client.py`, which provides utilities for making oauth api requests.</Warning>
+
+---
+
+## Step 5: Create Workout Type Mapping
+
+Create a mapping file to convert provider-specific workout types to unified types.
+
+Create `backend/app/constants/workout_types/suunto.py`:
+
+```python
+"""Suunto activity type to OpenWearables unified workout type mapping."""
+from app.schemas.workout_types import WorkoutType
+
+SUUNTO_WORKOUT_TYPE_MAPPINGS: list[tuple[int, str, WorkoutType]] = [
+    (0, "Walking", WorkoutType.WALKING),
+    (1, "Running", WorkoutType.RUNNING),
+    (2, "Cycling", WorkoutType.CYCLING),
+
+    # [...]
+}
+
+SUUNTO_ID_TO_UNIFIED: dict[int, WorkoutType] = {
+    activity_id: unified_type for activity_id, _, unified_type in SUUNTO_WORKOUT_TYPE_MAPPINGS
+}
+
+SUUNTO_ID_TO_NAME: dict[int, str] = {activity_id: name for activity_id, name, _ in SUUNTO_WORKOUT_TYPE_MAPPINGS}
+
+
+def get_unified_workout_type(suunto_activity_id: int) -> WorkoutType:
+  return SUUNTO_ID_TO_UNIFIED.get(suunto_activity_id, WorkoutType.OTHER)
+
+def get_activity_name(suunto_activity_id: int) -> str:
+    """Get the Suunto activity name for a given ID."""
+    return SUUNTO_ID_TO_NAME.get(suunto_activity_id, "Unknown")
+```
+
+<Warning>
+Review the existing unified workout types in your system before mapping. You may need to add new unified types to accommodate provider-specific activities.
+</Warning>
+
+---
+
+## Step 6: Register Provider in Factory
+
+Add your new provider to the factory so it can be instantiated by the system.
+
+Edit `backend/app/services/providers/factory.py`:
+
+```python
+from app.services.providers.apple.strategy import AppleStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.polar.strategy import PolarStrategy
+from app.services.providers.suunto.strategy import SuuntoStrategy
+
+
+class ProviderFactory:
+    """Factory for creating provider instances."""
+
+    def get_provider(self, provider_name: str) -> BaseProviderStrategy:
+        match provider_name:
+            case "apple":
+                return AppleStrategy()
+            case "garmin":
+                return GarminStrategy()
+            case "suunto":
+                return SuuntoStrategy()
+            case "polar":
+                return PolarStrategy()
+            case _:
+                raise ValueError(f"Unknown provider: {provider_name}")
+```
+
+<Info>Factory will be used by routes endpoints to fetch correct strategy.</Info>
+
+---
+
+## Step 7: Add Provider to Schema Enums
+
+Update the `ProviderName` enum to include your new provider.
+
+Edit `backend/app/schemas/oauth.py`:
+
+```python
+from enum import Enum
+
+
+class ProviderName(str, Enum):
+    """Supported fitness data providers."""
+    
+    APPLE = "apple"
+    GARMIN = "garmin"
+    POLAR = "polar"
+    SUUNTO = "suunto"
+```
+
+This enables:
+- Type validation in API endpoints
+- Auto-generated API documentation with provider options
+- Enum-based routing
+
+---
+
+## Step 8: Test Your Integration
+
+Now test your implementation with these steps:
+
+### 1. Test OAuth Flow (if applicable)
+
+<CodeGroup>
+```bash Start OAuth
+curl -X GET "http://localhost:8000/api/v1/oauth/suunto/authorize?user_id=YOUR_USER_ID"
+```
+
+```json Response
+{
+  "authorization_url": "https://cloudapi-oauth.suunto.com/oauth/authorize?response_type=code&client_id=...",
+  "state": "random_state_string"
+}
+```
+</CodeGroup>
+
+Visit the authorization URL in your browser, authorize, and verify the callback works.
+
+### 2. Test Data Sync
+
+<CodeGroup>
+```bash Sync Workouts
+curl -X POST "http://localhost:8000/api/v1/sync/suunto/users/YOUR_USER_ID/sync" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json"
+```
+
+```json Response
+{
+  "success": true
+}
+```
+</CodeGroup>
+
+### 3. Verify Database
+
+Check that workouts are saved correctly:
+
+```sql
+SELECT * FROM event_records 
+WHERE user_id = 'YOUR_USER_ID' 
+  AND provider_id IS NOT NULL
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+### 4. Check Logs
+
+Monitor logs for errors:
+
+```bash
+# Backend logs
+docker-compose logs -f backend
+
+# Or if running locally
+tail -f logs/app.log
+```
+
+---
+
+## Advanced: Webhook Support (PUSH Flow)
+
+If your provider supports webhooks, implement webhook handling:
+
+### 1. Create Webhook Endpoint
+
+Create `backend/app/api/routes/v1/strava_webhooks.py`:
+
+```python
+"""Strava webhook endpoints."""
+
+from fastapi import APIRouter, Request, HTTPException
+from app.database import DbSession
+from app.services.providers.factory import ProviderFactory
+
+router = APIRouter()
+factory = ProviderFactory()
+
+
+@router.get("/webhook")
+async def strava_webhook_verification(
+    hub_mode: str,
+    hub_verify_token: str,
+    hub_challenge: str,
+):
+    """
+    Handle Strava webhook subscription verification.
+    
+    Strava sends a GET request to verify the webhook endpoint.
+    """
+    # Verify the token matches your configuration
+    if hub_verify_token != "YOUR_VERIFY_TOKEN":
+        raise HTTPException(status_code=403, detail="Invalid verify token")
+    
+    # Echo back the challenge
+    return {"hub.challenge": hub_challenge}
+
+
+@router.post("/webhook")
+async def strava_webhook_handler(
+    request: Request,
+    db: DbSession,
+):
+    """
+    Handle Strava webhook events.
+    
+    Strava sends POST requests when new activities are created or updated.
+    """
+    payload = await request.json()
+    
+    # Strava webhook event structure:
+    # {
+    #   "object_type": "activity",
+    #   "object_id": 12345,
+    #   "aspect_type": "create",
+    #   "owner_id": 67890,
+    #   "subscription_id": 1,
+    #   "event_time": 1516126040
+    # }
+    
+    if payload["object_type"] == "activity":
+        if payload["aspect_type"] in ["create", "update"]:
+            # Get the user connection
+            from app.repositories import UserConnectionRepository
+            repo = UserConnectionRepository()
+            connection = repo.get_by_provider_user_id(
+                db, 
+                "strava", 
+                str(payload["owner_id"])
+            )
+            
+            if connection:
+                # Fetch the activity details
+                strategy = factory.get_provider("strava")
+                activity = strategy.workouts.get_workout_detail_from_api(
+                    db,
+                    connection.user_id,
+                    str(payload["object_id"])
+                )
+                
+                # Normalize and save
+                record, detail = strategy.workouts._normalize_workout(
+                    activity,
+                    connection.user_id
+                )
+                strategy.workouts._save_workout(db, record, detail)
+    
+    return {"status": "success"}
+```
+
+### 2. Register Webhook Route
+
+Add to `backend/app/api/routes/v1/__init__.py`:
+
+```python
+from .strava_webhooks import router as strava_webhooks_router
+
+# In your main router setup
+api_router.include_router(
+    strava_webhooks_router,
+    prefix="/webhooks/strava",
+    tags=["webhooks"],
+)
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+
+  <Accordion title="Data not normalizing correctly">
+    Add detailed logging in `_normalize_workout` to inspect raw data structure. Compare against provider's API documentation.
+  </Accordion>
+
+  <Accordion title="Duplicate workouts being created">
+    Implement duplicate detection in `_save_workout` based on `provider_id`. Check if workout with same `provider_id` already exists.
+  </Accordion>
+
+  <Accordion title="Missing workout types">
+    Add missing types to your mapping file. Consider adding a fallback type ("other") and logging unmapped types for future updates.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Summary Checklist
+
+Use this checklist to ensure you've completed all steps:
+
+- [ ] Created provider directory structure (`strategy.py`, `oauth.py`, `workouts.py`)
+- [ ] Implemented `ProviderStrategy` with required properties
+- [ ] Implemented `ProviderOAuth` with endpoints, credentials, and user info fetch
+- [ ] Implemented `ProviderWorkouts` with normalization logic
+- [ ] Created workout type mapping file
+- [ ] Registered provider in `ProviderFactory`
+- [ ] Added provider to `ProviderName` enum
+- [ ] Added provider icon to static assets
+- [ ] Added environment variables to `.env` and `config.py`
+- [ ] Tested OAuth flow end-to-end
+- [ ] Tested data synchronization
+- [ ] Verified data in database
+- [ ] Set up webhook handling (if applicable)
+- [ ] Added error handling and logging
+- [ ] Updated API documentation
+
+<Check>
+Congratulations! You've successfully integrated a new provider into OpenWearables. 🎉
+</Check>
