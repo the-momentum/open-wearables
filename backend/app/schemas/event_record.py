@@ -56,7 +56,7 @@ class EventRecordCreate(EventRecordBase):
     external_id: str | None = None
     provider_name: str
     user_id: UUID
-    external_mapping_id: UUID | None = Field(
+    external_device_mapping_id: UUID | None = Field(
         None,
         description="Existing mapping identifier if the caller has already created one.",
     )
