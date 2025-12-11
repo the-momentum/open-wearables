@@ -24,7 +24,7 @@ class DataPointSeries(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     external_id: Mapped[str_100 | None]
-    external_device_mapping: Mapped[FKExternalMapping]
+    external_device_mapping_id: Mapped[FKExternalMapping]
     recorded_at: Mapped[datetime_tz]
     value: Mapped[numeric_10_3]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]

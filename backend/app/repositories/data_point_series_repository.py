@@ -24,9 +24,9 @@ class DataPointSeriesRepository(
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
-            creator.provider_id,
+            creator.provider_name,
             creator.device_id,
-            creator.external_mapping_id,
+            creator.external_device_mapping_id,
         )
 
         creation_data = creator.model_dump()
