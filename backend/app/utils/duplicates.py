@@ -29,13 +29,16 @@ def handle_duplicates(func: Callable[..., T]) -> Callable[..., T | None]:
 
                 query = db_session.query(model)
                 creator_data = creator.model_dump()
+                
+                mapper = inspect(model)
+                table = mapper.local_table
+                
+                unique_constraint = next(
+                    (constraint for constraint in table.constraints 
+                     if isinstance(constraint, UniqueConstraint)),
+                    None
+                )
 
-                unique_constraint = None
-
-                if hasattr(model, "__table_args__"):
-                    table_args = model.__table_args__
-                    unique_constraint = next(arg for arg in table_args if isinstance(arg, UniqueConstraint))
-                    
                 if unique_constraint:
                     for column in unique_constraint.columns:
                         column_name = column.name
@@ -47,7 +50,6 @@ def handle_duplicates(func: Callable[..., T]) -> Callable[..., T | None]:
                         return existing
                     raise
                 
-                mapper = inspect(model)
                 
                 for key in mapper.primary_key:
                     if key.name in creator_data:
