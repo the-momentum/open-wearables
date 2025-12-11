@@ -2,7 +2,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
+from app.models import EventRecordDetail, SleepDetail, WorkoutDetail
 from app.repositories.repositories import CrudRepository
 from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
 from app.utils.duplicates import handle_duplicates
@@ -29,9 +29,9 @@ class EventRecordDetailRepository(
         creation_data = creator.model_dump(exclude_none=True)
 
         if detail_type == "workout":
-            detail = WorkoutDetails(**creation_data)
+            detail = WorkoutDetail(**creation_data)
         elif detail_type == "sleep":
-            detail = SleepDetails(**creation_data)
+            detail = SleepDetail(**creation_data)
         else:
             raise ValueError(f"Unknown detail type: {detail_type}")
 
