@@ -11,9 +11,8 @@ import httpx
 from fastapi import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
-from app.config import settings
-from app.integrations.redis_client import get_redis_client
 from app.database import DbSession
+from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.oauth import (
