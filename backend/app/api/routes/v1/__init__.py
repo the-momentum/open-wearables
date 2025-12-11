@@ -5,6 +5,7 @@ from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
 from .events import router as events_router
+from .developers import router as developers_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .heart_rate import router as heart_rate_router
 from .import_xml import router as import_xml_router
@@ -20,7 +21,8 @@ from .workouts import router as workouts_router
 
 v1_router = APIRouter()
 
-v1_router.include_router(auth_router, prefix="/auth", tags=["developer"])
+v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+v1_router.include_router(developers_router, prefix="/developers", tags=["developers"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
