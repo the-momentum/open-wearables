@@ -30,15 +30,16 @@ class EventRecordService(
     ) -> EventRecordResponse:
         return EventRecordResponse(
             id=record.id,
+            external_id=record.external_id,
             category=record.category,
             type=record.type,
             source_name=record.source_name,
             duration_seconds=record.duration_seconds,
             start_datetime=record.start_datetime,
             end_datetime=record.end_datetime,
-            external_mapping_id=record.external_mapping_id,
+            external_device_mapping_id=record.external_device_mapping_id,
             user_id=mapping.user_id,
-            provider_id=mapping.provider_id,
+            provider_name=mapping.provider_name,
             device_id=mapping.device_id,
         )
 

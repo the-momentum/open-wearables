@@ -115,15 +115,15 @@ class DataPointSeriesRepository(
     def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
         """Get count of data points grouped by series type ID.
 
-        Returns list of (series_type_id, count) tuples ordered by count descending.
+        Returns list of (series_type_definition_id, count) tuples ordered by count descending.
         """
         results = (
-            db_session.query(self.model.series_type_id, func.count(self.model.id).label("count"))
-            .group_by(self.model.series_type_id)
+            db_session.query(self.model.series_type_definition_id, func.count(self.model.id).label("count"))
+            .group_by(self.model.series_type_definition_id)
             .order_by(func.count(self.model.id).desc())
             .all()
         )
-        return [(series_type_id, count) for series_type_id, count in results]
+        return [(series_type_definition_id, count) for series_type_definition_id, count in results]
 
     def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by provider.
