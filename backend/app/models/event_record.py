@@ -29,7 +29,7 @@ class EventRecord(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     external_id: Mapped[str_100 | None]
-    external_device_mapping: Mapped[FKExternalMapping]
+    external_device_mapping_id: Mapped[FKExternalMapping]
 
     category: Mapped[str_32]
     type: Mapped[str_32 | None]

@@ -7,7 +7,7 @@ class ExternalMappingBase(BaseModel):
     """Shared fields for mapping external provider/device identifiers."""
 
     user_id: UUID
-    provider_id: str | None = None
+    provider_name: str
     device_id: str | None = None
 
 
