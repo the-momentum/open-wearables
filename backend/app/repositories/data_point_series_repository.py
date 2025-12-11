@@ -52,22 +52,22 @@ class DataPointSeriesRepository(
             db_session.query(self.model, ExternalDeviceMapping)
             .join(
                 ExternalDeviceMapping,
-                self.model.external_mapping_id == ExternalDeviceMapping.id,
+                self.model.external_device_mapping_id == ExternalDeviceMapping.id,
             )
             .filter(self.model.series_type_id == get_series_type_id(series_type))
             .filter(ExternalDeviceMapping.user_id == user_id)
         )
 
-        if params.external_mapping_id:
-            query = query.filter(self.model.external_mapping_id == params.external_mapping_id)
+        if params.external_device_mapping_id:
+            query = query.filter(self.model.external_device_mapping_id == params.external_device_mapping_id)
         elif params.device_id:
             query = query.filter(ExternalDeviceMapping.device_id == params.device_id)
         else:
             # Require at least one device-level discriminator to avoid scanning entire dataset
             return []
 
-        if getattr(params, "provider_id", None):
-            query = query.filter(ExternalDeviceMapping.provider_id == params.provider_id)
+        if getattr(params, "provider_name", None):
+            query = query.filter(ExternalDeviceMapping.provider_name == params.provider_name)
 
         if params.start_datetime:
             query = query.filter(self.model.recorded_at >= params.start_datetime)
@@ -128,13 +128,13 @@ class DataPointSeriesRepository(
     def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by provider.
 
-        Returns list of (provider_id, count) tuples ordered by count descending.
+        Returns list of (provider_name, count) tuples ordered by count descending.
         """
         results = (
-            db_session.query(ExternalDeviceMapping.provider_id, func.count(self.model.id).label("count"))
-            .join(ExternalDeviceMapping, self.model.external_mapping_id == ExternalDeviceMapping.id)
-            .group_by(ExternalDeviceMapping.provider_id)
+            db_session.query(ExternalDeviceMapping.provider_name, func.count(self.model.id).label("count"))
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .group_by(ExternalDeviceMapping.provider_name)
             .order_by(func.count(self.model.id).desc())
             .all()
         )
-        return [(provider_id, count) for provider_id, count in results]
+        return [(provider_name, count) for provider_name, count in results]
