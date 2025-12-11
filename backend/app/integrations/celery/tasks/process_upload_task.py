@@ -76,7 +76,8 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
 
     for time_series_records, workouts in xml_service.parse_xml(user_id):
         for record, detail in workouts:
-            event_record_service.create(db, record)
-            event_record_service.create_detail(db, detail)
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
         if time_series_records:
             time_series_service.bulk_create_samples(db, time_series_records)
