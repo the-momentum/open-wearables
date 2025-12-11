@@ -83,8 +83,9 @@ class XMLService:
 
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
+            external_id=None,
             user_id=user_id,
-            provider_id=None,
+            provider_name="Apple",
             device_id=document.get("device", "")[:100],
             recorded_at=document["startDate"],
             value=value,
@@ -122,8 +123,9 @@ class XMLService:
             duration_seconds=duration_seconds,
             start_datetime=document["startDate"],
             end_datetime=document["endDate"],
+            external_id=None,
             id=workout_id,
-            provider_id=None,
+            provider_name="Apple",
             user_id=user_id,
         )
 
@@ -140,10 +142,7 @@ class XMLService:
             "heart_rate_min": None,
             "heart_rate_max": None,
             "heart_rate_avg": None,
-            "steps_min": None,
-            "steps_max": None,
-            "steps_avg": None,
-            "steps_total": None,
+            "steps_count": None,
         }
 
     def _decimal_from_stat(self, value: str | None) -> Decimal | None:
@@ -171,13 +170,6 @@ class XMLService:
                 metrics["heart_rate_max"] = int(max_value)
             if avg_value is not None:
                 metrics["heart_rate_avg"] = avg_value
-        elif "step" in lowered:
-            if min_value is not None:
-                metrics["steps_min"] = int(min_value)
-            if max_value is not None:
-                metrics["steps_max"] = int(max_value)
-            if avg_value is not None:
-                metrics["steps_avg"] = avg_value
 
     def parse_xml(
         self,

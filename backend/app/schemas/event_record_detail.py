@@ -11,10 +11,7 @@ class EventRecordDetailBase(BaseModel):
     heart_rate_max: int | None = None
     heart_rate_avg: Decimal | None = None
 
-    steps_min: int | None = None
-    steps_max: int | None = None
-    steps_avg: Decimal | None = None
-    steps_total: int | None = None
+    steps_count: int | None = None
 
     max_speed: Decimal | None = None
     max_watts: Decimal | None = None

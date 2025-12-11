@@ -22,8 +22,8 @@ class EventRecord(BaseDbModel):
         UniqueConstraint(
             "external_mapping_id",
             "start_datetime",
-            "category",
-            name="uq_event_record_datetime_category",
+            "end_datetime",
+            name="uq_event_record_datetime",
         ),
     )
 
