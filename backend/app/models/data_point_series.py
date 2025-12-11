@@ -4,7 +4,14 @@ from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKExternalMapping, FKSeriesTypeDefinition, PrimaryKey, datetime_tz, numeric_10_3
+from app.mappings import (
+    FKExternalMapping,
+    FKSeriesTypeDefinition,
+    PrimaryKey,
+    datetime_tz,
+    numeric_10_3,
+    str_100,
+)
 
 
 class DataPointSeries(BaseDbModel):
@@ -16,7 +23,8 @@ class DataPointSeries(BaseDbModel):
     )
 
     id: Mapped[PrimaryKey[UUID]]
-    external_mapping_id: Mapped[FKExternalMapping]
+    external_id: Mapped[str_100 | None]
+    external_device_mapping: Mapped[FKExternalMapping]
     recorded_at: Mapped[datetime_tz]
     value: Mapped[numeric_10_3]
-    series_type_id: Mapped[FKSeriesTypeDefinition]
+    series_type_definition_id: Mapped[FKSeriesTypeDefinition]

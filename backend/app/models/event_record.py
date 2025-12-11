@@ -1,14 +1,17 @@
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from app.mappings import FKExternalMapping, PrimaryKey, datetime_tz, str_32, str_64
-
-if TYPE_CHECKING:
-    from .event_record_detail import EventRecordDetail
+from app.mappings import (
+    FKExternalMapping,
+    PrimaryKey,
+    datetime_tz,
+    str_32,
+    str_64,
+    str_100,
+)
 
 
 class EventRecord(BaseDbModel):
@@ -25,7 +28,8 @@ class EventRecord(BaseDbModel):
     )
 
     id: Mapped[PrimaryKey[UUID]]
-    external_mapping_id: Mapped[FKExternalMapping]
+    external_id: Mapped[str_100 | None]
+    external_device_mapping: Mapped[FKExternalMapping]
 
     category: Mapped[str_32]
     type: Mapped[str_32 | None]

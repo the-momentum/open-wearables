@@ -5,10 +5,10 @@ from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
 from .event_record_detail import EventRecordDetail
 
 
-class WorkoutDetails(EventRecordDetail):
+class WorkoutDetail(EventRecordDetail):
     """Per-workout aggregates and metrics."""
 
-    __tablename__ = "workout_details"
+    __tablename__ = "workout_detail"
     __mapper_args__ = {"polymorphic_identity": "workout"}
 
     record_id: Mapped[FKEventRecordDetail]
@@ -16,10 +16,7 @@ class WorkoutDetails(EventRecordDetail):
     heart_rate_min: Mapped[int | None]
     heart_rate_max: Mapped[int | None]
     heart_rate_avg: Mapped[numeric_5_2 | None]
-    steps_min: Mapped[int | None]
-    steps_max: Mapped[int | None]
-    steps_avg: Mapped[numeric_10_3 | None]
-    steps_total: Mapped[int | None]
+    steps_count: Mapped[int | None]
 
     max_speed: Mapped[numeric_5_2 | None]
     max_watts: Mapped[numeric_10_3 | None]

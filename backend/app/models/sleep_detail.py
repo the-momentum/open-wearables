@@ -5,10 +5,10 @@ from app.mappings import FKEventRecordDetail, numeric_5_2
 from .event_record_detail import EventRecordDetail
 
 
-class SleepDetails(EventRecordDetail):
+class SleepDetail(EventRecordDetail):
     """Per-sleep aggregates and metrics."""
 
-    __tablename__ = "sleep_details"
+    __tablename__ = "sleep_detail"
     __mapper_args__ = {"polymorphic_identity": "sleep"}
 
     record_id: Mapped[FKEventRecordDetail]
