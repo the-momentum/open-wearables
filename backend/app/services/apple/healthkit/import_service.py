@@ -49,7 +49,7 @@ class ImportService:
             wjson = HKWorkoutJSON(**w)
 
             workout_id = uuid4()
-            provider_id = wjson.uuid if wjson.uuid else None
+            external_id = wjson.uuid if wjson.uuid else None
 
             duration_seconds = int((wjson.endDate - wjson.startDate).total_seconds())
 
@@ -64,7 +64,8 @@ class ImportService:
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
-                provider_id=provider_id,
+                external_id=external_id,
+                provider_name="Apple",
                 user_id=user_uuid,
             )
 
@@ -96,8 +97,9 @@ class ImportService:
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
+                external_id=rjson.uuid,
                 user_id=user_uuid,
-                provider_id=rjson.uuid,
+                provider_name="Apple",
                 device_id=rjson.sourceName or None,
                 recorded_at=rjson.startDate,
                 value=value,
@@ -138,17 +140,13 @@ class ImportService:
             return min_v, max_v, avg_v
 
         hr_min, hr_max, hr_avg = _compute(heart_rate_values)
-        steps_min, steps_max, steps_avg = _compute(step_values)
-        steps_total = Decimal(sum(step_values)) if step_values else None
+        steps_count = int(sum(step_values)) if step_values else None
 
         return EventRecordMetrics(
             heart_rate_min=int(hr_min) if hr_min is not None else None,
             heart_rate_max=int(hr_max) if hr_max is not None else None,
             heart_rate_avg=hr_avg,
-            steps_min=int(steps_min) if steps_min is not None else None,
-            steps_max=int(steps_max) if steps_max is not None else None,
-            steps_avg=steps_avg,
-            steps_total=int(steps_total) if steps_total is not None else None,
+            steps_count=int(steps_count) if steps_count is not None else None,
         )
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
