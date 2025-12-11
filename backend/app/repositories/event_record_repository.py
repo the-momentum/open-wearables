@@ -2,6 +2,7 @@ from uuid import UUID
 
 import isodate
 from sqlalchemy import and_, desc, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
@@ -9,6 +10,7 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 
@@ -20,6 +22,7 @@ class EventRecordRepository(
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     @handle_exceptions
+    @handle_duplicates
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
@@ -35,10 +38,27 @@ class EventRecordRepository(
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
-        db_session.add(creation)
-        db_session.commit()
-        db_session.refresh(creation)
-        return creation
+
+        try:
+            db_session.add(creation)
+            db_session.commit()
+            db_session.refresh(creation)
+            return creation
+        except IntegrityError:
+            db_session.rollback()
+            # Query using the mapping and other unique constraint fields
+            existing = (
+                db_session.query(self.model)
+                .filter(
+                    self.model.external_mapping_id == mapping.id,
+                    self.model.start_datetime == creation.start_datetime,
+                    self.model.category == creation.category,
+                )
+                .one_or_none()
+            )
+            if existing:
+                return existing
+            raise
 
     def get_records_with_filters(
         self,

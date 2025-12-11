@@ -4,6 +4,8 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
+from app.constants.series_types import get_series_type_from_apple_metric_type
+from app.constants.workout_types import get_unified_apple_workout_type
 from app.database import DbSession
 from app.schemas import (
     EventRecordCreate,
@@ -13,7 +15,9 @@ from app.schemas import (
     HKRecordJSON,
     HKWorkoutJSON,
     RootJSON,
+    SeriesType,
     StepSampleCreate,
+    TimeSeriesSampleCreate,
     UploadDataResponse,
 )
 from app.services.event_record_service import event_record_service
@@ -53,7 +57,7 @@ class ImportService:
 
             record = EventRecordCreate(
                 category="workout",
-                type=wjson.type or "Unknown",
+                type=get_unified_apple_workout_type(wjson.type).value if wjson.type else None,
                 source_name=wjson.sourceName or "Apple Health",
                 device_id=wjson.sourceName or None,
                 duration_seconds=duration_seconds,
@@ -75,11 +79,10 @@ class ImportService:
         self,
         raw: dict,
         user_id: str,
-    ) -> Iterable[tuple[list[HeartRateSampleCreate], list[StepSampleCreate]]]:
+    ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         root = RootJSON(**raw)
         records_raw = root.data.get("records", [])
-        heart_rate_samples: list[HeartRateSampleCreate] = []
-        step_samples: list[StepSampleCreate] = []
+        time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
 
         for r in records_raw:
@@ -87,30 +90,29 @@ class ImportService:
             value = Decimal(str(rjson.value))
 
             record_type = rjson.type or ""
-            if "HeartRate" in record_type:
-                heart_rate_samples.append(
-                    HeartRateSampleCreate(
-                        id=uuid4(),
-                        user_id=user_uuid,
-                        provider_id=rjson.uuid,
-                        device_id=rjson.sourceName or None,
-                        recorded_at=rjson.startDate,
-                        value=value,
-                    ),
-                )
-            elif "StepCount" in record_type:
-                step_samples.append(
-                    StepSampleCreate(
-                        id=uuid4(),
-                        user_id=user_uuid,
-                        provider_id=rjson.uuid,
-                        device_id=rjson.sourceName or None,
-                        recorded_at=rjson.startDate,
-                        value=value,
-                    ),
-                )
+            series_type = get_series_type_from_apple_metric_type(record_type)
+            if series_type is None:
+                continue
 
-        yield heart_rate_samples, step_samples
+            sample = TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_uuid,
+                provider_id=rjson.uuid,
+                device_id=rjson.sourceName or None,
+                recorded_at=rjson.startDate,
+                value=value,
+                series_type=series_type,
+            )
+
+            match series_type:
+                case SeriesType.heart_rate:
+                    time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
+                case SeriesType.steps:
+                    time_series_samples.append(StepSampleCreate(**sample.model_dump()))
+                case _:
+                    time_series_samples.append(sample)
+
+        return time_series_samples
 
     def _extract_metrics_from_workout_stats(self, stats: list | None) -> EventRecordMetrics:
         heart_rate_values: list[Decimal] = []
@@ -151,14 +153,13 @@ class ImportService:
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail in self._build_workout_bundles(raw, user_id):
-            self.event_record_service.create(db_session, record)
-            self.event_record_service.create_detail(db_session, detail)
+            created_or_existing_record = self.event_record_service.create(db_session, record)
+            # Always use the returned record's ID (whether newly created or existing)
+            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
+            self.event_record_service.create_detail(db_session, detail_for_record)
 
-        for heart_rate_records, step_records in self._build_statistic_bundles(raw, user_id):
-            if heart_rate_records:
-                self.time_series_service.bulk_create_samples(db_session, heart_rate_records)
-            if step_records:
-                self.time_series_service.bulk_create_samples(db_session, step_records)
+        samples = self._build_statistic_bundles(raw, user_id)
+        self.time_series_service.bulk_create_samples(db_session, samples)
 
         return True
 
