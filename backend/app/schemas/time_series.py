@@ -41,6 +41,7 @@ class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     """Generic create payload for data point series."""
 
     id: UUID
+    external_id: str | None = None
 
 
 class TimeSeriesSampleUpdate(TimeSeriesSampleBase):
