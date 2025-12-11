@@ -38,7 +38,7 @@ class EventRecordRepository(
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
-        
+
         try:
             db_session.add(creation)
             db_session.commit()
@@ -59,7 +59,6 @@ class EventRecordRepository(
             if existing:
                 return existing
             raise
-
 
     def get_records_with_filters(
         self,
