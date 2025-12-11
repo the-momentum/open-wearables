@@ -8,7 +8,7 @@ from xml.etree import ElementTree as ET
 
 from app.config import settings
 from app.constants.series_types import get_series_type_from_apple_metric_type
-from app.constants.workout_types.apple import get_unified_workout_type
+from app.constants.workout_types import get_unified_apple_workout_type
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -110,7 +110,7 @@ class XMLService:
         workout_id = uuid4()
         raw_type = document.pop("workoutActivityType")
 
-        workout_type = get_unified_workout_type(raw_type)
+        workout_type = get_unified_apple_workout_type(raw_type)
 
         duration_seconds = int((document["endDate"] - document["startDate"]).total_seconds())
 

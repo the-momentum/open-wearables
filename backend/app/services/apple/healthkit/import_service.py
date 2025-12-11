@@ -5,7 +5,7 @@ from typing import Iterable
 from uuid import UUID, uuid4
 
 from app.constants.series_types import get_series_type_from_apple_metric_type
-from app.constants.workout_types import get_unified_workout_type
+from app.constants.workout_types import get_unified_apple_workout_type
 from app.database import DbSession
 from app.schemas import (
     EventRecordCreate,
@@ -57,7 +57,7 @@ class ImportService:
 
             record = EventRecordCreate(
                 category="workout",
-                type=get_unified_workout_type(wjson.type).value if wjson.type else None,
+                type=get_unified_apple_workout_type(wjson.type).value if wjson.type else None,
                 source_name=wjson.sourceName or "Apple Health",
                 device_id=wjson.sourceName or None,
                 duration_seconds=duration_seconds,
