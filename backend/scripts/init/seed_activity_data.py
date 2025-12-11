@@ -78,7 +78,7 @@ def generate_workout(
 
     record = EventRecordCreate(
         id=workout_id,
-        provider_id=str(uuid4()) if fake_instance.boolean(chance_of_getting_true=70) else None,
+        provider_name="Faker",
         user_id=user_id,
         category="workout",
         type=fake_instance.random.choice(WORKOUT_TYPES),
@@ -94,10 +94,7 @@ def generate_workout(
         heart_rate_min=heart_rate_min,
         heart_rate_max=heart_rate_max,
         heart_rate_avg=heart_rate_avg,
-        steps_min=steps,
-        steps_max=steps,
-        steps_avg=Decimal(steps),
-        steps_total=steps,
+        steps_count=steps,
     )
 
     return record, detail
@@ -138,7 +135,7 @@ def generate_sleep(
 
     record = EventRecordCreate(
         id=sleep_id,
-        provider_id=str(uuid4()) if fake_instance.boolean(chance_of_getting_true=70) else None,
+        provider_name="Faker",
         user_id=user_id,
         category="sleep",
         type=None,
@@ -185,7 +182,7 @@ def generate_time_series_samples(
     fake_instance: Faker,
     *,
     user_id: UUID,
-    provider_id: str | None = None,
+    provider_name: str,
     device_id: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time series samples for a workout period with realistic frequencies."""
@@ -200,7 +197,7 @@ def generate_time_series_samples(
                 HeartRateSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=90, max=180)),
@@ -214,7 +211,7 @@ def generate_time_series_samples(
                 StepSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=10, max=50)),
@@ -228,7 +225,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=5, max=20)),
@@ -242,7 +239,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=10, max=100)),
@@ -256,7 +253,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=20, max=200)),
@@ -270,7 +267,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=12, max=30)),
@@ -284,7 +281,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=100, max=140)),
@@ -298,7 +295,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=20, max=80)),
@@ -312,7 +309,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=95, max=100)),
@@ -326,7 +323,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=55, max=75)),
@@ -340,7 +337,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=360, max=375)) / Decimal(10),  # 36.0-37.5°C
@@ -354,7 +351,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=500, max=1200)) / Decimal(10),  # 50.0-120.0 kg
@@ -368,7 +365,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=100, max=300)) / Decimal(10),  # 10.0-30.0%
@@ -382,7 +379,7 @@ def generate_time_series_samples(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_id=provider_id,
+                    provider_name=provider_name,
                     device_id=device_id,
                     recorded_at=current_time,
                     value=Decimal(fake_instance.random_int(min=150, max=200)),  # 150-200 cm
@@ -440,7 +437,7 @@ def seed_activity_data() -> None:
                         record.end_datetime,
                         fake,
                         user_id=user.id,
-                        provider_id=record.provider_id,
+                        provider_name=record.provider_name,
                         device_id=device_id,
                     )
                     if samples:
