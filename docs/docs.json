@@ -17,7 +17,8 @@
             "group": "Getting started",
             "pages": [
               "index",
-              "quickstart"
+              "quickstart",
+              "roadmap"
             ]
           },
           {
