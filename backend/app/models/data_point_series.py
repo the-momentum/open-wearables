@@ -19,7 +19,7 @@ class DataPointSeries(BaseDbModel):
 
     __tablename__ = "data_point_series"
     __table_args__ = (
-        Index("idx_data_point_series_mapping_type_time", "external_mapping_id", "series_type_id", "recorded_at"),
+        Index("idx_data_point_series_mapping_type_time", "external_device_mapping_id", "series_type_definition_id", "recorded_at"),
     )
 
     id: Mapped[PrimaryKey[UUID]]
