@@ -17,10 +17,10 @@ from app.mappings import (
 class EventRecord(BaseDbModel):
     __tablename__ = "event_record"
     __table_args__ = (
-        Index("idx_event_record_mapping_category", "external_mapping_id", "category"),
-        Index("idx_event_record_mapping_time", "external_mapping_id", "start_datetime", "end_datetime"),
+        Index("idx_event_record_mapping_category", "external_device_mapping_id", "category"),
+        Index("idx_event_record_mapping_time", "external_device_mapping_id", "start_datetime", "end_datetime"),
         UniqueConstraint(
-            "external_mapping_id",
+            "external_device_mapping_id",
             "start_datetime",
             "end_datetime",
             name="uq_event_record_datetime",
