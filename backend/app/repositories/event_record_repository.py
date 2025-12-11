@@ -10,6 +10,7 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 
@@ -21,6 +22,7 @@ class EventRecordRepository(
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     @handle_exceptions
+    @handle_duplicates
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
@@ -36,6 +38,7 @@ class EventRecordRepository(
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
+        
         try:
             db_session.add(creation)
             db_session.commit()
@@ -43,10 +46,11 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
+            # Query using the mapping and other unique constraint fields
             existing = (
                 db_session.query(self.model)
                 .filter(
-                    self.model.external_mapping_id == creation.external_mapping_id,
+                    self.model.external_mapping_id == mapping.id,
                     self.model.start_datetime == creation.start_datetime,
                     self.model.category == creation.category,
                 )
@@ -55,6 +59,7 @@ class EventRecordRepository(
             if existing:
                 return existing
             raise
+
 
     def get_records_with_filters(
         self,

@@ -1,12 +1,11 @@
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy.exc import IntegrityError
-
 from app.database import DbSession
 from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
 from app.repositories.repositories import CrudRepository
 from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
+from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 DetailType = Literal["workout", "sleep"]
@@ -19,6 +18,7 @@ class EventRecordDetailRepository(
         super().__init__(model)
 
     @handle_exceptions
+    @handle_duplicates
     def create(
         self,
         db_session: DbSession,
@@ -35,23 +35,10 @@ class EventRecordDetailRepository(
         else:
             raise ValueError(f"Unknown detail type: {detail_type}")
 
-        try:
-            db_session.add(detail)
-            db_session.commit()
-            db_session.refresh(detail)
-            return detail
-        except IntegrityError:
-            db_session.rollback()
-            existing = (
-                db_session.query(self.model)
-                .filter(
-                    self.model.record_id == detail.record_id,
-                )
-                .one_or_none()
-            )
-            if existing:
-                return existing
-            raise
+        db_session.add(detail)
+        db_session.commit()
+        db_session.refresh(detail)
+        return detail
 
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
         """Get detail by its associated event record ID."""

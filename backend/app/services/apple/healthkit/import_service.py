@@ -153,8 +153,9 @@ class ImportService:
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail in self._build_workout_bundles(raw, user_id):
-            created_record = self.event_record_service.create(db_session, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            created_or_existing_record = self.event_record_service.create(db_session, record)
+            # Always use the returned record's ID (whether newly created or existing)
+            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
             self.event_record_service.create_detail(db_session, detail_for_record)
 
         samples = self._build_statistic_bundles(raw, user_id)
