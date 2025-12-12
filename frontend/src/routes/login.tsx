@@ -45,7 +45,7 @@ function LoginPage() {
                 Welcome back
               </h1>
               <p className="text-sm text-zinc-500">
-                Enter your credentials to access your unified API keys.
+                Sign in to access dashboard, users, and settings.
               </p>
             </div>
 
