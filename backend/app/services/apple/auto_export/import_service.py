@@ -139,8 +139,9 @@ class ImportService:
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail, hr_samples in self._build_import_bundles(raw, user_id):
-            self.event_record_service.create(db_session, record)
-            self.event_record_service.create_detail(db_session, detail)
+            created_record = self.event_record_service.create(db_session, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            self.event_record_service.create_detail(db_session, detail_for_record)
 
             if hr_samples:
                 self.time_series_service.bulk_create_samples(db_session, hr_samples)

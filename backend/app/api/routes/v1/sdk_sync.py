@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 
 from app.database import DbSession
-from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
-from app.schemas import PresignedURLRequest, PresignedURLResponse, UploadDataResponse
-from app.services import ApiKeyDep, ae_import_service, hk_import_service, pre_url_service
+from app.schemas import UploadDataResponse
+from app.services import ApiKeyDep, ae_import_service, hk_import_service
 
 router = APIRouter()
 
@@ -30,8 +29,8 @@ async def get_content_type(request: Request) -> tuple[str, str]:
     return content_str, content_type
 
 
-@router.post("/users/{user_id}/import/apple/auto-health-export")
-async def import_data_auto_health_export(
+@router.post("/sdk/users/{user_id}/sync/apple/auto-health-export")
+async def sync_data_auto_health_export(
     user_id: str,
     request: Request,
     db: DbSession,
@@ -43,8 +42,8 @@ async def import_data_auto_health_export(
     return await ae_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
 
-@router.post("/users/{user_id}/import/apple/healthion")
-async def import_data_healthion(
+@router.post("/sdk/users/{user_id}/sync/apple/healthion")
+async def sync_data_healthion(
     user_id: str,
     request: Request,
     db: DbSession,
@@ -54,17 +53,3 @@ async def import_data_healthion(
     """Import health data from file upload or JSON."""
     content_str, content_type = content[0], content[1]
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
-
-
-@router.post("/users/{user_id}/import/apple/xml")
-async def import_xml(
-    user_id: str,
-    request: PresignedURLRequest,
-    _api_key: ApiKeyDep,
-) -> PresignedURLResponse:
-    """Generate presigned URL for XML file upload and trigger processing task."""
-    presigned_response = pre_url_service.create_presigned_url(user_id, request)
-
-    poll_sqs_task.delay(presigned_response.expires_in)
-
-    return presigned_response
