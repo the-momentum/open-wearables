@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class InvitationStatus(StrEnum):
-    PENDING = "pending"
+    PENDING = "pending"  # Email queued, delivery in progress
+    SENT = "sent"  # Email delivered, waiting for acceptance
     ACCEPTED = "accepted"
     EXPIRED = "expired"
     REVOKED = "revoked"
@@ -35,7 +36,7 @@ class InvitationAccept(BaseModel):
     """Schema for accepting an invitation."""
 
     token: str
-    first_name: str = Field(..., max_length=100)
-    last_name: str = Field(..., max_length=100)
+    first_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
+    last_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
     password: str = Field(..., min_length=8)
 

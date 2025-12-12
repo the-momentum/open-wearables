@@ -1,11 +1,17 @@
 import logging
-
+import re
 import resend
 
 from app.config import settings
 
-logger = logging.getLogger(__name__)
+from html import escape
 
+logger = logging.getLogger(__name__)
+EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', re.IGNORECASE)
+
+def is_valid_email(email: str) -> bool:
+    """Check if the email is valid."""
+    return EMAIL_REGEX.match(email) is not None
 
 def _get_from_address() -> str:
     """Get the formatted from address."""
@@ -20,7 +26,20 @@ def _is_email_configured() -> bool:
     if not settings.email_from_address:
         logger.warning("EMAIL_FROM_ADDRESS not configured, skipping email send")
         return False
+    if not settings.email_from_name:
+        logger.warning("EMAIL_FROM_NAME not configured, skipping email send")
+        return False
     return True
+
+
+def _configure_resend() -> None:
+    """Configure Resend API key.
+
+    Note: The Resend library uses module-level configuration.
+    Since we use a single API key for the entire application,
+    this is safe even in concurrent environments.
+    """
+    resend.api_key = settings.resend_api_key.get_secret_value()
 
 
 def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str | None = None) -> bool:
@@ -35,21 +54,23 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
     Returns:
         True if email was sent successfully, False otherwise
     """
+    if not is_valid_email(to_email):
+        logger.warning("Invalid email address provided")
+        return False
     if not _is_email_configured():
         return False
 
-    resend.api_key = settings.resend_api_key
-
-    invited_by_text = f" by {invited_by_email}" if invited_by_email else ""
+    _configure_resend()
+    invited_by_text = f" by {escape(invited_by_email)}" if invited_by_email else ""
 
     try:
         from_addr = _get_from_address()
-        logger.info(f"Sending invitation email from '{from_addr}' to '{to_email}'")
+        logger.info(f"Sending invitation email from '{from_addr}'")
 
         result = resend.Emails.send({
             "from": from_addr,
             "to": [to_email],
-            "subject": f"You've been invited to join {settings.email_from_name}",
+            "subject": f"You've been invited to join {escape(settings.email_from_name)}",
             "html": f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>You're Invited!</h2>
@@ -70,7 +91,7 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
                 </div>
             """,
         })
-        logger.info(f"Invitation email sent to {to_email}, result: {result}")
+        logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
         logger.exception(f"Failed to send invitation email to {to_email}: {e}")

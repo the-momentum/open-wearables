@@ -27,7 +27,7 @@ async def create_invitation(
 @router.get("/", response_model=list[InvitationRead])
 async def list_invitations(db: DbSession, _auth: DeveloperDep):
     """List all pending invitations."""
-    return invitation_service.get_pending_invitations(db)
+    return invitation_service.get_active_invitations(db)
 
 
 @router.delete("/{invitation_id}", response_model=InvitationRead)

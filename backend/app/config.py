@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     polar_default_scope: str = "accesslink.read_all"
 
     # EMAIL SETTINGS (Resend)
-    resend_api_key: str | None = None
+    resend_api_key: SecretStr | None = None
     email_from_address: str | None = None
     email_from_name: str = "Open Wearables"
     frontend_url: str = "http://localhost:3000"
