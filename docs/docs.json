@@ -31,8 +31,13 @@
           {
             "group": "Providers",
             "pages": [
-              "provider-setup/index",
-              "provider-setup/how-to-add-new-provider"
+              "provider-setup/index"
+            ]
+          },
+          {
+            "group": "Developer Guides",
+            "pages": [
+              "dev-guides/how-to-add-new-provider"
             ]
           },
           {
