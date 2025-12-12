@@ -76,7 +76,7 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
                     <h2>You're Invited!</h2>
                     <p>You've been invited{invited_by_text} to join the team.</p>
                     <p style="margin: 30px 0;">
-                        <a href="{invite_url}"
+                        <a href="{escape(invite_url)}"
                            style="background-color: #000; color: #fff; padding: 12px 24px;
                                   text-decoration: none; border-radius: 6px; display: inline-block;">
                             Accept Invitation
@@ -94,6 +94,6 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
-        logger.exception(f"Failed to send invitation email to {to_email}: {e}")
+        logger.exception(f"Failed to send invitation email: {e}")
         return False
 

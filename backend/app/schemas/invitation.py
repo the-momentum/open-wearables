@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class InvitationStatus(StrEnum):
     PENDING = "pending"  # Email queued, delivery in progress
     SENT = "sent"  # Email delivered, waiting for acceptance
+    FAILED = "failed"  # Email delivery failed after all retries
     ACCEPTED = "accepted"
     EXPIRED = "expired"
     REVOKED = "revoked"

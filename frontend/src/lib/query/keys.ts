@@ -115,4 +115,18 @@ export const queryKeys = {
         { cloudOnly, enabledOnly },
       ] as const,
   },
+
+  developers: {
+    all: ['developers'] as const,
+    lists: () => [...queryKeys.developers.all, 'list'] as const,
+    list: () => [...queryKeys.developers.lists()] as const,
+    details: () => [...queryKeys.developers.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.developers.details(), id] as const,
+  },
+
+  invitations: {
+    all: ['invitations'] as const,
+    lists: () => [...queryKeys.invitations.all, 'list'] as const,
+    list: () => [...queryKeys.invitations.lists()] as const,
+  },
 } as const;

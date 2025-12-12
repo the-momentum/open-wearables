@@ -398,3 +398,31 @@ export interface HealthDataParams {
   offset?: number;
   [key: string]: string | number | undefined;
 }
+
+export interface Developer {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  status: 'pending' | 'sent' | 'failed' | 'accepted' | 'expired' | 'revoked';
+}
+
+export interface InvitationCreate {
+  email: string;
+}
+
+export interface InvitationAccept {
+  token: string;
+  first_name: string;
+  last_name: string;
+  password: string;
+}

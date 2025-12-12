@@ -41,7 +41,7 @@ class InvitationService:
             invite_url=invite_url,
             invited_by_email=invited_by_email,
         )
-        self.logger.info(f"Queued invitation email for {invitation.email}")
+        self.logger.info(f"Queued invitation email for {invitation.id}")
 
     def create_invitation(
         self,
@@ -198,7 +198,7 @@ class InvitationService:
                 detail="Invitation not found",
             )
 
-        if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT):
+        if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot resend invitation with status: {invitation.status}",

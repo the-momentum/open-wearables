@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from celery import shared_task
+from celery import Task, shared_task
 
 from app.database import SessionLocal
 from app.models import Invitation
@@ -9,6 +9,8 @@ from app.utils.email_client import send_invitation_email
 
 logger = getLogger(__name__)
 
+MAX_RETRIES = 5
+
 
 class EmailSendError(Exception):
     """Raised when email sending fails and should be retried."""
@@ -16,12 +18,33 @@ class EmailSendError(Exception):
     pass
 
 
+class EmailTaskBase(Task):
+    """Base task class that handles failure by updating invitation status to FAILED."""
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        """Called when task fails after all retries are exhausted."""
+        invitation_id = args[0] if args else kwargs.get("invitation_id")
+        if invitation_id:
+            try:
+                with SessionLocal() as db:
+                    invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+                    if invitation and invitation.status == InvitationStatus.PENDING:
+                        invitation.status = InvitationStatus.FAILED
+                        db.commit()
+                        logger.warning(f"Marked invitation {invitation_id} as FAILED after all retries exhausted")
+            except Exception as e:
+                logger.error(f"Failed to update invitation {invitation_id} to FAILED status: {e}")
+
+        super().on_failure(exc, task_id, args, kwargs, einfo)
+
+
 @shared_task(
     bind=True,
+    base=EmailTaskBase,
     autoretry_for=(ConnectionError, TimeoutError, EmailSendError),
     retry_backoff=True,
     retry_backoff_max=600,
-    retry_kwargs={"max_retries": 5},
+    retry_kwargs={"max_retries": MAX_RETRIES},
 )
 def send_invitation_email_task(
     self,
@@ -34,7 +57,8 @@ def send_invitation_email_task(
     Send invitation email asynchronously with retry logic.
 
     This task is idempotent - it checks the invitation status before sending
-    to prevent duplicate emails on retry.
+    to prevent duplicate emails on retry. If all retries are exhausted,
+    the invitation status is set to FAILED.
 
     Args:
         invitation_id: UUID of the invitation (for updating status to SENT)
@@ -60,15 +84,24 @@ def send_invitation_email_task(
                 "invitation_id": invitation_id,
             }
 
+        # Skip if already failed (allow resend via separate action)
+        if invitation.status == InvitationStatus.FAILED:
+            logger.info(f"Invitation {invitation_id} previously failed, skipping")
+            return {
+                "status": "skipped",
+                "message": "Invitation email previously failed, use resend action",
+                "invitation_id": invitation_id,
+            }
+
         if invitation.status != InvitationStatus.PENDING:
             raise ValueError(f"Invitation {invitation_id} has invalid status: {invitation.status}")
 
         # Send email only if status is PENDING
-        logger.info(f"Sending invitation email for invitation {invitation_id} (attempt {self.request.retries + 1})")
+        logger.info(f"Sending invitation email for invitation {invitation_id} (attempt {self.request.retries + 1}/{MAX_RETRIES + 1})")
         success = send_invitation_email(to_email, invite_url, invited_by_email)
 
         if not success:
-            raise EmailSendError(f"Failed to send invitation email to {to_email}")
+            raise EmailSendError(f"Failed to send invitation email for invitation {invitation_id}")
 
         # Update status after successful send
         try:
