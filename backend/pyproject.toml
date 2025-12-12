@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.32.5",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
+    "resend>=2.0.0",
 ]
 
 [dependency-groups]

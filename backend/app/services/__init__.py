@@ -6,6 +6,7 @@ from .apple.auto_export.import_service import import_service as ae_import_servic
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
+from .invitation_service import invitation_service
 from .services import AppService
 from .system_info_service import system_info_service
 from .timeseries_service import timeseries_service
@@ -15,6 +16,7 @@ __all__ = [
     "AppService",
     "api_key_service",
     "developer_service",
+    "invitation_service",
     "DeveloperDep",
     "ApiKeyDep",
     "user_service",

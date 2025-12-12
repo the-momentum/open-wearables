@@ -6,6 +6,7 @@ from .device_software import DeviceSoftware
 from .event_record import EventRecord
 from .event_record_detail import EventRecordDetail
 from .external_device_mapping import ExternalDeviceMapping
+from .invitation import Invitation
 from .personal_record import PersonalRecord
 from .provider_setting import ProviderSetting
 from .series_type_definition import SeriesTypeDefinition
@@ -19,6 +20,7 @@ __all__ = [
     "Developer",
     "Device",
     "DeviceSoftware",
+    "Invitation",
     "ProviderSetting",
     "User",
     "UserConnection",
