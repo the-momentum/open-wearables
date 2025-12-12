@@ -158,7 +158,9 @@ Simplified connection process for end users:
 
 Built with:
 - 🐍 **Backend**: FastAPI (Python)
-- 🗄️ **Database**: PostgreSQL
+- ⚛️ **Frontend**: React + TanStack Router + TypeScript (Vite)
+- 🗄️ **Database**: PostgreSQL + Redis
+- ⚙️ **Task Queue**: Celery (background jobs for data syncing and processing)
 - 🔐 **Authentication**: Self-contained (no external auth services required)
 - 📡 **API Style**: RESTful with OpenAPI/Swagger documentation
 
