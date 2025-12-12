@@ -149,7 +149,9 @@ Get Open Wearables running locally and start integrating wearable device data.
      Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
 
   4. **Create an API key**:
-     Use the admin panel at http://localhost:8000/admin to create a developer account and generate API keys.
+     Use the admin panel at http://localhost:3000/ to generate API keys. If you ran the seed script, you can log in with the previously created admin account (`admin@admin.com` / `secret123`). 
+
+     If you didn't run the seed script, run `backend/scripts/init/seed_admin.py` manually to create an admin account.
 
   5. **Make requests**:
      ```bash     
