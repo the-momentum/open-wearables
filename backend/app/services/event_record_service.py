@@ -21,6 +21,7 @@ class EventRecordService(
 
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
+        self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
 
     def _build_response(
         self,
@@ -29,21 +30,21 @@ class EventRecordService(
     ) -> EventRecordResponse:
         return EventRecordResponse(
             id=record.id,
+            external_id=record.external_id,
             category=record.category,
             type=record.type,
             source_name=record.source_name,
             duration_seconds=record.duration_seconds,
             start_datetime=record.start_datetime,
             end_datetime=record.end_datetime,
-            external_mapping_id=record.external_mapping_id,
+            external_device_mapping_id=record.external_device_mapping_id,
             user_id=mapping.user_id,
-            provider_id=mapping.provider_id,
+            provider_name=mapping.provider_name,
             device_id=mapping.device_id,
         )
 
     def create_detail(self, db_session: DbSession, detail: EventRecordDetailCreate) -> EventRecordDetail:
-        repo = EventRecordDetailRepository(EventRecordDetail)
-        return repo.create(db_session, detail)
+        return self.event_record_detail_repo.create(db_session, detail)
 
     @handle_exceptions
     async def _get_records_with_filters(

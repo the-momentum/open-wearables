@@ -88,10 +88,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             "heart_rate_min": int(hr_avg) if hr_avg is not None else None,
             "heart_rate_max": int(hr_max) if hr_max is not None else None,
             "heart_rate_avg": hr_avg,
-            "steps_min": None,
-            "steps_max": None,
-            "steps_avg": None,
-            "steps_total": None,
+            "steps_count": None,
         }
 
     def _normalize_workout(
@@ -122,7 +119,8 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            provider_id=raw_workout.id,
+            external_id=raw_workout.id,
+            provider_name="Polar",
             user_id=user_id,
         )
 
@@ -153,8 +151,9 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         workouts = [PolarExerciseJSON(**w) for w in workouts_data]
 
         for record, detail in self._build_bundles(workouts, user_id):
-            event_record_service.create(db, record)
-            event_record_service.create_detail(db, detail)
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
 
         return True
 

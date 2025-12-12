@@ -2,6 +2,7 @@ from uuid import UUID
 
 import isodate
 from sqlalchemy import and_, desc, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
@@ -9,6 +10,7 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 
@@ -20,25 +22,43 @@ class EventRecordRepository(
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     @handle_exceptions
+    @handle_duplicates
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
-            creator.provider_id,
+            creator.provider_name,
             creator.device_id,
-            creator.external_mapping_id,
+            creator.external_device_mapping_id,
         )
 
         creation_data = creator.model_dump()
-        creation_data["external_mapping_id"] = mapping.id
-        for redundant_key in ("user_id", "provider_id", "device_id"):
+        creation_data["external_device_mapping_id"] = mapping.id
+        for redundant_key in ("user_id", "provider_name", "device_id"):
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
-        db_session.add(creation)
-        db_session.commit()
-        db_session.refresh(creation)
-        return creation
+
+        try:
+            db_session.add(creation)
+            db_session.commit()
+            db_session.refresh(creation)
+            return creation
+        except IntegrityError:
+            db_session.rollback()
+            # Query using the mapping and other unique constraint fields
+            existing = (
+                db_session.query(self.model)
+                .filter(
+                    self.model.external_device_mapping_id == mapping.id,
+                    self.model.start_datetime == creation.start_datetime,
+                    self.model.category == creation.category,
+                )
+                .one_or_none()
+            )
+            if existing:
+                return existing
+            raise
 
     def get_records_with_filters(
         self,
@@ -48,7 +68,7 @@ class EventRecordRepository(
     ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
         query: Query = db_session.query(EventRecord, ExternalDeviceMapping).join(
             ExternalDeviceMapping,
-            EventRecord.external_mapping_id == ExternalDeviceMapping.id,
+            EventRecord.external_device_mapping_id == ExternalDeviceMapping.id,
         )
 
         filters = [ExternalDeviceMapping.user_id == UUID(user_id)]
@@ -65,11 +85,11 @@ class EventRecordRepository(
         if query_params.device_id:
             filters.append(ExternalDeviceMapping.device_id == query_params.device_id)
 
-        if getattr(query_params, "provider_id", None):
-            filters.append(ExternalDeviceMapping.provider_id == query_params.provider_id)
+        if getattr(query_params, "provider_name", None):
+            filters.append(ExternalDeviceMapping.provider_name == query_params.provider_name)
 
-        if getattr(query_params, "external_mapping_id", None):
-            filters.append(EventRecord.external_mapping_id == query_params.external_mapping_id)
+        if getattr(query_params, "external_device_mapping_id", None):
+            filters.append(EventRecord.external_device_mapping_id == query_params.external_device_mapping_id)
 
         if query_params.start_date:
             start_dt = isodate.parse_datetime(query_params.start_date)

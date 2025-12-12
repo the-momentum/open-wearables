@@ -2,14 +2,10 @@
 
 from logging import getLogger
 from typing import Annotated
-from urllib.parse import parse_qs, urlparse
 
-import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.database import DbSession
-from app.integrations.redis_client import get_redis_client
-from app.repositories import UserConnectionRepository
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -72,6 +68,8 @@ async def garmin_ping_notification(
                     logger.info(f"Activity callback URL for user {garmin_user_id}: {callback_url}")
 
                     # Find internal user_id based on garmin_user_id
+                    from app.repositories import UserConnectionRepository
+
                     repo = UserConnectionRepository()
                     connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
 
@@ -84,6 +82,8 @@ async def garmin_ping_notification(
                     logger.info(f"Mapped Garmin user {garmin_user_id} to internal user {internal_user_id}")
 
                     # Extract parameters from callback URL (including pull token)
+                    from urllib.parse import parse_qs, urlparse
+
                     parsed_url = urlparse(callback_url)
                     query_params = parse_qs(parsed_url.query)
                     pull_token = query_params.get("token", [None])[0]
@@ -93,7 +93,14 @@ async def garmin_ping_notification(
                     if pull_token:
                         # Save pull token to Redis for later use
                         # Token is associated with user and time range
-                        redis_client = get_redis_client()
+                        import redis
+
+                        from app.config import settings
+
+                        redis_client = redis.from_url(
+                            settings.redis_url,
+                            decode_responses=True,
+                        )
 
                         # Create key: garmin_token:{user_id}:{timestamp_range}
                         token_key = f"garmin_pull_token:{internal_user_id}:{upload_start}_{upload_end}"
@@ -113,6 +120,8 @@ async def garmin_ping_notification(
 
                     # Optionally: Fetch and cache activity data immediately
                     # This is recommended so data is available even if token expires
+                    import httpx
+
                     try:
                         async with httpx.AsyncClient() as client:
                             response = await client.get(callback_url, timeout=30.0)
