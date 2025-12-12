@@ -1,8 +1,38 @@
 from datetime import datetime
-from typing import Any, Literal
+from math import ceil
+from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+T = TypeVar("T")
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Generic paginated response wrapper."""
+
+    items: list[T]
+    total: int = Field(ge=0, description="Total number of items matching the query")
+    page: int = Field(ge=1, description="Current page number (1-based)")
+    limit: int = Field(gt=0, description="Number of items per page")
+
+    @computed_field
+    @property
+    def pages(self) -> int:
+        """Total number of pages."""
+        return ceil(self.total / self.limit) if self.limit > 0 else 0
+
+    @computed_field
+    @property
+    def has_next(self) -> bool:
+        """Whether there is a next page."""
+        return self.page < self.pages
+
+    @computed_field
+    @property
+    def has_prev(self) -> bool:
+        """Whether there is a previous page."""
+        return self.page > 1
 
 
 class BaseQueryParams(BaseModel):
