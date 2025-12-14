@@ -96,6 +96,38 @@ from .system_info import (
     DataPointsInfo,
     SystemInfoResponse,
 )
+from .taxonomy_common import (
+    DataSource,
+    ErrorDetails,
+    Pagination,
+    TimeseriesMetadata,
+)
+from .taxonomy_events import (
+    Macros,
+    Meal,
+    Measurement,
+    SleepSession,
+    Workout,
+    WorkoutDetailed,
+    WorkoutType,
+)
+from .taxonomy_summaries import (
+    ActivitySummary,
+    BodySummary,
+    IntensityMinutes,
+    RecoverySummary,
+    SleepStagesSummary,
+    SleepSummary,
+)
+from .taxonomy_timeseries import (
+    BiometricType,
+    BloodGlucoseSample,
+    HeartRateSample,
+    HrvSample,
+    SleepStageSample,
+    Spo2Sample,
+    StepsSample,
+)
 from .time_series import (
     HeartRateSampleCreate,
     HeartRateSampleResponse,
