@@ -32,6 +32,14 @@ export function TeamTab() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    email: string;
+  } | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<{
+    id: string;
+    email: string;
+  } | null>(null);
 
   const { me } = useAuth();
   const { data: developers, isLoading: isLoadingDevelopers } = useDevelopers();
@@ -60,13 +68,11 @@ export function TeamTab() {
     }
   };
 
-  const handleDelete = (id: string, email: string) => {
-    if (
-      confirm(
-        `Are you sure you want to remove ${email} from the team? This action cannot be undone.`
-      )
-    ) {
-      deleteMutation.mutate(id);
+  const handleDelete = () => {
+    if (deleteTarget) {
+      deleteMutation.mutate(deleteTarget.id, {
+        onSuccess: () => setDeleteTarget(null),
+      });
     }
   };
 
@@ -88,13 +94,11 @@ export function TeamTab() {
     );
   };
 
-  const handleRevokeInvitation = (id: string, email: string) => {
-    if (
-      confirm(
-        `Are you sure you want to revoke the invitation for ${email}? They will no longer be able to join.`
-      )
-    ) {
-      revokeInvitationMutation.mutate(id);
+  const handleRevokeInvitation = () => {
+    if (revokeTarget) {
+      revokeInvitationMutation.mutate(revokeTarget.id, {
+        onSuccess: () => setRevokeTarget(null),
+      });
     }
   };
 
@@ -234,10 +238,10 @@ export function TeamTab() {
                         </button>
                         <button
                           onClick={() =>
-                            handleRevokeInvitation(
-                              invitation.id,
-                              invitation.email
-                            )
+                            setRevokeTarget({
+                              id: invitation.id,
+                              email: invitation.email,
+                            })
                           }
                           disabled={revokeInvitationMutation.isPending}
                           className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
@@ -331,7 +335,10 @@ export function TeamTab() {
                         {me?.id !== developer.id && (
                           <button
                             onClick={() =>
-                              handleDelete(developer.id, developer.email)
+                              setDeleteTarget({
+                                id: developer.id,
+                                email: developer.email,
+                              })
                             }
                             disabled={deleteMutation.isPending}
                             className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
@@ -427,6 +434,70 @@ export function TeamTab() {
               {createInvitationMutation.isPending
                 ? 'Sending...'
                 : 'Send Invitation'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Team Member Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove Team Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove{' '}
+              <span className="font-medium text-zinc-300">
+                {deleteTarget?.email}
+              </span>{' '}
+              from the team? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-3">
+            <button
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Removing...' : 'Remove'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Invitation Dialog */}
+      <Dialog open={!!revokeTarget} onOpenChange={() => setRevokeTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Revoke Invitation</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to revoke the invitation for{' '}
+              <span className="font-medium text-zinc-300">
+                {revokeTarget?.email}
+              </span>
+              ? They will no longer be able to join.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-3">
+            <button
+              onClick={() => setRevokeTarget(null)}
+              disabled={revokeInvitationMutation.isPending}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRevokeInvitation}
+              disabled={revokeInvitationMutation.isPending}
+              className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+            >
+              {revokeInvitationMutation.isPending ? 'Revoking...' : 'Revoke'}
             </button>
           </DialogFooter>
         </DialogContent>
