@@ -47,4 +47,3 @@ def downgrade() -> None:
     # Remove first_name and last_name from developer table
     op.drop_column("developer", "last_name")
     op.drop_column("developer", "first_name")
-

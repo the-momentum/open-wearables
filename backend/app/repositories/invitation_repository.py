@@ -41,5 +41,4 @@ class InvitationRepository(CrudRepository[Invitation, InvitationCreate, Invitati
             .where(self.model.status.in_(VISIBLE_INVITATION_STATUSES))
             .order_by(self.model.created_at.desc())
         )
-        return db_session.execute(stmt).scalars().all()
-
+        return list(db_session.execute(stmt).scalars().all())

@@ -6,7 +6,6 @@ import {
   Mail,
   RotateCw,
   Clock,
-  X,
   Copy,
   Check,
 } from 'lucide-react';
@@ -20,6 +19,14 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { isValidEmail, truncateId } from '@/lib/utils';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export function TeamTab() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -358,91 +365,72 @@ export function TeamTab() {
         )}
       </div>
 
-      {/* Invite Modal */}
-      {isInviteModalOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invite-modal-title"
-            className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl"
-          >
-            <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
-              <div>
-                <h2
-                  id="invite-modal-title"
-                  className="text-lg font-medium text-white"
-                >
-                  Invite Team Member
-                </h2>
-                <p className="text-sm text-zinc-500 mt-1">
-                  Send an invitation to join your team
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setIsInviteModalOpen(false);
-                  setInviteEmail('');
-                }}
-                className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="p-6">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-300">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="colleague@example.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === 'Enter' &&
-                      inviteEmail.trim() &&
-                      isValidEmail(inviteEmail.trim())
-                    ) {
-                      handleInvite();
-                    }
-                  }}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
-                />
-                <p className="text-[10px] text-zinc-600">
-                  They will receive an email with instructions to join
-                </p>
-              </div>
-            </div>
-            <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setIsInviteModalOpen(false);
-                  setInviteEmail('');
-                }}
-                disabled={createInvitationMutation.isPending}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleInvite}
-                disabled={
-                  createInvitationMutation.isPending ||
-                  !inviteEmail.trim() ||
-                  !isValidEmail(inviteEmail.trim())
+      {/* Invite Dialog */}
+      <Dialog
+        open={isInviteModalOpen}
+        onOpenChange={(open) => {
+          setIsInviteModalOpen(open);
+          if (!open) setInviteEmail('');
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invite Team Member</DialogTitle>
+            <DialogDescription>
+              Send an invitation to join your team
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5 py-4">
+            <label className="text-xs font-medium text-zinc-300">
+              Email Address
+            </label>
+            <input
+              type="email"
+              placeholder="colleague@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === 'Enter' &&
+                  inviteEmail.trim() &&
+                  isValidEmail(inviteEmail.trim())
+                ) {
+                  handleInvite();
                 }
-                className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
-              >
-                {createInvitationMutation.isPending
-                  ? 'Sending...'
-                  : 'Send Invitation'}
-              </button>
-            </div>
+              }}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
+            />
+            <p className="text-[10px] text-zinc-600">
+              They will receive an email with instructions to join
+            </p>
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-3">
+            <button
+              onClick={() => {
+                setIsInviteModalOpen(false);
+                setInviteEmail('');
+              }}
+              disabled={createInvitationMutation.isPending}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleInvite}
+              disabled={
+                createInvitationMutation.isPending ||
+                !inviteEmail.trim() ||
+                !isValidEmail(inviteEmail.trim())
+              }
+              className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
+            >
+              {createInvitationMutation.isPending
+                ? 'Sending...'
+                : 'Send Invitation'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

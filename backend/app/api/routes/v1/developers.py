@@ -36,4 +36,3 @@ async def update_developer(
 async def delete_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
     """Delete developer by ID."""
     return developer_service.delete(db, developer_id, raise_404=True)
-

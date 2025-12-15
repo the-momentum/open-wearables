@@ -35,12 +35,6 @@ from .developer import (
     DeveloperUpdate,
     DeveloperUpdateInternal,
 )
-from .invitation import (
-    InvitationAccept,
-    InvitationCreate,
-    InvitationRead,
-    InvitationStatus,
-)
 from .error_codes import ErrorCode
 from .event_record import (
     EventRecordCreate,
@@ -74,6 +68,12 @@ from .garmin.activity_import import (
 )
 from .garmin.activity_import import (
     RootJSON as GarminRootJSON,
+)
+from .invitation import (
+    InvitationAccept,
+    InvitationCreate,
+    InvitationRead,
+    InvitationStatus,
 )
 from .oauth import (
     AuthenticationMethod,

@@ -93,7 +93,7 @@ class InvitationService:
         # Queue invitation email for async delivery (Celery task will update status to SENT on success)
         self._send_invitation_email_async(invitation, invited_by.email)
 
-        self.logger.info(f"Created invitation")
+        self.logger.info("Created invitation")
         return invitation
 
     def get_active_invitations(self, db_session: DbSession) -> list[Invitation]:
@@ -128,7 +128,7 @@ class InvitationService:
             )
 
         if invitation.expires_at < datetime.now(timezone.utc):
-            invitation.status = InvitationStatus.EXPIRED
+            invitation.status = InvitationStatus.EXPIRED  # type: ignore[assignment]
             db_session.commit()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -149,7 +149,7 @@ class InvitationService:
             db_session.add(developer)
 
             # Mark invitation as accepted
-            invitation.status = InvitationStatus.ACCEPTED
+            invitation.status = InvitationStatus.ACCEPTED  # type: ignore[assignment]
 
             # Single commit for both operations - atomic transaction
             db_session.commit()
@@ -162,7 +162,7 @@ class InvitationService:
                 detail="Failed to create developer account",
             )
 
-        self.logger.info(f"Invitation accepted")
+        self.logger.info("Invitation accepted")
         return developer
 
     def revoke_invitation(self, db_session: DbSession, invitation_id: UUID) -> Invitation:
@@ -181,7 +181,7 @@ class InvitationService:
                 detail=f"Cannot revoke invitation with status: {invitation.status}",
             )
 
-        invitation.status = InvitationStatus.REVOKED
+        invitation.status = InvitationStatus.REVOKED  # type: ignore[assignment]
         db_session.commit()
         db_session.refresh(invitation)
 
@@ -205,9 +205,11 @@ class InvitationService:
             )
 
         # Generate new token, extend expiry, and reset status to PENDING
-        invitation.token = self._generate_token()
-        invitation.expires_at = datetime.now(timezone.utc) + timedelta(days=settings.invitation_expire_days)
-        invitation.status = InvitationStatus.PENDING
+        invitation.token = self._generate_token()  # type: ignore[assignment]
+        invitation.expires_at = datetime.now(timezone.utc) + timedelta(  # type: ignore[assignment]
+            days=settings.invitation_expire_days,
+        )
+        invitation.status = InvitationStatus.PENDING  # type: ignore[assignment]
         db_session.commit()
         db_session.refresh(invitation)
 
@@ -215,9 +217,8 @@ class InvitationService:
         invited_by_email = invitation.invited_by.email if invitation.invited_by else None
         self._send_invitation_email_async(invitation, invited_by_email)
 
-        self.logger.info(f"Invitation resent")
+        self.logger.info("Invitation resent")
         return invitation
 
 
 invitation_service = InvitationService(log=getLogger(__name__))
-

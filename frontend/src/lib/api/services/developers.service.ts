@@ -11,4 +11,3 @@ export const developersService = {
     return apiClient.delete<void>(API_ENDPOINTS.developerDetail(id));
   },
 };
-

@@ -1,11 +1,13 @@
 from logging import getLogger
+from typing import Any
 
-from celery import Task, shared_task
+from billiard.einfo import ExceptionInfo
 
 from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.invitation import InvitationStatus
 from app.utils.email_client import send_invitation_email
+from celery import Task, shared_task
 
 logger = getLogger(__name__)
 
@@ -21,7 +23,14 @@ class EmailSendError(Exception):
 class EmailTaskBase(Task):
     """Base task class that handles failure by updating invitation status to FAILED."""
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
+    def on_failure(
+        self,
+        exc: Exception,
+        task_id: str,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        einfo: ExceptionInfo,
+    ) -> None:
         """Called when task fails after all retries are exhausted."""
         invitation_id = args[0] if args else kwargs.get("invitation_id")
         if invitation_id:
@@ -47,7 +56,7 @@ class EmailTaskBase(Task):
     retry_kwargs={"max_retries": MAX_RETRIES},
 )
 def send_invitation_email_task(
-    self,
+    self: Task,
     invitation_id: str,
     to_email: str,
     invite_url: str,
@@ -97,7 +106,8 @@ def send_invitation_email_task(
             raise ValueError(f"Invitation {invitation_id} has invalid status: {invitation.status}")
 
         # Send email only if status is PENDING
-        logger.info(f"Sending invitation email for invitation {invitation_id} (attempt {self.request.retries + 1}/{MAX_RETRIES + 1})")
+        attempt = self.request.retries + 1
+        logger.info(f"Sending invitation email for {invitation_id} (attempt {attempt}/{MAX_RETRIES + 1})")
         success = send_invitation_email(to_email, invite_url, invited_by_email)
 
         if not success:
@@ -118,4 +128,3 @@ def send_invitation_email_task(
         "message": "Invitation email sent successfully",
         "invitation_id": invitation_id,
     }
-

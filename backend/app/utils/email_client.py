@@ -1,17 +1,20 @@
 import logging
 import re
+from html import escape
+from typing import Any, cast
+
 import resend
 
 from app.config import settings
 
-from html import escape
-
 logger = logging.getLogger(__name__)
-EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', re.IGNORECASE)
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", re.IGNORECASE)
+
 
 def is_valid_email(email: str) -> bool:
     """Check if the email is valid."""
     return EMAIL_REGEX.match(email) is not None
+
 
 def _get_from_address() -> str:
     """Get the formatted from address."""
@@ -67,11 +70,13 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         from_addr = _get_from_address()
         logger.info(f"Sending invitation email from '{from_addr}'")
 
-        result = resend.Emails.send({
-            "from": from_addr,
-            "to": [to_email],
-            "subject": f"You've been invited to join {escape(settings.email_from_name)}",
-            "html": f"""
+        params = cast(
+            Any,
+            {
+                "from": from_addr,
+                "to": [to_email],
+                "subject": f"You've been invited to join {escape(settings.email_from_name)}",
+                "html": f"""
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2>You're Invited!</h2>
                     <p>You've been invited{invited_by_text} to join the team.</p>
@@ -90,10 +95,11 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
                     </p>
                 </div>
             """,
-        })
+            },
+        )
+        result = resend.Emails.send(params)
         logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
         logger.exception(f"Failed to send invitation email: {e}")
         return False
-

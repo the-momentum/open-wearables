@@ -13,7 +13,7 @@ class Invitation(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     email: Mapped[str_255]
     token: Mapped[UniqueIndex[str_255]]
-    status: Mapped[str_50]  # pending, sent, accepted, expired, revoked
+    status: Mapped[str_50]  # pending, sent, failed, accepted, expired, revoked
     expires_at: Mapped[datetime_tz]
     created_at: Mapped[datetime_tz]
 
@@ -23,4 +23,3 @@ class Invitation(BaseDbModel):
         foreign_keys="[Invitation.invited_by_id]",
         lazy="joined",
     )
-
