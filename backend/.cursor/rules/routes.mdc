@@ -1,5 +1,5 @@
 ---
-globs: app/api/routes/**
+globs: backend/app/api/routes/**
 alwaysApply: false
 ---
 

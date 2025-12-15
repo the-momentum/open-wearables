@@ -1,5 +1,5 @@
 ---
-globs: app/models/**,app/database.py,app/mappings.py,app/utils/mappings_meta.py
+globs: backend/app/models/**,backend/app/database.py,backend/app/mappings.py,backend/app/utils/mappings_meta.py
 alwaysApply: false
 ---
 

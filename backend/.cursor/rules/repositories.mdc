@@ -1,5 +1,5 @@
 ---
-globs: app/repositories/**
+globs: backend/app/repositories/**
 alwaysApply: false
 ---
 
