@@ -3,8 +3,9 @@ from uuid import UUID
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from app.mappings import FKDeveloper, ManyToOne, PrimaryKey, UniqueIndex, datetime_tz, str_50, str_255
+from app.mappings import FKDeveloper, ManyToOne, PrimaryKey, Unique, datetime_tz, str_255
 from app.models import Developer
+from app.schemas.invitation import InvitationStatus
 
 
 class Invitation(BaseDbModel):
@@ -12,8 +13,8 @@ class Invitation(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     email: Mapped[str_255]
-    token: Mapped[UniqueIndex[str_255]]
-    status: Mapped[str_50]  # pending, sent, failed, accepted, expired, revoked
+    token: Mapped[Unique[str_255]]
+    status: Mapped[InvitationStatus]
     expires_at: Mapped[datetime_tz]
     created_at: Mapped[datetime_tz]
 

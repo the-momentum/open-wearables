@@ -17,7 +17,6 @@ PKAutoIncrement = Annotated[
     mapped_column(primary_key=True, autoincrement=True),
 ]  # use for composite integer primary keys (single PK int will have it auto enabled)
 Unique = Annotated[T, mapped_column(unique=True)]
-UniqueIndex = Annotated[T, mapped_column(unique=True, index=True)]
 
 # Relationship types
 type OneToMany[T] = list[T]

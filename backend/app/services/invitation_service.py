@@ -128,7 +128,7 @@ class InvitationService:
             )
 
         if invitation.expires_at < datetime.now(timezone.utc):
-            invitation.status = InvitationStatus.EXPIRED  # type: ignore[assignment]
+            invitation.status = InvitationStatus.EXPIRED
             db_session.commit()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -149,7 +149,7 @@ class InvitationService:
             db_session.add(developer)
 
             # Mark invitation as accepted
-            invitation.status = InvitationStatus.ACCEPTED  # type: ignore[assignment]
+            invitation.status = InvitationStatus.ACCEPTED
 
             # Single commit for both operations - atomic transaction
             db_session.commit()
@@ -175,13 +175,13 @@ class InvitationService:
                 detail="Invitation not found",
             )
 
-        if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT):
+        if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot revoke invitation with status: {invitation.status}",
             )
 
-        invitation.status = InvitationStatus.REVOKED  # type: ignore[assignment]
+        invitation.status = InvitationStatus.REVOKED
         db_session.commit()
         db_session.refresh(invitation)
 
@@ -209,7 +209,7 @@ class InvitationService:
         invitation.expires_at = datetime.now(timezone.utc) + timedelta(  # type: ignore[assignment]
             days=settings.invitation_expire_days,
         )
-        invitation.status = InvitationStatus.PENDING  # type: ignore[assignment]
+        invitation.status = InvitationStatus.PENDING
         db_session.commit()
         db_session.refresh(invitation)
 
