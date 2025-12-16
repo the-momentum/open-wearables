@@ -67,6 +67,7 @@ ignore = [
     "ANN204", # missing-return-type-special-method
     "ANN401", # any-type
     "RET503", # implicit-return
+    "COM812", # trailing-comma (conflicts with ruff format)
 ]
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
