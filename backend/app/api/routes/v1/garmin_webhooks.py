@@ -2,7 +2,6 @@
 
 from logging import getLogger
 from typing import Annotated
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -72,7 +71,7 @@ async def garmin_ping_notification(
                     logger.info(f"Activity callback URL for user {garmin_user_id}: {callback_url}")
 
                     # Find internal user_id based on garmin_user_id
-                    
+
                     repo = UserConnectionRepository()
                     connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
 

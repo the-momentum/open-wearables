@@ -14,6 +14,8 @@ from .apple.healthkit.record_import import (
 )
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
+)
+from .apple.healthkit.workout_import import (
     WorkoutStatisticJSON as HKWorkoutStatisticJSON,
 )
 from .common import (

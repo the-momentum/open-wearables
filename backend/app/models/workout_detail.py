@@ -19,7 +19,7 @@ class WorkoutDetail(EventRecordDetail):
     energy_burned: Mapped[numeric_10_3 | None]
     distance: Mapped[numeric_10_3 | None]
     steps_count: Mapped[int | None]
-    
+
     max_speed: Mapped[numeric_5_2 | None]
     max_watts: Mapped[numeric_10_3 | None]
     moving_time_seconds: Mapped[int | None]

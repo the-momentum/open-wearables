@@ -10,7 +10,6 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
-from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 

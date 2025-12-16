@@ -118,12 +118,12 @@ class ImportService:
         return time_series_samples
 
     def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
-            if not values:
-                return None, None, None
-            min_v = min(values)
-            max_v = max(values)
-            avg_v = sum(values, Decimal("0")) / Decimal(len(values))
-            return min_v, max_v, avg_v
+        if not values:
+            return None, None, None
+        min_v = min(values)
+        max_v = max(values)
+        avg_v = sum(values, Decimal("0")) / Decimal(len(values))
+        return min_v, max_v, avg_v
 
     def _extract_metrics_from_workout_stats(self, stats: list[HKWorkoutStatisticJSON] | None) -> EventRecordMetrics:
         stats_dict: dict[str, Decimal] = {}
