@@ -4,6 +4,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+# Allowlist for user sort columns - keep in sync with Literal type below
+USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name"})
+
 
 class UserQueryParams(BaseModel):
     """Query parameters for filtering and searching users.

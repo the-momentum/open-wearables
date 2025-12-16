@@ -3,7 +3,7 @@ from math import ceil
 from typing import Any, Generic, Literal, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 T = TypeVar("T")
 
@@ -16,11 +16,19 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page: int = Field(ge=1, description="Current page number (1-based)")
     limit: int = Field(gt=0, description="Number of items per page")
 
+    @field_validator("limit")
+    @classmethod
+    def limit_must_be_positive(cls, v: int) -> int:
+        """Ensure limit is positive to prevent division by zero in pages calculation."""
+        if v <= 0:
+            raise ValueError("limit must be greater than 0")
+        return v
+
     @computed_field
     @property
     def pages(self) -> int:
         """Total number of pages."""
-        return ceil(self.total / self.limit) if self.limit > 0 else 0
+        return ceil(self.total / self.limit)
 
     @computed_field
     @property

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Query
 from app.database import DbSession
 from app.models import User
 from app.repositories.repositories import CrudRepository
-from app.schemas.user import UserCreateInternal, UserQueryParams, UserUpdateInternal
+from app.schemas.user import USER_SORT_COLUMNS, UserCreateInternal, UserQueryParams, UserUpdateInternal
 
 
 class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal]):
@@ -39,6 +39,11 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
 
         Returns:
             A tuple containing a list of users and the total count of users.
+
+        Note:
+            If UserRead schema is extended to include relationships, add eager loading
+            with selectinload() to avoid N+1 queries. Example:
+            query = query.options(selectinload(self.model.personal_record))
         """
         query: Query = db_session.query(self.model)
 
@@ -62,10 +67,10 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
 
         total_count = query.count()
 
-        # Validate sort_by column exists
+        # Validate sort_by against explicit allowlist (defense in depth)
         sort_by_column = query_params.sort_by or "created_at"
-        if not hasattr(self.model, sort_by_column):
-            raise ValueError(f"Invalid sort_by column: {sort_by_column}")
+        if sort_by_column not in USER_SORT_COLUMNS:
+            raise ValueError("Invalid sort column")
 
         sort_column = getattr(self.model, sort_by_column)
         order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)

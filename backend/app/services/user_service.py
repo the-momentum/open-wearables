@@ -25,6 +25,28 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """Get count of users created within a date range."""
         return self.crud.get_count_in_range(db_session, start_date, end_date)
 
+    def create(self, db_session: DbSession, creator: UserCreate) -> User:
+        """Create a user with server-generated id and created_at."""
+        creation_data = creator.model_dump()
+        internal_creator = UserCreateInternal(**creation_data)
+        return super().create(db_session, internal_creator)
+
+    def update(
+        self,
+        db_session: DbSession,
+        object_id: UUID | str | int,
+        updater: UserUpdate,
+        raise_404: bool = False,
+    ) -> User | None:
+        """Update a user, setting updated_at automatically."""
+        user = self.get(db_session, object_id, raise_404=raise_404)
+        if not user:
+            return None
+
+        update_data = updater.model_dump(exclude_unset=True)
+        internal_updater = UserUpdateInternal(**update_data)
+        return self.crud.update(db_session, user, internal_updater)
+
     @handle_exceptions
     def get_users_paginated(
         self,
@@ -52,28 +74,6 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             page=query_params.page,
             limit=query_params.limit,
         )
-
-    def create(self, db_session: DbSession, creator: UserCreate) -> User:
-        """Create a user with server-generated id and created_at."""
-        creation_data = creator.model_dump()
-        internal_creator = UserCreateInternal(**creation_data)
-        return super().create(db_session, internal_creator)
-
-    def update(
-        self,
-        db_session: DbSession,
-        object_id: UUID | str | int,
-        updater: UserUpdate,
-        raise_404: bool = False,
-    ) -> User | None:
-        """Update a user, setting updated_at automatically."""
-        user = self.get(db_session, object_id, raise_404=raise_404)
-        if not user:
-            return None
-
-        update_data = updater.model_dump(exclude_unset=True)
-        internal_updater = UserUpdateInternal(**update_data)
-        return self.crud.update(db_session, user, internal_updater)
 
 
 user_service = UserService(log=getLogger(__name__))

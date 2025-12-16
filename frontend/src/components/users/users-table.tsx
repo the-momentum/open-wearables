@@ -83,6 +83,8 @@ export function UsersTable({
     onQueryChangeRef.current = onQueryChange;
   });
 
+  const prevSearchRef = useRef(debouncedSearch);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(globalFilter);
@@ -91,12 +93,21 @@ export function UsersTable({
   }, [globalFilter]);
 
   useEffect(() => {
+    const searchChanged = prevSearchRef.current !== debouncedSearch;
+    prevSearchRef.current = debouncedSearch;
+
+    if (searchChanged && pagination.pageIndex !== 0) {
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+      return;
+    }
+
+    const effectivePage = searchChanged ? 1 : pagination.pageIndex + 1;
     const sortColumn = sorting[0];
     const sortBy = sortColumn ? columnToSortBy[sortColumn.id] : 'created_at';
     const sortOrder = sortColumn?.desc ? 'desc' : 'asc';
 
     onQueryChangeRef.current({
-      page: pagination.pageIndex + 1,
+      page: effectivePage,
       limit: pagination.pageSize,
       sort_by: sortBy,
       sort_order: sortOrder,
@@ -104,11 +115,11 @@ export function UsersTable({
     });
   }, [pagination, sorting, debouncedSearch]);
 
-  useEffect(() => {
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, [debouncedSearch]);
-
   const handleCopyId = async (id: string) => {
+    if (!navigator.clipboard) {
+      toast.error('Clipboard API not available');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(id);
       setCopiedId(id);
@@ -120,6 +131,10 @@ export function UsersTable({
   };
 
   const handleCopyPairLink = async (userId: string) => {
+    if (!navigator.clipboard) {
+      toast.error('Clipboard API not available');
+      return;
+    }
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
     try {
       await navigator.clipboard.writeText(pairLink);
