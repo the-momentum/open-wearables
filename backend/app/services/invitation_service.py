@@ -1,4 +1,5 @@
 import secrets
+from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
@@ -10,7 +11,12 @@ from app.database import DbSession
 from app.integrations.celery.tasks import send_invitation_email_task
 from app.models import Developer, Invitation
 from app.repositories.invitation_repository import InvitationRepository
-from app.schemas.invitation import InvitationCreate, InvitationStatus
+from app.schemas.invitation import (
+    InvitationCreate,
+    InvitationCreateInternal,
+    InvitationResend,
+    InvitationStatus,
+)
 from app.services.developer_service import developer_service
 from app.utils.security import get_password_hash
 
@@ -72,23 +78,17 @@ class InvitationService:
                 detail="A pending invitation already exists for this email",
             )
 
-        # Create invitation
-        token = self._generate_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.invitation_expire_days)
-
-        invitation = Invitation(
+        # Create invitation via repository
+        invitation_data = InvitationCreateInternal(
             id=uuid4(),
             email=payload.email,
-            token=token,
+            token=self._generate_token(),
             status=InvitationStatus.PENDING,
-            expires_at=expires_at,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=settings.invitation_expire_days),
             created_at=datetime.now(timezone.utc),
             invited_by_id=invited_by.id,
         )
-
-        db_session.add(invitation)
-        db_session.commit()
-        db_session.refresh(invitation)
+        invitation = self.crud.create(db_session, invitation_data)
 
         # Queue invitation email for async delivery (Celery task will update status to SENT on success)
         self._send_invitation_email_async(invitation, invited_by.email)
@@ -96,7 +96,7 @@ class InvitationService:
         self.logger.info("Created invitation")
         return invitation
 
-    def get_active_invitations(self, db_session: DbSession) -> list[Invitation]:
+    def get_active_invitations(self, db_session: DbSession) -> Sequence[Invitation]:
         """Get all active invitations (pending or sent)."""
         return self.crud.get_active_invitations(db_session)
 
@@ -128,34 +128,26 @@ class InvitationService:
             )
 
         if invitation.expires_at < datetime.now(timezone.utc):
-            invitation.status = InvitationStatus.EXPIRED
-            db_session.commit()
+            self.crud.update_status(db_session, invitation, InvitationStatus.EXPIRED)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invitation has expired",
             )
 
+        # Build developer model for atomic creation
+        developer = Developer(
+            id=uuid4(),
+            email=invitation.email,
+            first_name=first_name,
+            last_name=last_name,
+            hashed_password=get_password_hash(password),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
         try:
-            # Create the developer directly (bypassing repository commit for atomicity)
-            developer = Developer(
-                id=uuid4(),
-                email=invitation.email,
-                first_name=first_name,
-                last_name=last_name,
-                hashed_password=get_password_hash(password),
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-            )
-            db_session.add(developer)
-
-            # Mark invitation as accepted
-            invitation.status = InvitationStatus.ACCEPTED
-
-            # Single commit for both operations - atomic transaction
-            db_session.commit()
-            db_session.refresh(developer)
+            developer = self.crud.accept_with_developer(db_session, invitation, developer)
         except Exception as e:
-            db_session.rollback()
             self.logger.error(f"Failed to accept invitation: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -181,9 +173,7 @@ class InvitationService:
                 detail=f"Cannot revoke invitation with status: {invitation.status}",
             )
 
-        invitation.status = InvitationStatus.REVOKED
-        db_session.commit()
-        db_session.refresh(invitation)
+        invitation = self.crud.update_status(db_session, invitation, InvitationStatus.REVOKED)
 
         self.logger.info(f"Invitation revoked for {invitation.email}")
         return invitation
@@ -205,13 +195,12 @@ class InvitationService:
             )
 
         # Generate new token, extend expiry, and reset status to PENDING
-        invitation.token = self._generate_token()  # type: ignore[assignment]
-        invitation.expires_at = datetime.now(timezone.utc) + timedelta(  # type: ignore[assignment]
-            days=settings.invitation_expire_days,
+        resend_data = InvitationResend(
+            token=self._generate_token(),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=settings.invitation_expire_days),
+            status=InvitationStatus.PENDING,
         )
-        invitation.status = InvitationStatus.PENDING
-        db_session.commit()
-        db_session.refresh(invitation)
+        invitation = self.crud.update(db_session, invitation, resend_data)
 
         # Queue email for async delivery (will update status to SENT on success)
         invited_by_email = invitation.invited_by.email if invitation.invited_by else None
