@@ -1,6 +1,6 @@
 """data model v2
 
-Revision ID: ae59a39d4269
+Revision ID: a737a33d1497
 Revises: bbfb683a7c6c
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ae59a39d4269'
+revision: str = 'a737a33d1497'
 down_revision: Union[str, None] = 'bbfb683a7c6c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -28,6 +28,7 @@ def upgrade() -> None:
     sa.Column('sleep_rem_minutes', sa.Integer(), nullable=True),
     sa.Column('sleep_light_minutes', sa.Integer(), nullable=True),
     sa.Column('sleep_awake_minutes', sa.Integer(), nullable=True),
+    sa.Column('is_nap', sa.Boolean(), nullable=False),
     sa.ForeignKeyConstraint(['record_id'], ['event_record_detail.record_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('record_id')
     )
@@ -50,8 +51,8 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['record_id'], ['event_record_detail.record_id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('record_id')
     )
-    op.drop_table('sleep_details')
     op.drop_table('workout_details')
+    op.drop_table('sleep_details')
     op.add_column('data_point_series', sa.Column('external_id', sa.String(length=100), nullable=True))
     op.add_column('data_point_series', sa.Column('external_device_mapping_id', sa.UUID(), nullable=False))
     op.add_column('data_point_series', sa.Column('series_type_definition_id', sa.Integer(), nullable=False))
@@ -61,8 +62,8 @@ def upgrade() -> None:
     op.drop_constraint(op.f('data_point_series_external_mapping_id_fkey'), 'data_point_series', type_='foreignkey')
     op.create_foreign_key(None, 'data_point_series', 'external_device_mapping', ['external_device_mapping_id'], ['id'], ondelete='CASCADE')
     op.create_foreign_key(None, 'data_point_series', 'series_type_definition', ['series_type_definition_id'], ['id'], ondelete='RESTRICT')
-    op.drop_column('data_point_series', 'series_type_id')
     op.drop_column('data_point_series', 'external_mapping_id')
+    op.drop_column('data_point_series', 'series_type_id')
     op.add_column('event_record', sa.Column('external_id', sa.String(length=100), nullable=True))
     op.add_column('event_record', sa.Column('external_device_mapping_id', sa.UUID(), nullable=False))
     op.drop_constraint(op.f('uq_event_record_datetime_category'), 'event_record', type_='unique')
@@ -98,8 +99,8 @@ def downgrade() -> None:
     op.create_unique_constraint(op.f('uq_event_record_datetime_category'), 'event_record', ['external_mapping_id', 'start_datetime', 'category'], postgresql_nulls_not_distinct=False)
     op.drop_column('event_record', 'external_device_mapping_id')
     op.drop_column('event_record', 'external_id')
-    op.add_column('data_point_series', sa.Column('external_mapping_id', sa.UUID(), autoincrement=False, nullable=False))
     op.add_column('data_point_series', sa.Column('series_type_id', sa.INTEGER(), autoincrement=False, nullable=False))
+    op.add_column('data_point_series', sa.Column('external_mapping_id', sa.UUID(), autoincrement=False, nullable=False))
     op.drop_constraint(None, 'data_point_series', type_='foreignkey')
     op.drop_constraint(None, 'data_point_series', type_='foreignkey')
     op.create_foreign_key(op.f('data_point_series_external_mapping_id_fkey'), 'data_point_series', 'external_device_mapping', ['external_mapping_id'], ['id'], ondelete='CASCADE')
@@ -109,6 +110,18 @@ def downgrade() -> None:
     op.drop_column('data_point_series', 'series_type_definition_id')
     op.drop_column('data_point_series', 'external_device_mapping_id')
     op.drop_column('data_point_series', 'external_id')
+    op.create_table('sleep_details',
+    sa.Column('record_id', sa.UUID(), autoincrement=False, nullable=False),
+    sa.Column('sleep_total_duration_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('sleep_time_in_bed_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('sleep_efficiency_score', sa.NUMERIC(precision=5, scale=2), autoincrement=False, nullable=True),
+    sa.Column('sleep_deep_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('sleep_rem_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('sleep_light_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.Column('sleep_awake_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
+    sa.ForeignKeyConstraint(['record_id'], ['event_record_detail.record_id'], name=op.f('sleep_details_record_id_fkey'), ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('record_id', name=op.f('sleep_details_pkey'))
+    )
     op.create_table('workout_details',
     sa.Column('record_id', sa.UUID(), autoincrement=False, nullable=False),
     sa.Column('heart_rate_min', sa.INTEGER(), autoincrement=False, nullable=True),
@@ -128,18 +141,6 @@ def downgrade() -> None:
     sa.Column('elev_low', sa.NUMERIC(precision=10, scale=3), autoincrement=False, nullable=True),
     sa.ForeignKeyConstraint(['record_id'], ['event_record_detail.record_id'], name=op.f('workout_details_record_id_fkey'), ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('record_id', name=op.f('workout_details_pkey'))
-    )
-    op.create_table('sleep_details',
-    sa.Column('record_id', sa.UUID(), autoincrement=False, nullable=False),
-    sa.Column('sleep_total_duration_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.Column('sleep_time_in_bed_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.Column('sleep_efficiency_score', sa.NUMERIC(precision=5, scale=2), autoincrement=False, nullable=True),
-    sa.Column('sleep_deep_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.Column('sleep_rem_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.Column('sleep_light_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.Column('sleep_awake_minutes', sa.INTEGER(), autoincrement=False, nullable=True),
-    sa.ForeignKeyConstraint(['record_id'], ['event_record_detail.record_id'], name=op.f('sleep_details_record_id_fkey'), ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('record_id', name=op.f('sleep_details_pkey'))
     )
     op.drop_table('workout_detail')
     op.drop_table('sleep_detail')

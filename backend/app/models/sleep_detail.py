@@ -20,3 +20,5 @@ class SleepDetail(EventRecordDetail):
     sleep_rem_minutes: Mapped[int | None]
     sleep_light_minutes: Mapped[int | None]
     sleep_awake_minutes: Mapped[int | None]
+
+    is_nap: Mapped[bool]
