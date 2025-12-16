@@ -193,3 +193,121 @@ uv run pytest -v --cov=app
 ```
 
 Run `uv run ruff check . --fix && uv run ruff format .` after making changes.
+
+## Detailed Layer Rules
+
+### Models Layer (`app/models/`)
+
+Models define SQL table structure using SQLAlchemy. Each model represents one table.
+
+**Required files:**
+- `app/database.py` - Contains `BaseDbModel` class with `type_annotation_map`, custom Python to SQL type mappings
+- `app/mappings.py` - Defines custom Python types with `Annotated` syntax, relationship types and foreign keys
+
+**Model structure:**
+```python
+from sqlalchemy.orm import Mapped
+from app.database import BaseDbModel
+from app.mappings import PrimaryKey, Unique, datetime_tz, email, OneToMany, ManyToOne, FKUser
+
+class User(BaseDbModel):
+    id: Mapped[PrimaryKey[UUID]]
+    email: Mapped[Unique[email]]
+    created_at: Mapped[datetime_tz]
+    workouts: Mapped[OneToMany["Workout"]]
+
+class Workout(BaseDbModel):
+    user_id: Mapped[FKUser]
+    user: Mapped[ManyToOne["User"]]
+```
+
+**Custom types:**
+- `PrimaryKey[T]`, `Unique[T]`, `UniqueIndex[T]`, `Indexed[T]` - Constraints with generic type
+- `str_10`, `str_50`, `str_100`, `str_255` - String length limits
+- `email`, `numeric_10_2`, `numeric_15_5`, `datetime_tz` - Specialized types
+- `FKUser` - Pre-defined foreign key relationships
+- `OneToMany[T]`, `ManyToOne[T]` - Relationship types
+
+### Repositories Layer (`app/repositories/`)
+
+Repositories handle **ONLY** database operations. Input/output must be SQLAlchemy models only (no Pydantic schemas).
+
+**CRUD repository:**
+```python
+from app.repositories.repositories import CrudRepository
+
+class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
+    def __init__(self, model: type[User]):
+        super().__init__(model)
+
+    def get_by_email(self, db_session: DbSession, email: str) -> User | None:
+        return db_session.query(self.model).filter(self.model.email == email).one_or_none()
+```
+
+**Flow:** database → SQLAlchemy model → repository → SQLAlchemy model → service
+
+### Schemas Layer (`app/schemas/`)
+
+Schemas define API data format through Pydantic models. Handle validation and serialization.
+
+- Use **Pydantic 2+ syntax** exclusively
+- Implement validation in schemas, not database models
+- Set default values in schemas to avoid database-level defaults
+- `response_model` automatically converts SQLAlchemy to Pydantic
+
+### Services Layer (`app/services/`)
+
+Services contain business logic. They **NEVER** perform database operations directly.
+
+**Type annotations are mandatory for all parameters and return types.**
+
+```python
+from app.services.services import AppService
+from app.utils.exceptions import handle_exceptions
+
+class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
+    def __init__(self, crud_model: type[UserRepository], model: type[User], log: Logger, **kwargs):
+        super().__init__(crud_model, model, log, **kwargs)
+
+# Mixin pattern for additional functionality
+class ActivityMixin:
+    def __init__(self, activity_repository: ActivityRepository = Depends(), **kwargs):
+        self.activity_repository = activity_repository
+        super().__init__(**kwargs)
+
+    @handle_exceptions
+    def is_user_active(self: "UserService", object_id: UUID) -> bool:
+        return self.activity_repository.is_user_active(object_id)
+```
+
+**Error handling:** Use `@handle_exceptions` decorator from `app.utils.exceptions`
+
+**Flow:** repository → SQLAlchemy model → service → SQLAlchemy model → route
+
+### Routes Layer (`app/api/routes/`)
+
+**Directory structure:**
+```
+app/api/routes/
+├── __init__.py          # Head router (imports all versions)
+├── v1/                  # API version 1
+│   ├── __init__.py      # Version router (includes all v1 routes)
+│   └── example.py       # Specific routes
+```
+
+**Router hierarchy:**
+1. Module routers - `router = APIRouter()` without prefixes or tags
+2. Version router (`v1/__init__.py`) - Includes module routers with tags (singular + kebab-case), NO prefix
+3. Head router (`routes/__init__.py`) - Includes version routers with version prefix from settings
+4. Main router (`main.py`) - Includes head_router, NO prefix
+
+**Route implementation:**
+- Use `@router.method()` decorator with HTTP method and path
+- Add `response_model` (Pydantic) and `status_code` (fastapi.status)
+- Define functions as `async` by default
+- Use **kebab-case** for paths: `/heart-rate`, `/import-data`
+- Keep route code minimal, delegate to services
+
+**Flow:**
+- Request: request → main.py → head_router → version_router → router → endpoint → service
+- Response: service → response_model validation → router → version_router → head_router → main.py → client

@@ -87,3 +87,37 @@ cd frontend && pnpm run lint:fix && pnpm run format
 4. **Run quality checks** - Always run lint/format after changes
 5. **Use type hints** - All Python functions must have type annotations
 6. **Test your changes** - Run relevant tests before considering work complete
+
+## Documentation Standards (docs/)
+
+When working on documentation in the `docs/` directory:
+
+### Code Examples
+- Include complete, runnable examples users can copy and execute
+- Show proper error handling and edge case management
+- Use realistic data instead of placeholder values
+- Include expected outputs for verification
+- Specify language and include filename when relevant
+- Never include real API keys or secrets
+
+### API Documentation
+- Document all parameters including optional ones with clear descriptions
+- Show both success and error response examples with realistic data
+- Include rate limiting information with specific limits
+- Provide authentication examples showing proper format
+- Explain all HTTP status codes and error handling
+
+### Accessibility
+- Include descriptive alt text for all images and diagrams
+- Use specific, actionable link text instead of "click here"
+- Ensure proper heading hierarchy starting with H2
+- Structure content for easy scanning with headers and lists
+
+### Mintlify Component Selection
+- **Steps** - For procedures and sequential instructions
+- **Tabs** - For platform-specific content or alternative approaches
+- **CodeGroup** - For showing same concept in multiple programming languages
+- **Accordions** - For progressive disclosure of information
+- **RequestExample/ResponseExample** - For API endpoint documentation
+- **ParamField** - For API parameters, **ResponseField** - For API responses
+- **Expandable** - For nested object properties or hierarchical information

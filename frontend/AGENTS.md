@@ -7,9 +7,17 @@ This file extends the root AGENTS.md with frontend-specific patterns.
 - TanStack Router for file-based routing
 - TanStack Query for server state
 - React Hook Form + Zod for forms
-- Tailwind CSS + shadcn/ui for styling
+- Tailwind CSS 4.0 + shadcn/ui for styling
 - Sonner for toast notifications
+- Lucide React for icons
 - Vitest for testing
+
+### Resources
+- [TanStack Start Documentation](https://tanstack.com/start)
+- [TanStack Router Documentation](https://tanstack.com/router)
+- [TanStack Query Documentation](https://tanstack.com/query)
+- [shadcn/ui Documentation](https://ui.shadcn.com)
+- [Tailwind CSS Documentation](https://tailwindcss.com)
 
 ## Project Structure
 ```
