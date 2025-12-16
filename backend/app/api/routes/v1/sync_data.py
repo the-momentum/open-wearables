@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Annotated
 from uuid import UUID
 
@@ -12,20 +13,33 @@ router = APIRouter()
 factory = ProviderFactory()
 
 
+class SyncDataType(str, Enum):
+    """Types of data to sync from provider."""
+
+    WORKOUTS = "workouts"
+    DATA_247 = "247"  # Sleep, recovery, activity samples
+    ALL = "all"
+
+
 @router.post("/{provider}/users/{user_id}/sync")
-async def sync_user_workouts(
-    provider: Annotated[ProviderName, Path(description="Workout data provider")],
+async def sync_user_data(
+    provider: Annotated[ProviderName, Path(description="Data provider")],
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
+    # Data type selection
+    data_type: Annotated[
+        SyncDataType,
+        Query(description="Type of data to sync: workouts, 247 (sleep/recovery/activity), or all"),
+    ] = SyncDataType.ALL,
     # Suunto-specific parameters
     since: Annotated[
         int,
-        Query(description="Unix timestamp to synchronize workouts since (0 = all, Suunto only)"),
+        Query(description="Unix timestamp to synchronize data since (0 = all, Suunto only)"),
     ] = 0,
     limit: Annotated[
         int,
-        Query(description="Maximum number of workouts (Suunto: max 100)", le=100),
+        Query(description="Maximum number of items (Suunto: max 100)", le=100),
     ] = 50,
     offset: Annotated[int, Query(description="Offset for pagination (Suunto only)")] = 0,
     filter_by_modification_time: Annotated[
@@ -45,23 +59,25 @@ async def sync_user_workouts(
         str | None,
         Query(description="Activity end time as Unix timestamp or ISO 8601 date (Garmin only)"),
     ] = None,
-) -> dict[str, bool]:
+) -> dict[str, bool | dict]:
     """
-    Synchronize workouts/exercises/activities from fitness provider API for a specific user.
+    Synchronize data from fitness provider API for a specific user.
 
-    - **Suunto**: Synchronize workouts with pagination support
-    - **Polar**: Synchronize exercises (Polar's term for workouts)
-    - **Garmin**: Synchronize activities from Health API
+    **Data Types:**
+    - `workouts`: Workouts/exercises/activities
+    - `247`: 24/7 data including sleep, recovery, and activity samples (Suunto only)
+    - `all`: All available data types
+
+    **Provider-specific:**
+    - **Suunto**: Supports workouts and 247 data with pagination
+    - **Polar**: Supports workouts (exercises) only
+    - **Garmin**: Supports workouts (activities) only
 
     Requires valid API key and active connection for the user.
     """
     strategy = factory.get_provider(provider.value)
 
-    if not strategy.workouts:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Provider '{provider.value}' does not support workouts",
-        )
+    results: dict[str, bool] = {}
 
     # Collect all parameters
     params = {
@@ -76,5 +92,31 @@ async def sync_user_workouts(
         "summary_end_time": summary_end_time,
     }
 
-    success = strategy.workouts.load_data(db, user_id, **params)
-    return {"success": success}
+    # Sync workouts if requested
+    if data_type in (SyncDataType.WORKOUTS, SyncDataType.ALL):
+        if strategy.workouts:
+            results["workouts"] = strategy.workouts.load_data(db, user_id, **params)
+        elif data_type == SyncDataType.WORKOUTS:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Provider '{provider.value}' does not support workouts",
+            )
+
+    # Sync 247 data if requested (Suunto-specific)
+    if data_type in (SyncDataType.DATA_247, SyncDataType.ALL):
+        if hasattr(strategy, "data_247") and strategy.data_247:
+            params_247 = {"since": since}
+            results["data_247"] = strategy.data_247.load_all_247_data(db, user_id, **params_247)
+        elif data_type == SyncDataType.DATA_247:
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Provider '{provider.value}' does not support 247 data (sleep/recovery/activity)",
+            )
+
+    if not results:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Provider '{provider.value}' does not support any requested data types",
+        )
+
+    return {"success": all(results.values()), "details": results}

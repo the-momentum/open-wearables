@@ -17,6 +17,15 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
+from app.schemas.taxonomy_common import Pagination, TimeseriesMetadata
+from app.schemas.taxonomy_timeseries import (
+    BiometricType,
+    BloodGlucoseSample,
+    HeartRateSample,
+    HrvSample,
+    Spo2Sample,
+    StepsSample,
+)
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -40,6 +49,13 @@ class TimeSeriesService(
         mapping: ExternalDeviceMapping,
         response_model: type[ResponseModel],
     ) -> ResponseModel:
+        # Handle new fields if they exist in the model and response schema
+        extra_fields = {}
+        if hasattr(sample, "context") and hasattr(response_model, "context"):
+            extra_fields["context"] = sample.context
+        if hasattr(sample, "metadata_") and hasattr(response_model, "metadata"):
+            extra_fields["metadata"] = sample.metadata_
+
         return response_model(
             id=sample.id,
             recorded_at=sample.recorded_at,
@@ -48,7 +64,7 @@ class TimeSeriesService(
             external_mapping_id=sample.external_mapping_id,
             user_id=mapping.user_id,
             provider_id=mapping.provider_id,
-            device_id=mapping.device_id,
+            **extra_fields,
         )
 
     def bulk_create_samples(
@@ -103,6 +119,71 @@ class TimeSeriesService(
     def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by provider."""
         return self.crud.get_count_by_provider(db_session)
+
+    def _map_biometric_type(self, type: BiometricType) -> SeriesType:
+        if type == BiometricType.HEART_RATE:
+            return SeriesType.heart_rate
+        elif type == BiometricType.HRV:
+            return SeriesType.heart_rate_variability_sdnn
+        elif type == BiometricType.SPO2:
+            return SeriesType.oxygen_saturation
+        elif type == BiometricType.BLOOD_GLUCOSE:
+            return SeriesType.blood_glucose
+        elif type == BiometricType.TEMPERATURE:
+            return SeriesType.body_temperature
+        else:
+            raise ValueError(f"Unsupported biometric type: {type}")
+
+    @handle_exceptions
+    async def get_biometrics_series(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        type: BiometricType,
+        params: TimeSeriesQueryParams,
+    ) -> dict[str, list | Pagination | TimeseriesMetadata]:
+        series_type = self._map_biometric_type(type)
+        samples = self.crud.get_samples(db_session, params, series_type, user_id)
+
+        data = []
+        for sample, mapping in samples:
+            if type == BiometricType.HEART_RATE:
+                item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value), context=sample.context)
+            elif type == BiometricType.HRV:
+                item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value), context=sample.context)
+            elif type == BiometricType.SPO2:
+                item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value), context=sample.context)
+            elif type == BiometricType.BLOOD_GLUCOSE:
+                item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
+            else:
+                continue
+            data.append(item)
+
+        return {
+            "data": data,
+            "pagination": Pagination(has_more=False),  # TODO: Implement pagination
+            "metadata": TimeseriesMetadata(),
+        }
+
+    @handle_exceptions
+    async def get_activity_series(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        params: TimeSeriesQueryParams,
+    ) -> dict[str, list[StepsSample] | Pagination | TimeseriesMetadata]:
+        samples = self.crud.get_samples(db_session, params, SeriesType.steps, user_id)
+
+        data = []
+        for sample, mapping in samples:
+            item = StepsSample(
+                timestamp=sample.recorded_at,
+                count=int(sample.value),
+                duration_seconds=None,  # Not stored in DataPointSeries currently
+            )
+            data.append(item)
+
+        return {"data": data, "pagination": Pagination(has_more=False), "metadata": TimeseriesMetadata()}
 
 
 time_series_service = TimeSeriesService(log=getLogger(__name__))

@@ -17,6 +17,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (12, SeriesType.walking_heart_rate_average, "bpm"),
     (13, SeriesType.heart_rate_variability_sdnn, "ms"),
     (14, SeriesType.oxygen_saturation, "percent"),
+    (15, SeriesType.blood_glucose, "mg_dl"),
 ]
 
 SERIES_TYPE_ID_BY_ENUM: dict[SeriesType, int] = {enum: type_id for type_id, enum, _ in SERIES_TYPE_DEFINITIONS}

@@ -62,9 +62,9 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.external_mapping_id == params.external_mapping_id)
         elif params.device_id:
             query = query.filter(ExternalDeviceMapping.device_id == params.device_id)
-        else:
-            # Require at least one device-level discriminator to avoid scanning entire dataset
-            return []
+
+        # Removed the strict requirement for device_id/external_mapping_id
+        # because we want to query by user_id + series_type + time range
 
         if getattr(params, "provider_id", None):
             query = query.filter(ExternalDeviceMapping.provider_id == params.provider_id)

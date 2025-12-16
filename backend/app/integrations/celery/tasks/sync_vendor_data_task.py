@@ -73,32 +73,41 @@ def sync_vendor_data(
 
                 try:
                     strategy = factory.get_provider(provider_name)
+                    provider_result = ProviderSyncResult(success=True, params={})
 
-                    if not strategy.workouts:
-                        result.errors[provider_name] = "Workouts not supported"
-                        continue
+                    # Sync workouts
+                    if strategy.workouts:
+                        params = _build_sync_params(provider_name, start_date, end_date)
+                        try:
+                            success = strategy.workouts.load_data(db, user_uuid, **params)
+                            provider_result.params["workouts"] = {"success": success, **params}
+                        except Exception as e:
+                            logger.warning(f"[sync_vendor_data] Workouts sync failed for {provider_name}: {e}")
+                            provider_result.params["workouts"] = {"success": False, "error": str(e)}
+                    
+                    # Sync 247 data (sleep, recovery, activity) - Suunto specific for now
+                    if hasattr(strategy, "data_247") and strategy.data_247:
+                        params_247 = _build_247_sync_params(start_date, end_date)
+                        try:
+                            results_247 = strategy.data_247.load_and_save_all(
+                                db, user_uuid, 
+                                params_247["start_time"], 
+                                params_247["end_time"]
+                            )
+                            provider_result.params["data_247"] = {"success": True, **results_247}
+                            logger.info(f"[sync_vendor_data] 247 data synced for {provider_name}: {results_247}")
+                        except Exception as e:
+                            logger.warning(f"[sync_vendor_data] 247 data sync failed for {provider_name}: {e}")
+                            provider_result.params["data_247"] = {"success": False, "error": str(e)}
 
-                    params = _build_sync_params(provider_name, start_date, end_date)
+                    connection.last_synced_at = datetime.now()
+                    db.add(connection)
+                    db.commit()
 
-                    success = strategy.workouts.load_data(db, user_uuid, **params)
-
-                    if success:
-                        connection.last_synced_at = datetime.now()
-                        db.add(connection)
-                        db.commit()
-
-                        result.providers_synced[provider_name] = ProviderSyncResult(
-                            success=True,
-                            params=params,
-                        )
-                        logger.info(
-                            f"[sync_vendor_data] Successfully synced {provider_name} for user {user_id}",
-                        )
-                    else:
-                        result.errors[provider_name] = "Sync returned False"
-                        logger.warning(
-                            f"[sync_vendor_data] Sync returned False for {provider_name}, user {user_id}",
-                        )
+                    result.providers_synced[provider_name] = provider_result
+                    logger.info(
+                        f"[sync_vendor_data] Successfully synced {provider_name} for user {user_id}",
+                    )
 
                 except Exception as e:
                     logger.error(
@@ -117,6 +126,33 @@ def sync_vendor_data(
             )
             result.errors["general"] = str(e)
             return result.model_dump()
+
+
+def _build_247_sync_params(start_date: str | None, end_date: str | None) -> dict[str, Any]:
+    """Build parameters for 247 data sync (sleep, recovery, activity)."""
+    from datetime import timedelta
+
+    # Default to last 28 days if not specified (Suunto API max)
+    if end_date:
+        try:
+            end_time = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            end_time = datetime.now()
+    else:
+        end_time = datetime.now()
+
+    if start_date:
+        try:
+            start_time = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            start_time = end_time - timedelta(days=28)
+    else:
+        start_time = end_time - timedelta(days=28)
+
+    return {
+        "start_time": start_time,
+        "end_time": end_time,
+    }
 
 
 def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:

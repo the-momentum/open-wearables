@@ -2,12 +2,21 @@ from typing import Literal
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
+from app.models import (
+    EventRecordDetail,
+    MealDetails,
+    MeasurementDetails,
+    SleepDetails,
+    WorkoutDetails,
+)
 from app.repositories.repositories import CrudRepository
-from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
+from app.schemas.event_record_detail import (
+    EventRecordDetailCreate,
+    EventRecordDetailUpdate,
+)
 from app.utils.exceptions import handle_exceptions
 
-DetailType = Literal["workout", "sleep"]
+DetailType = Literal["workout", "sleep", "meal", "measurement"]
 
 
 class EventRecordDetailRepository(
@@ -30,6 +39,10 @@ class EventRecordDetailRepository(
             detail = WorkoutDetails(**creation_data)
         elif detail_type == "sleep":
             detail = SleepDetails(**creation_data)
+        elif detail_type == "meal":
+            detail = MealDetails(**creation_data)
+        elif detail_type == "measurement":
+            detail = MeasurementDetails(**creation_data)
         else:
             raise ValueError(f"Unknown detail type: {detail_type}")
 

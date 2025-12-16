@@ -2,17 +2,17 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.taxonomy_common import DataSource
 from app.schemas.taxonomy_summaries import SleepStagesSummary
 from app.schemas.taxonomy_timeseries import HeartRateSample
 
 
-class WorkoutType(BaseModel):
+class WorkoutType(RootModel[str]):
     # Using str for now as enum might be extensive, but RFC lists specific values
     # running, walking, cycling, swimming, strength_training, hiit, yoga, pilates, rowing, elliptical, hiking, other
-    __root__: str
+    pass
 
 
 class Workout(BaseModel):
@@ -74,9 +74,7 @@ class Measurement(BaseModel):
     type: Literal["weight", "blood_pressure", "body_composition", "temperature", "blood_glucose"]
     timestamp: datetime
     source: DataSource
-    values: dict[str, float | str] = Field(
-        ..., description="Measurement-specific values", example={"weight_kg": 72.5}
-    )
+    values: dict[str, float | str] = Field(..., description="Measurement-specific values", example={"weight_kg": 72.5})
 
 
 class SleepSession(BaseModel):

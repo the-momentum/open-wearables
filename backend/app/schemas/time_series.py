@@ -22,6 +22,7 @@ class SeriesType(str, Enum):
     walking_heart_rate_average = "walking_heart_rate_average"
     heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
     oxygen_saturation = "oxygen_saturation"
+    blood_glucose = "blood_glucose"
 
 
 class TimeSeriesSampleBase(BaseModel):

@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.mappings import FKEventRecordDetail, numeric_5_2
 
@@ -20,3 +20,7 @@ class SleepDetails(EventRecordDetail):
     sleep_rem_minutes: Mapped[int | None]
     sleep_light_minutes: Mapped[int | None]
     sleep_awake_minutes: Mapped[int | None]
+
+    # New fields for Taxonomy v2
+    is_nap: Mapped[bool] = mapped_column(default=False)
+    latency_seconds: Mapped[int | None]

@@ -1,4 +1,5 @@
-from sqlalchemy.orm import Mapped
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
 
@@ -29,3 +30,7 @@ class WorkoutDetails(EventRecordDetail):
     average_watts: Mapped[numeric_10_3 | None]
     elev_high: Mapped[numeric_10_3 | None]
     elev_low: Mapped[numeric_10_3 | None]
+
+    # New fields for Taxonomy v2
+    route: Mapped[list[dict] | None] = mapped_column(JSONB)
+    laps: Mapped[list[dict] | None] = mapped_column(JSONB)
