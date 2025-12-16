@@ -1,0 +1,177 @@
+"""
+Main pytest configuration for Open Wearables backend tests.
+
+Following patterns from know-how-tests.md:
+- PostgreSQL test database with transaction rollback
+- Auto-use fixtures for global mocking
+- Factory pattern for test data
+"""
+
+import os
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+
+# Set test environment before importing app modules
+os.environ["ENV"] = "test"
+os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
+os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
+
+from app.database import BaseDbModel, _get_db_dependency
+from app.main import api
+
+
+# Test database URL - uses test PostgreSQL database
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test",
+)
+
+
+@pytest.fixture(scope="session")
+def engine():
+    """Create test database engine and tables."""
+    test_engine = create_engine(
+        TEST_DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+    )
+    BaseDbModel.metadata.create_all(bind=test_engine)
+    yield test_engine
+    BaseDbModel.metadata.drop_all(bind=test_engine)
+
+
+@pytest.fixture(scope="session")
+def session_factory(engine):
+    """Create session factory bound to test engine."""
+    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture
+def db(engine, session_factory) -> Generator[Session, None, None]:
+    """
+    Create a test database session with transaction rollback.
+    Each test runs in its own transaction that gets rolled back.
+    """
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = session_factory(bind=connection)
+
+    # Begin a nested transaction (savepoint)
+    nested = connection.begin_nested()
+
+    # If the application code calls commit, restart the savepoint
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(session: Session, transaction: Any) -> None:
+        nonlocal nested
+        if not nested.is_active:
+            nested = connection.begin_nested()
+
+    yield session
+
+    # Rollback everything
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def client(db: Session) -> Generator[TestClient, None, None]:
+    """
+    Create a test client with database dependency override.
+    """
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield db
+
+    api.dependency_overrides[_get_db_dependency] = override_get_db
+
+    with TestClient(api) as test_client:
+        yield test_client
+
+    api.dependency_overrides.clear()
+
+
+# ============================================================================
+# Auto-use fixtures for global mocking
+# ============================================================================
+
+
+@pytest.fixture(autouse=True)
+def mock_redis(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Globally mock Redis to prevent connection errors in tests."""
+    mock = MagicMock()
+    mock.lock.return_value.__enter__ = MagicMock(return_value=None)
+    mock.lock.return_value.__exit__ = MagicMock(return_value=None)
+    mock.get.return_value = None
+    mock.set.return_value = True
+    mock.delete.return_value = True
+
+    with patch("app.integrations.redis_client.redis", mock):
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock Celery tasks to run synchronously."""
+    with patch("app.integrations.celery.celery_app") as mock_celery:
+        mock_celery.conf = {
+            "task_always_eager": True,
+            "task_eager_propagates": True,
+        }
+        yield
+
+
+@pytest.fixture(autouse=True)
+def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
+    """Mock external API calls (Garmin, Polar, Suunto, AWS)."""
+    mocks: dict[str, MagicMock] = {}
+
+    with (
+        patch("httpx.AsyncClient") as mock_httpx,
+        patch("boto3.client") as mock_boto3,
+        patch("requests.Session") as mock_requests,
+    ):
+        mocks["httpx"] = mock_httpx
+        mocks["boto3"] = mock_boto3
+        mocks["requests"] = mock_requests
+
+        # Configure boto3 S3 mock
+        mock_s3 = MagicMock()
+        mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
+        mock_s3.put_object.return_value = {"ETag": "test-etag"}
+        mock_boto3.return_value = mock_s3
+        mocks["s3"] = mock_s3
+
+        yield mocks
+
+
+@pytest.fixture(autouse=True)
+def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Speed up tests by using simple password hashing."""
+
+    def simple_hash(password: str) -> str:
+        return f"hashed_{password}"
+
+    def simple_verify(plain: str, hashed: str) -> bool:
+        return hashed == f"hashed_{plain}"
+
+    monkeypatch.setattr("app.utils.security.get_password_hash", simple_hash)
+    monkeypatch.setattr("app.utils.security.verify_password", simple_verify)
+
+
+# ============================================================================
+# Shared test utilities
+# ============================================================================
+
+
+@pytest.fixture
+def api_v1_prefix() -> str:
+    """Return the API v1 prefix."""
+    return "/api/v1"

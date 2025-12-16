@@ -75,6 +75,18 @@ ignore = [
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
 
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+addopts = "-v --tb=short"
+
 [build-system]
 requires = ["uv_build"]
 build-backend = "uv_build"
