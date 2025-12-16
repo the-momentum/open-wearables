@@ -151,7 +151,10 @@ class BaseOAuthTemplate(ABC):
         )
 
         if self.credentials.default_scope:
-            auth_url += f"&scope={self.credentials.default_scope}"
+            from urllib.parse import quote
+
+            encoded_scope = quote(self.credentials.default_scope)
+            auth_url += f"&scope={encoded_scope}"
 
         # pkce_data will be None for non-PKCE providers
         return auth_url, pkce_data
@@ -277,12 +280,16 @@ class BaseOAuthTemplate(ABC):
         )
 
         if existing_connection:
-            self.connection_repo.update_tokens(
+            # Update tokens, user info, and scope
+            self.connection_repo.update_connection_info(
                 db,
                 existing_connection,
-                token_response.access_token,
-                token_response.refresh_token,
-                token_response.expires_in,
+                access_token=token_response.access_token,
+                refresh_token=token_response.refresh_token,
+                expires_in=token_response.expires_in,
+                provider_user_id=provider_user_id,
+                provider_username=provider_username,
+                scope=token_response.scope,
             )
         else:
             connection_create = UserConnectionCreate(

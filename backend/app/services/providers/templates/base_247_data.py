@@ -12,7 +12,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 class Base247DataTemplate(ABC):
     """Base template for fetching and processing 247 data (sleep, recovery, activity).
-    
+
     This template handles continuous monitoring data that is typically:
     - Collected passively by wearables 24/7
     - Aggregated into daily summaries or time-series samples
@@ -122,7 +122,7 @@ class Base247DataTemplate(ABC):
         user_id: UUID,
     ) -> dict[str, list[dict[str, Any]]]:
         """Normalize activity samples into categorized data.
-        
+
         Returns dict with keys like 'heart_rate', 'steps', 'spo2', etc.
         """
         pass

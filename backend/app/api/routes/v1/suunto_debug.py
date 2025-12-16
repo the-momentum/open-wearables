@@ -4,7 +4,7 @@ These endpoints provide direct access to Suunto API data for debugging
 and verification of the normalization process.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -17,6 +17,13 @@ from app.services.providers.suunto import SuuntoStrategy
 
 router = APIRouter(prefix="/suunto")
 factory = ProviderFactory()
+
+
+def _get_default_dates() -> tuple[datetime, datetime]:
+    """Get default date range: 1 month ago to now."""
+    now = datetime.now(timezone.utc)
+    one_month_ago = now - timedelta(days=30)
+    return one_month_ago, now
 
 
 def _get_suunto_strategy() -> SuuntoStrategy:
@@ -40,13 +47,18 @@ async def get_raw_sleep_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get raw sleep data directly from Suunto API without normalization."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.get_raw_sleep_data(db, user_id, from_time, to_time)
 
 
@@ -55,13 +67,18 @@ async def get_raw_recovery_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get raw recovery data directly from Suunto API without normalization."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.get_raw_recovery_data(db, user_id, from_time, to_time)
 
 
@@ -70,13 +87,18 @@ async def get_raw_activity_samples(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get raw activity samples directly from Suunto API without normalization."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.get_raw_activity_samples(db, user_id, from_time, to_time)
 
 
@@ -85,13 +107,18 @@ async def get_raw_daily_statistics(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    start_date: Annotated[datetime, Query(description="Start date (ISO 8601)")],
-    end_date: Annotated[datetime, Query(description="End date (ISO 8601)")],
+    start_date: Annotated[datetime | None, Query(description="Start date (ISO 8601). Default: 30 days ago")] = None,
+    end_date: Annotated[datetime | None, Query(description="End date (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get raw daily activity statistics directly from Suunto API."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    start_date = start_date or default_from
+    end_date = end_date or default_to
+
     return strategy.data_247.get_daily_activity_statistics(db, user_id, start_date, end_date)
 
 
@@ -135,13 +162,18 @@ async def get_normalized_sleep_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get sleep data with our normalization applied (for comparison with raw)."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.process_sleep_data(db, user_id, from_time, to_time)
 
 
@@ -150,13 +182,18 @@ async def get_normalized_recovery_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> list[dict[str, Any]]:
     """Get recovery data with our normalization applied."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.process_recovery_data(db, user_id, from_time, to_time)
 
 
@@ -165,13 +202,18 @@ async def get_normalized_activity_samples(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Get activity samples with our normalization applied (categorized by type)."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
+
     return strategy.data_247.process_activity_samples(db, user_id, from_time, to_time)
 
 
@@ -185,8 +227,8 @@ async def sync_all_suunto_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
     include_workouts: Annotated[bool, Query(description="Include workouts sync")] = True,
     include_sleep: Annotated[bool, Query(description="Include sleep sync")] = True,
     include_recovery: Annotated[bool, Query(description="Include recovery sync")] = False,
@@ -198,6 +240,10 @@ async def sync_all_suunto_data(
     Use this for manual sync or testing. For automated sync, use Celery tasks.
     """
     strategy = _get_suunto_strategy()
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
     results = {
         "workouts_synced": 0,
         "sleep_sessions_synced": 0,
@@ -235,13 +281,17 @@ async def sync_suunto_sleep(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    from_time: Annotated[datetime, Query(description="Start time (ISO 8601)")],
-    to_time: Annotated[datetime, Query(description="End time (ISO 8601)")],
+    from_time: Annotated[datetime | None, Query(description="Start time (ISO 8601). Default: 30 days ago")] = None,
+    to_time: Annotated[datetime | None, Query(description="End time (ISO 8601). Default: now")] = None,
 ) -> dict[str, int]:
     """Synchronize only sleep data from Suunto."""
     strategy = _get_suunto_strategy()
     if not strategy.data_247:
         raise HTTPException(status_code=501, detail="247 data not supported")
+
+    default_from, default_to = _get_default_dates()
+    from_time = from_time or default_from
+    to_time = to_time or default_to
 
     count = strategy.data_247.load_and_save_sleep(db, user_id, from_time, to_time)
     return {"sleep_sessions_synced": count}

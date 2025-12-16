@@ -16,9 +16,6 @@ class BiometricType(str, Enum):
 class HeartRateSample(BaseModel):
     timestamp: datetime
     bpm: int = Field(..., ge=20, le=250, example=72)
-    context: Literal["rest", "sleep", "active", "workout"] | None = Field(
-        None, description="Context when measurement was taken"
-    )
 
 
 class StepsSample(BaseModel):
@@ -46,10 +43,8 @@ class HrvSample(BaseModel):
     timestamp: datetime
     rmssd_ms: float | None = Field(None, example=42.5)
     sdnn_ms: float | None = Field(None, example=55.2)
-    context: Literal["rest", "sleep", "post_workout"] | None = None
 
 
 class Spo2Sample(BaseModel):
     timestamp: datetime
     percent: float = Field(..., ge=0, le=100, example=97.5)
-    context: Literal["rest", "sleep", "active"] | None = None

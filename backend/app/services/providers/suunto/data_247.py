@@ -1,6 +1,6 @@
 """Suunto 247 Data implementation for sleep, recovery, and activity samples."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -122,7 +122,6 @@ class Suunto247Data(Base247DataTemplate):
             "end_time": bedtime_end,
             "duration_seconds": duration_seconds,
             "efficiency_percent": entry_data.get("SleepQualityScore"),
-            "latency_seconds": int(entry_data.get("SleepOnsetLatencyDuration", 0)),
             "is_nap": entry_data.get("IsNap", False),
             "stages": {
                 "deep_seconds": deep_sleep,
@@ -148,6 +147,14 @@ class Suunto247Data(Base247DataTemplate):
         """Save normalized sleep data to database as EventRecord with SleepDetails."""
         sleep_id = normalized_sleep["id"]
 
+        # Parse start and end times
+        start_dt = None
+        end_dt = None
+        if normalized_sleep.get("start_time"):
+            start_dt = datetime.fromisoformat(normalized_sleep["start_time"].replace("Z", "+00:00"))
+        if normalized_sleep.get("end_time"):
+            end_dt = datetime.fromisoformat(normalized_sleep["end_time"].replace("Z", "+00:00"))
+
         # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
@@ -156,13 +163,10 @@ class Suunto247Data(Base247DataTemplate):
             source_name="Suunto",
             device_id=None,
             duration_seconds=normalized_sleep.get("duration_seconds"),
-            start_datetime=datetime.fromisoformat(normalized_sleep["start_time"].replace("Z", "+00:00"))
-            if normalized_sleep.get("start_time")
-            else None,
-            end_datetime=datetime.fromisoformat(normalized_sleep["end_time"].replace("Z", "+00:00"))
-            if normalized_sleep.get("end_time")
-            else None,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
             provider_id=str(normalized_sleep.get("suunto_sleep_id")),
+            provider_name=self.provider_name,  # For external mapping
             user_id=user_id,
         )
 
@@ -179,7 +183,6 @@ class Suunto247Data(Base247DataTemplate):
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
             is_nap=normalized_sleep.get("is_nap", False),
-            latency_seconds=normalized_sleep.get("latency_seconds"),
         )
 
         event_record_service.create(db, record)
@@ -261,11 +264,13 @@ class Suunto247Data(Base247DataTemplate):
             # Heart Rate
             hr = entry_data.get("HR")
             if hr is not None:
-                heart_rate_samples.append({
-                    "timestamp": timestamp,
-                    "bpm": int(hr),
-                    "context": "active",  # Suunto 247 is continuous monitoring
-                })
+                heart_rate_samples.append(
+                    {
+                        "timestamp": timestamp,
+                        "bpm": int(hr),
+                        "context": "active",  # Suunto 247 is continuous monitoring
+                    }
+                )
 
             # HR extended (min/max)
             hr_ext = entry_data.get("HRExt", {})
@@ -276,35 +281,43 @@ class Suunto247Data(Base247DataTemplate):
             # Steps
             steps = entry_data.get("StepCount")
             if steps is not None:
-                step_samples.append({
-                    "timestamp": timestamp,
-                    "count": int(steps),
-                })
+                step_samples.append(
+                    {
+                        "timestamp": timestamp,
+                        "count": int(steps),
+                    }
+                )
 
             # SpO2
             spo2 = entry_data.get("SpO2")
             if spo2 is not None:
-                spo2_samples.append({
-                    "timestamp": timestamp,
-                    "percent": float(spo2) * 100 if spo2 <= 1 else float(spo2),  # Handle 0-1 or 0-100
-                })
+                spo2_samples.append(
+                    {
+                        "timestamp": timestamp,
+                        "percent": float(spo2) * 100 if spo2 <= 1 else float(spo2),  # Handle 0-1 or 0-100
+                    }
+                )
 
             # Energy consumption (joules)
             energy = entry_data.get("EnergyConsumption")
             if energy is not None:
-                energy_samples.append({
-                    "timestamp": timestamp,
-                    "joules": float(energy),
-                    "kcal": float(energy) / 4184,  # Convert to kcal
-                })
+                energy_samples.append(
+                    {
+                        "timestamp": timestamp,
+                        "joules": float(energy),
+                        "kcal": float(energy) / 4184,  # Convert to kcal
+                    }
+                )
 
             # HRV
             hrv = entry_data.get("HRV")
             if hrv is not None and hrv > 0:
-                hrv_samples.append({
-                    "timestamp": timestamp,
-                    "rmssd_ms": float(hrv),
-                })
+                hrv_samples.append(
+                    {
+                        "timestamp": timestamp,
+                        "rmssd_ms": float(hrv),
+                    }
+                )
 
         return {
             "heart_rate": heart_rate_samples,
@@ -341,7 +354,7 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
     ) -> dict[str, Any]:
         """Normalize Suunto daily activity statistics.
-        
+
         Suunto returns data grouped by type (stepcount, energyconsumption) with sources.
         """
         stat_name = raw_stats.get("Name")  # 'stepcount' or 'energyconsumption'
@@ -357,11 +370,13 @@ class Suunto247Data(Base247DataTemplate):
                 value = sample.get("Value")
                 time_iso = sample.get("TimeISO8601")
                 if value is not None:
-                    daily_values.append({
-                        "date": time_iso,
-                        "source": source_name,
-                        "value": value,
-                    })
+                    daily_values.append(
+                        {
+                            "date": time_iso,
+                            "source": source_name,
+                            "value": value,
+                        }
+                    )
 
         return {
             "type": stat_name,
@@ -397,10 +412,34 @@ class Suunto247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
+        start_time: datetime | str | None = None,
+        end_time: datetime | str | None = None,
     ) -> dict[str, int]:
         """Load all 247 data types and save to database."""
+
+        # Handle date defaults (last 28 days if not specified)
+        if end_time:
+            if isinstance(end_time, str):
+                try:
+                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    end_dt = datetime.now()
+            else:
+                end_dt = end_time
+        else:
+            end_dt = datetime.now()
+
+        if start_time:
+            if isinstance(start_time, str):
+                try:
+                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    start_dt = end_dt - timedelta(days=28)
+            else:
+                start_dt = start_time
+        else:
+            start_dt = end_dt - timedelta(days=28)
+
         results = {
             "sleep_sessions": 0,
             "recovery_samples": 0,
@@ -409,7 +448,7 @@ class Suunto247Data(Base247DataTemplate):
 
         # Sleep
         try:
-            results["sleep_sessions"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
+            results["sleep_sessions"] = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
         except Exception as e:
             self.logger.error(f"Failed to load sleep data: {e}")
 

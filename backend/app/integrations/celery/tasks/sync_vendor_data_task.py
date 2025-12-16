@@ -84,15 +84,12 @@ def sync_vendor_data(
                         except Exception as e:
                             logger.warning(f"[sync_vendor_data] Workouts sync failed for {provider_name}: {e}")
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
-                    
-                    # Sync 247 data (sleep, recovery, activity) - Suunto specific for now
+
+                    # Sync 247 data (sleep, recovery, activity)
                     if hasattr(strategy, "data_247") and strategy.data_247:
-                        params_247 = _build_247_sync_params(start_date, end_date)
                         try:
                             results_247 = strategy.data_247.load_and_save_all(
-                                db, user_uuid, 
-                                params_247["start_time"], 
-                                params_247["end_time"]
+                                db, user_uuid, start_time=start_date, end_time=end_date
                             )
                             provider_result.params["data_247"] = {"success": True, **results_247}
                             logger.info(f"[sync_vendor_data] 247 data synced for {provider_name}: {results_247}")
@@ -128,33 +125,6 @@ def sync_vendor_data(
             return result.model_dump()
 
 
-def _build_247_sync_params(start_date: str | None, end_date: str | None) -> dict[str, Any]:
-    """Build parameters for 247 data sync (sleep, recovery, activity)."""
-    from datetime import timedelta
-
-    # Default to last 28 days if not specified (Suunto API max)
-    if end_date:
-        try:
-            end_time = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            end_time = datetime.now()
-    else:
-        end_time = datetime.now()
-
-    if start_date:
-        try:
-            start_time = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            start_time = end_time - timedelta(days=28)
-    else:
-        start_time = end_time - timedelta(days=28)
-
-    return {
-        "start_time": start_time,
-        "end_time": end_time,
-    }
-
-
 def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:
     """
     Build provider-specific parameters for syncing data.
@@ -167,7 +137,10 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
     Returns:
         Dictionary of parameters for the provider's load_data method
     """
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
 
     # Convert date strings to appropriate formats
     start_timestamp = None
@@ -193,15 +166,8 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
         except (ValueError, AttributeError) as e:
             logger.warning(f"[_build_sync_params] Invalid end_date format: {end_date}, error: {e}")
 
-    # Provider-specific parameters
-    if provider_name == "suunto":
-        # Suunto parameters
-        params["since"] = start_timestamp if start_timestamp else 0  # 0 = all history
-        params["limit"] = 100  # Max allowed by Suunto
-        params["offset"] = 0
-        params["filter_by_modification_time"] = True
-
-    elif provider_name == "polar":
+    # Provider-specific parameters (Legacy support)
+    if provider_name == "polar":
         # Polar parameters
         # Note: Polar typically uses its own pagination, but we can include optional flags
         params["samples"] = False  # Can be enabled for detailed sample data
@@ -218,6 +184,10 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
     # Add generic parameters for providers that might use them
     if start_timestamp:
         params["since"] = start_timestamp
+    if end_timestamp:
+        params["until"] = end_timestamp
+
+    return params
     if end_timestamp:
         params["until"] = end_timestamp
 

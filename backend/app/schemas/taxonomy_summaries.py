@@ -39,7 +39,6 @@ class SleepSummary(BaseModel):
     duration_seconds: int | None = Field(None, example=27000)
     time_in_bed_seconds: int | None = Field(None, example=28800)
     efficiency_percent: float | None = Field(None, ge=0, le=100, example=89.5)
-    latency_seconds: int | None = Field(None, description="Time to fall asleep", example=480)
     stages: SleepStagesSummary | None = None
     interruptions_count: int | None = None
     avg_heart_rate_bpm: int | None = None

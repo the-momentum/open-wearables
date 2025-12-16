@@ -31,24 +31,8 @@ class Workout(BaseModel):
     elevation_gain_meters: float | None = None
 
 
-class RoutePoint(BaseModel):
-    timestamp: datetime
-    lat: float
-    lng: float
-    elevation_meters: float | None = None
-
-
-class Lap(BaseModel):
-    index: int
-    start_time: datetime
-    duration_seconds: int
-    distance_meters: float
-
-
 class WorkoutDetailed(Workout):
     heart_rate_samples: list[HeartRateSample] | None = None
-    route: list[RoutePoint] | None = None
-    laps: list[Lap] | None = None
 
 
 class Macros(BaseModel):
@@ -84,6 +68,5 @@ class SleepSession(BaseModel):
     source: DataSource
     duration_seconds: int
     efficiency_percent: float | None = None
-    latency_seconds: int | None = None
     stages: SleepStagesSummary | None = None
     is_nap: bool = False

@@ -6,8 +6,6 @@ from app.models import (
     EventRecord,
     EventRecordDetail,
     ExternalDeviceMapping,
-    MealDetails,
-    MeasurementDetails,
     SleepDetails,
     WorkoutDetails,
 )
@@ -21,8 +19,6 @@ from app.schemas import (
 )
 from app.schemas.taxonomy_common import DataSource, Pagination
 from app.schemas.taxonomy_events import (
-    Macros,
-    Meal,
     Measurement,
     SleepSession,
     Workout,
@@ -191,8 +187,6 @@ class EventRecordService(
             avg_pace_sec_per_km=None,
             elevation_gain_meters=details.total_elevation_gain if details else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
-            route=details.route if details else None,
-            laps=details.laps if details else None,
         )
 
     @handle_exceptions
@@ -216,7 +210,6 @@ class EventRecordService(
                 source=self._map_source(mapping, record),
                 duration_seconds=record.duration_seconds or 0,
                 efficiency_percent=details.sleep_efficiency_score if details else None,
-                latency_seconds=details.latency_seconds if details else None,
                 is_nap=details.is_nap if details else False,
                 stages=SleepStagesSummary(
                     deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,
@@ -228,78 +221,6 @@ class EventRecordService(
                 else None,
             )
             data.append(session)
-
-        return {
-            "data": data,
-            "pagination": Pagination(
-                has_more=total_count > (params.offset + params.limit),
-            ),
-        }
-
-    @handle_exceptions
-    async def get_meals(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        params: EventRecordQueryParams,
-    ) -> dict[str, list[Meal] | Pagination]:
-        params.category = "meal"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
-
-        data = []
-        for record, mapping in records:
-            details: MealDetails | None = record.detail if isinstance(record.detail, MealDetails) else None
-
-            meal = Meal(
-                id=record.id,
-                timestamp=record.start_datetime,
-                meal_type=details.meal_type if details else None,
-                name=record.type,  # Using type as name for now
-                source=self._map_source(mapping, record),
-                calories_kcal=details.calories_kcal if details else None,
-                macros=Macros(
-                    protein_g=details.protein_g,
-                    carbohydrates_g=details.carbohydrates_g,
-                    fat_g=details.fat_g,
-                    fiber_g=details.fiber_g,
-                )
-                if details
-                else None,
-                water_ml=details.water_ml if details else None,
-            )
-            data.append(meal)
-
-        return {
-            "data": data,
-            "pagination": Pagination(
-                has_more=total_count > (params.offset + params.limit),
-            ),
-        }
-
-    @handle_exceptions
-    async def get_measurements(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        params: EventRecordQueryParams,
-    ) -> dict[str, list[Measurement] | Pagination]:
-        params.category = "measurement"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
-
-        data = []
-        for record, mapping in records:
-            details: MeasurementDetails | None = (
-                record.detail if isinstance(record.detail, MeasurementDetails) else None
-            )
-
-            measurement = Measurement(
-                id=record.id,
-                type=record.type,  # Assuming type matches literal
-                timestamp=record.start_datetime,
-                source=self._map_source(mapping, record),
-                values=details.values if details else {},
-            )
-            data.append(measurement)
 
         return {
             "data": data,

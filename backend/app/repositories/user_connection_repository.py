@@ -156,6 +156,36 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.refresh(connection)
         return connection
 
+    def update_connection_info(
+        self,
+        db_session: DbSession,
+        connection: UserConnection,
+        access_token: str,
+        refresh_token: str | None,
+        expires_in: int,
+        provider_user_id: str | None = None,
+        provider_username: str | None = None,
+        scope: str | None = None,
+    ) -> UserConnection:
+        """Update connection with new tokens and user info."""
+        connection.access_token = access_token
+        if refresh_token:
+            connection.refresh_token = refresh_token
+        connection.token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+        if provider_user_id and not connection.provider_user_id:
+            connection.provider_user_id = provider_user_id
+        if provider_username and not connection.provider_username:
+            connection.provider_username = provider_username
+        if scope and connection.scope != scope:
+            connection.scope = scope
+
+        connection.updated_at = datetime.now(timezone.utc)
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+        return connection
+
     def get_all_active_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all active connections for a specific user."""
         return (

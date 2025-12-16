@@ -23,4 +23,3 @@ class SleepDetails(EventRecordDetail):
 
     # New fields for Taxonomy v2
     is_nap: Mapped[bool] = mapped_column(default=False)
-    latency_seconds: Mapped[int | None]

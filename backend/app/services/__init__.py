@@ -7,7 +7,6 @@ from .apple.healthkit.import_service import import_service as hk_import_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .services import AppService
-from .summaries_service import SummariesService, summaries_service
 from .system_info_service import system_info_service
 from .time_series_service import time_series_service
 from .user_service import user_service
@@ -25,6 +24,4 @@ __all__ = [
     "time_series_service",
     "pre_url_service",
     "system_info_service",
-    "SummariesService",
-    "summaries_service",
 ]
