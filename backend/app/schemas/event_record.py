@@ -15,6 +15,8 @@ class EventRecordMetrics(TypedDict, total=False):
     heart_rate_max: int | None
     heart_rate_avg: Decimal | None
     steps_count: int | None
+    energy_burned: Decimal | None
+    distance: Decimal | None
     max_speed: Decimal | None
     max_watts: Decimal | None
     moving_time_seconds: int | None

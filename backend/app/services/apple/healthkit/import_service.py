@@ -4,7 +4,7 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
-from app.constants.series_types import get_series_type_from_apple_metric_type
+from app.constants.series_types import get_series_type_from_apple_metric_type, get_series_type_from_healthion_type
 from app.constants.workout_types import get_unified_apple_workout_type
 from app.database import DbSession
 from app.schemas import (
@@ -14,6 +14,7 @@ from app.schemas import (
     HeartRateSampleCreate,
     HKRecordJSON,
     HKWorkoutJSON,
+    HKWorkoutStatisticJSON,
     RootJSON,
     SeriesType,
     StepSampleCreate,
@@ -116,22 +117,7 @@ class ImportService:
 
         return time_series_samples
 
-    def _extract_metrics_from_workout_stats(self, stats: list | None) -> EventRecordMetrics:
-        heart_rate_values: list[Decimal] = []
-        step_values: list[Decimal] = []
-
-        if stats:
-            for stat in stats:
-                value = self._dec(stat.value)
-                if value is None or stat.type is None:
-                    continue
-                lowered = stat.type.lower()
-                if "heart" in lowered:
-                    heart_rate_values.append(value)
-                elif "step" in lowered:
-                    step_values.append(value)
-
-        def _compute(values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+    def _compute_aggregates(self, values: list[Decimal]) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
             if not values:
                 return None, None, None
             min_v = min(values)
@@ -139,15 +125,30 @@ class ImportService:
             avg_v = sum(values, Decimal("0")) / Decimal(len(values))
             return min_v, max_v, avg_v
 
-        hr_min, hr_max, hr_avg = _compute(heart_rate_values)
-        steps_count = int(sum(step_values)) if step_values else None
+    def _extract_metrics_from_workout_stats(self, stats: list[HKWorkoutStatisticJSON] | None) -> EventRecordMetrics:
+        stats_dict: dict[str, Decimal] = {}
 
-        return EventRecordMetrics(
-            heart_rate_min=int(hr_min) if hr_min is not None else None,
-            heart_rate_max=int(hr_max) if hr_max is not None else None,
-            heart_rate_avg=hr_avg,
-            steps_count=int(steps_count) if steps_count is not None else None,
-        )
+        if stats is None:
+            return EventRecordMetrics()
+
+        for stat in stats:
+            value = self._dec(stat.value)
+            if value is None or stat.type is None:
+                continue
+            series_type = get_series_type_from_healthion_type(stat.type)
+            if series_type is None:
+                continue
+            match series_type:
+                case SeriesType.energy:
+                    stats_dict["energy_burned"] = value
+                case SeriesType.distance_walking_running:
+                    stats_dict["distance"] = value
+                case SeriesType.steps:
+                    stats_dict["steps_count"] = value
+                case _:
+                    continue
+
+        return EventRecordMetrics(**stats_dict)
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail in self._build_workout_bundles(raw, user_id):

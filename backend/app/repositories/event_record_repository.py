@@ -22,7 +22,6 @@ class EventRecordRepository(
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     @handle_exceptions
-    @handle_duplicates
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,

@@ -14,6 +14,7 @@ from .apple.healthkit.record_import import (
 )
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
+    WorkoutStatisticJSON as HKWorkoutStatisticJSON,
 )
 from .common import (
     RootJSON,
@@ -174,8 +175,9 @@ __all__ = [
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
-    "HKWorkoutJSON",
     "HKRecordJSON",
+    "HKWorkoutJSON",
+    "HKWorkoutStatisticJSON",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",

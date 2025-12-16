@@ -13,6 +13,13 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "HKQuantityTypeIdentifierDistanceWalkingRunning": SeriesType.distance_walking_running,
 }
 
+HEALTHION_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
+    "totalEnergyBurned": SeriesType.energy,
+    "totalCalories": SeriesType.energy,
+    "totalDistance": SeriesType.distance_walking_running,
+    "totalSteps": SeriesType.steps,
+}
+
 
 def get_series_type_from_metric_type(metric_type: str) -> SeriesType | None:
     """
@@ -20,3 +27,11 @@ def get_series_type_from_metric_type(metric_type: str) -> SeriesType | None:
     Returns None when the metric type is not supported.
     """
     return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)
+
+
+def get_series_type_from_healthion_type(healthion_type: str) -> SeriesType | None:
+    """
+    Map a HealthKit metric type identifier to the unified SeriesType enum.
+    Returns None when the metric type is not supported.
+    """
+    return HEALTHION_TYPE_TO_SERIES_TYPE.get(healthion_type)

@@ -54,7 +54,7 @@ class DataPointSeriesRepository(
                 ExternalDeviceMapping,
                 self.model.external_device_mapping_id == ExternalDeviceMapping.id,
             )
-            .filter(self.model.series_type_id == get_series_type_id(series_type))
+            .filter(self.model.series_type_definition_id == get_series_type_id(series_type))
             .filter(ExternalDeviceMapping.user_id == user_id)
         )
 

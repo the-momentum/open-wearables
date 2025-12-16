@@ -37,9 +37,7 @@ def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
                 raise ValueError(f"Invalid user_id format in object key: {user_id_str}") from e
 
             # Validate that the user exists before processing
-            user = user_service.get(db, user_id, raise_404=False)
-            if user is None:
-                raise ValueError(f"User with id {user_id} does not exist in the database")
+            user = user_service.get(db, user_id, raise_404=True)
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 
