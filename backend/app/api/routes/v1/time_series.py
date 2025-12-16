@@ -21,7 +21,7 @@ router = APIRouter()
 @router.get("/users/{user_id}/timeseries/biometrics")
 async def get_biometrics_timeseries(
     user_id: UUID,
-    type: BiometricType,
+    type: BiometricSeriesType,
     start_time: str,
     end_time: str,
     db: DbSession,
@@ -37,6 +37,7 @@ async def get_biometrics_timeseries(
 @router.get("/users/{user_id}/timeseries/activity")
 async def get_activity_timeseries(
     user_id: UUID,
+    type: ActivitySeriesType,
     start_time: str,
     end_time: str,
     db: DbSession,
@@ -44,6 +45,11 @@ async def get_activity_timeseries(
     resolution: Literal["raw", "1min", "5min", "15min", "1hour"] = "raw",
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+<<<<<<< HEAD:backend/app/api/routes/v1/timeseries.py
 ) -> PaginatedResponse[StepsSample]:
     """Returns granular activity data (steps, cadence, etc.)."""
+=======
+) -> dict[str, list[StepsSample] | TimeseriesMetadata | Pagination]:
+    """Returns granular activity data (steps, cadence, distance, etc.)."""
+>>>>>>> b1ffec3 (Extended series types definitions):backend/app/api/routes/v1/time_series.py
     raise HTTPException(status_code=501, detail="Not implemented")

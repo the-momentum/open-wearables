@@ -14,7 +14,8 @@ from app.repositories.event_record_detail_repository import EventRecordDetailRep
 from app.schemas.event_record import EventRecordCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.personal_record import PersonalRecordCreate
-from app.schemas.time_series import HeartRateSampleCreate, SeriesType, StepSampleCreate, TimeSeriesSampleCreate
+from app.schemas.series_types import SeriesType
+from app.schemas.time_series import HeartRateSampleCreate, StepSampleCreate, TimeSeriesSampleCreate
 from app.schemas.user import UserCreate
 from app.services import event_record_service, time_series_service, user_service
 

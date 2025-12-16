@@ -3,14 +3,12 @@ from logging import Logger, getLogger
 from typing import TypeVar
 from uuid import UUID
 
-from app.constants.series_types import get_series_type_from_id
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories import DataPointSeriesRepository
 from app.schemas import (
     HeartRateSampleCreate,
     HeartRateSampleResponse,
-    SeriesType,
     StepSampleCreate,
     StepSampleResponse,
     TimeSeriesQueryParams,
@@ -120,25 +118,12 @@ class TimeSeriesService(
         """Get count of data points grouped by provider."""
         return self.crud.get_count_by_provider(db_session)
 
-    def _map_biometric_type(self, type: BiometricType) -> SeriesType:
-        if type == BiometricType.HEART_RATE:
-            return SeriesType.heart_rate
-        if type == BiometricType.HRV:
-            return SeriesType.heart_rate_variability_sdnn
-        if type == BiometricType.SPO2:
-            return SeriesType.oxygen_saturation
-        if type == BiometricType.BLOOD_GLUCOSE:
-            return SeriesType.blood_glucose
-        if type == BiometricType.TEMPERATURE:
-            return SeriesType.body_temperature
-        raise ValueError(f"Unsupported biometric type: {type}")
-
     @handle_exceptions
     async def get_biometrics_series(
         self,
         db_session: DbSession,
         user_id: UUID,
-        type: BiometricType,
+        type: BiometricSeriesType,
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample]:
         series_type = self._map_biometric_type(type)
@@ -146,13 +131,13 @@ class TimeSeriesService(
 
         data = []
         for sample, mapping in samples:
-            if type == BiometricType.HEART_RATE:
+            if series_type == SeriesType.heart_rate:
                 item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value))
-            elif type == BiometricType.HRV:
+            elif series_type == SeriesType.heart_rate_variability_sdnn:
                 item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value))
-            elif type == BiometricType.SPO2:
+            elif series_type == SeriesType.oxygen_saturation:
                 item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
-            elif type == BiometricType.BLOOD_GLUCOSE:
+            elif series_type == SeriesType.blood_glucose:
                 item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
             else:
                 continue
@@ -169,6 +154,7 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         user_id: UUID,
+        type: ActivitySeriesType,
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[StepsSample]:
         samples = self.crud.get_samples(db_session, params, SeriesType.steps, user_id)

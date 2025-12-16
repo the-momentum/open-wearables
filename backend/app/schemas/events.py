@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.common_types import DataSource
 from app.schemas.summaries import SleepStagesSummary
-from app.schemas.timeseries import HeartRateSample
+from app.schemas.timeseries_samples import HeartRateSample
 
 
 class WorkoutType(RootModel[str]):

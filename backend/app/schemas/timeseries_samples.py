@@ -1,16 +1,7 @@
 from datetime import datetime
-from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
-
-
-class BiometricType(str, Enum):
-    HEART_RATE = "heart_rate"
-    HRV = "hrv"
-    SPO2 = "spo2"
-    BLOOD_GLUCOSE = "blood_glucose"
-    TEMPERATURE = "temperature"
 
 
 class HeartRateSample(BaseModel):

@@ -2,8 +2,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 
-from app.constants.series_types import get_series_type_from_id
 from app.database import DbSession
+from app.schemas.series_types import get_series_type_from_id
 from app.schemas.system_info import (
     CountWithGrowth,
     DataPointsInfo,

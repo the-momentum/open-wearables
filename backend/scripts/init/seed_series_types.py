@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Initialize series_type_definition table with all available series types."""
 
-from app.constants.series_types import SERIES_TYPE_DEFINITIONS
 from app.database import SessionLocal
 from app.models import SeriesTypeDefinition
+from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
 
 
 def seed_series_types() -> None:
