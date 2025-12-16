@@ -1,8 +1,10 @@
 from logging import getLogger
 from typing import Any
+from uuid import UUID
 
 from billiard.einfo import ExceptionInfo
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models import Invitation
 from app.schemas.invitation import InvitationStatus
@@ -10,8 +12,6 @@ from app.utils.email_client import send_invitation_email
 from celery import Task, shared_task
 
 logger = getLogger(__name__)
-
-MAX_RETRIES = 5
 
 
 class EmailSendError(Exception):
@@ -36,7 +36,7 @@ class EmailTaskBase(Task):
         if invitation_id:
             try:
                 with SessionLocal() as db:
-                    invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+                    invitation = db.query(Invitation).filter(Invitation.id == UUID(invitation_id)).first()
                     if invitation and invitation.status == InvitationStatus.PENDING:
                         invitation.status = InvitationStatus.FAILED
                         db.commit()
@@ -53,7 +53,7 @@ class EmailTaskBase(Task):
     autoretry_for=(ConnectionError, TimeoutError, EmailSendError),
     retry_backoff=True,
     retry_backoff_max=600,
-    retry_kwargs={"max_retries": MAX_RETRIES},
+    retry_kwargs={"max_retries": settings.email_max_retries},
 )
 def send_invitation_email_task(
     self: Task,
@@ -79,7 +79,7 @@ def send_invitation_email_task(
         dict with status and message
     """
     with SessionLocal() as db:
-        invitation = db.query(Invitation).filter(Invitation.id == invitation_id).first()
+        invitation = db.query(Invitation).filter(Invitation.id == UUID(invitation_id)).first()
 
         if not invitation:
             raise ValueError(f"Invitation {invitation_id} not found")
@@ -107,7 +107,9 @@ def send_invitation_email_task(
 
         # Send email only if status is PENDING
         attempt = self.request.retries + 1
-        logger.info(f"Sending invitation email for {invitation_id} (attempt {attempt}/{MAX_RETRIES + 1})")
+        logger.info(
+            f"Sending invitation email for {invitation_id} (attempt {attempt}/{settings.email_max_retries + 1})"
+        )
         success = send_invitation_email(to_email, invite_url, invited_by_email)
 
         if not success:

@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     email_from_name: str = "Open Wearables"
     frontend_url: str = "http://localhost:3000"
     invitation_expire_days: int = 7
+    email_max_retries: int = 5
 
     # AWS SETTINGS
     aws_bucket_name: str | None = None
