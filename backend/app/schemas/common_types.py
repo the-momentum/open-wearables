@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import Literal
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
+from pydantic.generics import GenericModel
 
 
 class DataSource(BaseModel):
@@ -30,3 +31,21 @@ class ErrorDetails(BaseModel):
     code: str
     message: str
     details: dict | None = None
+
+
+# Type variable for generic paginated data
+DataT = TypeVar("DataT")
+
+
+class PaginatedResponse(GenericModel, Generic[DataT]):
+    """Generic response model for paginated data with metadata.
+
+    Can be used with any data type by specifying the type parameter:
+    - PaginatedResponse[HeartRateSample]
+    - PaginatedResponse[Union[HeartRateSample, HrvSample, Spo2Sample]]
+    - PaginatedResponse[Workout]  # for other endpoints
+    """
+
+    data: list[DataT]
+    pagination: Pagination
+    metadata: TimeseriesMetadata

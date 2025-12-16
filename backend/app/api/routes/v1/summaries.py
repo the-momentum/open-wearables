@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.common_types import Pagination
+from app.schemas.common_types import PaginatedResponse
 from app.schemas.summaries import (
     ActivitySummary,
     BodySummary,
@@ -25,7 +25,7 @@ async def get_activity_summary(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[ActivitySummary] | Pagination]:
+) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics."""
     raise HTTPException(status_code=501, detail="Not implemented")
 
@@ -39,7 +39,7 @@ async def get_sleep_summary(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[SleepSummary] | Pagination]:
+) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
     raise HTTPException(status_code=501, detail="Not implemented")
 
@@ -53,7 +53,7 @@ async def get_recovery_summary(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[RecoverySummary] | Pagination]:
+) -> PaginatedResponse[RecoverySummary]:
     """Returns daily recovery metrics (Sleep + HRV + RHR)."""
     raise HTTPException(status_code=501, detail="Not implemented")
 
@@ -67,6 +67,6 @@ async def get_body_summary(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[BodySummary] | Pagination]:
+) -> PaginatedResponse[BodySummary]:
     """Returns daily body metrics."""
     raise HTTPException(status_code=501, detail="Not implemented")

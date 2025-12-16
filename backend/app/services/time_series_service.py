@@ -1,6 +1,6 @@
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import TypeVar
+from typing import TypeVar, Union
 from uuid import UUID
 
 from app.constants.series_types import get_series_type_from_id
@@ -17,7 +17,7 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.timeseries import (
     BiometricType,
     BloodGlucoseSample,
@@ -140,7 +140,7 @@ class TimeSeriesService(
         user_id: UUID,
         type: BiometricType,
         params: TimeSeriesQueryParams,
-    ) -> dict[str, list | Pagination | TimeseriesMetadata]:
+    ) -> PaginatedResponse[Union[HeartRateSample, HrvSample, Spo2Sample, BloodGlucoseSample]]:
         series_type = self._map_biometric_type(type)
         samples = self.crud.get_samples(db_session, params, series_type, user_id)
 
@@ -158,11 +158,11 @@ class TimeSeriesService(
                 continue
             data.append(item)
 
-        return {
-            "data": data,
-            "pagination": Pagination(has_more=False),  # TODO: Implement pagination
-            "metadata": TimeseriesMetadata(),
-        }
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(has_more=False),  # TODO: Implement pagination
+            metadata=TimeseriesMetadata(),
+        )
 
     @handle_exceptions
     async def get_activity_series(
@@ -170,7 +170,7 @@ class TimeSeriesService(
         db_session: DbSession,
         user_id: UUID,
         params: TimeSeriesQueryParams,
-    ) -> dict[str, list[StepsSample] | Pagination | TimeseriesMetadata]:
+    ) -> PaginatedResponse[StepsSample]:
         samples = self.crud.get_samples(db_session, params, SeriesType.steps, user_id)
 
         data = []
@@ -182,7 +182,11 @@ class TimeSeriesService(
             )
             data.append(item)
 
-        return {"data": data, "pagination": Pagination(has_more=False), "metadata": TimeseriesMetadata()}
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(has_more=False),
+            metadata=TimeseriesMetadata(),
+        )
 
 
 time_series_service = TimeSeriesService(log=getLogger(__name__))

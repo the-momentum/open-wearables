@@ -21,6 +21,7 @@ from .common import (
 from .common_types import (
     DataSource,
     ErrorDetails,
+    PaginatedResponse,
     Pagination,
     TimeseriesMetadata,
 )
@@ -232,6 +233,7 @@ __all__ = [
     # Common Types
     "DataSource",
     "ErrorDetails",
+    "PaginatedResponse",
     "Pagination",
     "TimeseriesMetadata",
     # Events

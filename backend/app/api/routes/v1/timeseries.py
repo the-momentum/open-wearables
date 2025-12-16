@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.common_types import Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse
 from app.schemas.timeseries import (
     BiometricType,
     BloodGlucoseSample,
@@ -29,12 +29,7 @@ async def get_biometrics_timeseries(
     resolution: Literal["raw", "1min", "5min", "15min", "1hour"] = "raw",
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[
-    str,
-    list[Union[HeartRateSample, HrvSample, Spo2Sample, BloodGlucoseSample]]  # Using Union for documentation
-    | TimeseriesMetadata
-    | Pagination,
-]:
+) -> PaginatedResponse[Union[HeartRateSample, HrvSample, Spo2Sample, BloodGlucoseSample]]:
     """Returns granular biometric measurements (HR, HRV, SpO2, Glucose, etc.)."""
     raise HTTPException(status_code=501, detail="Not implemented")
 
@@ -49,6 +44,6 @@ async def get_activity_timeseries(
     resolution: Literal["raw", "1min", "5min", "15min", "1hour"] = "raw",
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[StepsSample] | TimeseriesMetadata | Pagination]:
+) -> PaginatedResponse[StepsSample]:
     """Returns granular activity data (steps, cadence, etc.)."""
     raise HTTPException(status_code=501, detail="Not implemented")

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.common_types import Pagination
+from app.schemas.common_types import PaginatedResponse
 from app.schemas.events import (
     SleepSession,
     Workout,
@@ -24,7 +24,7 @@ async def list_workouts(
     type: str | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[Workout] | Pagination]:
+) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     raise HTTPException(status_code=501, detail="Not implemented")
 
@@ -38,6 +38,6 @@ async def list_sleep_sessions(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, list[SleepSession] | Pagination]:
+) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
     raise HTTPException(status_code=501, detail="Not implemented")
