@@ -15,9 +15,29 @@ class InvitationStatus(StrEnum):
 
 
 class InvitationCreate(BaseModel):
-    """Schema for creating a new invitation."""
+    """Schema for creating a new invitation (API input)."""
 
     email: EmailStr
+
+
+class InvitationCreateInternal(BaseModel):
+    """Schema for creating invitation internally with all fields."""
+
+    id: UUID
+    email: EmailStr
+    token: str
+    status: InvitationStatus
+    expires_at: datetime
+    created_at: datetime
+    invited_by_id: UUID | None = None
+
+
+class InvitationResend(BaseModel):
+    """Schema for resending an invitation (updates token and expiry)."""
+
+    token: str
+    expires_at: datetime
+    status: InvitationStatus = InvitationStatus.PENDING
 
 
 class InvitationRead(BaseModel):

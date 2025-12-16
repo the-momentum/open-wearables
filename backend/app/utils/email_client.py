@@ -1,19 +1,23 @@
 import logging
-import re
 from html import escape
 from typing import Any, cast
 
 import resend
+from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", re.IGNORECASE)
+_email_validator = TypeAdapter(EmailStr)
 
 
 def is_valid_email(email: str) -> bool:
-    """Check if the email is valid."""
-    return EMAIL_REGEX.match(email) is not None
+    """Check if the email is valid using Pydantic's EmailStr validation."""
+    try:
+        _email_validator.validate_python(email)
+        return True
+    except ValidationError:
+        return False
 
 
 def _get_from_address() -> str:
