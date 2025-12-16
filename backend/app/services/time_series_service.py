@@ -123,16 +123,15 @@ class TimeSeriesService(
     def _map_biometric_type(self, type: BiometricType) -> SeriesType:
         if type == BiometricType.HEART_RATE:
             return SeriesType.heart_rate
-        elif type == BiometricType.HRV:
+        if type == BiometricType.HRV:
             return SeriesType.heart_rate_variability_sdnn
-        elif type == BiometricType.SPO2:
+        if type == BiometricType.SPO2:
             return SeriesType.oxygen_saturation
-        elif type == BiometricType.BLOOD_GLUCOSE:
+        if type == BiometricType.BLOOD_GLUCOSE:
             return SeriesType.blood_glucose
-        elif type == BiometricType.TEMPERATURE:
+        if type == BiometricType.TEMPERATURE:
             return SeriesType.body_temperature
-        else:
-            raise ValueError(f"Unsupported biometric type: {type}")
+        raise ValueError(f"Unsupported biometric type: {type}")
 
     @handle_exceptions
     async def get_biometrics_series(
@@ -148,11 +147,11 @@ class TimeSeriesService(
         data = []
         for sample, mapping in samples:
             if type == BiometricType.HEART_RATE:
-                item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value), context=sample.context)
+                item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value))
             elif type == BiometricType.HRV:
-                item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value), context=sample.context)
+                item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value))
             elif type == BiometricType.SPO2:
-                item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value), context=sample.context)
+                item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
             elif type == BiometricType.BLOOD_GLUCOSE:
                 item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
             else:

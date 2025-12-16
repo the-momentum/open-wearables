@@ -35,7 +35,8 @@ class BloodGlucoseSample(BaseModel):
     value_mg_dl: float = Field(..., example=95.0)
     measurement_type: Literal["cgm", "fingerstick", "manual"] | None = None
     trend: Literal["rising_fast", "rising", "stable", "falling", "falling_fast"] | None = Field(
-        None, description="CGM trend arrow"
+        None,
+        description="CGM trend arrow",
     )
 
 

@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.models import EventRecord, ExternalDeviceMapping
-from app.repositories import EventRecordRepository
+from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.schemas import EventRecordCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
@@ -29,6 +29,7 @@ class Suunto247Data(Base247DataTemplate):
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+        self.connection_repo = UserConnectionRepository()
 
     def _get_suunto_headers(self) -> dict[str, str]:
         """Get Suunto-specific headers including subscription key."""
@@ -48,7 +49,6 @@ class Suunto247Data(Base247DataTemplate):
         headers: dict[str, str] | None = None,
     ) -> Any:
         """Make authenticated request to Suunto API."""
-        url = f"{self.api_base_url}{endpoint}"
         all_headers = self._get_suunto_headers()
         if headers:
             all_headers.update(headers)
@@ -56,8 +56,11 @@ class Suunto247Data(Base247DataTemplate):
         return make_authenticated_request(
             db=db,
             user_id=user_id,
+            connection_repo=self.connection_repo,
             oauth=self.oauth,
-            url=url,
+            api_base_url=self.api_base_url,
+            provider_name=self.provider_name,
+            endpoint=endpoint,
             method="GET",
             params=params,
             headers=all_headers,
@@ -154,6 +157,9 @@ class Suunto247Data(Base247DataTemplate):
             start_dt = datetime.fromisoformat(normalized_sleep["start_time"].replace("Z", "+00:00"))
         if normalized_sleep.get("end_time"):
             end_dt = datetime.fromisoformat(normalized_sleep["end_time"].replace("Z", "+00:00"))
+
+        if not start_dt or not end_dt:
+            return
 
         # Create EventRecord for sleep
         record = EventRecordCreate(
@@ -269,7 +275,7 @@ class Suunto247Data(Base247DataTemplate):
                         "timestamp": timestamp,
                         "bpm": int(hr),
                         "context": "active",  # Suunto 247 is continuous monitoring
-                    }
+                    },
                 )
 
             # HR extended (min/max)
@@ -285,7 +291,7 @@ class Suunto247Data(Base247DataTemplate):
                     {
                         "timestamp": timestamp,
                         "count": int(steps),
-                    }
+                    },
                 )
 
             # SpO2
@@ -295,7 +301,7 @@ class Suunto247Data(Base247DataTemplate):
                     {
                         "timestamp": timestamp,
                         "percent": float(spo2) * 100 if spo2 <= 1 else float(spo2),  # Handle 0-1 or 0-100
-                    }
+                    },
                 )
 
             # Energy consumption (joules)
@@ -306,7 +312,7 @@ class Suunto247Data(Base247DataTemplate):
                         "timestamp": timestamp,
                         "joules": float(energy),
                         "kcal": float(energy) / 4184,  # Convert to kcal
-                    }
+                    },
                 )
 
             # HRV
@@ -316,7 +322,7 @@ class Suunto247Data(Base247DataTemplate):
                     {
                         "timestamp": timestamp,
                         "rmssd_ms": float(hrv),
-                    }
+                    },
                 )
 
         return {
@@ -375,7 +381,7 @@ class Suunto247Data(Base247DataTemplate):
                             "date": time_iso,
                             "source": source_name,
                             "value": value,
-                        }
+                        },
                     )
 
         return {

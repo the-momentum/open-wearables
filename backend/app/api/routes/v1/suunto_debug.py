@@ -5,7 +5,7 @@ and verification of the normalization process.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -14,6 +14,7 @@ from app.database import DbSession
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.suunto import SuuntoStrategy
+from app.services.providers.suunto.data_247 import Suunto247Data
 
 router = APIRouter(prefix="/suunto")
 factory = ProviderFactory()
@@ -34,7 +35,7 @@ def _get_suunto_strategy() -> SuuntoStrategy:
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Suunto provider not available",
         )
-    return strategy
+    return cast(SuuntoStrategy, strategy)
 
 
 # -----------------------------------------------------------------------------
@@ -259,19 +260,21 @@ async def sync_all_suunto_data(
             success = strategy.workouts.load_data(db, user_id, since=since_ms)
             results["workouts_synced"] = 1 if success else 0
         except Exception as e:
-            results["errors"].append(f"Workouts: {str(e)}")
+            if isinstance(results["errors"], list):
+                results["errors"].append(f"Workouts: {str(e)}")
 
     # Sync 247 data
-    if strategy.data_247:
-        if include_sleep:
-            try:
-                count = strategy.data_247.load_and_save_sleep(db, user_id, from_time, to_time)
-                results["sleep_sessions_synced"] = count
-            except Exception as e:
+    if strategy.data_247 and include_sleep:
+        suunto_247 = cast(Suunto247Data, strategy.data_247)
+        try:
+            count = suunto_247.load_and_save_sleep(db, user_id, from_time, to_time)
+            results["sleep_sessions_synced"] = count
+        except Exception as e:
+            if isinstance(results["errors"], list):
                 results["errors"].append(f"Sleep: {str(e)}")
 
-        # Recovery and activity saving not fully implemented yet
-        # They can be viewed via normalized endpoints for now
+    # Recovery and activity saving not fully implemented yet
+    # They can be viewed via normalized endpoints for now
 
     return results
 
@@ -293,7 +296,13 @@ async def sync_suunto_sleep(
     from_time = from_time or default_from
     to_time = to_time or default_to
 
-    count = strategy.data_247.load_and_save_sleep(db, user_id, from_time, to_time)
+    if not strategy.data_247:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Suunto 247 data not available",
+        )
+    suunto_247 = cast(Suunto247Data, strategy.data_247)
+    count = suunto_247.load_and_save_sleep(db, user_id, from_time, to_time)
     return {"sleep_sessions_synced": count}
 
 

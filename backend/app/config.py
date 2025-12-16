@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     suunto_client_secret: SecretStr | None = None
     suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
     suunto_subscription_key: SecretStr | None = None
-    suunto_default_scope: str = "workout daily"
+    suunto_default_scope: str = "workout"
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None

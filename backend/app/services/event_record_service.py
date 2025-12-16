@@ -19,7 +19,6 @@ from app.schemas import (
 )
 from app.schemas.common_types import DataSource, Pagination
 from app.schemas.events import (
-    Measurement,
     SleepSession,
     Workout,
     WorkoutDetailed,
@@ -97,9 +96,8 @@ class EventRecordService(
 
     def _map_source(self, mapping: ExternalDeviceMapping, record: EventRecord) -> DataSource:
         return DataSource(
-            provider=mapping.provider_id,
-            app_name=record.source_name,
-            device_name=mapping.device_id,  # Assuming device_id is name for now, or we fetch device info
+            provider=mapping.provider_id or "unknown",
+            device=mapping.device_id,
         )
 
     @handle_exceptions
@@ -138,7 +136,7 @@ class EventRecordService(
             "data": data,
             "pagination": Pagination(
                 next_cursor=None,  # TODO: Implement cursor pagination
-                has_more=total_count > (params.offset + params.limit),
+                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
             ),
         }
 
@@ -225,7 +223,7 @@ class EventRecordService(
         return {
             "data": data,
             "pagination": Pagination(
-                has_more=total_count > (params.offset + params.limit),
+                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
             ),
         }
 

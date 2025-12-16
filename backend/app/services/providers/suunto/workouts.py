@@ -152,9 +152,6 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
-        # Distance in meters
-        distance_meters = raw_workout.totalDistance if raw_workout.totalDistance else None
-
         # Moving time (for now same as total time, Suunto may provide this separately)
         moving_time = duration_seconds
 

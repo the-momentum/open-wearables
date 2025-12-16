@@ -1,4 +1,5 @@
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any
 from uuid import UUID
@@ -87,9 +88,23 @@ def sync_vendor_data(
 
                     # Sync 247 data (sleep, recovery, activity)
                     if hasattr(strategy, "data_247") and strategy.data_247:
+                        # Parse dates
+                        start_dt = datetime.now() - timedelta(days=30)
+                        end_dt = datetime.now()
+
+                        if start_date:
+                            with suppress(ValueError):
+                                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                        if end_date:
+                            with suppress(ValueError):
+                                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
                         try:
-                            results_247 = strategy.data_247.load_and_save_all(
-                                db, user_uuid, start_time=start_date, end_time=end_date
+                            results_247 = strategy.data_247.load_all_247_data(
+                                db,
+                                user_uuid,
+                                start_time=start_dt,
+                                end_time=end_dt,
                             )
                             provider_result.params["data_247"] = {"success": True, **results_247}
                             logger.info(f"[sync_vendor_data] 247 data synced for {provider_name}: {results_247}")
