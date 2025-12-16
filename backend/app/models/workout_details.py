@@ -1,5 +1,4 @@
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped
 
 from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
 

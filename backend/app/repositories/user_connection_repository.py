@@ -186,6 +186,14 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.refresh(connection)
         return connection
 
+    def update_last_synced_at(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
+        """Update the last synced timestamp."""
+        connection.last_synced_at = datetime.now(timezone.utc)
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+        return connection
+
     def get_all_active_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all active connections for a specific user."""
         return (

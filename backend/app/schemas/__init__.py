@@ -96,13 +96,13 @@ from .system_info import (
     DataPointsInfo,
     SystemInfoResponse,
 )
-from .taxonomy_common import (
+from .common_types import (
     DataSource,
     ErrorDetails,
     Pagination,
     TimeseriesMetadata,
 )
-from .taxonomy_events import (
+from .events import (
     Macros,
     Meal,
     Measurement,
@@ -111,7 +111,7 @@ from .taxonomy_events import (
     WorkoutDetailed,
     WorkoutType,
 )
-from .taxonomy_summaries import (
+from .summaries import (
     ActivitySummary,
     BodySummary,
     IntensityMinutes,
@@ -119,7 +119,7 @@ from .taxonomy_summaries import (
     SleepStagesSummary,
     SleepSummary,
 )
-from .taxonomy_timeseries import (
+from .timeseries import (
     BiometricType,
     BloodGlucoseSample,
     HeartRateSample,

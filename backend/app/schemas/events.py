@@ -4,9 +4,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, RootModel
 
-from app.schemas.taxonomy_common import DataSource
-from app.schemas.taxonomy_summaries import SleepStagesSummary
-from app.schemas.taxonomy_timeseries import HeartRateSample
+from app.schemas.common_types import DataSource
+from app.schemas.summaries import SleepStagesSummary
+from app.schemas.timeseries import HeartRateSample
 
 
 class WorkoutType(RootModel[str]):

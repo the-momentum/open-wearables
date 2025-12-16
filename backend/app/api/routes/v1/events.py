@@ -4,8 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.taxonomy_common import Pagination
-from app.schemas.taxonomy_events import (
+from app.schemas.common_types import Pagination
+from app.schemas.events import (
     SleepSession,
     Workout,
 )

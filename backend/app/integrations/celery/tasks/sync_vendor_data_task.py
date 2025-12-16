@@ -97,9 +97,7 @@ def sync_vendor_data(
                             logger.warning(f"[sync_vendor_data] 247 data sync failed for {provider_name}: {e}")
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
 
-                    connection.last_synced_at = datetime.now()
-                    db.add(connection)
-                    db.commit()
+                    user_connection_repo.update_last_synced_at(db, connection)
 
                     result.providers_synced[provider_name] = provider_result
                     logger.info(

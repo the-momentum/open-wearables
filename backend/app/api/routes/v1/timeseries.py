@@ -4,8 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.taxonomy_common import Pagination, TimeseriesMetadata
-from app.schemas.taxonomy_timeseries import (
+from app.schemas.common_types import Pagination, TimeseriesMetadata
+from app.schemas.timeseries import (
     BiometricType,
     BloodGlucoseSample,
     HeartRateSample,

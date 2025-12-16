@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.taxonomy_common import DataSource
+from app.schemas.common_types import DataSource
 
 
 class IntensityMinutes(BaseModel):

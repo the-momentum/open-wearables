@@ -17,14 +17,14 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.taxonomy_common import DataSource, Pagination
-from app.schemas.taxonomy_events import (
+from app.schemas.common_types import DataSource, Pagination
+from app.schemas.events import (
     Measurement,
     SleepSession,
     Workout,
     WorkoutDetailed,
 )
-from app.schemas.taxonomy_summaries import SleepStagesSummary
+from app.schemas.summaries import SleepStagesSummary
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
