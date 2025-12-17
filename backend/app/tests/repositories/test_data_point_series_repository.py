@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas.time_series import SeriesType, TimeSeriesQueryParams, TimeSeriesSampleCreate
+from app.schemas.series_types import SeriesType
+from app.schemas.timeseries import TimeSeriesQueryParams, TimeSeriesSampleCreate
 from app.tests.utils.factories import create_external_device_mapping, create_user
 
 

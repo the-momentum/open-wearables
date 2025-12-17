@@ -301,6 +301,7 @@ class TestUserConnectionRepository:
         # Verify in database
         db.expire_all()
         db_connection = connection_repo.get(db, connection.id)
+        assert db_connection is not None
         assert db_connection.status == ConnectionStatus.REVOKED
 
     def test_update_tokens(self, db: Session, connection_repo: UserConnectionRepository) -> None:
@@ -490,6 +491,9 @@ class TestUserConnectionRepository:
         suunto_conn = connection_repo.get_active_connection(db, user.id, "suunto")
 
         # Assert
+        assert garmin_conn is not None
+        assert polar_conn is not None
+        assert suunto_conn is not None
         assert garmin_conn.id == conn_garmin.id
         assert polar_conn.id == conn_polar.id
         assert suunto_conn.id == conn_suunto.id

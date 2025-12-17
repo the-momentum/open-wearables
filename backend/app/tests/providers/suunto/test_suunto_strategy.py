@@ -102,6 +102,7 @@ class TestSuuntoStrategy:
         strategy = SuuntoStrategy()
 
         # Assert
+        assert strategy.workouts is not None
         assert strategy.workouts.workout_repo == strategy.workout_repo
         assert strategy.workouts.connection_repo == strategy.connection_repo
 
@@ -111,5 +112,6 @@ class TestSuuntoStrategy:
         strategy = SuuntoStrategy()
 
         # Assert
+        assert strategy.oauth is not None
         assert strategy.oauth.user_repo == strategy.user_repo
         assert strategy.oauth.connection_repo == strategy.connection_repo

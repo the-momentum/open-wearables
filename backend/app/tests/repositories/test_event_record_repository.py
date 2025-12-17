@@ -164,6 +164,7 @@ class TestEventRecordRepository:
         # Assert
         assert total_count == 2
         for event, _ in results:
+            assert event.type is not None
             assert "running" in event.type.lower()
 
     def test_get_records_with_filters_by_device_id(self, db: Session, event_repo: EventRecordRepository) -> None:

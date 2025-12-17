@@ -172,6 +172,7 @@ class TestDeveloperRepository:
         # Verify in database
         db.expire_all()
         db_developer = developer_repo.get(db, developer.id)
+        assert db_developer is not None
         assert db_developer.email == "new@example.com"
         assert db_developer.hashed_password == "hashed_new_password"
 

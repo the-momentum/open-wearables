@@ -188,6 +188,7 @@ class TestUserRepository:
         # Verify in database
         db.expire_all()
         db_user = user_repo.get(db, user.id)
+        assert db_user is not None
         assert db_user.first_name == "Updated"
         assert db_user.last_name == "NewName"
 

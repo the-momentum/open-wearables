@@ -378,6 +378,7 @@ class TestExternalMappingRepository:
         # Verify in database
         db.expire_all()
         db_mapping = mapping_repo.get(db, mapping.id)
+        assert db_mapping is not None
         assert db_mapping.device_id == "new_device"
 
     def test_delete(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:

@@ -110,6 +110,7 @@ class TestPolarStrategyComponents:
         strategy = PolarStrategy()
 
         # Assert
+        assert strategy.oauth is not None
         assert strategy.oauth.provider_name == "polar"
         assert strategy.oauth.api_base_url == "https://www.polaraccesslink.com"
         assert strategy.oauth.user_repo is strategy.user_repo
@@ -121,6 +122,7 @@ class TestPolarStrategyComponents:
         strategy = PolarStrategy()
 
         # Assert
+        assert strategy.workouts is not None
         assert strategy.workouts.provider_name == "polar"
         assert strategy.workouts.api_base_url == "https://www.polaraccesslink.com"
         assert strategy.workouts.workout_repo is strategy.workout_repo
@@ -133,6 +135,8 @@ class TestPolarStrategyComponents:
         strategy = PolarStrategy()
 
         # Assert - Components should share the same repository instances
+        assert strategy.oauth is not None
+        assert strategy.workouts is not None
         assert strategy.oauth.user_repo is strategy.user_repo
         assert strategy.oauth.connection_repo is strategy.connection_repo
         assert strategy.workouts.connection_repo is strategy.connection_repo
