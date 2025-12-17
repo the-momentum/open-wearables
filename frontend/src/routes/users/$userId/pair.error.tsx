@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { motion } from 'motion/react';
-import { X, ArrowRight, RefreshCw } from 'lucide-react';
+import { X, RefreshCw, ExternalLink } from 'lucide-react';
 import { WEARABLE_PROVIDERS } from '@/lib/constants/providers';
 
 export const Route = createFileRoute('/users/$userId/pair/error')({
@@ -8,12 +8,17 @@ export const Route = createFileRoute('/users/$userId/pair/error')({
   validateSearch: (search: Record<string, unknown>) => ({
     provider: (search.provider as string) || undefined,
     error: (search.error as string) || undefined,
+    redirect_url: (search.redirect_url as string) || undefined,
   }),
 });
 
 function PairErrorPage() {
   const { userId } = Route.useParams();
-  const { provider: providerId, error } = Route.useSearch();
+  const {
+    provider: providerId,
+    error,
+    redirect_url: redirectUrl,
+  } = Route.useSearch();
 
   const provider = providerId
     ? WEARABLE_PROVIDERS.find((p) => p.id === providerId)
@@ -96,20 +101,22 @@ function PairErrorPage() {
           className="w-full space-y-4"
         >
           <a
-            href={`/users/${userId}/pair`}
+            href={`/users/${userId}/pair${redirectUrl ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
             className="w-full py-3.5 px-4 bg-white hover:bg-zinc-200 text-zinc-950 text-base font-medium rounded-xl transition-all duration-200 focus:ring-2 focus:ring-white/20 outline-none flex items-center justify-center gap-2"
           >
             <RefreshCw className="w-4 h-4 stroke-[1.5]" />
             Try again
           </a>
 
-          <button
-            onClick={() => window.close()}
-            className="w-full py-3.5 px-4 bg-transparent border border-white/5 hover:bg-white/5 text-zinc-400 hover:text-white text-base font-medium rounded-xl transition-all duration-200 outline-none flex items-center justify-center gap-2"
-          >
-            Close
-            <ArrowRight className="w-4 h-4 stroke-[1.5]" />
-          </button>
+          {redirectUrl && (
+            <a
+              href={redirectUrl}
+              className="w-full py-3.5 px-4 bg-transparent border border-white/5 hover:bg-white/5 text-zinc-400 hover:text-white text-base font-medium rounded-xl transition-all duration-200 outline-none flex items-center justify-center gap-2"
+            >
+              Back to the app
+              <ExternalLink className="w-4 h-4 stroke-[1.5]" />
+            </a>
+          )}
         </motion.div>
       </div>
 

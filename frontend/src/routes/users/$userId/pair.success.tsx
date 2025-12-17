@@ -1,18 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { motion } from 'motion/react';
-import { Check, ArrowRight, Settings2 } from 'lucide-react';
+import { Check, ArrowRight, ExternalLink } from 'lucide-react';
 import { WEARABLE_PROVIDERS } from '@/lib/constants/providers';
 
 export const Route = createFileRoute('/users/$userId/pair/success')({
   component: PairSuccessPage,
   validateSearch: (search: Record<string, unknown>) => ({
     provider: (search.provider as string) || undefined,
+    redirect_url: (search.redirect_url as string) || undefined,
   }),
 });
 
 function PairSuccessPage() {
   const { userId } = Route.useParams();
-  const { provider: providerId } = Route.useSearch();
+  const { provider: providerId, redirect_url: redirectUrl } = Route.useSearch();
 
   const provider = providerId
     ? WEARABLE_PROVIDERS.find((p) => p.id === providerId)
@@ -61,35 +62,27 @@ function PairSuccessPage() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-            className="w-full bg-zinc-900/40 border border-white/10 rounded-2xl p-5 mb-8 flex items-center justify-between group hover:bg-zinc-900/60 transition-colors"
+            className="w-full bg-zinc-900/40 border border-white/10 rounded-2xl p-5 mb-8 flex items-center gap-4"
           >
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center h-12 w-12 bg-white rounded-xl shadow-lg shadow-black/20">
-                <img
-                  src={provider.logoPath}
-                  alt={`${provider.name} logo`}
-                  className="w-8 h-8 object-contain"
-                />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-base font-medium text-white">
-                  {provider.name}
+            <div className="flex items-center justify-center h-12 w-12 bg-white rounded-xl shadow-lg shadow-black/20">
+              <img
+                src={provider.logoPath}
+                alt={`${provider.name} logo`}
+                className="w-8 h-8 object-contain"
+              />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-base font-medium text-white">
+                {provider.name}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                  </span>
-                  <span className="text-sm text-zinc-500">Active</span>
-                </div>
+                <span className="text-sm text-zinc-500">Active</span>
               </div>
             </div>
-            <button
-              className="p-2 text-zinc-400 hover:text-white transition-colors"
-              title="Settings"
-            >
-              <Settings2 className="w-5 h-5 stroke-[1.5]" />
-            </button>
           </motion.div>
         )}
 
@@ -100,19 +93,26 @@ function PairSuccessPage() {
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
           className="w-full space-y-4"
         >
-          <button
-            onClick={() => window.close()}
-            className="w-full py-3.5 px-4 bg-white hover:bg-zinc-200 text-zinc-950 text-base font-medium rounded-xl transition-all duration-200 focus:ring-2 focus:ring-white/20 outline-none flex items-center justify-center gap-2"
-          >
-            Continue
-            <ArrowRight className="w-4 h-4 stroke-[1.5]" />
-          </button>
+          {redirectUrl && (
+            <a
+              href={redirectUrl}
+              className="w-full py-3.5 px-4 bg-white hover:bg-zinc-200 text-zinc-950 text-base font-medium rounded-xl transition-all duration-200 focus:ring-2 focus:ring-white/20 outline-none flex items-center justify-center gap-2"
+            >
+              Back to the app
+              <ExternalLink className="w-4 h-4 stroke-[1.5]" />
+            </a>
+          )}
 
           <a
-            href={`/users/${userId}/pair`}
-            className="w-full py-3.5 px-4 bg-transparent border border-white/5 hover:bg-white/5 text-zinc-400 hover:text-white text-base font-medium rounded-xl transition-all duration-200 outline-none flex items-center justify-center"
+            href={`/users/${userId}/pair${redirectUrl ? `?redirect_url=${encodeURIComponent(redirectUrl)}` : ''}`}
+            className={`w-full py-3.5 px-4 text-base font-medium rounded-xl transition-all duration-200 outline-none flex items-center justify-center gap-2 ${
+              redirectUrl
+                ? 'bg-transparent border border-white/5 hover:bg-white/5 text-zinc-400 hover:text-white'
+                : 'bg-white hover:bg-zinc-200 text-zinc-950'
+            }`}
           >
             Connect another device
+            {!redirectUrl && <ArrowRight className="w-4 h-4 stroke-[1.5]" />}
           </a>
         </motion.div>
       </div>
