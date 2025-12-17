@@ -15,9 +15,9 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
-from app.schemas.timeseries import (
-    BiometricType,
+from app.schemas.common_types import Pagination, PaginatedResponse, TimeseriesMetadata
+from app.schemas.series_types import SeriesType, get_series_type_from_id
+from app.schemas.timeseries_samples import (
     BloodGlucoseSample,
     HeartRateSample,
     HrvSample,
@@ -123,7 +123,7 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         user_id: UUID,
-        type: BiometricSeriesType,
+        type: SeriesType,
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample]:
         series_type = self._map_biometric_type(type)
@@ -131,13 +131,13 @@ class TimeSeriesService(
 
         data = []
         for sample, mapping in samples:
-            if series_type == SeriesType.heart_rate:
+            if type == SeriesType.heart_rate:
                 item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value))
-            elif series_type == SeriesType.heart_rate_variability_sdnn:
+            elif type == SeriesType.heart_rate_variability_sdnn:
                 item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value))
-            elif series_type == SeriesType.oxygen_saturation:
+            elif type == SeriesType.oxygen_saturation:
                 item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
-            elif series_type == SeriesType.blood_glucose:
+            elif type == SeriesType.blood_glucose:
                 item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
             else:
                 continue
@@ -154,7 +154,7 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         user_id: UUID,
-        type: ActivitySeriesType,
+        type: SeriesType,
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[StepsSample]:
         samples = self.crud.get_samples(db_session, params, SeriesType.steps, user_id)

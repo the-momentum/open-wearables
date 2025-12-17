@@ -15,7 +15,7 @@ from enum import Enum
 
 
 class SeriesType(str, Enum):
-    """All supported time-series metric types (internal use - DB operations)."""
+    """All supported time-series metric types."""
 
     # =========================================================================
     # BIOMETRICS - Heart & Cardiovascular (IDs 1-19)
@@ -110,79 +110,6 @@ class SeriesType(str, Enum):
     environmental_sound_reduction = "environmental_sound_reduction"
     time_in_daylight = "time_in_daylight"
     water_temperature = "water_temperature"
-
-
-class BiometricSeriesType(str, Enum):
-    """Biometric time-series types for /timeseries/biometrics endpoint."""
-
-    # Heart & Cardiovascular
-    heart_rate = "heart_rate"
-    resting_heart_rate = "resting_heart_rate"
-    heart_rate_variability_sdnn = "heart_rate_variability_sdnn"
-    heart_rate_recovery_one_minute = "heart_rate_recovery_one_minute"
-    walking_heart_rate_average = "walking_heart_rate_average"
-
-    # Blood & Respiratory
-    oxygen_saturation = "oxygen_saturation"
-    blood_glucose = "blood_glucose"
-    blood_pressure_systolic = "blood_pressure_systolic"
-    blood_pressure_diastolic = "blood_pressure_diastolic"
-    respiratory_rate = "respiratory_rate"
-    sleeping_breathing_disturbances = "sleeping_breathing_disturbances"
-
-    # Body Composition
-    height = "height"
-    weight = "weight"
-    body_fat_percentage = "body_fat_percentage"
-    body_mass_index = "body_mass_index"
-    lean_body_mass = "lean_body_mass"
-    body_temperature = "body_temperature"
-
-    # Fitness Metrics
-    vo2_max = "vo2_max"
-    six_minute_walk_test_distance = "six_minute_walk_test_distance"
-
-
-class ActivitySeriesType(str, Enum):
-    """Activity time-series types for /timeseries/activity endpoint."""
-
-    # Basic Activity
-    steps = "steps"
-    energy = "energy"
-    basal_energy = "basal_energy"
-    stand_time = "stand_time"
-    exercise_time = "exercise_time"
-    physical_effort = "physical_effort"
-    flights_climbed = "flights_climbed"
-
-    # Distance
-    distance_walking_running = "distance_walking_running"
-    distance_cycling = "distance_cycling"
-    distance_swimming = "distance_swimming"
-    distance_downhill_snow_sports = "distance_downhill_snow_sports"
-
-    # Walking Metrics
-    walking_step_length = "walking_step_length"
-    walking_speed = "walking_speed"
-    walking_double_support_percentage = "walking_double_support_percentage"
-    walking_asymmetry_percentage = "walking_asymmetry_percentage"
-    walking_steadiness = "walking_steadiness"
-    stair_descent_speed = "stair_descent_speed"
-    stair_ascent_speed = "stair_ascent_speed"
-
-    # Running Metrics
-    running_power = "running_power"
-    running_speed = "running_speed"
-    running_vertical_oscillation = "running_vertical_oscillation"
-    running_ground_contact_time = "running_ground_contact_time"
-    running_stride_length = "running_stride_length"
-
-    # Swimming Metrics
-    swimming_stroke_count = "swimming_stroke_count"
-
-    # Generic
-    cadence = "cadence"
-    power = "power"
 
 
 # =============================================================================
@@ -395,13 +322,3 @@ def is_activity_type(series_type: SeriesType) -> bool:
 def is_environmental_type(series_type: SeriesType) -> bool:
     """Check if a series type belongs to environmental category."""
     return series_type in ENVIRONMENTAL_SERIES_TYPES
-
-
-def biometric_to_series_type(biometric_type: BiometricSeriesType) -> SeriesType:
-    """Convert BiometricSeriesType to SeriesType for internal operations."""
-    return SeriesType(biometric_type.value)
-
-
-def activity_to_series_type(activity_type: ActivitySeriesType) -> SeriesType:
-    """Convert ActivitySeriesType to SeriesType for internal operations."""
-    return SeriesType(activity_type.value)
