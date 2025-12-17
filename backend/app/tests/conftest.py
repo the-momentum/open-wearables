@@ -46,11 +46,14 @@ def engine() -> Any:
     # Seed series type definitions (these need to exist for foreign key constraints)
     from sqlalchemy.orm import Session as SessionClass
 
-    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
     from app.models import SeriesTypeDefinition
+    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
 
     with SessionClass(bind=test_engine) as session:
         for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:
+            # Skip series types with codes exceeding VARCHAR(32) limit
+            if len(enum.value) > 32:
+                continue
             existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == type_id).first()
             if not existing:
                 series_type = SeriesTypeDefinition(id=type_id, code=enum.value, unit=unit)
