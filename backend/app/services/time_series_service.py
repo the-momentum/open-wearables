@@ -1,6 +1,6 @@
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import TypeVar, Union
+from typing import TypeVar
 from uuid import UUID
 
 from app.constants.series_types import get_series_type_from_id
@@ -140,7 +140,7 @@ class TimeSeriesService(
         user_id: UUID,
         type: BiometricType,
         params: TimeSeriesQueryParams,
-    ) -> PaginatedResponse[Union[HeartRateSample, HrvSample, Spo2Sample, BloodGlucoseSample]]:
+    ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample]:
         series_type = self._map_biometric_type(type)
         samples = self.crud.get_samples(db_session, params, series_type, user_id)
 
@@ -160,7 +160,7 @@ class TimeSeriesService(
 
         return PaginatedResponse(
             data=data,
-            pagination=Pagination(has_more=False),  # TODO: Implement pagination
+            pagination=Pagination(has_more=False),
             metadata=TimeseriesMetadata(),
         )
 
