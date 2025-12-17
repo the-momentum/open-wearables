@@ -1,5 +1,5 @@
 ---
-globs: app/services/**,app/utils/exceptions.py
+globs: backend/app/services/**,backend/app/utils/exceptions.py
 alwaysApply: false
 ---
 

@@ -22,14 +22,14 @@ from app.schemas import (
     UploadDataResponse,
 )
 from app.services.event_record_service import event_record_service
-from app.services.time_series_service import time_series_service
+from app.services.timeseries_service import timeseries_service
 
 
 class ImportService:
     def __init__(self, log: Logger):
         self.log = log
         self.event_record_service = event_record_service
-        self.time_series_service = time_series_service
+        self.timeseries_service = timeseries_service
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
@@ -158,7 +158,7 @@ class ImportService:
             self.event_record_service.create_detail(db_session, detail_for_record)
 
         samples = self._build_statistic_bundles(raw, user_id)
-        self.time_series_service.bulk_create_samples(db_session, samples)
+        self.timeseries_service.bulk_create_samples(db_session, samples)
 
         return True
 

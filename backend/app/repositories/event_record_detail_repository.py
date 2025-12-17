@@ -2,9 +2,16 @@ from typing import Literal
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
+from app.models import (
+    EventRecordDetail,
+    SleepDetails,
+    WorkoutDetails,
+)
 from app.repositories.repositories import CrudRepository
-from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
+from app.schemas.event_record_detail import (
+    EventRecordDetailCreate,
+    EventRecordDetailUpdate,
+)
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 

@@ -1,0 +1,8 @@
+# CODEOWNERS - Automatically request reviews from the right people
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Backend
+/backend/ @KaliszS @bartmichalak @czajkub
+
+# Frontend
+/frontend/ @farce1

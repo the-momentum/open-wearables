@@ -3,12 +3,12 @@ from uuid import UUID
 
 from sqlalchemy import Date, cast, desc, func
 
-from app.constants.series_types import get_series_type_id
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import SeriesType, TimeSeriesQueryParams, TimeSeriesSampleCreate, TimeSeriesSampleUpdate
+from app.schemas import TimeSeriesQueryParams, TimeSeriesSampleCreate, TimeSeriesSampleUpdate
+from app.schemas.series_types import SeriesType, get_series_type_id
 
 
 class DataPointSeriesRepository(
@@ -62,9 +62,6 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.external_device_mapping_id == params.external_device_mapping_id)
         elif params.device_id:
             query = query.filter(ExternalDeviceMapping.device_id == params.device_id)
-        else:
-            # Require at least one device-level discriminator to avoid scanning entire dataset
-            return []
 
         if getattr(params, "provider_name", None):
             query = query.filter(ExternalDeviceMapping.provider_name == params.provider_name)

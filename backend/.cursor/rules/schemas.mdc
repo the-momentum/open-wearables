@@ -1,5 +1,5 @@
 ---
-globs: app/schemas/**
+globs: backend/app/schemas/**
 alwaysApply: false
 ---
 

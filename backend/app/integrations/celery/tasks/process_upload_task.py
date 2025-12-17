@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.services import event_record_service, time_series_service, user_service
+from app.services import event_record_service, timeseries_service, user_service
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
 from celery import shared_task
@@ -77,4 +77,4 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
         if time_series_records:
-            time_series_service.bulk_create_samples(db, time_series_records)
+            timeseries_service.bulk_create_samples(db, time_series_records)

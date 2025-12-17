@@ -4,6 +4,9 @@ from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.services.providers.templates.base_247_data import Base247DataTemplate
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
 
 class BaseProviderStrategy(ABC):
@@ -16,8 +19,9 @@ class BaseProviderStrategy(ABC):
         self.workout_repo = EventRecordRepository(EventRecord)
 
         # Components should be initialized by subclasses
-        self.oauth = None
-        self.workouts = None
+        self.oauth: BaseOAuthTemplate | None = None
+        self.workouts: BaseWorkoutsTemplate | None = None
+        self.data_247: Base247DataTemplate | None = None
 
     @property
     @abstractmethod
