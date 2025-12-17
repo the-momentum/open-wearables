@@ -21,17 +21,19 @@ class EventRecordRepository(
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+        # Use provider_name for external mapping (e.g., 'suunto')
+        # provider_id is the workout/record ID from the provider
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
-            creator.provider_id,
+            creator.provider_name,  # Provider name for mapping (suunto/garmin/polar)
             creator.device_id,
             creator.external_mapping_id,
         )
 
         creation_data = creator.model_dump()
         creation_data["external_mapping_id"] = mapping.id
-        for redundant_key in ("user_id", "provider_id", "device_id"):
+        for redundant_key in ("user_id", "provider_id", "provider_name", "device_id"):
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)

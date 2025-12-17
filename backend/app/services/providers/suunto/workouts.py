@@ -75,20 +75,57 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         return start_date, end_date
 
     def _build_metrics(self, raw_workout: SuuntoWorkoutJSON) -> EventRecordMetrics:
+        """Build metrics from Suunto workout data.
+
+        Note: For heart rate, use hrmax/workoutMaxHR (actual max during workout),
+        NOT max (which is userMaxHR from settings).
+        """
         hr_data = raw_workout.hrdata
-        heart_rate_avg = Decimal(str(hr_data.avg)) if hr_data and hr_data.avg is not None else None
-        heart_rate_max = Decimal(str(hr_data.max)) if hr_data and hr_data.max is not None else None
+
+        # Heart rate - use hrmax (actual workout max), not max (user's max HR from settings)
+        heart_rate_avg = None
+        heart_rate_max = None
+        heart_rate_min = None
+
+        if hr_data:
+            # Average HR
+            if hr_data.avg is not None:
+                heart_rate_avg = Decimal(str(hr_data.avg))
+            elif hr_data.workoutAvgHR is not None:
+                heart_rate_avg = Decimal(str(hr_data.workoutAvgHR))
+
+            # Max HR - use hrmax (actual workout max), fallback to workoutMaxHR
+            if hr_data.hrmax is not None:
+                heart_rate_max = Decimal(str(hr_data.hrmax))
+            elif hr_data.workoutMaxHR is not None:
+                heart_rate_max = Decimal(str(hr_data.workoutMaxHR))
+
+            # Min HR
+            if hr_data.min is not None:
+                heart_rate_min = int(hr_data.min)
+
+        # Steps
         steps_count = int(raw_workout.stepCount) if raw_workout.stepCount is not None else None
         steps_avg = Decimal(str(raw_workout.stepCount)) if raw_workout.stepCount is not None else None
 
         return {
-            "heart_rate_min": int(heart_rate_avg) if heart_rate_avg is not None else None,
+            "heart_rate_min": heart_rate_min,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
             "steps_min": steps_count,
             "steps_max": steps_count,
             "steps_avg": steps_avg,
             "steps_total": steps_count,
+            # Speed (convert from m/s to km/h for display)
+            "max_speed": Decimal(str(raw_workout.maxSpeed * 3.6)) if raw_workout.maxSpeed else None,
+            "average_speed": Decimal(str(raw_workout.avgSpeed * 3.6)) if raw_workout.avgSpeed else None,
+            # Power
+            "max_watts": Decimal(str(raw_workout.maxPower)) if raw_workout.maxPower else None,
+            "average_watts": Decimal(str(raw_workout.avgPower)) if raw_workout.avgPower else None,
+            # Elevation
+            "total_elevation_gain": Decimal(str(raw_workout.totalAscent)) if raw_workout.totalAscent else None,
+            "elev_high": Decimal(str(raw_workout.maxAltitude)) if raw_workout.maxAltitude else None,
+            "elev_low": Decimal(str(raw_workout.minAltitude)) if raw_workout.minAltitude else None,
         }
 
     def _normalize_workout(
@@ -104,11 +141,19 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = int(raw_workout.totalTime)
 
-        source_name = raw_workout.gear.name if raw_workout.gear else "Unknown"
+        # Source name: prefer displayName, then name, fallback to "Suunto"
+        if raw_workout.gear:
+            source_name = raw_workout.gear.displayName or raw_workout.gear.name or "Suunto"
+        else:
+            source_name = "Suunto"
 
+        # Device ID: use serial number from gear
         device_id = raw_workout.gear.serialNumber if raw_workout.gear else None
 
         metrics = self._build_metrics(raw_workout)
+
+        # Moving time (for now same as total time, Suunto may provide this separately)
+        moving_time = duration_seconds
 
         workout_create = EventRecordCreate(
             category="workout",
@@ -119,9 +164,13 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            provider_id=str(raw_workout.workoutId),
+            provider_id=str(raw_workout.workoutId),  # Workout ID for deduplication
+            provider_name=self.provider_name,  # Provider name for mapping (e.g., "suunto")
             user_id=user_id,
         )
+
+        # Add moving_time to metrics for workout_detail
+        metrics["moving_time_seconds"] = moving_time
 
         workout_detail_create = EventRecordDetailCreate(
             record_id=workout_id,
@@ -147,7 +196,29 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         **kwargs: Any,
     ) -> bool:
         """Load data from Suunto API."""
-        response = self.get_workouts_from_api(db, user_id, **kwargs)
+        # Handle generic start_date/end_date
+        start_date = kwargs.get("start_date")
+
+        api_kwargs = kwargs.copy()
+
+        # Convert start_date to 'since' timestamp
+        if start_date:
+            if isinstance(start_date, str):
+                try:
+                    start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                    api_kwargs["since"] = int(start_dt.timestamp())
+                except (ValueError, AttributeError):
+                    pass
+            elif isinstance(start_date, datetime):
+                api_kwargs["since"] = int(start_date.timestamp())
+
+        # Set Suunto-specific defaults
+        if "limit" not in api_kwargs:
+            api_kwargs["limit"] = 100
+        if "filter_by_modification_time" not in api_kwargs:
+            api_kwargs["filter_by_modification_time"] = True
+
+        response = self.get_workouts_from_api(db, user_id, **api_kwargs)
         workouts_data = response.get("payload", [])
         workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
 

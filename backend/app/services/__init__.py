@@ -8,7 +8,7 @@ from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .services import AppService
 from .system_info_service import system_info_service
-from .time_series_service import time_series_service
+from .timeseries_service import timeseries_service
 from .user_service import user_service
 
 __all__ = [
@@ -21,7 +21,7 @@ __all__ = [
     "ae_import_service",
     "hk_import_service",
     "event_record_service",
-    "time_series_service",
+    "timeseries_service",
     "pre_url_service",
     "system_info_service",
 ]

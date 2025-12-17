@@ -17,14 +17,14 @@ from app.schemas import (
     UploadDataResponse,
 )
 from app.services.event_record_service import event_record_service
-from app.services.time_series_service import time_series_service
+from app.services.timeseries_service import timeseries_service
 
 
 class ImportService:
     def __init__(self, log: Logger):
         self.log = log
         self.event_record_service = event_record_service
-        self.time_series_service = time_series_service
+        self.timeseries_service = timeseries_service
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
@@ -156,9 +156,9 @@ class ImportService:
 
         for heart_rate_records, step_records in self._build_statistic_bundles(raw, user_id):
             if heart_rate_records:
-                self.time_series_service.bulk_create_samples(db_session, heart_rate_records)
+                self.timeseries_service.bulk_create_samples(db_session, heart_rate_records)
             if step_records:
-                self.time_series_service.bulk_create_samples(db_session, step_records)
+                self.timeseries_service.bulk_create_samples(db_session, step_records)
 
         return True
 

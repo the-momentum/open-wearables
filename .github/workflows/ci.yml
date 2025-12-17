@@ -1,11 +1,14 @@
 name: CI
 
 on:
-  push: &paths
-    paths:
+  push:
+    branches:
+      - main
+    paths: &paths
       - "backend/**"
       - "frontend/**"
-  pull_request: *paths
+  pull_request:
+    paths: *paths
 
 jobs:
   # Detect which parts of the codebase changed

@@ -28,6 +28,7 @@ class EventRecordDetailBase(BaseModel):
     elev_high: Decimal | None = None
     elev_low: Decimal | None = None
 
+    # Sleep-specific fields
     sleep_total_duration_minutes: int | None = None
     sleep_time_in_bed_minutes: int | None = None
     sleep_efficiency_score: Decimal | None = None
@@ -35,6 +36,7 @@ class EventRecordDetailBase(BaseModel):
     sleep_rem_minutes: int | None = None
     sleep_light_minutes: int | None = None
     sleep_awake_minutes: int | None = None
+    is_nap: bool | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

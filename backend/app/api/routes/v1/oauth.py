@@ -59,12 +59,20 @@ async def oauth_callback(
     db: DbSession,
     code: Annotated[str | None, Query(description="Authorization code from provider")] = None,
     state: Annotated[str | None, Query(description="State parameter for CSRF protection")] = None,
+    error: Annotated[str | None, Query()] = None,
+    error_description: Annotated[str | None, Query()] = None,
 ):
     """
     OAuth callback endpoint.
 
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
+    if error:
+        return RedirectResponse(
+            url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",
+            status_code=303,
+        )
+
     if not code or not state:
         return RedirectResponse(
             url="/api/v1/oauth/error?message=Missing+OAuth+parameters",

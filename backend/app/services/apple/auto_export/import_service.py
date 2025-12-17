@@ -16,7 +16,7 @@ from app.schemas import (
     UploadDataResponse,
 )
 from app.services.event_record_service import event_record_service
-from app.services.time_series_service import time_series_service
+from app.services.timeseries_service import timeseries_service
 from app.utils.exceptions import handle_exceptions
 
 APPLE_DT_FORMAT = "%Y-%m-%d %H:%M:%S %z"
@@ -26,7 +26,7 @@ class ImportService:
     def __init__(self, log: Logger):
         self.log = log
         self.event_record_service = event_record_service
-        self.time_series_service = time_series_service
+        self.timeseries_service = timeseries_service
 
     def _dt(self, s: str) -> datetime:
         s = s.replace(" +", "+").replace(" ", "T", 1)
@@ -143,7 +143,7 @@ class ImportService:
             self.event_record_service.create_detail(db_session, detail)
 
             if hr_samples:
-                self.time_series_service.bulk_create_samples(db_session, hr_samples)
+                self.timeseries_service.bulk_create_samples(db_session, hr_samples)
 
         return True
 

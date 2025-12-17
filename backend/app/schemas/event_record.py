@@ -56,7 +56,14 @@ class EventRecordCreate(EventRecordBase):
     """Schema for creating an event record entry."""
 
     id: UUID
-    provider_id: str | None = None
+    provider_id: str | None = Field(
+        None,
+        description="Provider-specific record identifier (e.g., Suunto workoutId) for deduplication.",
+    )
+    provider_name: str | None = Field(
+        None,
+        description="Provider name (e.g., 'suunto', 'garmin') for external mapping.",
+    )
     user_id: UUID
     external_mapping_id: UUID | None = Field(
         None,

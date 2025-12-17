@@ -14,9 +14,10 @@ from app.repositories.event_record_detail_repository import EventRecordDetailRep
 from app.schemas.event_record import EventRecordCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.personal_record import PersonalRecordCreate
-from app.schemas.time_series import HeartRateSampleCreate, SeriesType, StepSampleCreate, TimeSeriesSampleCreate
+from app.schemas.series_types import SeriesType
+from app.schemas.timeseries import HeartRateSampleCreate, StepSampleCreate, TimeSeriesSampleCreate
 from app.schemas.user import UserCreate
-from app.services import event_record_service, time_series_service, user_service
+from app.services import event_record_service, timeseries_service, user_service
 
 fake = Faker()
 
@@ -444,7 +445,7 @@ def seed_activity_data() -> None:
                         device_id=device_id,
                     )
                     if samples:
-                        time_series_service.bulk_create_samples(db, samples)
+                        timeseries_service.bulk_create_samples(db, samples)
                         time_series_samples_created += len(samples)
 
                 if workout_num % 20 == 0:
