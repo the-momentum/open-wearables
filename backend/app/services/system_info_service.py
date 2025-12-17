@@ -12,7 +12,7 @@ from app.schemas.system_info import (
     WorkoutTypeMetric,
 )
 from app.services.event_record_service import EventRecordService, event_record_service
-from app.services.time_series_service import TimeSeriesService, time_series_service
+from app.services.timeseries_service import TimeSeriesService, timeseries_service
 from app.services.user_connection_service import UserConnectionService, user_connection_service
 from app.services.user_service import UserService, user_service
 
@@ -25,13 +25,13 @@ class SystemInfoService:
         log: Logger,
         user_service: UserService,
         user_connection_service: UserConnectionService,
-        time_series_service: TimeSeriesService,
+        timeseries_service: TimeSeriesService,
         event_record_service: EventRecordService,
     ):
         self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
-        self.time_series_service = time_series_service
+        self.timeseries_service = timeseries_service
         self.event_record_service = event_record_service
 
     def _calculate_weekly_growth(self, current: int, previous: int) -> float:
@@ -85,15 +85,15 @@ class SystemInfoService:
         # Data Points
         data_points_stats = self._get_growth_stats(
             db_session,
-            self.time_series_service.crud.get_total_count,
-            self.time_series_service.get_count_in_range,
+            self.timeseries_service.crud.get_total_count,
+            self.timeseries_service.get_count_in_range,
             week_ago,
             two_weeks_ago,
             now,
         )
 
         # Get metrics by series type
-        series_type_counts = self.time_series_service.get_count_by_series_type(db_session)
+        series_type_counts = self.timeseries_service.get_count_by_series_type(db_session)
         top_series_types = [
             SeriesTypeMetric(
                 series_type=get_series_type_from_id(series_type_id).value,
@@ -128,6 +128,6 @@ system_info_service = SystemInfoService(
     log=getLogger(__name__),
     user_service=user_service,
     user_connection_service=user_connection_service,
-    time_series_service=time_series_service,
+    timeseries_service=timeseries_service,
     event_record_service=event_record_service,
 )

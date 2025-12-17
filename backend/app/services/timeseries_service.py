@@ -7,23 +7,21 @@ from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories import DataPointSeriesRepository
 from app.schemas import (
+    BloodGlucoseSample,
+    HeartRateSample,
     HeartRateSampleCreate,
     HeartRateSampleResponse,
+    HrvSample,
+    Spo2Sample,
     StepSampleCreate,
     StepSampleResponse,
+    StepsSample,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import Pagination, PaginatedResponse, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.series_types import SeriesType, get_series_type_from_id
-from app.schemas.timeseries_samples import (
-    BloodGlucoseSample,
-    HeartRateSample,
-    HrvSample,
-    Spo2Sample,
-    StepsSample,
-)
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -119,15 +117,14 @@ class TimeSeriesService(
         return self.crud.get_count_by_provider(db_session)
 
     @handle_exceptions
-    async def get_biometrics_series(
+    async def get_timeseries(
         self,
         db_session: DbSession,
         user_id: UUID,
         type: SeriesType,
         params: TimeSeriesQueryParams,
-    ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample]:
-        series_type = self._map_biometric_type(type)
-        samples = self.crud.get_samples(db_session, params, series_type, user_id)
+    ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample | StepsSample]:
+        samples = self.crud.get_samples(db_session, params, type, user_id)
 
         data = []
         for sample, mapping in samples:
@@ -139,6 +136,12 @@ class TimeSeriesService(
                 item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
             elif type == SeriesType.blood_glucose:
                 item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
+            elif type == SeriesType.steps:
+                item = StepsSample(
+                    timestamp=sample.recorded_at,
+                    count=int(sample.value),
+                    duration_seconds=None,
+                )
             else:
                 continue
             data.append(item)
@@ -149,30 +152,5 @@ class TimeSeriesService(
             metadata=TimeseriesMetadata(),
         )
 
-    @handle_exceptions
-    async def get_activity_series(
-        self,
-        db_session: DbSession,
-        user_id: UUID,
-        type: SeriesType,
-        params: TimeSeriesQueryParams,
-    ) -> PaginatedResponse[StepsSample]:
-        samples = self.crud.get_samples(db_session, params, SeriesType.steps, user_id)
 
-        data = []
-        for sample, mapping in samples:
-            item = StepsSample(
-                timestamp=sample.recorded_at,
-                count=int(sample.value),
-                duration_seconds=None,  # Not stored in DataPointSeries currently
-            )
-            data.append(item)
-
-        return PaginatedResponse(
-            data=data,
-            pagination=Pagination(has_more=False),
-            metadata=TimeseriesMetadata(),
-        )
-
-
-time_series_service = TimeSeriesService(log=getLogger(__name__))
+timeseries_service = TimeSeriesService(log=getLogger(__name__))

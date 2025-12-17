@@ -2,11 +2,9 @@
 
 This module contains:
 - SeriesType enum with all supported metric types (internal use)
-- BiometricSeriesType enum for /timeseries/biometrics endpoint
-- ActivitySeriesType enum for /timeseries/activity endpoint
 - Stable integer IDs for database persistence
 - Unit definitions for each series type
-- Helper functions for ID/enum conversions
+- Helper functions for ID/enum conversions and category validation
 
 IMPORTANT: Never change existing IDs - only add new ones. IDs are persisted in the database.
 """
@@ -204,81 +202,6 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (204, SeriesType.water_temperature, "celsius"),
 ]
 
-# =============================================================================
-# CATEGORY GROUPINGS (for API endpoints)
-# =============================================================================
-
-# Biometric types - for /timeseries/biometrics endpoint
-BIOMETRIC_SERIES_TYPES: set[SeriesType] = {
-    # Heart & Cardiovascular
-    SeriesType.heart_rate,
-    SeriesType.resting_heart_rate,
-    SeriesType.heart_rate_variability_sdnn,
-    SeriesType.heart_rate_recovery_one_minute,
-    SeriesType.walking_heart_rate_average,
-    # Blood & Respiratory
-    SeriesType.oxygen_saturation,
-    SeriesType.blood_glucose,
-    SeriesType.blood_pressure_systolic,
-    SeriesType.blood_pressure_diastolic,
-    SeriesType.respiratory_rate,
-    SeriesType.sleeping_breathing_disturbances,
-    # Body Composition
-    SeriesType.height,
-    SeriesType.weight,
-    SeriesType.body_fat_percentage,
-    SeriesType.body_mass_index,
-    SeriesType.lean_body_mass,
-    SeriesType.body_temperature,
-    # Fitness Metrics
-    SeriesType.vo2_max,
-    SeriesType.six_minute_walk_test_distance,
-}
-
-# Activity types - for /timeseries/activity endpoint
-ACTIVITY_SERIES_TYPES: set[SeriesType] = {
-    # Basic
-    SeriesType.steps,
-    SeriesType.energy,
-    SeriesType.basal_energy,
-    SeriesType.stand_time,
-    SeriesType.exercise_time,
-    SeriesType.physical_effort,
-    SeriesType.flights_climbed,
-    # Distance
-    SeriesType.distance_walking_running,
-    SeriesType.distance_cycling,
-    SeriesType.distance_swimming,
-    SeriesType.distance_downhill_snow_sports,
-    # Walking Metrics
-    SeriesType.walking_step_length,
-    SeriesType.walking_speed,
-    SeriesType.walking_double_support_percentage,
-    SeriesType.walking_asymmetry_percentage,
-    SeriesType.walking_steadiness,
-    SeriesType.stair_descent_speed,
-    SeriesType.stair_ascent_speed,
-    # Running Metrics
-    SeriesType.running_power,
-    SeriesType.running_speed,
-    SeriesType.running_vertical_oscillation,
-    SeriesType.running_ground_contact_time,
-    SeriesType.running_stride_length,
-    # Swimming Metrics
-    SeriesType.swimming_stroke_count,
-    # Generic
-    SeriesType.cadence,
-    SeriesType.power,
-}
-
-# Environmental types - could be separate endpoint or included in activity
-ENVIRONMENTAL_SERIES_TYPES: set[SeriesType] = {
-    SeriesType.environmental_audio_exposure,
-    SeriesType.headphone_audio_exposure,
-    SeriesType.environmental_sound_reduction,
-    SeriesType.time_in_daylight,
-    SeriesType.water_temperature,
-}
 
 # =============================================================================
 # LOOKUP DICTIONARIES
@@ -307,18 +230,3 @@ def get_series_type_from_id(series_type_id: int) -> SeriesType:
 def get_series_type_unit(series_type: SeriesType) -> str:
     """Get the unit string for a series type."""
     return SERIES_TYPE_UNIT_BY_ENUM[series_type]
-
-
-def is_biometric_type(series_type: SeriesType) -> bool:
-    """Check if a series type belongs to biometrics category."""
-    return series_type in BIOMETRIC_SERIES_TYPES
-
-
-def is_activity_type(series_type: SeriesType) -> bool:
-    """Check if a series type belongs to activity category."""
-    return series_type in ACTIVITY_SERIES_TYPES
-
-
-def is_environmental_type(series_type: SeriesType) -> bool:
-    """Check if a series type belongs to environmental category."""
-    return series_type in ENVIRONMENTAL_SERIES_TYPES

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.database import DbSession
 from app.schemas import HeartRateSampleResponse, TimeSeriesQueryParams
-from app.services import ApiKeyDep, time_series_service
+from app.services import ApiKeyDep, timeseries_service
 
 router = APIRouter()
 
@@ -17,4 +17,4 @@ async def get_heart_rate_endpoint(
     query_params: Annotated[TimeSeriesQueryParams, Depends()],
 ):
     """Get heart rate data with filtering, sorting, and pagination."""
-    return await time_series_service.get_user_heart_rate_series(db, user_id, query_params)
+    return await timeseries_service.get_user_heart_rate_series(db, user_id, query_params)
