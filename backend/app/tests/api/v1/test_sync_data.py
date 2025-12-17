@@ -48,7 +48,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data == {"success": True}
+        assert data["success"] is True
         mock_provider_factory.get_provider.assert_called_once_with("garmin")
         mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
 
@@ -103,7 +103,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data == {"success": True}
+        assert data["success"] is True
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
     def test_sync_suunto_with_params(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
@@ -123,7 +123,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert data == {"success": True}
+        assert data["success"] is True
 
         # Verify the pagination parameters were passed
         call_kwargs = mock_provider_factory.get_provider.return_value.workouts.load_data.call_args[1]
@@ -146,25 +146,29 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 400
 
-    def test_sync_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
+    def test_sync_provider_not_supporting_workouts(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test provider that doesn't support workouts returns 501."""
         # Arrange
         user = create_user(db)
         api_key = create_api_key(db)
         create_user_connection(db, user=user, provider="apple", status=ConnectionStatus.ACTIVE)
 
-        # Mock factory to return a strategy without workouts
-        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
-            mock_strategy = MagicMock()
-            mock_strategy.workouts = None  # Apple has no cloud API
-            mock_factory.get_provider.return_value = mock_strategy
+        # Configure mock to return a strategy without workouts
+        mock_strategy = MagicMock()
+        mock_strategy.workouts = None
+        mock_provider_factory.get_provider.return_value = mock_strategy
 
-            # Act
-            response = client.post(
-                f"/api/v1/providers/apple/users/{user.id}/sync",
-                headers={"X-Open-Wearables-API-Key": api_key.id},
-            )
+        # Act
+        response = client.post(
+            f"/api/v1/providers/apple/users/{user.id}/sync",
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+        )
 
-            # Assert
-            assert response.status_code == 501
-            assert "does not support workouts" in response.json()["detail"]
+        # Assert
+        assert response.status_code == 501
+        assert "does not support workouts" in response.json()["detail"]

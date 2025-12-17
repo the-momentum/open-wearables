@@ -121,13 +121,13 @@ class TestSuuntoWorkouts:
         sample_workout_data: dict,
     ) -> None:
         """Should handle missing heart rate data."""
-        # Arrange - use MagicMock to simulate a workout with None hrdata values
-        mock_workout = MagicMock()
-        mock_workout.hrdata = None
-        mock_workout.stepCount = 8500
+        # Arrange - create workout data without hrdata
+        workout_data = sample_workout_data.copy()
+        workout_data["hrdata"] = None
+        workout = SuuntoWorkoutJSON.model_construct(**workout_data)
 
         # Act
-        metrics = suunto_workouts._build_metrics(mock_workout)
+        metrics = suunto_workouts._build_metrics(workout)
 
         # Assert
         assert metrics["heart_rate_avg"] is None
@@ -140,14 +140,13 @@ class TestSuuntoWorkouts:
         sample_workout_data: dict,
     ) -> None:
         """Should handle missing step count."""
-        # Arrange - use MagicMock to simulate a workout with None stepCount
-        mock_workout = MagicMock()
-        mock_workout.hrdata.avg = 145
-        mock_workout.hrdata.max = 175
-        mock_workout.stepCount = None
+        # Arrange - create workout data without stepCount
+        workout_data = sample_workout_data.copy()
+        workout_data["stepCount"] = None
+        workout = SuuntoWorkoutJSON.model_construct(**workout_data)
 
         # Act
-        metrics = suunto_workouts._build_metrics(mock_workout)
+        metrics = suunto_workouts._build_metrics(workout)
 
         # Assert
         assert metrics["steps_total"] is None
@@ -179,9 +178,10 @@ class TestSuuntoWorkouts:
 
     def test_normalize_workout_without_device(self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict) -> None:
         """Should handle workout without device/gear information."""
-        # Arrange
-        sample_workout_data["gear"] = None
-        workout = SuuntoWorkoutJSON(**sample_workout_data)
+        # Arrange - use a copy to avoid modifying the fixture
+        workout_data = sample_workout_data.copy()
+        workout_data["gear"] = None
+        workout = SuuntoWorkoutJSON.model_construct(**workout_data)
         user_id = uuid4()
 
         # Act

@@ -212,8 +212,10 @@ class TestPollSqsTask:
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}
 
-        # Act
-        with patch.object(poll_sqs_task, "apply_async") as mock_apply_async:
+        # Act - patch at module level for Celery task
+        with patch(
+            "app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task.apply_async",
+        ) as mock_apply_async:
             result = poll_sqs_task(expiration_seconds=60, iterations_done=0)
 
             # Assert
@@ -230,8 +232,10 @@ class TestPollSqsTask:
         expiration_seconds = 60
         num_polls = expiration_seconds // 20  # 3 iterations
 
-        # Act
-        with patch.object(poll_sqs_task, "apply_async") as mock_apply_async:
+        # Act - patch at module level for Celery task
+        with patch(
+            "app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task.apply_async",
+        ) as mock_apply_async:
             result = poll_sqs_task(expiration_seconds=expiration_seconds, iterations_done=num_polls)
 
             # Assert
@@ -243,9 +247,9 @@ class TestPollSqsTask:
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}
 
-        # Act
+        # Act - patch at module level for Celery task
         with (
-            patch.object(poll_sqs_task, "apply_async"),
+            patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task.apply_async"),
             patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_messages") as mock_poll,
         ):
             poll_sqs_task(expiration_seconds=60, iterations_done=0)

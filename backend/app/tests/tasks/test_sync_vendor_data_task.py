@@ -42,8 +42,8 @@ class TestSyncVendorDataTask:
         )
 
         # Mock the database session
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         # Mock the provider strategy
         mock_workouts = MagicMock()
@@ -86,8 +86,8 @@ class TestSyncVendorDataTask:
             status=ConnectionStatus.ACTIVE,
         )
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         mock_workouts = MagicMock()
         mock_workouts.load_data.return_value = True
@@ -125,8 +125,8 @@ class TestSyncVendorDataTask:
         create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
         create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         mock_workouts = MagicMock()
         mock_workouts.load_data.return_value = True
@@ -160,8 +160,8 @@ class TestSyncVendorDataTask:
         create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
         create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         mock_workouts = MagicMock()
         mock_workouts.load_data.return_value = True
@@ -197,8 +197,8 @@ class TestSyncVendorDataTask:
             status=ConnectionStatus.REVOKED,
         )
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         # Act
         result = sync_vendor_data(str(user.id))
@@ -222,8 +222,8 @@ class TestSyncVendorDataTask:
         user = create_user(db)
         create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         # Mock provider to raise an error
         mock_get_provider.side_effect = Exception("Provider API unavailable")
@@ -251,8 +251,8 @@ class TestSyncVendorDataTask:
         user = create_user(db)
         create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         mock_workouts = MagicMock()
         mock_workouts.load_data.return_value = False
@@ -283,8 +283,8 @@ class TestSyncVendorDataTask:
         user = create_user(db)
         create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
 
         # Mock provider without workout support
         mock_strategy = MagicMock()
