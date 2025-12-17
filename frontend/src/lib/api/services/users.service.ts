@@ -1,5 +1,6 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
+import { appendSearchParams } from '@/lib/utils/url';
 import type {
   UserRead,
   UserCreate,
@@ -12,15 +13,17 @@ export const usersService = {
   async getAll(params?: UserQueryParams): Promise<PaginatedUsersResponse> {
     const searchParams = new URLSearchParams();
 
-    if (params?.page != null) searchParams.set('page', params.page.toString());
-    if (params?.limit != null)
-      searchParams.set('limit', params.limit.toString());
-    if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
-    if (params?.sort_order) searchParams.set('sort_order', params.sort_order);
-    if (params?.search) searchParams.set('search', params.search);
-    if (params?.email) searchParams.set('email', params.email);
-    if (params?.external_user_id)
-      searchParams.set('external_user_id', params.external_user_id);
+    if (params) {
+      appendSearchParams(searchParams, {
+        page: params.page,
+        limit: params.limit,
+        sort_by: params.sort_by,
+        sort_order: params.sort_order,
+        search: params.search,
+        email: params.email,
+        external_user_id: params.external_user_id,
+      });
+    }
 
     const queryString = searchParams.toString();
     const url = queryString
