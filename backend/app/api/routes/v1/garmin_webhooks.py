@@ -84,7 +84,6 @@ async def garmin_ping_notification(
                     logger.info(f"Mapped Garmin user {garmin_user_id} to internal user {internal_user_id}")
 
                     # Extract parameters from callback URL (including pull token)
-
                     parsed_url = urlparse(callback_url)
                     query_params = parse_qs(parsed_url.query)
                     pull_token = query_params.get("token", [None])[0]
