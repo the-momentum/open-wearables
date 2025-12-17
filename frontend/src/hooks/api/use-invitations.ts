@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { invitationsService } from '@/lib/api/services/invitations.service';
-import type { InvitationCreate, InvitationAccept } from '@/lib/api/types';
+import type {
+  Invitation,
+  InvitationCreate,
+  InvitationAccept,
+} from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/errors/handler';
@@ -18,8 +22,16 @@ export function useCreateInvitation() {
   return useMutation({
     mutationFn: (data: InvitationCreate) =>
       invitationsService.createInvitation(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.invitations.list() });
+    onSuccess: (createdInvitation) => {
+      // Optimistically set status to 'sent' since email sending usually succeeds
+      // On page refresh, the real status will be fetched (sent or failed)
+      queryClient.setQueryData(
+        queryKeys.invitations.list(),
+        (old: Invitation[] = []) => [
+          ...old,
+          { ...createdInvitation, status: 'sent' },
+        ]
+      );
       toast.success('Invitation sent successfully');
     },
     onError: (error) => {
