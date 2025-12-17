@@ -438,7 +438,7 @@ def seed_activity_data() -> None:
                         record.end_datetime,
                         fake,
                         user_id=user.id,
-                        provider_name=record.provider_name,
+                        provider_name=record.provider_name or "Apple",
                         device_id=device_id,
                     )
                     if samples:

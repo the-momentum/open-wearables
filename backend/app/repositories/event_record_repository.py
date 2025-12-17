@@ -27,7 +27,7 @@ class EventRecordRepository(
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
-            creator.provider_name,  # Provider name for mapping (suunto/garmin/polar)
+            creator.provider_name or "unknown",  # Provider name for mapping (suunto/garmin/polar)
             creator.device_id,
             creator.external_device_mapping_id,
         )

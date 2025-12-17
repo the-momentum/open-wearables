@@ -61,8 +61,9 @@ class EventRecordService(
         self,
         db_session: DbSession,
         detail: EventRecordDetailCreate,
+        detail_type: str = "workout",
     ) -> EventRecordDetail:
-        return self.event_record_detail_repo.create(db_session, detail)
+        return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
 
     @handle_exceptions
     async def _get_records_with_filters(
@@ -94,9 +95,9 @@ class EventRecordService(
         """Get count of workouts grouped by workout type."""
         return self.crud.get_count_by_workout_type(db_session)
 
-    def _map_source(self, mapping: ExternalDeviceMapping, record: EventRecord) -> DataSource:
+    def _map_source(self, mapping: ExternalDeviceMapping) -> DataSource:
         return DataSource(
-            provider=mapping.provider_id or "unknown",
+            provider=mapping.provider_name or "unknown",
             device=mapping.device_id,
         )
 
@@ -121,7 +122,7 @@ class EventRecordService(
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
                 duration_seconds=record.duration_seconds,
-                source=self._map_source(mapping, record),
+                source=self._map_source(mapping),
                 calories_kcal=None,  # Need to check where this is stored,
                 # likely in details but not in WorkoutDetails definition I saw earlier?
                 distance_meters=None,
@@ -177,7 +178,7 @@ class EventRecordService(
             start_time=record.start_datetime,
             end_time=record.end_datetime,
             duration_seconds=record.duration_seconds,
-            source=self._map_source(mapping, record),
+            source=self._map_source(mapping),
             calories_kcal=None,
             distance_meters=None,
             avg_heart_rate_bpm=details.heart_rate_avg if details else None,
@@ -205,7 +206,7 @@ class EventRecordService(
                 id=record.id,
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
-                source=self._map_source(mapping, record),
+                source=self._map_source(mapping),
                 duration_seconds=record.duration_seconds or 0,
                 efficiency_percent=details.sleep_efficiency_score if details else None,
                 is_nap=details.is_nap if details else False,
