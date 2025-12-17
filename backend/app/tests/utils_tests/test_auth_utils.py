@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from jose import jwt
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.tests.utils.factories import create_developer
@@ -21,7 +22,7 @@ class TestGetCurrentDeveloper:
     """Test suite for get_current_developer function."""
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_valid_token(self, db):
+    async def test_get_current_developer_valid_token(self, db: Session) -> None:
         """Test extracting developer from valid JWT token."""
         # Arrange
         developer = create_developer(db, email="test@example.com")
@@ -36,7 +37,7 @@ class TestGetCurrentDeveloper:
         assert result.email == developer.email
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_expired_token(self, db):
+    async def test_get_current_developer_expired_token(self, db: Session) -> None:
         """Test handling of expired JWT token."""
         # Arrange
         developer = create_developer(db)
@@ -52,7 +53,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_invalid_token_format(self, db):
+    async def test_get_current_developer_invalid_token_format(self, db: Session) -> None:
         """Test handling of malformed JWT token."""
         # Arrange
         invalid_token = "not.a.valid.jwt.token"
@@ -65,7 +66,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.detail == "Could not validate credentials"
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_token_without_subject(self, db):
+    async def test_get_current_developer_token_without_subject(self, db: Session) -> None:
         """Test handling of token without subject claim."""
         # Arrange
         # Create token manually without 'sub' claim
@@ -80,7 +81,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.detail == "Could not validate credentials"
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_nonexistent_developer(self, db):
+    async def test_get_current_developer_nonexistent_developer(self, db: Session) -> None:
         """Test handling when developer doesn't exist in database."""
         # Arrange
         nonexistent_id = uuid4()
@@ -94,7 +95,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.detail == "Could not validate credentials"
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_invalid_uuid_in_token(self, db):
+    async def test_get_current_developer_invalid_uuid_in_token(self, db: Session) -> None:
         """Test handling of invalid UUID in token subject."""
         # Arrange
         token = create_access_token(subject="not-a-valid-uuid")
@@ -109,7 +110,7 @@ class TestGetCurrentDeveloper:
             assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_tampered_token(self, db):
+    async def test_get_current_developer_tampered_token(self, db: Session) -> None:
         """Test handling of tampered JWT token."""
         # Arrange
         developer = create_developer(db)
@@ -124,7 +125,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_wrong_secret_key(self, db):
+    async def test_get_current_developer_wrong_secret_key(self, db: Session) -> None:
         """Test handling of token signed with wrong secret key."""
         # Arrange
         developer = create_developer(db)
@@ -139,7 +140,7 @@ class TestGetCurrentDeveloper:
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_empty_token(self, db):
+    async def test_get_current_developer_empty_token(self, db: Session) -> None:
         """Test handling of empty token."""
         # Arrange
         token = ""
@@ -155,7 +156,7 @@ class TestGetCurrentDeveloperOptional:
     """Test suite for get_current_developer_optional function."""
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_valid_token(self, db):
+    async def test_get_current_developer_optional_valid_token(self, db: Session) -> None:
         """Test extracting developer from valid token."""
         # Arrange
         developer = create_developer(db, email="optional@example.com")
@@ -170,7 +171,7 @@ class TestGetCurrentDeveloperOptional:
         assert result.email == developer.email
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_no_token(self, db):
+    async def test_get_current_developer_optional_no_token(self, db: Session) -> None:
         """Test behavior when no token is provided."""
         # Act
         result = await get_current_developer_optional(db=db, token=None)
@@ -179,7 +180,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_invalid_token(self, db):
+    async def test_get_current_developer_optional_invalid_token(self, db: Session) -> None:
         """Test behavior with invalid token returns None instead of raising."""
         # Arrange
         invalid_token = "invalid.jwt.token"
@@ -191,7 +192,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_expired_token(self, db):
+    async def test_get_current_developer_optional_expired_token(self, db: Session) -> None:
         """Test behavior with expired token returns None."""
         # Arrange
         developer = create_developer(db)
@@ -204,7 +205,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_no_subject(self, db):
+    async def test_get_current_developer_optional_no_subject(self, db: Session) -> None:
         """Test behavior when token has no subject claim."""
         # Arrange
         payload = {"exp": 9999999999}
@@ -217,7 +218,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_nonexistent_developer(self, db):
+    async def test_get_current_developer_optional_nonexistent_developer(self, db: Session) -> None:
         """Test behavior when developer doesn't exist."""
         # Arrange
         nonexistent_id = uuid4()
@@ -230,7 +231,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_empty_token(self, db):
+    async def test_get_current_developer_optional_empty_token(self, db: Session) -> None:
         """Test behavior with empty string token."""
         # Act
         result = await get_current_developer_optional(db=db, token="")
@@ -239,7 +240,7 @@ class TestGetCurrentDeveloperOptional:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_current_developer_optional_tampered_token(self, db):
+    async def test_get_current_developer_optional_tampered_token(self, db: Session) -> None:
         """Test behavior with tampered token returns None."""
         # Arrange
         developer = create_developer(db)
@@ -257,7 +258,7 @@ class TestAuthWorkflow:
     """Integration tests for authentication workflow."""
 
     @pytest.mark.asyncio
-    async def test_full_auth_workflow(self, db):
+    async def test_full_auth_workflow(self, db: Session) -> None:
         """Test complete authentication workflow."""
         # Arrange - Create developer
         developer = create_developer(db, email="workflow@example.com")
@@ -271,7 +272,7 @@ class TestAuthWorkflow:
         assert authenticated_developer.email == developer.email
 
     @pytest.mark.asyncio
-    async def test_optional_auth_vs_required_auth(self, db):
+    async def test_optional_auth_vs_required_auth(self, db: Session) -> None:
         """Test difference between optional and required auth."""
         # Arrange
         developer = create_developer(db)
@@ -292,7 +293,7 @@ class TestAuthWorkflow:
         assert result_optional_invalid is None
 
     @pytest.mark.asyncio
-    async def test_multiple_developers_different_tokens(self, db):
+    async def test_multiple_developers_different_tokens(self, db: Session) -> None:
         """Test that different developers have different tokens."""
         # Arrange
         dev1 = create_developer(db, email="dev1@example.com")
@@ -314,7 +315,7 @@ class TestAuthWorkflow:
         assert result2.email == "dev2@example.com"
 
     @pytest.mark.asyncio
-    async def test_token_isolation_between_developers(self, db):
+    async def test_token_isolation_between_developers(self, db: Session) -> None:
         """Test that one developer's token can't access another developer's data."""
         # Arrange
         dev1 = create_developer(db, email="dev1@example.com")
@@ -330,7 +331,7 @@ class TestAuthWorkflow:
         assert authenticated_dev.id != dev2.id
 
     @pytest.mark.asyncio
-    async def test_auth_with_custom_token_expiry(self, db):
+    async def test_auth_with_custom_token_expiry(self, db: Session) -> None:
         """Test authentication with custom token expiration."""
         # Arrange
         developer = create_developer(db)

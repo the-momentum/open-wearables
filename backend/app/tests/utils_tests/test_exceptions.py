@@ -22,7 +22,7 @@ from app.utils.exceptions import (
 class TestResourceNotFoundError:
     """Test suite for ResourceNotFoundError exception."""
 
-    def test_init_with_entity_name_only(self):
+    def test_init_with_entity_name_only(self) -> None:
         """Test creating error with only entity name."""
         # Arrange
         entity_name = "User"
@@ -34,7 +34,7 @@ class TestResourceNotFoundError:
         assert error.entity_name == entity_name
         assert error.detail == "User not found."
 
-    def test_init_with_entity_name_and_int_id(self):
+    def test_init_with_entity_name_and_int_id(self) -> None:
         """Test creating error with entity name and integer ID."""
         # Arrange
         entity_name = "user"
@@ -47,7 +47,7 @@ class TestResourceNotFoundError:
         assert error.entity_name == entity_name
         assert error.detail == "User with ID: 123 not found."
 
-    def test_init_with_entity_name_and_uuid_id(self):
+    def test_init_with_entity_name_and_uuid_id(self) -> None:
         """Test creating error with entity name and UUID."""
         # Arrange
         entity_name = "device"
@@ -61,7 +61,7 @@ class TestResourceNotFoundError:
         assert str(entity_id) in error.detail
         assert error.detail == f"Device with ID: {entity_id} not found."
 
-    def test_init_capitalizes_entity_name(self):
+    def test_init_capitalizes_entity_name(self) -> None:
         """Test that entity name is capitalized in detail message."""
         # Arrange
         entity_name = "provider"
@@ -73,7 +73,7 @@ class TestResourceNotFoundError:
         # Assert
         assert error.detail.startswith("Provider")
 
-    def test_init_with_none_id(self):
+    def test_init_with_none_id(self) -> None:
         """Test creating error with None as entity_id."""
         # Arrange
         entity_name = "session"
@@ -88,7 +88,7 @@ class TestResourceNotFoundError:
 class TestHandleExceptionWithSQLAIntegrityError:
     """Test suite for handle_exception with SQLAlchemy IntegrityError."""
 
-    def test_handle_sqlalchemy_integrity_error(self):
+    def test_handle_sqlalchemy_integrity_error(self) -> None:
         """Test handling SQLAlchemy IntegrityError."""
         # Arrange
         error_msg = "duplicate key value violates unique constraint"
@@ -104,7 +104,7 @@ class TestHandleExceptionWithSQLAIntegrityError:
         assert "User entity already exists" in result.detail
         assert error_msg in result.detail
 
-    def test_handle_sqlalchemy_integrity_error_capitalizes_entity(self):
+    def test_handle_sqlalchemy_integrity_error_capitalizes_entity(self) -> None:
         """Test that entity name is capitalized in error message."""
         # Arrange
         exc = SQLAIntegrityError("statement", "params", "error details")
@@ -120,7 +120,7 @@ class TestHandleExceptionWithSQLAIntegrityError:
 class TestHandleExceptionWithPsycopgIntegrityError:
     """Test suite for handle_exception with Psycopg IntegrityError."""
 
-    def test_handle_psycopg_integrity_error(self):
+    def test_handle_psycopg_integrity_error(self) -> None:
         """Test handling Psycopg IntegrityError."""
         # Arrange
         error_msg = "unique constraint violation"
@@ -135,7 +135,7 @@ class TestHandleExceptionWithPsycopgIntegrityError:
         assert result.status_code == 400
         assert "Provider entity already exists" in result.detail
 
-    def test_handle_psycopg_integrity_error_with_complex_message(self):
+    def test_handle_psycopg_integrity_error_with_complex_message(self) -> None:
         """Test handling Psycopg IntegrityError with complex error message."""
         # Arrange
         error_msg = 'duplicate key value violates unique constraint "users_email_key"'
@@ -153,7 +153,7 @@ class TestHandleExceptionWithPsycopgIntegrityError:
 class TestHandleExceptionWithResourceNotFoundError:
     """Test suite for handle_exception with ResourceNotFoundError."""
 
-    def test_handle_resource_not_found_error(self):
+    def test_handle_resource_not_found_error(self) -> None:
         """Test handling ResourceNotFoundError."""
         # Arrange
         exc = ResourceNotFoundError("session", 999)
@@ -167,7 +167,7 @@ class TestHandleExceptionWithResourceNotFoundError:
         assert result.status_code == 404
         assert result.detail == exc.detail
 
-    def test_handle_resource_not_found_error_preserves_detail(self):
+    def test_handle_resource_not_found_error_preserves_detail(self) -> None:
         """Test that ResourceNotFoundError detail is preserved."""
         # Arrange
         exc = ResourceNotFoundError("user")
@@ -183,7 +183,7 @@ class TestHandleExceptionWithResourceNotFoundError:
 class TestHandleExceptionWithAttributeError:
     """Test suite for handle_exception with AttributeError."""
 
-    def test_handle_attribute_error(self):
+    def test_handle_attribute_error(self) -> None:
         """Test handling AttributeError."""
         # Arrange
         error_msg = "'NoneType' object has no attribute 'name'"
@@ -199,7 +199,7 @@ class TestHandleExceptionWithAttributeError:
         assert "Device doesn't support attribute or method" in result.detail
         assert error_msg in result.detail
 
-    def test_handle_attribute_error_capitalizes_entity(self):
+    def test_handle_attribute_error_capitalizes_entity(self) -> None:
         """Test that entity name is capitalized in AttributeError."""
         # Arrange
         exc = AttributeError("attribute error")
@@ -215,7 +215,7 @@ class TestHandleExceptionWithAttributeError:
 class TestHandleExceptionWithRequestValidationError:
     """Test suite for handle_exception with RequestValidationError."""
 
-    def test_handle_request_validation_error_with_msg_and_ctx(self):
+    def test_handle_request_validation_error_with_msg_and_ctx(self) -> None:
         """Test handling RequestValidationError with message and context."""
         # Arrange
         error_data = [
@@ -235,7 +235,7 @@ class TestHandleExceptionWithRequestValidationError:
         assert result.status_code == 400
         assert "Invalid email format - Must be a valid email address" in result.detail
 
-    def test_handle_request_validation_error_with_msg_only(self):
+    def test_handle_request_validation_error_with_msg_only(self) -> None:
         """Test handling RequestValidationError with message but no context."""
         # Arrange
         error_data = [{"msg": "Field required"}]
@@ -249,7 +249,7 @@ class TestHandleExceptionWithRequestValidationError:
         assert result.status_code == 400
         assert result.detail == "Field required"
 
-    def test_handle_request_validation_error_with_empty_ctx(self):
+    def test_handle_request_validation_error_with_empty_ctx(self) -> None:
         """Test handling RequestValidationError with empty context."""
         # Arrange
         error_data = [{"msg": "Validation failed", "ctx": {}}]
@@ -262,7 +262,7 @@ class TestHandleExceptionWithRequestValidationError:
         # Assert
         assert result.detail == "Validation failed"
 
-    def test_handle_request_validation_error_with_none_ctx(self):
+    def test_handle_request_validation_error_with_none_ctx(self) -> None:
         """Test handling RequestValidationError with None context."""
         # Arrange
         error_data = [{"msg": "Type error", "ctx": None}]
@@ -279,7 +279,7 @@ class TestHandleExceptionWithRequestValidationError:
 class TestHandleExceptionWithUnknownError:
     """Test suite for handle_exception with unknown exception types."""
 
-    def test_handle_unknown_exception_raises(self):
+    def test_handle_unknown_exception_raises(self) -> None:
         """Test that unknown exception types are re-raised."""
         # Arrange
         exc = ValueError("Unknown error")
@@ -289,7 +289,7 @@ class TestHandleExceptionWithUnknownError:
         with pytest.raises(ValueError, match="Unknown error"):
             handle_exception(exc, entity)
 
-    def test_handle_custom_exception_raises(self):
+    def test_handle_custom_exception_raises(self) -> None:
         """Test that custom exceptions are re-raised."""
 
         # Arrange
@@ -307,14 +307,14 @@ class TestHandleExceptionWithUnknownError:
 class TestHandleExceptionsDecorator:
     """Test suite for handle_exceptions decorator."""
 
-    def test_decorator_successful_execution(self):
+    def test_decorator_successful_execution(self) -> None:
         """Test decorator allows successful function execution."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "test_service"
 
         @handle_exceptions
-        def test_function(instance, arg1, arg2):
+        def test_function(instance: object, arg1: int, arg2: int) -> int:
             return arg1 + arg2
 
         # Act
@@ -323,14 +323,14 @@ class TestHandleExceptionsDecorator:
         # Assert
         assert result == 15
 
-    def test_decorator_handles_resource_not_found_error(self):
+    def test_decorator_handles_resource_not_found_error(self) -> None:
         """Test decorator converts ResourceNotFoundError to HTTPException."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "user"
 
         @handle_exceptions
-        def test_function(instance):
+        def test_function(instance: object) -> None:
             raise ResourceNotFoundError("user", 123)
 
         # Act & Assert
@@ -340,14 +340,14 @@ class TestHandleExceptionsDecorator:
         assert exc_info.value.status_code == 404
         assert "User with ID: 123 not found" in exc_info.value.detail
 
-    def test_decorator_handles_integrity_error(self):
+    def test_decorator_handles_integrity_error(self) -> None:
         """Test decorator converts IntegrityError to HTTPException."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "provider"
 
         @handle_exceptions
-        def test_function(instance):
+        def test_function(instance: object) -> None:
             raise SQLAIntegrityError("stmt", "params", "duplicate key")
 
         # Act & Assert
@@ -357,14 +357,14 @@ class TestHandleExceptionsDecorator:
         assert exc_info.value.status_code == 400
         assert "Provider entity already exists" in exc_info.value.detail
 
-    def test_decorator_handles_attribute_error(self):
+    def test_decorator_handles_attribute_error(self) -> None:
         """Test decorator converts AttributeError to HTTPException."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "device"
 
         @handle_exceptions
-        def test_function(instance):
+        def test_function(instance: object) -> None:
             raise AttributeError("object has no attribute 'foo'")
 
         # Act & Assert
@@ -374,14 +374,14 @@ class TestHandleExceptionsDecorator:
         assert exc_info.value.status_code == 400
         assert "Device doesn't support attribute or method" in exc_info.value.detail
 
-    def test_decorator_uses_instance_name_for_entity(self):
+    def test_decorator_uses_instance_name_for_entity(self) -> None:
         """Test decorator uses instance.name attribute for entity name."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "custom_entity"
 
         @handle_exceptions
-        def test_function(instance):
+        def test_function(instance: object) -> None:
             raise ResourceNotFoundError("custom_entity", 999)
 
         # Act & Assert
@@ -390,14 +390,14 @@ class TestHandleExceptionsDecorator:
 
         assert "Custom_entity with ID: 999 not found" in exc_info.value.detail
 
-    def test_decorator_with_unknown_entity_name(self):
+    def test_decorator_with_unknown_entity_name(self) -> None:
         """Test decorator with service instance without name attribute."""
         # Arrange
         mock_service = MagicMock()
         del mock_service.name  # Remove name attribute
 
         @handle_exceptions
-        def test_function(instance):
+        def test_function(instance: object) -> None:
             raise ResourceNotFoundError("resource", 1)
 
         # Act & Assert
@@ -407,12 +407,12 @@ class TestHandleExceptionsDecorator:
         # Should default to "unknown"
         assert exc_info.value.status_code == 404
 
-    def test_decorator_preserves_function_metadata(self):
+    def test_decorator_preserves_function_metadata(self) -> None:
         """Test decorator preserves original function metadata."""
 
         # Arrange
         @handle_exceptions
-        def test_function():
+        def test_function() -> None:
             """Test function docstring."""
             pass
 
@@ -420,14 +420,20 @@ class TestHandleExceptionsDecorator:
         assert test_function.__name__ == "test_function"
         assert test_function.__doc__ == "Test function docstring."
 
-    def test_decorator_with_args_and_kwargs(self):
+    def test_decorator_with_args_and_kwargs(self) -> None:
         """Test decorator works with positional and keyword arguments."""
         # Arrange
         mock_service = MagicMock()
         mock_service.name = "test"
 
         @handle_exceptions
-        def test_function(instance, arg1, arg2, kwarg1=None, kwarg2=None):
+        def test_function(
+            instance: object,
+            arg1: str,
+            arg2: str,
+            kwarg1: str | None = None,
+            kwarg2: str | None = None,
+        ) -> str:
             return f"{arg1}-{arg2}-{kwarg1}-{kwarg2}"
 
         # Act

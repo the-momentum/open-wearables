@@ -150,7 +150,10 @@ async def update_provider_status(
     """
     Update single provider enabled status.
     """
-    return settings_service.update_provider_status(db, provider, update)
+    try:
+        return settings_service.update_provider_status(db, provider, update)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead])

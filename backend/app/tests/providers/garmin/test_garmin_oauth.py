@@ -19,7 +19,7 @@ class TestGarminOAuth:
     """Tests for GarminOAuth class."""
 
     @pytest.fixture
-    def garmin_oauth(self, db: Session):
+    def garmin_oauth(self, db: Session) -> GarminOAuth:
         """Create GarminOAuth instance for testing."""
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
@@ -30,14 +30,14 @@ class TestGarminOAuth:
             api_base_url="https://apis.garmin.com",
         )
 
-    def test_endpoints_configuration(self, garmin_oauth: GarminOAuth):
+    def test_endpoints_configuration(self, garmin_oauth: GarminOAuth) -> None:
         """Test OAuth endpoints are correctly configured."""
         endpoints = garmin_oauth.endpoints
         assert isinstance(endpoints, ProviderEndpoints)
         assert endpoints.authorize_url == "https://connect.garmin.com/oauth2Confirm"
         assert endpoints.token_url == "https://diauth.garmin.com/di-oauth2-service/oauth/token"
 
-    def test_credentials_configuration(self, garmin_oauth: GarminOAuth):
+    def test_credentials_configuration(self, garmin_oauth: GarminOAuth) -> None:
         """Test OAuth credentials are correctly configured."""
         credentials = garmin_oauth.credentials
         assert isinstance(credentials, ProviderCredentials)
@@ -45,16 +45,16 @@ class TestGarminOAuth:
         assert credentials.client_secret is not None
         assert credentials.redirect_uri is not None
 
-    def test_uses_pkce(self, garmin_oauth: GarminOAuth):
+    def test_uses_pkce(self, garmin_oauth: GarminOAuth) -> None:
         """Garmin should use PKCE for OAuth flow."""
         assert garmin_oauth.use_pkce is True
 
-    def test_auth_method_is_body(self, garmin_oauth: GarminOAuth):
+    def test_auth_method_is_body(self, garmin_oauth: GarminOAuth) -> None:
         """Garmin should use body authentication method."""
         assert garmin_oauth.auth_method == AuthenticationMethod.BODY
 
     @patch("app.integrations.redis_client.get_redis_client")
-    def test_get_authorization_url(self, mock_redis, garmin_oauth: GarminOAuth):
+    def test_get_authorization_url(self, mock_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
         """Test generating authorization URL with PKCE."""
         # Arrange
         mock_redis_client = MagicMock()
@@ -80,7 +80,7 @@ class TestGarminOAuth:
         self,
         mock_httpx_get: MagicMock,
         garmin_oauth: GarminOAuth,
-    ):
+    ) -> None:
         """Test fetching Garmin user info successfully."""
         # Arrange
         token_response = OAuthTokenResponse(
@@ -112,7 +112,7 @@ class TestGarminOAuth:
         self,
         mock_httpx_get: MagicMock,
         garmin_oauth: GarminOAuth,
-    ):
+    ) -> None:
         """Test fetching Garmin user info handles errors gracefully."""
         # Arrange
         token_response = OAuthTokenResponse(
@@ -135,10 +135,10 @@ class TestGarminOAuth:
     @patch("app.integrations.redis_client.get_redis_client")
     def test_exchange_token_with_pkce(
         self,
-        mock_redis,
+        mock_redis: MagicMock,
         mock_httpx_post: MagicMock,
         garmin_oauth: GarminOAuth,
-    ):
+    ) -> None:
         """Test token exchange includes PKCE verifier."""
         # Arrange
         mock_response = MagicMock()
@@ -171,7 +171,7 @@ class TestGarminOAuth:
         mock_httpx_post: MagicMock,
         garmin_oauth: GarminOAuth,
         db: Session,
-    ):
+    ) -> None:
         """Test refreshing access token."""
         # Arrange
         user = create_user(db)
@@ -200,7 +200,7 @@ class TestGarminOAuth:
         assert token_response.access_token == "new_access_token"
         assert token_response.refresh_token == "new_refresh_token"
 
-    def test_prepare_token_request_uses_body_auth(self, garmin_oauth: GarminOAuth):
+    def test_prepare_token_request_uses_body_auth(self, garmin_oauth: GarminOAuth) -> None:
         """Test token request preparation uses body authentication."""
         # Act
         data, headers = garmin_oauth._prepare_token_request("auth_code", "verifier")
@@ -214,7 +214,7 @@ class TestGarminOAuth:
         assert headers["Content-Type"] == "application/x-www-form-urlencoded"
         assert "Authorization" not in headers  # Body auth, not Basic auth
 
-    def test_prepare_refresh_request_uses_body_auth(self, garmin_oauth: GarminOAuth):
+    def test_prepare_refresh_request_uses_body_auth(self, garmin_oauth: GarminOAuth) -> None:
         """Test refresh token request preparation uses body authentication."""
         # Act
         data, headers = garmin_oauth._prepare_refresh_request("test_refresh_token")

@@ -6,6 +6,8 @@ Tests SQLAlchemy model to dictionary conversion.
 
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import Session
+
 from app.schemas import ConnectionStatus
 from app.tests.utils.factories import (
     create_data_point_series,
@@ -21,7 +23,7 @@ from app.utils.conversion import base_to_dict
 class TestBaseToDictUser:
     """Test suite for base_to_dict with User model."""
 
-    def test_base_to_dict_user_basic(self, db):
+    def test_base_to_dict_user_basic(self, db: Session) -> None:
         """Test converting User model to dictionary."""
         # Arrange
         user = create_user(
@@ -41,7 +43,7 @@ class TestBaseToDictUser:
         assert result["first_name"] == "John"
         assert result["last_name"] == "Doe"
 
-    def test_base_to_dict_user_with_external_id(self, db):
+    def test_base_to_dict_user_with_external_id(self, db: Session) -> None:
         """Test converting User with external_user_id."""
         # Arrange
         user = create_user(
@@ -56,7 +58,7 @@ class TestBaseToDictUser:
         # Assert
         assert result["external_user_id"] == "ext-123"
 
-    def test_base_to_dict_user_datetime_serialization(self, db):
+    def test_base_to_dict_user_datetime_serialization(self, db: Session) -> None:
         """Test that datetime fields are properly serialized to ISO format."""
         # Arrange
         user = create_user(db)
@@ -70,7 +72,7 @@ class TestBaseToDictUser:
         # Verify it's ISO format by parsing
         datetime.fromisoformat(result["created_at"])
 
-    def test_base_to_dict_user_contains_all_columns(self, db):
+    def test_base_to_dict_user_contains_all_columns(self, db: Session) -> None:
         """Test that all User model columns are included."""
         # Arrange
         user = create_user(db)
@@ -86,7 +88,7 @@ class TestBaseToDictUser:
 class TestBaseToDictDeveloper:
     """Test suite for base_to_dict with Developer model."""
 
-    def test_base_to_dict_developer_basic(self, db):
+    def test_base_to_dict_developer_basic(self, db: Session) -> None:
         """Test converting Developer model to dictionary."""
         # Arrange
         developer = create_developer(
@@ -103,7 +105,7 @@ class TestBaseToDictDeveloper:
         assert result["email"] == "dev@example.com"
         assert "hashed_password" in result
 
-    def test_base_to_dict_developer_timestamps(self, db):
+    def test_base_to_dict_developer_timestamps(self, db: Session) -> None:
         """Test that Developer timestamps are serialized correctly."""
         # Arrange
         developer = create_developer(db)
@@ -121,7 +123,7 @@ class TestBaseToDictDeveloper:
 class TestBaseToDictUserConnection:
     """Test suite for base_to_dict with UserConnection model."""
 
-    def test_base_to_dict_user_connection(self, db):
+    def test_base_to_dict_user_connection(self, db: Session) -> None:
         """Test converting UserConnection model to dictionary."""
         # Arrange
         user = create_user(db)
@@ -142,7 +144,7 @@ class TestBaseToDictUserConnection:
         assert result["provider"] == "garmin"
         assert result["status"] == ConnectionStatus.ACTIVE
 
-    def test_base_to_dict_user_connection_with_sync_time(self, db):
+    def test_base_to_dict_user_connection_with_sync_time(self, db: Session) -> None:
         """Test UserConnection with last_synced_at timestamp."""
         # Arrange
         user = create_user(db)
@@ -164,7 +166,7 @@ class TestBaseToDictUserConnection:
         parsed_time = datetime.fromisoformat(result["last_synced_at"])
         assert abs((parsed_time - sync_time).total_seconds()) < 1
 
-    def test_base_to_dict_user_connection_includes_tokens(self, db):
+    def test_base_to_dict_user_connection_includes_tokens(self, db: Session) -> None:
         """Test that sensitive token fields are included in conversion."""
         # Arrange
         user = create_user(db)
@@ -189,7 +191,7 @@ class TestBaseToDictUserConnection:
 class TestBaseToDictEventRecord:
     """Test suite for base_to_dict with EventRecord model."""
 
-    def test_base_to_dict_event_record(self, db):
+    def test_base_to_dict_event_record(self, db: Session) -> None:
         """Test converting EventRecord model to dictionary."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -214,7 +216,7 @@ class TestBaseToDictEventRecord:
         assert result["source_name"] == "Apple Watch"
         assert result["duration_seconds"] == 3600
 
-    def test_base_to_dict_event_record_datetime_fields(self, db):
+    def test_base_to_dict_event_record_datetime_fields(self, db: Session) -> None:
         """Test EventRecord datetime serialization."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -247,7 +249,7 @@ class TestBaseToDictEventRecord:
 class TestBaseToDictExternalDeviceMapping:
     """Test suite for base_to_dict with ExternalDeviceMapping model."""
 
-    def test_base_to_dict_external_device_mapping(self, db):
+    def test_base_to_dict_external_device_mapping(self, db: Session) -> None:
         """Test converting ExternalDeviceMapping model to dictionary."""
         # Arrange
         user = create_user(db)
@@ -272,7 +274,7 @@ class TestBaseToDictExternalDeviceMapping:
 class TestBaseToDictDataPointSeries:
     """Test suite for base_to_dict with DataPointSeries model."""
 
-    def test_base_to_dict_data_point_series(self, db):
+    def test_base_to_dict_data_point_series(self, db: Session) -> None:
         """Test converting DataPointSeries model to dictionary."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -294,7 +296,7 @@ class TestBaseToDictDataPointSeries:
         # DataPointSeries doesn't have category field, it has series_type_id
         assert "series_type_id" in result
 
-    def test_base_to_dict_data_point_series_timestamp(self, db):
+    def test_base_to_dict_data_point_series_timestamp(self, db: Session) -> None:
         """Test DataPointSeries timestamp serialization."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -314,7 +316,7 @@ class TestBaseToDictDataPointSeries:
 class TestBaseToDictEdgeCases:
     """Test suite for base_to_dict edge cases and special scenarios."""
 
-    def test_base_to_dict_with_null_values(self, db):
+    def test_base_to_dict_with_null_values(self, db: Session) -> None:
         """Test conversion when optional fields are None."""
         # Arrange
         user = create_user(db, external_user_id=None)
@@ -326,7 +328,7 @@ class TestBaseToDictEdgeCases:
         assert "external_user_id" in result
         assert result["external_user_id"] is None
 
-    def test_base_to_dict_with_uuid_fields(self, db):
+    def test_base_to_dict_with_uuid_fields(self, db: Session) -> None:
         """Test that UUID fields are properly converted."""
         # Arrange
         user = create_user(db)
@@ -339,7 +341,7 @@ class TestBaseToDictEdgeCases:
         # UUID should be preserved as-is (not converted to string in this function)
         assert result["id"] == user.id
 
-    def test_base_to_dict_multiple_datetime_fields(self, db):
+    def test_base_to_dict_multiple_datetime_fields(self, db: Session) -> None:
         """Test model with multiple datetime fields."""
         # Arrange
         connection = create_user_connection(
@@ -357,7 +359,7 @@ class TestBaseToDictEdgeCases:
             if result[field] is not None:
                 assert isinstance(result[field], str)
 
-    def test_base_to_dict_preserves_value_types(self, db):
+    def test_base_to_dict_preserves_value_types(self, db: Session) -> None:
         """Test that non-datetime values preserve their types."""
         # Arrange
         event = create_event_record(db, duration_seconds=3600)
@@ -369,7 +371,7 @@ class TestBaseToDictEdgeCases:
         assert isinstance(result["duration_seconds"], int)
         assert result["duration_seconds"] == 3600
 
-    def test_base_to_dict_with_float_values(self, db):
+    def test_base_to_dict_with_float_values(self, db: Session) -> None:
         """Test conversion of float values."""
         # Arrange
         from decimal import Decimal
@@ -384,7 +386,7 @@ class TestBaseToDictEdgeCases:
         assert isinstance(result["value"], (float, Decimal))
         assert float(result["value"]) == 98.6
 
-    def test_base_to_dict_idempotent(self, db):
+    def test_base_to_dict_idempotent(self, db: Session) -> None:
         """Test that calling base_to_dict multiple times gives same result."""
         # Arrange
         user = create_user(db)
@@ -396,7 +398,7 @@ class TestBaseToDictEdgeCases:
         # Assert
         assert result1 == result2
 
-    def test_base_to_dict_returns_new_dict(self, db):
+    def test_base_to_dict_returns_new_dict(self, db: Session) -> None:
         """Test that base_to_dict returns a new dictionary each time."""
         # Arrange
         user = create_user(db)
@@ -413,7 +415,7 @@ class TestBaseToDictEdgeCases:
 class TestBaseToDictIntegration:
     """Integration tests for base_to_dict with complex scenarios."""
 
-    def test_convert_multiple_related_models(self, db):
+    def test_convert_multiple_related_models(self, db: Session) -> None:
         """Test converting multiple related models."""
         # Arrange
         user = create_user(db, email="integration@example.com")
@@ -430,7 +432,7 @@ class TestBaseToDictIntegration:
         assert mapping_dict["user_id"] == user.id
         assert event_dict["external_mapping_id"] == mapping.id
 
-    def test_convert_models_with_same_user(self, db):
+    def test_convert_models_with_same_user(self, db: Session) -> None:
         """Test converting multiple models referencing same user."""
         # Arrange
         user = create_user(db)

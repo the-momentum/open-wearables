@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import Session
 
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
@@ -32,7 +33,7 @@ class TestSuuntoWorkouts:
     """Test suite for SuuntoWorkouts."""
 
     @pytest.fixture
-    def suunto_workouts(self):
+    def suunto_workouts(self) -> SuuntoWorkouts:
         """Create SuuntoWorkouts instance for testing."""
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
@@ -51,7 +52,7 @@ class TestSuuntoWorkouts:
         )
 
     @pytest.fixture
-    def sample_workout_data(self):
+    def sample_workout_data(self) -> dict:
         """Sample Suunto workout data for testing."""
         return {
             "workoutId": 123456789,
@@ -78,7 +79,7 @@ class TestSuuntoWorkouts:
             },
         }
 
-    def test_extract_dates_from_millisecond_timestamps(self, suunto_workouts):
+    def test_extract_dates_from_millisecond_timestamps(self, suunto_workouts: SuuntoWorkouts) -> None:
         """Should extract datetime objects from millisecond timestamps."""
         # Arrange
         start_ms = 1705309200000  # 2024-01-15T08:00:00
@@ -95,7 +96,9 @@ class TestSuuntoWorkouts:
         assert start_date.day == 15
         assert end_date > start_date
 
-    def test_build_metrics_with_complete_data(self, suunto_workouts, sample_workout_data):
+    def test_build_metrics_with_complete_data(
+        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+    ) -> None:
         """Should build metrics from complete workout data."""
         # Arrange
         workout = SuuntoWorkoutJSON(**sample_workout_data)
@@ -110,7 +113,9 @@ class TestSuuntoWorkouts:
         assert metrics["steps_total"] == 8500
         assert metrics["steps_avg"] == Decimal("8500")
 
-    def test_build_metrics_with_missing_heart_rate(self, suunto_workouts, sample_workout_data):
+    def test_build_metrics_with_missing_heart_rate(
+        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+    ) -> None:
         """Should handle missing heart rate data."""
         # Arrange - use MagicMock to simulate a workout with None hrdata values
         mock_workout = MagicMock()
@@ -125,7 +130,9 @@ class TestSuuntoWorkouts:
         assert metrics["heart_rate_max"] is None
         assert metrics["heart_rate_min"] is None
 
-    def test_build_metrics_with_missing_steps(self, suunto_workouts, sample_workout_data):
+    def test_build_metrics_with_missing_steps(
+        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+    ) -> None:
         """Should handle missing step count."""
         # Arrange - use MagicMock to simulate a workout with None stepCount
         mock_workout = MagicMock()
@@ -142,7 +149,9 @@ class TestSuuntoWorkouts:
         assert metrics["steps_min"] is None
         assert metrics["steps_max"] is None
 
-    def test_normalize_workout_creates_event_record(self, suunto_workouts, sample_workout_data):
+    def test_normalize_workout_creates_event_record(
+        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+    ) -> None:
         """Should normalize Suunto workout to EventRecordCreate."""
         # Arrange
         workout = SuuntoWorkoutJSON(**sample_workout_data)
@@ -160,7 +169,7 @@ class TestSuuntoWorkouts:
         assert record.provider_id == "123456789"
         assert record.user_id == user_id
 
-    def test_normalize_workout_without_device(self, suunto_workouts, sample_workout_data):
+    def test_normalize_workout_without_device(self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict) -> None:
         """Should handle workout without device/gear information."""
         # Arrange
         sample_workout_data["gear"] = None
@@ -174,7 +183,9 @@ class TestSuuntoWorkouts:
         assert record.source_name == "Unknown"
         assert record.device_id is None
 
-    def test_normalize_workout_creates_detail_with_metrics(self, suunto_workouts, sample_workout_data):
+    def test_normalize_workout_creates_detail_with_metrics(
+        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+    ) -> None:
         """Should create workout detail with metrics."""
         # Arrange
         workout = SuuntoWorkoutJSON(**sample_workout_data)
@@ -189,7 +200,7 @@ class TestSuuntoWorkouts:
         assert detail.heart_rate_max == 175
         assert detail.steps_total == 8500
 
-    def test_get_suunto_headers_with_subscription_key(self, suunto_workouts):
+    def test_get_suunto_headers_with_subscription_key(self, suunto_workouts: SuuntoWorkouts) -> None:
         """Should include subscription key in headers when available."""
         # Arrange
         # Mock credentials property using PropertyMock
@@ -206,7 +217,9 @@ class TestSuuntoWorkouts:
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
-    def test_get_workouts_from_api(self, mock_request, suunto_workouts, db, sample_workout_data):
+    def test_get_workouts_from_api(
+        self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict,
+    ) -> None:
         """Should fetch workouts from Suunto API with correct parameters."""
         # Arrange
         from app.tests.utils import create_user
@@ -233,7 +246,9 @@ class TestSuuntoWorkouts:
         assert result["payload"] == [sample_workout_data]
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
-    def test_get_workouts_respects_max_limit(self, mock_request, suunto_workouts, db):
+    def test_get_workouts_respects_max_limit(
+        self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session,
+    ) -> None:
         """Should respect maximum limit of 100 workouts per request."""
         # Arrange
         from app.tests.utils import create_user
@@ -249,7 +264,7 @@ class TestSuuntoWorkouts:
         assert call_args[1]["params"]["limit"] == 100  # Capped at 100
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
-    def test_get_workout_detail(self, mock_request, suunto_workouts, db):
+    def test_get_workout_detail(self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session) -> None:
         """Should fetch detailed workout data from API."""
         # Arrange
         from app.tests.utils import create_user
@@ -273,13 +288,13 @@ class TestSuuntoWorkouts:
     @patch("app.services.event_record_service.event_record_service.create_detail")
     def test_load_data_creates_records(
         self,
-        mock_create_detail,
-        mock_create,
-        mock_request,
-        suunto_workouts,
-        db,
-        sample_workout_data,
-    ):
+        mock_create_detail: MagicMock,
+        mock_create: MagicMock,
+        mock_request: MagicMock,
+        suunto_workouts: SuuntoWorkouts,
+        db: Session,
+        sample_workout_data: dict,
+    ) -> None:
         """Should load data and create event records."""
         # Arrange
         from app.tests.utils import create_user

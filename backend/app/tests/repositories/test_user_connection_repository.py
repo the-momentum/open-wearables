@@ -29,7 +29,7 @@ class TestUserConnectionRepository:
         """Create UserConnectionRepository instance."""
         return UserConnectionRepository(UserConnection)
 
-    def test_create(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_create(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test creating a new user connection."""
         # Arrange
         user = create_user(db)
@@ -68,7 +68,7 @@ class TestUserConnectionRepository:
         assert db_connection is not None
         assert db_connection.provider == "garmin"
 
-    def test_get(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving a connection by ID."""
         # Arrange
         connection = create_user_connection(db, provider="polar", status=ConnectionStatus.ACTIVE)
@@ -81,7 +81,7 @@ class TestUserConnectionRepository:
         assert result.id == connection.id
         assert result.provider == "polar"
 
-    def test_get_by_user_and_provider(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_user_and_provider(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving a connection by user and provider."""
         # Arrange
         user = create_user(db)
@@ -96,7 +96,9 @@ class TestUserConnectionRepository:
         assert result.id == connection.id
         assert result.provider == "garmin"
 
-    def test_get_by_user_and_provider_not_found(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_user_and_provider_not_found(
+        self, db: Session, connection_repo: UserConnectionRepository,
+    ) -> None:
         """Test get_by_user_and_provider returns None when not found."""
         # Arrange
         user = create_user(db)
@@ -108,7 +110,7 @@ class TestUserConnectionRepository:
         # Assert
         assert result is None
 
-    def test_get_active_connection(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_active_connection(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving an active connection for a user and provider."""
         # Arrange
         user = create_user(db)
@@ -123,7 +125,9 @@ class TestUserConnectionRepository:
         assert result.id == active_conn.id
         assert result.status == ConnectionStatus.ACTIVE
 
-    def test_get_active_connection_only_returns_active(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_active_connection_only_returns_active(
+        self, db: Session, connection_repo: UserConnectionRepository,
+    ) -> None:
         """Test that get_active_connection ignores revoked connections."""
         # Arrange
         user = create_user(db)
@@ -138,7 +142,7 @@ class TestUserConnectionRepository:
         # Assert
         assert result is None
 
-    def test_get_by_provider_user_id(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_provider_user_id(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving a connection by provider and provider's user ID."""
         # Arrange
         connection = create_user_connection(
@@ -156,7 +160,9 @@ class TestUserConnectionRepository:
         assert result.id == connection.id
         assert result.provider_user_id == "garmin_athlete_789"
 
-    def test_get_by_provider_user_id_only_returns_active(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_provider_user_id_only_returns_active(
+        self, db: Session, connection_repo: UserConnectionRepository,
+    ) -> None:
         """Test that get_by_provider_user_id only returns active connections."""
         # Arrange
         create_user_connection(
@@ -172,7 +178,7 @@ class TestUserConnectionRepository:
         # Assert
         assert result is None
 
-    def test_get_by_user_id(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_user_id(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving all connections for a specific user."""
         # Arrange
         user = create_user(db)
@@ -189,7 +195,9 @@ class TestUserConnectionRepository:
         assert conn1.id in connection_ids
         assert conn2.id in connection_ids
 
-    def test_get_by_user_id_ordered_by_created_desc(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_by_user_id_ordered_by_created_desc(
+        self, db: Session, connection_repo: UserConnectionRepository,
+    ) -> None:
         """Test that get_by_user_id returns connections ordered by creation date descending."""
         # Arrange
         user = create_user(db)
@@ -209,7 +217,7 @@ class TestUserConnectionRepository:
         assert results[1].id == conn2.id
         assert results[2].id == conn1.id
 
-    def test_get_expiring_tokens(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_expiring_tokens(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test retrieving connections with tokens expiring soon."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -243,7 +251,7 @@ class TestUserConnectionRepository:
         expiring_ids = {c.id for c in results}
         assert conn_expiring.id in expiring_ids
 
-    def test_get_expiring_tokens_ignores_revoked(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_expiring_tokens_ignores_revoked(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test that get_expiring_tokens only returns active connections."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -264,7 +272,7 @@ class TestUserConnectionRepository:
         revoked_in_results = any(c.status == ConnectionStatus.REVOKED for c in results)
         assert not revoked_in_results
 
-    def test_mark_as_revoked(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_mark_as_revoked(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test marking a connection as revoked."""
         # Arrange
         connection = create_user_connection(db, provider="garmin", status=ConnectionStatus.ACTIVE)
@@ -287,7 +295,7 @@ class TestUserConnectionRepository:
         db_connection = connection_repo.get(db, connection.id)
         assert db_connection.status == ConnectionStatus.REVOKED
 
-    def test_update_tokens(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_update_tokens(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test updating connection tokens."""
         # Arrange
         connection = create_user_connection(
@@ -319,7 +327,11 @@ class TestUserConnectionRepository:
         expected_expiry = datetime.now(timezone.utc) + timedelta(seconds=3600)
         assert abs((result.token_expires_at - expected_expiry).total_seconds()) < 5
 
-    def test_update_tokens_with_none_refresh_token(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_update_tokens_with_none_refresh_token(
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
+    ) -> None:
         """Test updating tokens without changing refresh token."""
         # Arrange
         connection = create_user_connection(
@@ -341,7 +353,7 @@ class TestUserConnectionRepository:
         assert result.access_token == "new_access"
         assert result.refresh_token == "original_refresh"  # Unchanged
 
-    def test_get_active_count(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_active_count(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test counting active connections."""
         # Arrange
         initial_count = connection_repo.get_active_count(db)
@@ -356,7 +368,7 @@ class TestUserConnectionRepository:
         # Assert
         assert result == initial_count + 2
 
-    def test_get_active_count_in_range(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_active_count_in_range(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test counting active connections created within a date range."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -375,7 +387,7 @@ class TestUserConnectionRepository:
         # Assert
         assert result == 2  # Two active connections created yesterday
 
-    def test_get_all_active_by_user(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_all_active_by_user(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test getting all active connections for a specific user."""
         # Arrange
         user = create_user(db)
@@ -395,7 +407,7 @@ class TestUserConnectionRepository:
         for conn in results:
             assert conn.status == ConnectionStatus.ACTIVE
 
-    def test_get_all_active_users(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_all_active_users(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test getting all unique user IDs with active connections."""
         # Arrange
         user1 = create_user(db)
@@ -419,7 +431,7 @@ class TestUserConnectionRepository:
         # Check that user1 appears only once despite having 2 connections
         assert results.count(user1.id) == 1
 
-    def test_update(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_update(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test updating a connection using the base update method."""
         # Arrange
         connection = create_user_connection(db, provider_username="old_username")
@@ -435,7 +447,7 @@ class TestUserConnectionRepository:
         assert result.provider_username == "new_username"
         assert result.status == ConnectionStatus.REVOKED
 
-    def test_delete(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_delete(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test deleting a connection."""
         # Arrange
         connection = create_user_connection(db)
@@ -451,7 +463,7 @@ class TestUserConnectionRepository:
 
     def test_multiple_connections_same_user_different_providers(
         self, db: Session, connection_repo: UserConnectionRepository,
-    ):
+    ) -> None:
         """Test that a user can have connections to multiple providers."""
         # Arrange
         user = create_user(db)
@@ -469,7 +481,7 @@ class TestUserConnectionRepository:
         assert polar_conn.id == conn_polar.id
         assert suunto_conn.id == conn_suunto.id
 
-    def test_connection_status_transitions(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_connection_status_transitions(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test transitioning connection through different statuses."""
         # Arrange
         connection = create_user_connection(db, status=ConnectionStatus.ACTIVE)
@@ -490,7 +502,7 @@ class TestUserConnectionRepository:
 
         assert expired_conn.status == ConnectionStatus.EXPIRED
 
-    def test_last_synced_at_update(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_last_synced_at_update(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test updating last_synced_at timestamp."""
         # Arrange
         connection = create_user_connection(db, last_synced_at=None)
@@ -505,7 +517,7 @@ class TestUserConnectionRepository:
         assert result.last_synced_at is not None
         assert abs((result.last_synced_at - now).total_seconds()) < 1
 
-    def test_get_all_with_filters(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_all_with_filters(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test filtering connections using get_all."""
         # Arrange
         user = create_user(db)
@@ -526,7 +538,7 @@ class TestUserConnectionRepository:
         assert len(garmin_conns) >= 1
         assert conn1.id in [c.id for c in garmin_conns]
 
-    def test_get_expiring_tokens_custom_threshold(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_get_expiring_tokens_custom_threshold(self, db: Session, connection_repo: UserConnectionRepository) -> None:
         """Test get_expiring_tokens with custom time threshold."""
         # Arrange
         now = datetime.now(timezone.utc)

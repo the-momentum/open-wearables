@@ -27,7 +27,7 @@ class TestProviderFactory:
         """Create ProviderFactory instance."""
         return ProviderFactory()
 
-    def test_get_provider_garmin(self, factory: ProviderFactory):
+    def test_get_provider_garmin(self, factory: ProviderFactory) -> None:
         """Should return GarminStrategy instance."""
         # Act
         strategy = factory.get_provider("garmin")
@@ -37,7 +37,7 @@ class TestProviderFactory:
         assert isinstance(strategy, BaseProviderStrategy)
         assert strategy.name == "garmin"
 
-    def test_get_provider_apple(self, factory: ProviderFactory):
+    def test_get_provider_apple(self, factory: ProviderFactory) -> None:
         """Should return AppleStrategy instance."""
         # Act
         strategy = factory.get_provider("apple")
@@ -47,7 +47,7 @@ class TestProviderFactory:
         assert isinstance(strategy, BaseProviderStrategy)
         assert strategy.name == "apple"
 
-    def test_get_provider_polar(self, factory: ProviderFactory):
+    def test_get_provider_polar(self, factory: ProviderFactory) -> None:
         """Should return PolarStrategy instance."""
         # Act
         strategy = factory.get_provider("polar")
@@ -57,7 +57,7 @@ class TestProviderFactory:
         assert isinstance(strategy, BaseProviderStrategy)
         assert strategy.name == "polar"
 
-    def test_get_provider_suunto(self, factory: ProviderFactory):
+    def test_get_provider_suunto(self, factory: ProviderFactory) -> None:
         """Should return SuuntoStrategy instance."""
         # Act
         strategy = factory.get_provider("suunto")
@@ -67,7 +67,7 @@ class TestProviderFactory:
         assert isinstance(strategy, BaseProviderStrategy)
         assert strategy.name == "suunto"
 
-    def test_get_provider_unknown_raises_error(self, factory: ProviderFactory):
+    def test_get_provider_unknown_raises_error(self, factory: ProviderFactory) -> None:
         """Should raise ValueError for unknown provider."""
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -75,7 +75,7 @@ class TestProviderFactory:
 
         assert "Unknown provider: unknown_provider" in str(exc_info.value)
 
-    def test_get_provider_case_sensitive(self, factory: ProviderFactory):
+    def test_get_provider_case_sensitive(self, factory: ProviderFactory) -> None:
         """Should be case-sensitive for provider names."""
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -83,7 +83,7 @@ class TestProviderFactory:
 
         assert "Unknown provider: GARMIN" in str(exc_info.value)
 
-    def test_get_provider_empty_string(self, factory: ProviderFactory):
+    def test_get_provider_empty_string(self, factory: ProviderFactory) -> None:
         """Should raise ValueError for empty provider name."""
         # Act & Assert
         with pytest.raises(ValueError) as exc_info:
@@ -91,7 +91,7 @@ class TestProviderFactory:
 
         assert "Unknown provider: " in str(exc_info.value)
 
-    def test_provider_has_repositories(self, factory: ProviderFactory):
+    def test_provider_has_repositories(self, factory: ProviderFactory) -> None:
         """Should initialize all required repositories."""
         # Act
         strategy = factory.get_provider("garmin")
@@ -101,7 +101,7 @@ class TestProviderFactory:
         assert strategy.connection_repo is not None
         assert strategy.workout_repo is not None
 
-    def test_provider_garmin_has_oauth(self, factory: ProviderFactory):
+    def test_provider_garmin_has_oauth(self, factory: ProviderFactory) -> None:
         """Should initialize OAuth component for Garmin."""
         # Act
         strategy = factory.get_provider("garmin")
@@ -110,7 +110,7 @@ class TestProviderFactory:
         assert strategy.oauth is not None
         assert strategy.has_cloud_api is True
 
-    def test_provider_garmin_has_workouts(self, factory: ProviderFactory):
+    def test_provider_garmin_has_workouts(self, factory: ProviderFactory) -> None:
         """Should initialize workouts component for Garmin."""
         # Act
         strategy = factory.get_provider("garmin")
@@ -118,7 +118,7 @@ class TestProviderFactory:
         # Assert
         assert strategy.workouts is not None
 
-    def test_provider_apple_no_oauth(self, factory: ProviderFactory):
+    def test_provider_apple_no_oauth(self, factory: ProviderFactory) -> None:
         """Should not have OAuth component for Apple."""
         # Act
         strategy = factory.get_provider("apple")
@@ -127,7 +127,7 @@ class TestProviderFactory:
         assert strategy.oauth is None
         assert strategy.has_cloud_api is False
 
-    def test_provider_apple_has_workouts(self, factory: ProviderFactory):
+    def test_provider_apple_has_workouts(self, factory: ProviderFactory) -> None:
         """Should initialize workouts component for Apple."""
         # Act
         strategy = factory.get_provider("apple")
@@ -135,7 +135,9 @@ class TestProviderFactory:
         # Assert
         assert strategy.workouts is not None
 
-    def test_provider_polar_has_oauth(self, factory: ProviderFactory):
+    def test_provider_polar_has_oauth(
+        self, factory: ProviderFactory,
+    ) -> None:
         """Should initialize OAuth component for Polar."""
         # Act
         strategy = factory.get_provider("polar")
@@ -144,7 +146,9 @@ class TestProviderFactory:
         assert strategy.oauth is not None
         assert strategy.has_cloud_api is True
 
-    def test_provider_suunto_has_oauth(self, factory: ProviderFactory):
+    def test_provider_suunto_has_oauth(
+        self, factory: ProviderFactory,
+    ) -> None:
         """Should initialize OAuth component for Suunto."""
         # Act
         strategy = factory.get_provider("suunto")
@@ -153,7 +157,9 @@ class TestProviderFactory:
         assert strategy.oauth is not None
         assert strategy.has_cloud_api is True
 
-    def test_multiple_calls_create_new_instances(self, factory: ProviderFactory):
+    def test_multiple_calls_create_new_instances(
+        self, factory: ProviderFactory,
+    ) -> None:
         """Should create new instances on each call (not singleton)."""
         # Act
         strategy1 = factory.get_provider("garmin")

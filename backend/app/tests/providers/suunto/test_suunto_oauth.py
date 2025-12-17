@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import pytest
 from jose import jwt
+from sqlalchemy.orm import Session
 
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -29,7 +30,7 @@ class TestSuuntoOAuth:
     """Test suite for SuuntoOAuth."""
 
     @pytest.fixture
-    def suunto_oauth(self):
+    def suunto_oauth(self) -> SuuntoOAuth:
         """Create SuuntoOAuth instance for testing."""
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
@@ -40,7 +41,7 @@ class TestSuuntoOAuth:
             api_base_url="https://cloudapi.suunto.com",
         )
 
-    def test_endpoints_configuration(self, suunto_oauth):
+    def test_endpoints_configuration(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should return correct OAuth endpoints."""
         # Act
         endpoints = suunto_oauth.endpoints
@@ -49,7 +50,7 @@ class TestSuuntoOAuth:
         assert endpoints.authorize_url == "https://cloudapi-oauth.suunto.com/oauth/authorize"
         assert endpoints.token_url == "https://cloudapi-oauth.suunto.com/oauth/token"
 
-    def test_credentials_configuration(self, suunto_oauth):
+    def test_credentials_configuration(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should return credentials with client ID, secret, and subscription key."""
         # Act
         credentials = suunto_oauth.credentials
@@ -61,7 +62,7 @@ class TestSuuntoOAuth:
         # Subscription key may be None if not configured
         assert hasattr(credentials, "subscription_key")
 
-    def test_get_authorization_url(self, suunto_oauth):
+    def test_get_authorization_url(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should generate authorization URL with correct parameters."""
         # Arrange
         user_id = uuid4()
@@ -76,7 +77,7 @@ class TestSuuntoOAuth:
         assert "response_type=code" in auth_url
         assert len(state) > 0
 
-    def test_extract_user_info_from_jwt_success(self, suunto_oauth):
+    def test_extract_user_info_from_jwt_success(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should extract user info from JWT access token."""
         # Arrange
         test_payload = {
@@ -101,7 +102,7 @@ class TestSuuntoOAuth:
         assert user_info["user_id"] == "suunto_user_12345"
         assert user_info["username"] == "test_suunto_user"
 
-    def test_extract_user_info_from_jwt_missing_fields(self, suunto_oauth):
+    def test_extract_user_info_from_jwt_missing_fields(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should handle JWT with missing user fields."""
         # Arrange
         test_payload = {
@@ -124,7 +125,7 @@ class TestSuuntoOAuth:
         assert user_info["user_id"] is None
         assert user_info["username"] is None
 
-    def test_extract_user_info_from_invalid_jwt(self, suunto_oauth):
+    def test_extract_user_info_from_invalid_jwt(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should handle invalid JWT gracefully."""
         # Arrange
         token_response = OAuthTokenResponse(
@@ -142,7 +143,7 @@ class TestSuuntoOAuth:
         assert user_info["username"] is None
 
     @patch("httpx.post")
-    def test_exchange_token_success(self, mock_post, suunto_oauth, db):
+    def test_exchange_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
         """Should exchange authorization code for tokens."""
         # Arrange
         mock_response = MagicMock()
@@ -166,7 +167,7 @@ class TestSuuntoOAuth:
         mock_post.assert_called_once()
 
     @patch("httpx.post")
-    def test_refresh_access_token_success(self, mock_post, suunto_oauth, db):
+    def test_refresh_access_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
         """Should refresh access token using refresh token."""
         # Arrange
         from app.tests.utils import create_user, create_user_connection
@@ -198,7 +199,7 @@ class TestSuuntoOAuth:
         assert token_response.refresh_token == "new_refresh_token"
         mock_post.assert_called_once()
 
-    def test_uses_basic_auth_method(self, suunto_oauth):
+    def test_uses_basic_auth_method(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should use Basic Auth for token exchange."""
         # Act
         from app.schemas.oauth import AuthenticationMethod
@@ -206,7 +207,7 @@ class TestSuuntoOAuth:
         # Assert
         assert suunto_oauth.auth_method == AuthenticationMethod.BASIC_AUTH
 
-    def test_does_not_use_pkce(self, suunto_oauth):
+    def test_does_not_use_pkce(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should not use PKCE for authorization flow."""
         # Assert
         assert suunto_oauth.use_pkce is False

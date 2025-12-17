@@ -6,7 +6,7 @@ Tests the PolarWorkouts class for fetching and processing workout data from Pola
 
 from datetime import datetime
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -20,7 +20,7 @@ from app.tests.utils import create_user, create_user_connection
 class TestPolarWorkoutsInitialization:
     """Tests for PolarWorkouts initialization."""
 
-    def test_polar_workouts_initialization(self, db: Session):
+    def test_polar_workouts_initialization(self, db: Session) -> None:
         """Test PolarWorkouts initializes with required dependencies."""
         # Arrange
         from app.models import EventRecord, User
@@ -58,7 +58,7 @@ class TestPolarWorkoutsInitialization:
 class TestPolarWorkoutsDateExtraction:
     """Tests for Polar-specific date extraction with UTC offset."""
 
-    def test_extract_dates_with_offset_positive_offset(self, db: Session):
+    def test_extract_dates_with_offset_positive_offset(self, db: Session) -> None:
         """Test extracting dates with positive UTC offset."""
         # Arrange
         from app.models import EventRecord, User
@@ -97,7 +97,7 @@ class TestPolarWorkoutsDateExtraction:
         assert end_date > start_date
         assert (end_date - start_date).total_seconds() == 3600  # 1 hour
 
-    def test_extract_dates_with_offset_negative_offset(self, db: Session):
+    def test_extract_dates_with_offset_negative_offset(self, db: Session) -> None:
         """Test extracting dates with negative UTC offset."""
         # Arrange
         from app.models import EventRecord, User
@@ -135,7 +135,7 @@ class TestPolarWorkoutsDateExtraction:
         assert isinstance(end_date, datetime)
         assert (end_date - start_date).total_seconds() == 1800  # 30 minutes
 
-    def test_extract_dates_not_implemented_fallback(self, db: Session):
+    def test_extract_dates_not_implemented_fallback(self, db: Session) -> None:
         """Test that _extract_dates raises NotImplementedError for Polar."""
         # Arrange
         from app.models import EventRecord, User
@@ -169,7 +169,7 @@ class TestPolarWorkoutsDateExtraction:
 class TestPolarWorkoutsMetricsBuilding:
     """Tests for building metrics from Polar exercise data."""
 
-    def test_build_metrics_with_heart_rate_data(self, db: Session, sample_polar_exercise):
+    def test_build_metrics_with_heart_rate_data(self, db: Session, sample_polar_exercise: dict) -> None:
         """Test building metrics with complete heart rate data."""
         # Arrange
         from app.models import EventRecord, User
@@ -207,7 +207,7 @@ class TestPolarWorkoutsMetricsBuilding:
         assert metrics["steps_total"] is None
         assert metrics["steps_avg"] is None
 
-    def test_build_metrics_without_heart_rate_data(self, db: Session):
+    def test_build_metrics_without_heart_rate_data(self, db: Session) -> None:
         """Test building metrics when heart rate data is missing."""
         # Arrange
         from app.models import EventRecord, User
@@ -260,7 +260,7 @@ class TestPolarWorkoutsMetricsBuilding:
 class TestPolarWorkoutsNormalization:
     """Tests for normalizing Polar exercises to event records."""
 
-    def test_normalize_workout_complete_data(self, db: Session, sample_polar_exercise):
+    def test_normalize_workout_complete_data(self, db: Session, sample_polar_exercise: dict) -> None:
         """Test normalizing workout with complete data."""
         # Arrange
         from app.models import EventRecord, User
@@ -303,7 +303,7 @@ class TestPolarWorkoutsNormalization:
         assert detail.heart_rate_avg == Decimal("145")
         assert detail.heart_rate_max == 175
 
-    def test_normalize_workout_workout_type_mapping(self, db: Session):
+    def test_normalize_workout_workout_type_mapping(self, db: Session) -> None:
         """Test workout type is correctly mapped from Polar sport type."""
         # Arrange
         from app.models import EventRecord, User
@@ -357,7 +357,7 @@ class TestPolarWorkoutsAPIRequests:
     """Tests for API request methods."""
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workouts_from_api_default_params(self, mock_request, db: Session):
+    def test_get_workouts_from_api_default_params(self, mock_request: MagicMock, db: Session) -> None:
         """Test getting workouts with default parameters."""
         # Arrange
         from app.models import EventRecord, User
@@ -400,7 +400,7 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["route"] == "false"
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workouts_from_api_with_options(self, mock_request, db: Session):
+    def test_get_workouts_from_api_with_options(self, mock_request: MagicMock, db: Session) -> None:
         """Test getting workouts with samples, zones, and route enabled."""
         # Arrange
         from app.models import EventRecord, User
@@ -442,7 +442,7 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["route"] == "true"
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_workout_detail_from_api(self, mock_request, db: Session):
+    def test_get_workout_detail_from_api(self, mock_request: MagicMock, db: Session) -> None:
         """Test getting detailed workout data for specific exercise."""
         # Arrange
         from app.models import EventRecord, User
@@ -490,7 +490,14 @@ class TestPolarWorkoutsDataLoading:
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
-    def test_load_data_success(self, mock_create_detail, mock_create, mock_request, db: Session, sample_polar_exercise):
+    def test_load_data_success(
+        self,
+        mock_create_detail: MagicMock,
+        mock_create: MagicMock,
+        mock_request: MagicMock,
+        db: Session,
+        sample_polar_exercise: dict,
+    ) -> None:
         """Test successful data loading from Polar API."""
         # Arrange
         from app.models import EventRecord, User
@@ -530,7 +537,7 @@ class TestPolarWorkoutsDataLoading:
         mock_create_detail.assert_called_once()
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_load_data_empty_response(self, mock_request, db: Session):
+    def test_load_data_empty_response(self, mock_request: MagicMock, db: Session) -> None:
         """Test loading data when API returns empty list."""
         # Arrange
         from app.models import EventRecord, User

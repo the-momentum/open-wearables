@@ -20,11 +20,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_with_active_connections(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test syncing all users with active connections."""
         # Arrange
         user1 = create_user(db)
@@ -55,11 +55,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_with_date_range(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test syncing all users with specific date range."""
         # Arrange
         user = create_user(db)
@@ -86,11 +86,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_skips_disconnected_users(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that users without active connections are not synced."""
         # Arrange
         user1 = create_user(db)
@@ -120,11 +120,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_no_users(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test syncing when no users have active connections."""
         # Arrange - no users with connections
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -141,11 +141,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_multiple_connections_per_user(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that users with multiple connections are only queued once."""
         # Arrange
         user = create_user(db)
@@ -170,11 +170,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_mixed_connection_statuses(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test syncing users with mixed connection statuses."""
         # Arrange
         user1 = create_user(db)
@@ -210,11 +210,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_queues_async_tasks(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that sync tasks are queued asynchronously with delay."""
         # Arrange
         user = create_user(db)
@@ -235,11 +235,11 @@ class TestSyncAllUsersTask:
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
     def test_sync_all_users_large_batch(
         self,
-        mock_sync_vendor_data,
-        mock_session_local,
+        mock_sync_vendor_data: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test syncing a large number of users."""
         # Arrange - create 10 users with connections
         users = []

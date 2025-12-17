@@ -19,7 +19,7 @@ from app.tests.utils import api_key_headers, create_api_key, create_developer, c
 class TestListUsers:
     """Tests for GET /api/v1/users."""
 
-    def test_list_users_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_list_users_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test listing users with valid API key."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -42,7 +42,7 @@ class TestListUsers:
         found_users = [u for u in data if u["id"] in user_ids]
         assert len(found_users) == 2
 
-    def test_list_users_empty(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_list_users_empty(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test listing users when no users exist."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -57,7 +57,7 @@ class TestListUsers:
         data = response.json()
         assert isinstance(data, list)
 
-    def test_list_users_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_list_users_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing users fails without API key."""
         # Act
         response = client.get(f"{api_v1_prefix}/users")
@@ -65,7 +65,7 @@ class TestListUsers:
         # Assert
         assert response.status_code == 401
 
-    def test_list_users_invalid_api_key(self, client: TestClient, api_v1_prefix: str):
+    def test_list_users_invalid_api_key(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing users fails with invalid API key."""
         # Act
         response = client.get(
@@ -80,7 +80,7 @@ class TestListUsers:
 class TestGetUser:
     """Tests for GET /api/v1/users/{user_id}."""
 
-    def test_get_user_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_user_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user by ID with valid API key."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -100,7 +100,7 @@ class TestGetUser:
         assert data["last_name"] == "Doe"
         assert "created_at" in data
 
-    def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -114,7 +114,7 @@ class TestGetUser:
         with pytest.raises(ResourceNotFoundError):
             client.get(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
 
-    def test_get_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user with invalid UUID format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -127,7 +127,7 @@ class TestGetUser:
         # Assert
         assert response.status_code == 400
 
-    def test_get_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user fails without API key."""
         # Arrange
         user = create_user(db, email="user@example.com")
@@ -142,7 +142,7 @@ class TestGetUser:
 class TestCreateUser:
     """Tests for POST /api/v1/users."""
 
-    def test_create_user_full_data(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_user_full_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with all fields."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -175,7 +175,7 @@ class TestCreateUser:
         assert user is not None
         assert user.email == "newuser@example.com"
 
-    def test_create_user_minimal_data(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_user_minimal_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with minimal fields."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -192,7 +192,7 @@ class TestCreateUser:
         assert "id" in data
         assert "created_at" in data
 
-    def test_create_user_only_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_user_only_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with only email."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -210,7 +210,7 @@ class TestCreateUser:
         assert data["first_name"] is None
         assert data["last_name"] is None
 
-    def test_create_user_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_user_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with invalid email format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -224,7 +224,7 @@ class TestCreateUser:
         # Assert
         assert response.status_code == 400
 
-    def test_create_user_name_too_long(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_user_name_too_long(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating user with name exceeding max length."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -241,7 +241,7 @@ class TestCreateUser:
         # Assert
         assert response.status_code == 400
 
-    def test_create_user_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_create_user_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating user fails without API key."""
         # Act
         response = client.post(
@@ -256,7 +256,7 @@ class TestCreateUser:
 class TestUpdateUser:
     """Tests for PATCH /api/v1/users/{user_id}."""
 
-    def test_update_user_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user email."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -277,7 +277,7 @@ class TestUpdateUser:
         db.refresh(user)
         assert user.email == "new@example.com"
 
-    def test_update_user_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user name."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -299,7 +299,7 @@ class TestUpdateUser:
         assert user.first_name == "Jane"
         assert user.last_name == "Smith"
 
-    def test_update_user_external_id(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_external_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user external ID."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -319,7 +319,7 @@ class TestUpdateUser:
         db.refresh(user)
         assert user.external_user_id == "new_id"
 
-    def test_update_user_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user with empty payload."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -336,7 +336,7 @@ class TestUpdateUser:
         assert data["email"] == "user@example.com"
         assert data["first_name"] == "John"
 
-    def test_update_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent user raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -350,7 +350,7 @@ class TestUpdateUser:
         with pytest.raises(ResourceNotFoundError):
             client.patch(f"{api_v1_prefix}/users/{fake_id}", json=payload, headers=headers)
 
-    def test_update_user_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user with invalid email."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -364,17 +364,19 @@ class TestUpdateUser:
         # Assert
         assert response.status_code == 400
 
-    def test_update_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user fails without authentication."""
         # Arrange
         user = create_user(db, email="user@example.com")
         payload = {"email": "new@example.com"}
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload)
+        # Act
+        response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload)
 
-    def test_update_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_update_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user requires bearer token, not API key."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -383,15 +385,17 @@ class TestUpdateUser:
         headers = api_key_headers(api_key.id)
         payload = {"email": "new@example.com"}
 
-        # Act & Assert - API key auth causes AttributeError (no bearer token)
-        with pytest.raises(AttributeError):
-            client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
+        # Act
+        response = client.patch(f"{api_v1_prefix}/users/{user.id}", json=payload, headers=headers)
+
+        # Assert - API key auth is rejected, requires bearer token
+        assert response.status_code == 401
 
 
 class TestDeleteUser:
     """Tests for DELETE /api/v1/users/{user_id}."""
 
-    def test_delete_user_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_user_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user successfully."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -414,7 +418,7 @@ class TestDeleteUser:
         deleted_user = user_service.get(db, user_id, raise_404=False)
         assert deleted_user is None
 
-    def test_delete_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent user raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -427,7 +431,7 @@ class TestDeleteUser:
         with pytest.raises(ResourceNotFoundError):
             client.delete(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
 
-    def test_delete_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user with invalid UUID format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -439,16 +443,18 @@ class TestDeleteUser:
         # Assert
         assert response.status_code == 400
 
-    def test_delete_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_user_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user fails without authentication."""
         # Arrange
         user = create_user(db, email="user@example.com")
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.delete(f"{api_v1_prefix}/users/{user.id}")
+        # Act
+        response = client.delete(f"{api_v1_prefix}/users/{user.id}")
 
-    def test_delete_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_delete_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user requires bearer token, not API key."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -456,6 +462,8 @@ class TestDeleteUser:
         user = create_user(db, email="user@example.com")
         headers = api_key_headers(api_key.id)
 
-        # Act & Assert - API key auth causes AttributeError (no bearer token)
-        with pytest.raises(AttributeError):
-            client.delete(f"{api_v1_prefix}/users/{user.id}", headers=headers)
+        # Act
+        response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=headers)
+
+        # Assert - API key auth is rejected, requires bearer token
+        assert response.status_code == 401

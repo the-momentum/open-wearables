@@ -23,7 +23,7 @@ class TestSyncDataEndpoint:
     """Test suite for sync data endpoint."""
 
     @pytest.fixture
-    def mock_provider_factory(self):
+    def mock_provider_factory(self) -> MagicMock:
         """Mock the ProviderFactory to avoid external API calls."""
         with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
             mock_strategy = MagicMock()
@@ -31,7 +31,7 @@ class TestSyncDataEndpoint:
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 
-    def test_sync_garmin_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_sync_garmin_success(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
         """Test successfully syncing Garmin data."""
         # Arrange
         user = create_user(db)
@@ -51,7 +51,7 @@ class TestSyncDataEndpoint:
         mock_provider_factory.get_provider.assert_called_once_with("garmin")
         mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
 
-    def test_sync_garmin_unauthorized(self, client: TestClient, db: Session):
+    def test_sync_garmin_unauthorized(self, client: TestClient, db: Session) -> None:
         """Test that missing API key returns 401."""
         # Arrange
         user = create_user(db)
@@ -62,7 +62,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 401
 
-    def test_sync_garmin_no_connection(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_sync_garmin_no_connection(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
         """Test syncing when user has no connection to provider."""
         # Arrange
         user = create_user(db)
@@ -85,7 +85,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 404
 
-    def test_sync_polar_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_sync_polar_success(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
         """Test successfully syncing Polar data."""
         # Arrange
         user = create_user(db)
@@ -104,7 +104,7 @@ class TestSyncDataEndpoint:
         assert data == {"success": True}
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
-    def test_sync_suunto_with_params(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_sync_suunto_with_params(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
         """Test Suunto sync with since, limit, and offset parameters."""
         # Arrange
         user = create_user(db)
@@ -129,8 +129,8 @@ class TestSyncDataEndpoint:
         assert call_kwargs["limit"] == 25
         assert call_kwargs["offset"] == 10
 
-    def test_sync_invalid_provider(self, client: TestClient, db: Session):
-        """Test that invalid provider enum value returns 422."""
+    def test_sync_invalid_provider(self, client: TestClient, db: Session) -> None:
+        """Test that invalid provider enum value returns 400."""
         # Arrange
         user = create_user(db)
         api_key = create_api_key(db)
@@ -142,9 +142,9 @@ class TestSyncDataEndpoint:
         )
 
         # Assert
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_sync_provider_not_supporting_workouts(self, client: TestClient, db: Session):
+    def test_sync_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
         """Test provider that doesn't support workouts returns 501."""
         # Arrange
         user = create_user(db)

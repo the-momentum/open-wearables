@@ -6,6 +6,7 @@ Tests the following endpoints:
 - GET /api/v1/providers/{provider}/users/{user_id}/workouts/{workout_id}
 """
 
+from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -24,7 +25,7 @@ class TestVendorWorkoutsEndpoints:
     """Test suite for vendor workout endpoints."""
 
     @pytest.fixture
-    def mock_provider_factory(self):
+    def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory to avoid external API calls."""
         with patch("app.api.routes.v1.vendor_workouts.factory") as mock_factory:
             mock_strategy = MagicMock()
@@ -41,7 +42,12 @@ class TestVendorWorkoutsEndpoints:
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 
-    def test_get_garmin_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_garmin_workouts_success(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test successfully retrieving Garmin workouts with valid API key."""
         # Arrange
         user = create_user(db)
@@ -63,7 +69,7 @@ class TestVendorWorkoutsEndpoints:
         assert data[0]["type"] == "running"
         mock_provider_factory.get_provider.assert_called_once_with("garmin")
 
-    def test_get_garmin_workouts_unauthorized(self, client: TestClient, db: Session):
+    def test_get_garmin_workouts_unauthorized(self, client: TestClient, db: Session) -> None:
         """Test that missing API key returns 401."""
         # Arrange
         user = create_user(db)
@@ -74,7 +80,12 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_garmin_workouts_no_connection(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_garmin_workouts_no_connection(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test retrieving workouts when user has no connection to provider."""
         # Arrange
         user = create_user(db)
@@ -97,7 +108,12 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 404
 
-    def test_get_polar_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_polar_workouts_success(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test successfully retrieving Polar workouts."""
         # Arrange
         user = create_user(db)
@@ -116,7 +132,12 @@ class TestVendorWorkoutsEndpoints:
         assert isinstance(data, list)
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
-    def test_get_polar_workouts_with_params(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_polar_workouts_with_params(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test Polar workouts with samples, zones, and route parameters."""
         # Arrange
         user = create_user(db)
@@ -138,7 +159,12 @@ class TestVendorWorkoutsEndpoints:
         assert call_kwargs["zones"] is True
         assert call_kwargs["route"] is True
 
-    def test_get_suunto_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_suunto_workouts_success(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test successfully retrieving Suunto workouts."""
         # Arrange
         user = create_user(db)
@@ -157,7 +183,12 @@ class TestVendorWorkoutsEndpoints:
         assert isinstance(data, list)
         mock_provider_factory.get_provider.assert_called_once_with("suunto")
 
-    def test_get_suunto_workouts_pagination(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_suunto_workouts_pagination(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test Suunto workouts with since, limit, and offset pagination parameters."""
         # Arrange
         user = create_user(db)
@@ -179,7 +210,12 @@ class TestVendorWorkoutsEndpoints:
         assert call_kwargs["limit"] == 25
         assert call_kwargs["offset"] == 10
 
-    def test_get_workout_detail_success(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_workout_detail_success(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test successfully retrieving workout detail."""
         # Arrange
         user = create_user(db)
@@ -201,7 +237,12 @@ class TestVendorWorkoutsEndpoints:
         assert "details" in data
         mock_provider_factory.get_provider.return_value.workouts.get_workout_detail_from_api.assert_called_once()
 
-    def test_get_workout_detail_not_found(self, client: TestClient, db: Session, mock_provider_factory):
+    def test_get_workout_detail_not_found(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_provider_factory: MagicMock,
+    ) -> None:
         """Test workout detail endpoint with nonexistent workout ID."""
         # Arrange
         user = create_user(db)
@@ -225,7 +266,7 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 404
 
-    def test_invalid_provider_returns_422(self, client: TestClient, db: Session):
+    def test_invalid_provider_returns_422(self, client: TestClient, db: Session) -> None:
         """Test that invalid provider enum value returns 400."""
         # Arrange
         user = create_user(db)
@@ -240,7 +281,7 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 400
 
-    def test_provider_not_supporting_workouts(self, client: TestClient, db: Session):
+    def test_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
         """Test provider that doesn't support workouts returns 501."""
         # Arrange
         user = create_user(db)

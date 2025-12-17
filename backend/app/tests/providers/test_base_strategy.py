@@ -27,12 +27,12 @@ from app.services.providers.suunto.strategy import SuuntoStrategy
 class TestBaseProviderStrategy:
     """Test suite for BaseProviderStrategy."""
 
-    def test_is_abstract_class(self):
+    def test_is_abstract_class(self) -> None:
         """Should be an abstract base class."""
         # Assert
         assert issubclass(BaseProviderStrategy, ABC)
 
-    def test_cannot_instantiate_directly(self):
+    def test_cannot_instantiate_directly(self) -> None:
         """Should not allow direct instantiation."""
         # Act & Assert
         with pytest.raises(TypeError) as exc_info:
@@ -40,7 +40,7 @@ class TestBaseProviderStrategy:
 
         assert "Can't instantiate abstract class" in str(exc_info.value)
 
-    def test_garmin_strategy_initializes_repositories(self):
+    def test_garmin_strategy_initializes_repositories(self) -> None:
         """Should initialize all repositories on GarminStrategy."""
         # Act
         strategy = GarminStrategy()
@@ -52,7 +52,7 @@ class TestBaseProviderStrategy:
         assert isinstance(strategy.workout_repo, EventRecordRepository)
         assert strategy.workout_repo.model == EventRecord
 
-    def test_apple_strategy_initializes_repositories(self):
+    def test_apple_strategy_initializes_repositories(self) -> None:
         """Should initialize all repositories on AppleStrategy."""
         # Act
         strategy = AppleStrategy()
@@ -62,7 +62,7 @@ class TestBaseProviderStrategy:
         assert isinstance(strategy.connection_repo, UserConnectionRepository)
         assert isinstance(strategy.workout_repo, EventRecordRepository)
 
-    def test_garmin_provider_name(self):
+    def test_garmin_provider_name(self) -> None:
         """Should return correct provider name for Garmin."""
         # Act
         strategy = GarminStrategy()
@@ -70,7 +70,7 @@ class TestBaseProviderStrategy:
         # Assert
         assert strategy.name == "garmin"
 
-    def test_garmin_api_base_url(self):
+    def test_garmin_api_base_url(self) -> None:
         """Should return correct API base URL for Garmin."""
         # Act
         strategy = GarminStrategy()
@@ -78,7 +78,7 @@ class TestBaseProviderStrategy:
         # Assert
         assert strategy.api_base_url == "https://apis.garmin.com"
 
-    def test_garmin_display_name(self):
+    def test_garmin_display_name(self) -> None:
         """Should return capitalized display name for Garmin."""
         # Act
         strategy = GarminStrategy()
@@ -86,7 +86,7 @@ class TestBaseProviderStrategy:
         # Assert
         assert strategy.display_name == "Garmin"
 
-    def test_apple_display_name_override(self):
+    def test_apple_display_name_override(self) -> None:
         """Should return custom display name for Apple."""
         # Act
         strategy = AppleStrategy()
@@ -94,7 +94,7 @@ class TestBaseProviderStrategy:
         # Assert
         assert strategy.display_name == "Apple Health"
 
-    def test_garmin_has_cloud_api(self):
+    def test_garmin_has_cloud_api(self) -> None:
         """Should return True for has_cloud_api when OAuth is present."""
         # Act
         strategy = GarminStrategy()
@@ -103,7 +103,7 @@ class TestBaseProviderStrategy:
         assert strategy.has_cloud_api is True
         assert strategy.oauth is not None
 
-    def test_apple_no_cloud_api(self):
+    def test_apple_no_cloud_api(self) -> None:
         """Should return False for has_cloud_api when OAuth is absent."""
         # Act
         strategy = AppleStrategy()
@@ -112,7 +112,7 @@ class TestBaseProviderStrategy:
         assert strategy.has_cloud_api is False
         assert strategy.oauth is None
 
-    def test_icon_url_generation(self):
+    def test_icon_url_generation(self) -> None:
         """Should generate correct icon URL path."""
         # Act
         garmin_strategy = GarminStrategy()

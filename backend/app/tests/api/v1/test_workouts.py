@@ -25,7 +25,7 @@ from app.tests.utils import (
 class TestWorkoutsEndpoints:
     """Test suite for workout endpoints."""
 
-    def test_get_workouts_success(self, client: TestClient, db: Session):
+    def test_get_workouts_success(self, client: TestClient, db: Session) -> None:
         """Test successfully retrieving workouts for a user."""
         # Arrange
         user = create_user(db)
@@ -57,7 +57,7 @@ class TestWorkoutsEndpoints:
         assert any(w["id"] == str(workout1.id) for w in data)
         assert any(w["id"] == str(workout2.id) for w in data)
 
-    def test_get_workouts_empty_list(self, client: TestClient, db: Session):
+    def test_get_workouts_empty_list(self, client: TestClient, db: Session) -> None:
         """Test retrieving workouts for a user with no workouts."""
         # Arrange
         user = create_user(db)
@@ -72,7 +72,7 @@ class TestWorkoutsEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_workouts_filters_by_category(self, client: TestClient, db: Session):
+    def test_get_workouts_filters_by_category(self, client: TestClient, db: Session) -> None:
         """Test filtering workouts by category."""
         # Arrange
         user = create_user(db)
@@ -96,7 +96,7 @@ class TestWorkoutsEndpoints:
         assert data[0]["id"] == str(workout.id)
         assert data[0]["category"] == "workout"
 
-    def test_get_workouts_filters_by_type(self, client: TestClient, db: Session):
+    def test_get_workouts_filters_by_type(self, client: TestClient, db: Session) -> None:
         """Test filtering workouts by type."""
         # Arrange
         user = create_user(db)
@@ -106,11 +106,11 @@ class TestWorkoutsEndpoints:
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act
+        # Act - note: API uses 'record_type' parameter (not 'type') and does ILIKE substring matching
         response = client.get(
             f"/api/v1/users/{user.id}/workouts",
             headers=headers,
-            params={"type": "running"},
+            params={"record_type": "running"},
         )
 
         # Assert
@@ -120,7 +120,7 @@ class TestWorkoutsEndpoints:
         assert data[0]["id"] == str(running.id)
         assert data[0]["type"] == "running"
 
-    def test_get_workouts_filters_by_date_range(self, client: TestClient, db: Session):
+    def test_get_workouts_filters_by_date_range(self, client: TestClient, db: Session) -> None:
         """Test filtering workouts by start and end datetime."""
         # Arrange
         user = create_user(db)
@@ -143,12 +143,12 @@ class TestWorkoutsEndpoints:
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act - filter for last 5 days
+        # Act - filter for last 5 days (note: API uses 'start_date' parameter, not 'start_datetime')
         start_date = (now - timedelta(days=5)).isoformat()
         response = client.get(
             f"/api/v1/users/{user.id}/workouts",
             headers=headers,
-            params={"start_datetime": start_date},
+            params={"start_date": start_date},
         )
 
         # Assert
@@ -157,7 +157,7 @@ class TestWorkoutsEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(recent_workout.id)
 
-    def test_get_workouts_pagination(self, client: TestClient, db: Session):
+    def test_get_workouts_pagination(self, client: TestClient, db: Session) -> None:
         """Test pagination with skip and limit parameters."""
         # Arrange
         user = create_user(db)
@@ -179,7 +179,7 @@ class TestWorkoutsEndpoints:
         data = response.json()
         assert len(data) == 2
 
-    def test_get_workouts_sorting(self, client: TestClient, db: Session):
+    def test_get_workouts_sorting(self, client: TestClient, db: Session) -> None:
         """Test sorting workouts by start_datetime."""
         # Arrange
         user = create_user(db)
@@ -221,7 +221,7 @@ class TestWorkoutsEndpoints:
         assert data[1]["id"] == str(workout2.id)
         assert data[2]["id"] == str(workout3.id)
 
-    def test_get_workouts_multiple_users_isolation(self, client: TestClient, db: Session):
+    def test_get_workouts_multiple_users_isolation(self, client: TestClient, db: Session) -> None:
         """Test that users can only see their own workouts."""
         # Arrange
         user1 = create_user(db)
@@ -242,7 +242,7 @@ class TestWorkoutsEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(workout1.id)
 
-    def test_get_workouts_missing_api_key(self, client: TestClient, db: Session):
+    def test_get_workouts_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -253,7 +253,7 @@ class TestWorkoutsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_workouts_invalid_api_key(self, client: TestClient, db: Session):
+    def test_get_workouts_invalid_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request with invalid API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -265,17 +265,17 @@ class TestWorkoutsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_workouts_invalid_user_id(self, client: TestClient, db: Session):
+    def test_get_workouts_invalid_user_id(self, client: TestClient, db: Session) -> None:
         """Test handling of invalid user ID format raises ValueError."""
         # Arrange
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act & Assert - Invalid UUID causes ValueError in current implementation
-        with pytest.raises(ValueError, match="not-a-uuid"):
+        # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
+        with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
             client.get("/api/v1/users/not-a-uuid/workouts", headers=headers)
 
-    def test_get_workouts_nonexistent_user(self, client: TestClient, db: Session):
+    def test_get_workouts_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving workouts for a user that doesn't exist."""
         # Arrange
         from uuid import uuid4
@@ -292,7 +292,7 @@ class TestWorkoutsEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_workouts_filters_by_provider(self, client: TestClient, db: Session):
+    def test_get_workouts_filters_by_provider(self, client: TestClient, db: Session) -> None:
         """Test filtering workouts by provider."""
         # Arrange
         user = create_user(db)
@@ -316,7 +316,7 @@ class TestWorkoutsEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(apple_workout.id)
 
-    def test_get_workouts_response_structure(self, client: TestClient, db: Session):
+    def test_get_workouts_response_structure(self, client: TestClient, db: Session) -> None:
         """Test that response contains all expected fields."""
         # Arrange
         user = create_user(db)

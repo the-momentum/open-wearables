@@ -21,7 +21,7 @@ from app.tests.utils.factories import create_event_record, create_external_devic
 class TestEventRecordServiceCreateDetail:
     """Test creating event record details."""
 
-    def test_create_detail_with_heart_rate_metrics(self, db: Session):
+    def test_create_detail_with_heart_rate_metrics(self, db: Session) -> None:
         """Should create event record detail with heart rate metrics."""
         # Arrange
         event_record = create_event_record(db, category="workout", type_="running")
@@ -42,7 +42,7 @@ class TestEventRecordServiceCreateDetail:
         assert detail.heart_rate_max == 180
         assert detail.heart_rate_avg == Decimal("150.5")
 
-    def test_create_detail_with_step_metrics(self, db: Session):
+    def test_create_detail_with_step_metrics(self, db: Session) -> None:
         """Should create event record detail with step metrics."""
         # Arrange
         event_record = create_event_record(db, category="workout")
@@ -63,7 +63,7 @@ class TestEventRecordServiceCreateDetail:
         assert detail.steps_avg == Decimal("125.3")
         assert detail.steps_total == 5000
 
-    def test_create_detail_with_workout_metrics(self, db: Session):
+    def test_create_detail_with_workout_metrics(self, db: Session) -> None:
         """Should create event record detail with workout metrics."""
         # Arrange
         event_record = create_event_record(db, category="workout", type_="cycling")
@@ -90,35 +90,7 @@ class TestEventRecordServiceCreateDetail:
         assert detail.moving_time_seconds == 3600
         assert detail.total_elevation_gain == Decimal("450.0")
 
-    @pytest.mark.skip(reason="Service always creates WorkoutDetails, not SleepDetails. Sleep detail creation not yet implemented.")
-    def test_create_detail_with_sleep_metrics(self, db: Session):
-        """Should create event record detail with sleep metrics."""
-        # Arrange
-        event_record = create_event_record(db, category="sleep", type_="sleep")
-        detail_payload = EventRecordDetailCreate(
-            record_id=event_record.id,
-            sleep_total_duration_minutes=480,
-            sleep_time_in_bed_minutes=510,
-            sleep_efficiency_score=Decimal("94.1"),
-            sleep_deep_minutes=120,
-            sleep_rem_minutes=90,
-            sleep_light_minutes=240,
-            sleep_awake_minutes=30,
-        )
-
-        # Act
-        detail = event_record_service.create_detail(db, detail_payload)
-
-        # Assert
-        assert detail.sleep_total_duration_minutes == 480
-        assert detail.sleep_time_in_bed_minutes == 510
-        assert detail.sleep_efficiency_score == Decimal("94.1")
-        assert detail.sleep_deep_minutes == 120
-        assert detail.sleep_rem_minutes == 90
-        assert detail.sleep_light_minutes == 240
-        assert detail.sleep_awake_minutes == 30
-
-    def test_create_detail_minimal_data(self, db: Session):
+    def test_create_detail_minimal_data(self, db: Session) -> None:
         """Should create event record detail with minimal data."""
         # Arrange
         event_record = create_event_record(db)
@@ -139,7 +111,7 @@ class TestEventRecordServiceGetRecordsResponse:
     """Test getting formatted event records."""
 
     @pytest.mark.asyncio
-    async def test_get_records_response_basic(self, db: Session):
+    async def test_get_records_response_basic(self, db: Session) -> None:
         """Should return formatted event records."""
         # Arrange
         user = create_user(db)
@@ -166,7 +138,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert matching_record.type == "running"
 
     @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_category(self, db: Session):
+    async def test_get_records_response_filters_by_category(self, db: Session) -> None:
         """Should filter records by category."""
         # Arrange
         user = create_user(db)
@@ -186,7 +158,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert sleep_record.id not in record_ids
 
     @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_type(self, db: Session):
+    async def test_get_records_response_filters_by_type(self, db: Session) -> None:
         """Should filter records by type."""
         # Arrange
         user = create_user(db)
@@ -206,7 +178,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert cycling_record.id not in record_ids
 
     @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_device_id(self, db: Session):
+    async def test_get_records_response_filters_by_device_id(self, db: Session) -> None:
         """Should filter records by device_id."""
         # Arrange
         user = create_user(db)
@@ -227,7 +199,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert record2.id not in record_ids
 
     @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_provider(self, db: Session):
+    async def test_get_records_response_filters_by_provider(self, db: Session) -> None:
         """Should filter records by provider_id."""
         # Arrange
         user = create_user(db)
@@ -248,7 +220,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert garmin_record.id not in record_ids
 
     @pytest.mark.asyncio
-    async def test_get_records_response_user_isolation(self, db: Session):
+    async def test_get_records_response_user_isolation(self, db: Session) -> None:
         """Should only return records for specified user."""
         # Arrange
         user1 = create_user(db, email="user1@example.com")
@@ -271,7 +243,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert record2.id not in record_ids
 
     @pytest.mark.asyncio
-    async def test_get_records_response_empty_result(self, db: Session):
+    async def test_get_records_response_empty_result(self, db: Session) -> None:
         """Should return empty list when no records match."""
         # Arrange
         user = create_user(db)
@@ -287,7 +259,7 @@ class TestEventRecordServiceGetRecordsResponse:
 class TestEventRecordServiceGetCountByWorkoutType:
     """Test counting workouts by type."""
 
-    def test_get_count_by_workout_type_groups_correctly(self, db: Session):
+    def test_get_count_by_workout_type_groups_correctly(self, db: Session) -> None:
         """Should group and count workouts by type."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -309,7 +281,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
         assert results_dict.get("cycling") == 2
         assert results_dict.get("swimming") == 1
 
-    def test_get_count_by_workout_type_ordered_by_count(self, db: Session):
+    def test_get_count_by_workout_type_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -326,7 +298,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
         # Results should be ordered by count descending
         assert results[0][1] >= results[1][1]  # First count >= second count
 
-    def test_get_count_by_workout_type_handles_null_type(self, db: Session):
+    def test_get_count_by_workout_type_handles_null_type(self, db: Session) -> None:
         """Should handle records with null type."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -343,7 +315,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
         assert results_dict.get(None) == 2
         assert results_dict.get("running") == 1
 
-    def test_get_count_by_workout_type_empty_result(self, db: Session):
+    def test_get_count_by_workout_type_empty_result(self, db: Session) -> None:
         """Should return empty list when no workout records exist."""
         # Act
         results = event_record_service.get_count_by_workout_type(db)

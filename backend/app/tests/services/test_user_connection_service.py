@@ -22,7 +22,7 @@ from app.tests.utils.factories import create_user, create_user_connection
 class TestUserConnectionServiceGetActiveCountInRange:
     """Test counting active connections in date range."""
 
-    def test_get_active_count_in_range_with_active_connections(self, db: Session):
+    def test_get_active_count_in_range_with_active_connections(self, db: Session) -> None:
         """Should count active connections created within date range."""
         # Arrange
         user = create_user(db)
@@ -67,7 +67,7 @@ class TestUserConnectionServiceGetActiveCountInRange:
         # Should count only the 2 active connections within the range
         assert count == 2
 
-    def test_get_active_count_in_range_excludes_inactive_status(self, db: Session):
+    def test_get_active_count_in_range_excludes_inactive_status(self, db: Session) -> None:
         """Should exclude connections with inactive status."""
         # Arrange
         user = create_user(db)
@@ -104,7 +104,7 @@ class TestUserConnectionServiceGetActiveCountInRange:
         # Only ACTIVE status should be counted
         assert count == 1
 
-    def test_get_active_count_in_range_empty_result(self, db: Session):
+    def test_get_active_count_in_range_empty_result(self, db: Session) -> None:
         """Should return 0 when no active connections in range."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -119,7 +119,7 @@ class TestUserConnectionServiceGetActiveCountInRange:
         # Assert
         assert count == 0
 
-    def test_get_active_count_in_range_boundary_inclusive(self, db: Session):
+    def test_get_active_count_in_range_boundary_inclusive(self, db: Session) -> None:
         """Should include connections at start boundary but exclude end boundary (half-open interval)."""
         # Arrange
         user = create_user(db)
@@ -159,7 +159,7 @@ class TestUserConnectionServiceGetActiveCountInRange:
 class TestUserConnectionServiceCreate:
     """Test creating user connections."""
 
-    def test_create_user_connection_basic(self, db: Session):
+    def test_create_user_connection_basic(self, db: Session) -> None:
         """Should create user connection with all required fields."""
         # Arrange
         user = create_user(db)
@@ -190,7 +190,7 @@ class TestUserConnectionServiceCreate:
         assert connection.created_at is not None
         assert connection.updated_at is not None
 
-    def test_create_user_connection_generates_id_and_timestamps(self, db: Session):
+    def test_create_user_connection_generates_id_and_timestamps(self, db: Session) -> None:
         """Should auto-generate ID and timestamps."""
         # Arrange
         user = create_user(db)
@@ -213,7 +213,7 @@ class TestUserConnectionServiceCreate:
         # Verify timestamps are recent
         assert (datetime.now(timezone.utc) - connection.created_at).total_seconds() < 60
 
-    def test_create_user_connection_persists_to_database(self, db: Session):
+    def test_create_user_connection_persists_to_database(self, db: Session) -> None:
         """Should persist connection to database."""
         # Arrange
         user = create_user(db)
@@ -238,7 +238,7 @@ class TestUserConnectionServiceCreate:
 class TestUserConnectionServiceUpdate:
     """Test updating user connections."""
 
-    def test_update_user_connection_status(self, db: Session):
+    def test_update_user_connection_status(self, db: Session) -> None:
         """Should update connection status."""
         # Arrange
         connection = create_user_connection(db, status=ConnectionStatus.ACTIVE)
@@ -252,7 +252,7 @@ class TestUserConnectionServiceUpdate:
         assert updated.status == ConnectionStatus.REVOKED
         assert updated.updated_at >= connection.updated_at
 
-    def test_update_user_connection_tokens(self, db: Session):
+    def test_update_user_connection_tokens(self, db: Session) -> None:
         """Should update access and refresh tokens."""
         # Arrange
         connection = create_user_connection(db)
@@ -274,7 +274,7 @@ class TestUserConnectionServiceUpdate:
         assert updated.refresh_token == "new_refresh_token"
         assert updated.token_expires_at == new_expires
 
-    def test_update_user_connection_last_synced_at(self, db: Session):
+    def test_update_user_connection_last_synced_at(self, db: Session) -> None:
         """Should update last_synced_at timestamp."""
         # Arrange
         connection = create_user_connection(db, last_synced_at=None)
@@ -290,7 +290,7 @@ class TestUserConnectionServiceUpdate:
         assert updated.last_synced_at is not None
         assert (now - updated.last_synced_at).total_seconds() < 1
 
-    def test_update_user_connection_sets_updated_at(self, db: Session):
+    def test_update_user_connection_sets_updated_at(self, db: Session) -> None:
         """Should automatically update updated_at timestamp."""
         # Arrange
         connection = create_user_connection(db)
@@ -305,7 +305,7 @@ class TestUserConnectionServiceUpdate:
         assert updated is not None
         assert updated.updated_at > original_updated_at
 
-    def test_update_nonexistent_connection_returns_none(self, db: Session):
+    def test_update_nonexistent_connection_returns_none(self, db: Session) -> None:
         """Should return None when updating non-existent connection."""
         # Arrange
         fake_id = uuid4()
@@ -317,7 +317,7 @@ class TestUserConnectionServiceUpdate:
         # Assert
         assert result is None
 
-    def test_update_user_connection_partial_update(self, db: Session):
+    def test_update_user_connection_partial_update(self, db: Session) -> None:
         """Should update only specified fields."""
         # Arrange
         connection = create_user_connection(
@@ -342,7 +342,7 @@ class TestUserConnectionServiceUpdate:
 class TestUserConnectionServiceGet:
     """Test getting user connections."""
 
-    def test_get_existing_connection(self, db: Session):
+    def test_get_existing_connection(self, db: Session) -> None:
         """Should retrieve existing connection by ID."""
         # Arrange
         connection = create_user_connection(db, provider="garmin")
@@ -355,7 +355,7 @@ class TestUserConnectionServiceGet:
         assert retrieved.id == connection.id
         assert retrieved.provider == "garmin"
 
-    def test_get_nonexistent_connection_returns_none(self, db: Session):
+    def test_get_nonexistent_connection_returns_none(self, db: Session) -> None:
         """Should return None for non-existent connection."""
         # Arrange
         fake_id = uuid4()
@@ -370,7 +370,7 @@ class TestUserConnectionServiceGet:
 class TestUserConnectionServiceDelete:
     """Test deleting user connections."""
 
-    def test_delete_existing_connection(self, db: Session):
+    def test_delete_existing_connection(self, db: Session) -> None:
         """Should delete existing connection."""
         # Arrange
         connection = create_user_connection(db)
@@ -383,7 +383,7 @@ class TestUserConnectionServiceDelete:
         result = user_connection_service.get(db, connection_id)
         assert result is None
 
-    def test_delete_nonexistent_connection(self, db: Session):
+    def test_delete_nonexistent_connection(self, db: Session) -> None:
         """Should handle deleting non-existent connection gracefully."""
         # Arrange
         fake_id = uuid4()
@@ -395,7 +395,7 @@ class TestUserConnectionServiceDelete:
 class TestUserConnectionServiceConnectionStatus:
     """Test connection status management."""
 
-    def test_create_connection_with_different_statuses(self, db: Session):
+    def test_create_connection_with_different_statuses(self, db: Session) -> None:
         """Should create connections with different status values."""
         # Arrange
         user = create_user(db)
@@ -408,7 +408,7 @@ class TestUserConnectionServiceConnectionStatus:
             connection = create_user_connection(db, user=user, provider=provider, status=status)
             assert connection.status == status
 
-    def test_update_connection_status_transitions(self, db: Session):
+    def test_update_connection_status_transitions(self, db: Session) -> None:
         """Should handle status transitions."""
         # Arrange
         connection = create_user_connection(db, status=ConnectionStatus.ACTIVE)

@@ -11,6 +11,7 @@ Tests cover:
 
 from abc import ABC
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,12 +26,12 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 class TestBaseOAuthTemplate:
     """Test suite for BaseOAuthTemplate."""
 
-    def test_is_abstract_class(self):
+    def test_is_abstract_class(self) -> None:
         """Should be an abstract base class."""
         # Assert
         assert issubclass(BaseOAuthTemplate, ABC)
 
-    def test_cannot_instantiate_directly(self):
+    def test_cannot_instantiate_directly(self) -> None:
         """Should not allow direct instantiation."""
         # Arrange
         mock_user_repo = MagicMock(spec=UserRepository)
@@ -47,13 +48,13 @@ class TestBaseOAuthTemplate:
 
         assert "Can't instantiate abstract class" in str(exc_info.value)
 
-    def test_has_required_abstract_properties(self):
+    def test_has_required_abstract_properties(self) -> None:
         """Should define required abstract properties."""
         # Assert
         assert hasattr(BaseOAuthTemplate, "endpoints")
         assert hasattr(BaseOAuthTemplate, "credentials")
 
-    def test_default_pkce_disabled(self):
+    def test_default_pkce_disabled(self) -> None:
         """Should have PKCE disabled by default."""
         # Assert
         assert BaseOAuthTemplate.use_pkce is False
@@ -62,12 +63,12 @@ class TestBaseOAuthTemplate:
 class TestBaseWorkoutsTemplate:
     """Test suite for BaseWorkoutsTemplate."""
 
-    def test_is_abstract_class(self):
+    def test_is_abstract_class(self) -> None:
         """Should be an abstract base class."""
         # Assert
         assert issubclass(BaseWorkoutsTemplate, ABC)
 
-    def test_cannot_instantiate_directly(self):
+    def test_cannot_instantiate_directly(self) -> None:
         """Should not allow direct instantiation."""
         # Arrange
         mock_workout_repo = MagicMock(spec=EventRecordRepository)
@@ -86,7 +87,7 @@ class TestBaseWorkoutsTemplate:
 
         assert "Can't instantiate abstract class" in str(exc_info.value)
 
-    def test_has_required_abstract_methods(self):
+    def test_has_required_abstract_methods(self) -> None:
         """Should define required abstract methods."""
         # Assert
         assert hasattr(BaseWorkoutsTemplate, "get_workouts")
@@ -94,16 +95,16 @@ class TestBaseWorkoutsTemplate:
         assert callable(getattr(BaseWorkoutsTemplate, "get_workouts"))
         assert callable(getattr(BaseWorkoutsTemplate, "_normalize_workout"))
 
-    def test_extract_dates_default_implementation(self):
+    def test_extract_dates_default_implementation(self) -> None:
         """Should have default _extract_dates implementation for datetime objects."""
         # This test verifies the documented behavior in base template
 
         # Create a concrete implementation for testing
         class ConcreteWorkoutsTemplate(BaseWorkoutsTemplate):
-            def get_workouts(self, db, user_id, start_date, end_date):
+            def get_workouts(self, db: Any, user_id: Any, start_date: Any, end_date: Any) -> list:
                 return []
 
-            def _normalize_workout(self, raw_workout, user_id):
+            def _normalize_workout(self, raw_workout: Any, user_id: Any) -> None:
                 pass
 
         # Arrange

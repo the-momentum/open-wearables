@@ -27,7 +27,7 @@ class TestExternalMappingRepository:
         """Create ExternalMappingRepository instance."""
         return ExternalMappingRepository(ExternalDeviceMapping)
 
-    def test_create(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_create(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test creating a new external mapping."""
         # Arrange
         user = create_user(db)
@@ -54,7 +54,7 @@ class TestExternalMappingRepository:
         assert db_mapping is not None
         assert db_mapping.provider_id == "apple"
 
-    def test_create_with_none_provider_and_device(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_create_with_none_provider_and_device(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test creating a mapping with None provider_id and device_id."""
         # Arrange
         user = create_user(db)
@@ -75,7 +75,7 @@ class TestExternalMappingRepository:
         assert result.provider_id is None
         assert result.device_id is None
 
-    def test_get(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a mapping by ID."""
         # Arrange
         mapping = create_external_device_mapping(db, provider_id="garmin", device_id="edge530")
@@ -89,7 +89,7 @@ class TestExternalMappingRepository:
         assert result.provider_id == "garmin"
         assert result.device_id == "edge530"
 
-    def test_get_nonexistent(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_nonexistent(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a nonexistent mapping returns None."""
         # Act
         result = mapping_repo.get(db, uuid4())
@@ -97,7 +97,7 @@ class TestExternalMappingRepository:
         # Assert
         assert result is None
 
-    def test_get_by_identity(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_by_identity(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a mapping by user_id, provider_id, and device_id."""
         # Arrange
         user = create_user(db)
@@ -118,7 +118,7 @@ class TestExternalMappingRepository:
         assert result.provider_id == "apple"
         assert result.device_id == "watch456"
 
-    def test_get_by_identity_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_by_identity_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a mapping with None provider_id and device_id.
 
         Note: SQL NULL comparisons (column == NULL) return NULL, not TRUE.
@@ -141,7 +141,7 @@ class TestExternalMappingRepository:
         # This documents current behavior - would need IS NULL in query to fix
         assert result is None  # This is expected due to SQL NULL semantics
 
-    def test_get_by_identity_not_found(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_by_identity_not_found(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test get_by_identity returns None when no matching mapping exists."""
         # Arrange
         user = create_user(db)
@@ -153,7 +153,7 @@ class TestExternalMappingRepository:
         # Assert
         assert result is None
 
-    def test_get_by_identity_different_users(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_by_identity_different_users(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that get_by_identity respects user_id."""
         # Arrange
         user1 = create_user(db)
@@ -169,7 +169,7 @@ class TestExternalMappingRepository:
         assert result.id == mapping1.id
         assert result.user_id == user1.id
 
-    def test_ensure_mapping_creates_new(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_creates_new(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that ensure_mapping creates a new mapping when none exists."""
         # Arrange
         user = create_user(db)
@@ -195,7 +195,7 @@ class TestExternalMappingRepository:
         assert db_mapping is not None
         assert db_mapping.id == result.id
 
-    def test_ensure_mapping_returns_existing(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_returns_existing(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that ensure_mapping returns existing mapping if it exists."""
         # Arrange
         user = create_user(db)
@@ -223,7 +223,9 @@ class TestExternalMappingRepository:
         suunto_mappings = [m for m in all_mappings if m.provider_id == "suunto" and m.device_id == "spartan"]
         assert len(suunto_mappings) == 1
 
-    def test_ensure_mapping_uses_provided_mapping_id(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_uses_provided_mapping_id(
+        self, db: Session, mapping_repo: ExternalMappingRepository,
+    ) -> None:
         """Test that ensure_mapping uses the provided mapping_id if it exists."""
         # Arrange
         user = create_user(db)
@@ -247,7 +249,9 @@ class TestExternalMappingRepository:
         assert result is not None
         assert result.id == existing_mapping.id
 
-    def test_ensure_mapping_creates_with_specific_id(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_creates_with_specific_id(
+        self, db: Session, mapping_repo: ExternalMappingRepository,
+    ) -> None:
         """Test that ensure_mapping creates mapping with specific ID if provided and not found."""
         # Arrange
         user = create_user(db)
@@ -267,7 +271,7 @@ class TestExternalMappingRepository:
         assert result.id == specific_id
         assert result.user_id == user.id
 
-    def test_ensure_mapping_idempotent(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_idempotent(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that calling ensure_mapping multiple times is idempotent."""
         # Arrange
         user = create_user(db)
@@ -292,7 +296,7 @@ class TestExternalMappingRepository:
         # Assert
         assert result1.id == result2.id
 
-    def test_get_all(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_all(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test listing all mappings."""
         # Arrange
         user = create_user(db)
@@ -308,7 +312,7 @@ class TestExternalMappingRepository:
         assert mapping1.id in mapping_ids
         assert mapping2.id in mapping_ids
 
-    def test_get_all_with_provider_filter(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_all_with_provider_filter(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test filtering mappings by provider_id."""
         # Arrange
         user = create_user(db)
@@ -330,7 +334,7 @@ class TestExternalMappingRepository:
         assert len(apple_mappings) >= 1
         assert mapping1.id in [m.id for m in apple_mappings]
 
-    def test_get_all_with_device_filter(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_all_with_device_filter(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test filtering mappings by device_id."""
         # Arrange
         user = create_user(db)
@@ -351,7 +355,7 @@ class TestExternalMappingRepository:
         assert len(device_mappings) >= 1
         assert mapping1.id in [m.id for m in device_mappings]
 
-    def test_update(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_update(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test updating a mapping."""
         # Arrange
         mapping = create_external_device_mapping(db, provider_id="apple", device_id="old_device")
@@ -372,7 +376,7 @@ class TestExternalMappingRepository:
         db_mapping = mapping_repo.get(db, mapping.id)
         assert db_mapping.device_id == "new_device"
 
-    def test_delete(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_delete(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test deleting a mapping."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -386,7 +390,7 @@ class TestExternalMappingRepository:
         deleted_mapping = mapping_repo.get(db, mapping_id)
         assert deleted_mapping is None
 
-    def test_multiple_mappings_same_user(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_multiple_mappings_same_user(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that a user can have multiple mappings."""
         # Arrange
         user = create_user(db)
@@ -405,7 +409,7 @@ class TestExternalMappingRepository:
         assert mapping2.id in mapping_ids
         assert mapping3.id in mapping_ids
 
-    def test_get_by_identity_partial_match_fails(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_get_by_identity_partial_match_fails(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that all three fields must match for get_by_identity."""
         # Arrange
         user = create_user(db)
@@ -417,7 +421,7 @@ class TestExternalMappingRepository:
         # Assert
         assert result is None
 
-    def test_ensure_mapping_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_ensure_mapping_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test ensure_mapping with None provider_id and device_id."""
         # Arrange
         user = create_user(db)
@@ -447,7 +451,7 @@ class TestExternalMappingRepository:
         )
         assert result2.id == result.id
 
-    def test_build_identity_filter(self, db: Session, mapping_repo: ExternalMappingRepository):
+    def test_build_identity_filter(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that the identity filter correctly uses AND logic."""
         # Arrange
         user1 = create_user(db)

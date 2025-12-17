@@ -10,10 +10,12 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from jose import jwt
+from sqlalchemy.orm import Session
 
 from app.schemas.oauth import ConnectionStatus
 from app.services.providers.suunto.strategy import SuuntoStrategy
@@ -24,12 +26,12 @@ class TestSuuntoImport:
     """Integration tests for Suunto data import."""
 
     @pytest.fixture
-    def suunto_strategy(self):
+    def suunto_strategy(self) -> SuuntoStrategy:
         """Create SuuntoStrategy instance for testing."""
         return SuuntoStrategy()
 
     @pytest.fixture
-    def sample_suunto_api_response(self):
+    def sample_suunto_api_response(self) -> dict[str, Any]:
         """Sample Suunto API response with multiple workouts."""
         return {
             "error": None,
@@ -86,7 +88,9 @@ class TestSuuntoImport:
         }
 
     @patch("httpx.post")
-    def test_oauth_token_exchange_with_jwt(self, mock_post, suunto_strategy, db):
+    def test_oauth_token_exchange_with_jwt(
+        self, mock_post: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+    ) -> None:
         """Should exchange OAuth code and decode JWT for user info."""
         # Arrange
         user = create_user(db)
@@ -134,41 +138,42 @@ class TestSuuntoImport:
             assert connection.provider_user_id == "suunto_user_12345"
             assert connection.provider_username == "test_suunto_athlete"
 
-    @patch.object(SuuntoStrategy, "workouts")
-    def test_fetch_workouts_from_api(self, mock_workouts, suunto_strategy, db, sample_suunto_api_response):
+    def test_fetch_workouts_from_api(
+        self, suunto_strategy: SuuntoStrategy, db: Session, sample_suunto_api_response: dict[str, Any],
+    ) -> None:
         """Should fetch workouts from Suunto API."""
         # Arrange
         user = create_user(db)
         create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
-        mock_workouts.get_workouts_from_api.return_value = sample_suunto_api_response
+        # Mock the get_workouts_from_api method directly on the instance
+        with patch.object(suunto_strategy.workouts, "get_workouts_from_api", return_value=sample_suunto_api_response):
+            # Act
+            result = suunto_strategy.workouts.get_workouts_from_api(
+                db,
+                user.id,
+                since=0,
+                limit=50,
+            )
 
-        # Act
-        result = suunto_strategy.workouts.get_workouts_from_api(
-            db,
-            user.id,
-            since=0,
-            limit=50,
-        )
-
-        # Assert
-        assert result["error"] is None
-        assert len(result["payload"]) == 2
-        assert result["payload"][0]["activityId"] == 1  # Running
-        assert result["payload"][1]["activityId"] == 2  # Cycling
+            # Assert
+            assert result["error"] is None
+            assert len(result["payload"]) == 2
+            assert result["payload"][0]["activityId"] == 1  # Running
+            assert result["payload"][1]["activityId"] == 2  # Cycling
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
     def test_load_data_creates_event_records(
         self,
-        mock_create_detail,
-        mock_create,
-        mock_request,
-        suunto_strategy,
-        db,
-        sample_suunto_api_response,
-    ):
+        mock_create_detail: MagicMock,
+        mock_create: MagicMock,
+        mock_request: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
+        sample_suunto_api_response: dict[str, Any],
+    ) -> None:
         """Should load data and create event records in database."""
         # Arrange
         user = create_user(db)
@@ -183,7 +188,7 @@ class TestSuuntoImport:
         assert mock_create.call_count == 2  # Two workouts
         assert mock_create_detail.call_count == 2  # Two workout details
 
-    def test_workout_type_mapping(self, suunto_strategy):
+    def test_workout_type_mapping(self, suunto_strategy: SuuntoStrategy) -> None:
         """Should correctly map Suunto activity IDs to unified workout types."""
         # Arrange
         from app.constants.workout_types.suunto import get_unified_workout_type
@@ -197,7 +202,9 @@ class TestSuuntoImport:
         assert get_unified_workout_type(999) == WorkoutType.OTHER  # Unknown activity
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    def test_get_workout_detail_from_api(self, mock_request, suunto_strategy, db):
+    def test_get_workout_detail_from_api(
+        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+    ) -> None:
         """Should fetch detailed workout data from API."""
         # Arrange
         user = create_user(db)
@@ -222,7 +229,9 @@ class TestSuuntoImport:
         mock_request.assert_called_once()
 
     @patch("httpx.post")
-    def test_token_refresh_flow(self, mock_post, suunto_strategy, db):
+    def test_token_refresh_flow(
+        self, mock_post: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+    ) -> None:
         """Should refresh expired access tokens."""
         # Arrange
         user = create_user(db)
@@ -258,16 +267,21 @@ class TestSuuntoImport:
         assert connection.refresh_token == "new_refresh_token"
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    def test_subscription_key_included_in_requests(self, mock_request, suunto_strategy, db):
+    def test_subscription_key_included_in_requests(
+        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+    ) -> None:
         """Should include subscription key in API requests."""
         # Arrange
         user = create_user(db)
         create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
-        with patch.object(suunto_strategy.oauth, "credentials") as mock_creds:
-            mock_creds.subscription_key = "test_subscription_key"
-            mock_request.return_value = {"payload": []}
+        # Mock the credentials property to return a mock with subscription_key
+        mock_creds = MagicMock()
+        mock_creds.subscription_key = "test_subscription_key"
+        mock_request.return_value = {"payload": []}
 
+        # Patch the credentials property using PropertyMock
+        with patch.object(type(suunto_strategy.oauth), "credentials", new_callable=lambda: mock_creds):
             # Act
             suunto_strategy.workouts.get_workouts_from_api(db, user.id, since=0, limit=10)
 
@@ -279,7 +293,9 @@ class TestSuuntoImport:
             assert headers["Ocp-Apim-Subscription-Key"] == "test_subscription_key"
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
-    def test_error_response_handling(self, mock_request, suunto_strategy, db):
+    def test_error_response_handling(
+        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+    ) -> None:
         """Should handle API error responses gracefully."""
         # Arrange
         user = create_user(db)

@@ -19,7 +19,7 @@ from app.tests.utils import create_api_key, create_developer, developer_auth_hea
 class TestListApiKeys:
     """Tests for GET /api/v1/developer/api-keys."""
 
-    def test_list_api_keys_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_list_api_keys_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test listing API keys for authenticated developer."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -48,7 +48,7 @@ class TestListApiKeys:
             assert "created_by" in key
             assert "created_at" in key
 
-    def test_list_api_keys_empty(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_list_api_keys_empty(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test listing API keys when developer has none."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -62,13 +62,15 @@ class TestListApiKeys:
         data = response.json()
         assert isinstance(data, list)
 
-    def test_list_api_keys_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_list_api_keys_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing API keys fails without authentication."""
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.get(f"{api_v1_prefix}/developer/api-keys")
+        # Act
+        response = client.get(f"{api_v1_prefix}/developer/api-keys")
 
-    def test_list_api_keys_invalid_token(self, client: TestClient, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_list_api_keys_invalid_token(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing API keys fails with invalid token."""
         # Act
         response = client.get(
@@ -79,7 +81,7 @@ class TestListApiKeys:
         # Assert
         assert response.status_code == 401
 
-    def test_list_api_keys_shows_all_keys(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_list_api_keys_shows_all_keys(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that authenticated developer can see all API keys."""
         # Arrange
         developer1 = create_developer(db, email="dev1@example.com", password="test123")
@@ -102,7 +104,7 @@ class TestListApiKeys:
 class TestCreateApiKey:
     """Tests for POST /api/v1/developer/api-keys."""
 
-    def test_create_api_key_with_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_api_key_with_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key with custom name."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -128,7 +130,7 @@ class TestCreateApiKey:
         assert api_key is not None
         assert api_key.name == "Production API Key"
 
-    def test_create_api_key_default_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_api_key_default_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key with default name."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -144,7 +146,7 @@ class TestCreateApiKey:
         assert data["name"] == "Default"
         assert "id" in data
 
-    def test_create_api_key_no_body(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_api_key_no_body(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key without request body."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -158,7 +160,7 @@ class TestCreateApiKey:
         data = response.json()
         assert data["name"] == "Default"
 
-    def test_create_api_key_empty_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_create_api_key_empty_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating API key with empty name."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -173,16 +175,18 @@ class TestCreateApiKey:
         data = response.json()
         assert data["name"] == ""
 
-    def test_create_api_key_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_create_api_key_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test creating API key fails without authentication."""
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.post(
-                f"{api_v1_prefix}/developer/api-keys",
-                json={"name": "Test Key"},
-            )
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/developer/api-keys",
+            json={"name": "Test Key"},
+        )
 
-    def test_create_multiple_api_keys(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_create_multiple_api_keys(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test creating multiple API keys for the same developer."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -213,7 +217,7 @@ class TestCreateApiKey:
 class TestDeleteApiKey:
     """Tests for DELETE /api/v1/developer/api-keys/{key_id}."""
 
-    def test_delete_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting API key successfully."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -236,7 +240,7 @@ class TestDeleteApiKey:
         deleted_key = api_key_service.get(db, key_id, raise_404=False)
         assert deleted_key is None
 
-    def test_delete_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent API key raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -249,17 +253,19 @@ class TestDeleteApiKey:
         with pytest.raises(ResourceNotFoundError):
             client.delete(f"{api_v1_prefix}/developer/api-keys/{fake_key_id}", headers=headers)
 
-    def test_delete_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting API key fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
         api_key = create_api_key(db, developer=developer)
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.delete(f"{api_v1_prefix}/developer/api-keys/{api_key.id}")
+        # Act
+        response = client.delete(f"{api_v1_prefix}/developer/api-keys/{api_key.id}")
 
-    def test_delete_api_key_invalid_token(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_delete_api_key_invalid_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting API key fails with invalid token."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -278,7 +284,7 @@ class TestDeleteApiKey:
 class TestUpdateApiKey:
     """Tests for PATCH /api/v1/developer/api-keys/{key_id}."""
 
-    def test_update_api_key_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_api_key_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating API key name."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -303,7 +309,7 @@ class TestUpdateApiKey:
         db.refresh(api_key)
         assert api_key.name == "New Name"
 
-    def test_update_api_key_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_api_key_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating API key with empty payload."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -323,7 +329,7 @@ class TestUpdateApiKey:
         data = response.json()
         assert data["name"] == "Original Name"
 
-    def test_update_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent API key raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -341,25 +347,27 @@ class TestUpdateApiKey:
                 headers=headers,
             )
 
-    def test_update_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating API key fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
         api_key = create_api_key(db, developer=developer)
         payload = {"name": "New Name"}
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.patch(
-                f"{api_v1_prefix}/developer/api-keys/{api_key.id}",
-                json=payload,
-            )
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developer/api-keys/{api_key.id}",
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 401
 
 
 class TestRotateApiKey:
     """Tests for POST /api/v1/developer/api-keys/{key_id}/rotate."""
 
-    def test_rotate_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_rotate_api_key_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating API key successfully."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -392,7 +400,7 @@ class TestRotateApiKey:
         assert new_key is not None
         assert new_key.name == "Default"
 
-    def test_rotate_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_rotate_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating non-existent API key raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -408,17 +416,19 @@ class TestRotateApiKey:
                 headers=headers,
             )
 
-    def test_rotate_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_rotate_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating API key fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
         api_key = create_api_key(db, developer=developer)
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.post(f"{api_v1_prefix}/developer/api-keys/{api_key.id}/rotate")
+        # Act
+        response = client.post(f"{api_v1_prefix}/developer/api-keys/{api_key.id}/rotate")
 
-    def test_rotate_api_key_invalid_token(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_rotate_api_key_invalid_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating API key fails with invalid token."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -433,7 +443,7 @@ class TestRotateApiKey:
         # Assert
         assert response.status_code == 401
 
-    def test_rotate_preserves_key_name(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_rotate_preserves_key_name(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that rotation creates new key with default name (not preserving original)."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -452,7 +462,7 @@ class TestRotateApiKey:
         # The new key gets default name (implementation doesn't preserve original name)
         assert data["name"] == "Default"
 
-    def test_rotate_multiple_times(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_rotate_multiple_times(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating the same API key multiple times."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")

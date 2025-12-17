@@ -4,6 +4,7 @@ Integration tests for Polar data import.
 Tests end-to-end import flows for Polar exercise data through API endpoints.
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,7 +15,7 @@ from app.tests.utils import api_key_headers, create_api_key, create_developer, c
 
 
 @pytest.fixture
-def sample_polar_exercise():
+def sample_polar_exercise() -> dict[str, Any]:
     """Sample Polar exercise JSON data."""
     return {
         "id": "ABC123",
@@ -42,7 +43,9 @@ class TestPolarOAuthFlow:
     """Tests for Polar OAuth authorization and callback flow."""
 
     @patch("app.integrations.redis_client.get_redis_client")
-    def test_get_polar_authorization_url(self, mock_redis_client, client: TestClient, db: Session):
+    def test_get_polar_authorization_url(
+        self, mock_redis_client: MagicMock, client: TestClient, db: Session,
+    ) -> None:
         """Test getting Polar authorization URL."""
         # Arrange
         user = create_user(db)
@@ -54,9 +57,9 @@ class TestPolarOAuthFlow:
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
 
-        # Act
+        # Act - Endpoint is /oauth/polar/authorize with user_id as query param
         response = client.get(
-            f"/api/v1/users/{user.id}/connections/polar/authorize",
+            f"/api/v1/oauth/polar/authorize?user_id={user.id}",
             headers=headers,
         )
 
@@ -66,23 +69,32 @@ class TestPolarOAuthFlow:
             data = response.json()
             assert "authorization_url" in data or "url" in data
 
-    @patch("app.integrations.redis_client.get_redis_client")
+    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client")
     @patch("httpx.post")
-    def test_polar_oauth_callback_success(self, mock_post, mock_redis_client, client: TestClient, db: Session):
+    def test_polar_oauth_callback_success(
+        self,
+        mock_post: MagicMock,
+        mock_redis_client: MagicMock,
+        mock_celery_task: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
         """Test successful Polar OAuth callback."""
         # Arrange
         user = create_user(db)
         developer = create_developer(db)
         create_api_key(db, developer=developer)
 
-        # Mock Redis for state validation
+        # Mock Redis for state validation - must return proper state data
         mock_redis = MagicMock()
+        import json
         state_data = {
             "user_id": str(user.id),
             "provider": "polar",
             "redirect_uri": None,
         }
-        mock_redis.get.return_value = str(state_data).encode("utf-8")
+        mock_redis.get.return_value = json.dumps(state_data).encode("utf-8")
         mock_redis.delete.return_value = True
         mock_redis_client.return_value = mock_redis
 
@@ -98,21 +110,26 @@ class TestPolarOAuthFlow:
         }
         mock_post.return_value = mock_token_response
 
-        # Act
+        # Mock Celery task
+        mock_celery_task.return_value = MagicMock()
+
+        # Act - Endpoint is /oauth/polar/callback
         response = client.get(
-            "/api/v1/oauth/callback",
+            "/api/v1/oauth/polar/callback",
             params={"code": "test_code", "state": "test_state"},
         )
 
-        # Assert - May redirect or return connection info
-        assert response.status_code in [200, 302, 307, 422]
+        # Assert - May redirect or return connection info (303 is most common for OAuth redirects)
+        assert response.status_code in [200, 302, 303, 307, 422]
 
 
 class TestPolarWorkoutsAPI:
     """Tests for Polar workouts API endpoints."""
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_polar_workouts_list(self, mock_request, client: TestClient, db: Session, sample_polar_exercise):
+    def test_get_polar_workouts_list(
+        self, mock_request: MagicMock, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any],
+    ) -> None:
         """Test getting list of Polar workouts."""
         # Arrange
         user = create_user(db)
@@ -133,7 +150,9 @@ class TestPolarWorkoutsAPI:
         assert response.status_code in [200, 404, 422]
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_polar_workout_detail(self, mock_request, client: TestClient, db: Session, sample_polar_exercise):
+    def test_get_polar_workout_detail(
+        self, mock_request: MagicMock, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any],
+    ) -> None:
         """Test getting detailed Polar workout data."""
         # Arrange
         user = create_user(db)
@@ -155,7 +174,7 @@ class TestPolarWorkoutsAPI:
         assert response.status_code in [200, 404, 422]
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_get_polar_workouts_with_samples(self, mock_request, client: TestClient, db: Session):
+    def test_get_polar_workouts_with_samples(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
         """Test getting Polar workouts with samples parameter."""
         # Arrange
         user = create_user(db)
@@ -176,7 +195,7 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    def test_get_polar_workouts_no_connection(self, client: TestClient, db: Session):
+    def test_get_polar_workouts_no_connection(self, client: TestClient, db: Session) -> None:
         """Test getting Polar workouts without active connection."""
         # Arrange
         user = create_user(db)
@@ -202,13 +221,13 @@ class TestPolarDataSync:
     @patch("app.services.event_record_service.event_record_service.create_detail")
     def test_sync_polar_data_success(
         self,
-        mock_create_detail,
-        mock_create,
-        mock_request,
+        mock_create_detail: MagicMock,
+        mock_create: MagicMock,
+        mock_request: MagicMock,
         client: TestClient,
         db: Session,
-        sample_polar_exercise,
-    ):
+        sample_polar_exercise: dict[str, Any],
+    ) -> None:
         """Test successful Polar data sync."""
         # Arrange
         user = create_user(db)
@@ -229,7 +248,7 @@ class TestPolarDataSync:
         assert response.status_code in [200, 201, 202, 404, 422]
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
-    def test_sync_polar_data_with_date_range(self, mock_request, client: TestClient, db: Session):
+    def test_sync_polar_data_with_date_range(self, mock_request: MagicMock, client: TestClient, db: Session) -> None:
         """Test syncing Polar data with specific date range."""
         # Arrange
         user = create_user(db)
@@ -253,7 +272,7 @@ class TestPolarDataSync:
         # Assert
         assert response.status_code in [200, 201, 202, 404, 422]
 
-    def test_sync_polar_data_no_connection(self, client: TestClient, db: Session):
+    def test_sync_polar_data_no_connection(self, client: TestClient, db: Session) -> None:
         """Test syncing Polar data without connection returns error."""
         # Arrange
         user = create_user(db)

@@ -26,11 +26,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_success(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test successful sync of vendor data."""
         # Arrange
         user = create_user(db)
@@ -71,11 +71,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_with_date_range(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test sync with specific date range."""
         # Arrange
         user = create_user(db)
@@ -113,11 +113,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_multiple_providers(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test sync with multiple provider connections."""
         # Arrange
         user = create_user(db)
@@ -149,11 +149,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_specific_providers_only(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test sync with specific provider filter."""
         # Arrange
         user = create_user(db)
@@ -182,10 +182,10 @@ class TestSyncVendorDataTask:
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
     def test_sync_vendor_data_no_active_connections(
         self,
-        mock_session_local,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test sync when user has no active connections."""
         # Arrange
         user = create_user(db)
@@ -212,11 +212,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_provider_error(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test handling of provider API errors."""
         # Arrange
         user = create_user(db)
@@ -241,11 +241,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_sync_returns_false(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test handling when provider sync returns False."""
         # Arrange
         user = create_user(db)
@@ -273,11 +273,11 @@ class TestSyncVendorDataTask:
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
     def test_sync_vendor_data_workouts_not_supported(
         self,
-        mock_get_provider,
-        mock_session_local,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test handling when provider doesn't support workouts."""
         # Arrange
         user = create_user(db)
@@ -299,7 +299,7 @@ class TestSyncVendorDataTask:
         assert result["errors"]["garmin"] == "Workouts not supported"
         assert result["providers_synced"] == {}
 
-    def test_sync_vendor_data_invalid_user_id(self, mock_celery_app):
+    def test_sync_vendor_data_invalid_user_id(self, mock_celery_app: MagicMock) -> None:
         """Test handling of invalid user ID format."""
         # Act
         result = sync_vendor_data("not-a-valid-uuid")
@@ -313,7 +313,7 @@ class TestSyncVendorDataTask:
 class TestBuildSyncParams:
     """Test suite for _build_sync_params helper function."""
 
-    def test_build_sync_params_suunto(self):
+    def test_build_sync_params_suunto(self) -> None:
         """Test building Suunto-specific parameters."""
         # Arrange
         start_date = "2025-01-01T00:00:00Z"
@@ -331,7 +331,7 @@ class TestBuildSyncParams:
         assert params["filter_by_modification_time"] is True
         assert isinstance(params["since"], int)
 
-    def test_build_sync_params_polar(self):
+    def test_build_sync_params_polar(self) -> None:
         """Test building Polar-specific parameters."""
         # Arrange
         start_date = "2025-01-01T00:00:00Z"
@@ -345,7 +345,7 @@ class TestBuildSyncParams:
         assert params["zones"] is False
         assert params["route"] is False
 
-    def test_build_sync_params_garmin(self):
+    def test_build_sync_params_garmin(self) -> None:
         """Test building Garmin-specific parameters."""
         # Arrange
         start_date = "2025-01-01T00:00:00Z"
@@ -358,7 +358,7 @@ class TestBuildSyncParams:
         assert params["summary_start_time"] == start_date
         assert params["summary_end_time"] == end_date
 
-    def test_build_sync_params_no_dates(self):
+    def test_build_sync_params_no_dates(self) -> None:
         """Test building parameters without date range."""
         # Act
         params = _build_sync_params("garmin", None, None)
@@ -367,7 +367,7 @@ class TestBuildSyncParams:
         assert "summary_start_time" not in params
         assert "summary_end_time" not in params
 
-    def test_build_sync_params_suunto_no_start_date(self):
+    def test_build_sync_params_suunto_no_start_date(self) -> None:
         """Test Suunto parameters without start date defaults to 0."""
         # Act
         params = _build_sync_params("suunto", None, None)
@@ -375,7 +375,7 @@ class TestBuildSyncParams:
         # Assert
         assert params["since"] == 0  # 0 means all history for Suunto
 
-    def test_build_sync_params_invalid_date_format(self):
+    def test_build_sync_params_invalid_date_format(self) -> None:
         """Test handling of invalid date formats."""
         # Act
         params = _build_sync_params("garmin", "invalid-date", "2025-12-31T23:59:59Z")

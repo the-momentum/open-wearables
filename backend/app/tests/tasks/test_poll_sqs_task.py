@@ -5,7 +5,8 @@ Tests SQS message polling and S3 event processing.
 """
 
 import json
-from unittest.mock import ANY, patch
+from typing import Generator
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -13,14 +14,14 @@ from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_messages, poll_
 
 
 @pytest.fixture
-def mock_sqs():
+def mock_sqs() -> Generator[MagicMock, None, None]:
     """Mock boto3 SQS client."""
     with patch("app.integrations.celery.tasks.poll_sqs_task.sqs") as mock:
         yield mock
 
 
 @pytest.fixture
-def mock_process_upload():
+def mock_process_upload() -> Generator[MagicMock, None, None]:
     """Mock process_uploaded_file task."""
     with patch("app.integrations.celery.tasks.poll_sqs_task.process_uploaded_file") as mock:
         yield mock
@@ -29,7 +30,7 @@ def mock_process_upload():
 class TestPollSqsMessages:
     """Test suite for poll_sqs_messages task."""
 
-    def test_poll_sqs_no_messages(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_no_messages(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test SQS returns empty messages list."""
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}
@@ -42,7 +43,7 @@ class TestPollSqsMessages:
         mock_process_upload.delay.assert_not_called()
         mock_sqs.delete_message.assert_not_called()
 
-    def test_poll_sqs_single_message_processed(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_single_message_processed(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test processing a single valid S3 event message."""
         # Arrange
         message = {
@@ -69,7 +70,7 @@ class TestPollSqsMessages:
         mock_process_upload.delay.assert_called_once_with("test-bucket", "test-key")
         mock_sqs.delete_message.assert_called_once()
 
-    def test_poll_sqs_multiple_messages_processed(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_multiple_messages_processed(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test processing multiple S3 event messages."""
         # Arrange
         messages = [
@@ -126,7 +127,7 @@ class TestPollSqsMessages:
         assert mock_process_upload.delay.call_count == 3
         assert mock_sqs.delete_message.call_count == 3
 
-    def test_poll_sqs_invalid_message_format_skipped(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_invalid_message_format_skipped(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test non-JSON message is skipped, deleted, and counted as failed."""
         # Arrange
         message = {"Body": "not-valid-json{{{", "ReceiptHandle": "receipt-123", "MessageId": "msg-123"}
@@ -143,7 +144,7 @@ class TestPollSqsMessages:
             ReceiptHandle="receipt-123",
         )
 
-    def test_poll_sqs_no_records_field(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_no_records_field(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test message without Records field is skipped and deleted."""
         # Arrange
         message = {
@@ -161,7 +162,7 @@ class TestPollSqsMessages:
         mock_process_upload.delay.assert_not_called()
         mock_sqs.delete_message.assert_called_once()
 
-    def test_poll_sqs_deletes_processed_messages(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_deletes_processed_messages(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test SQS delete_message is called with correct receipt handle."""
         # Arrange
         message = {
@@ -189,7 +190,7 @@ class TestPollSqsMessages:
         assert len(delete_calls) == 1
         assert delete_calls[0].kwargs["ReceiptHandle"] == "unique-receipt-handle-789"
 
-    def test_poll_sqs_connection_error_handled(self, mock_sqs, mock_process_upload):
+    def test_poll_sqs_connection_error_handled(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
         """Test SQS client raises exception, returns error status."""
         # Arrange
         mock_sqs.receive_message.side_effect = Exception("SQS connection failed")
@@ -206,7 +207,7 @@ class TestPollSqsMessages:
 class TestPollSqsTask:
     """Test suite for poll_sqs_task wrapper task."""
 
-    def test_poll_sqs_task_schedules_next_iteration(self, mock_sqs):
+    def test_poll_sqs_task_schedules_next_iteration(self, mock_sqs: MagicMock) -> None:
         """Test poll_sqs_task schedules next iteration."""
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}
@@ -222,7 +223,7 @@ class TestPollSqsTask:
             assert call_args.kwargs["args"] == [60, 1]
             assert call_args.kwargs["countdown"] == 20
 
-    def test_poll_sqs_task_stops_after_max_iterations(self, mock_sqs):
+    def test_poll_sqs_task_stops_after_max_iterations(self, mock_sqs: MagicMock) -> None:
         """Test poll_sqs_task stops after reaching max iterations."""
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}
@@ -237,7 +238,7 @@ class TestPollSqsTask:
             assert result == {"polls_completed": num_polls}
             mock_apply_async.assert_not_called()
 
-    def test_poll_sqs_task_calls_poll_sqs_messages(self, mock_sqs):
+    def test_poll_sqs_task_calls_poll_sqs_messages(self, mock_sqs: MagicMock) -> None:
         """Test poll_sqs_task calls poll_sqs_messages."""
         # Arrange
         mock_sqs.receive_message.return_value = {"Messages": []}

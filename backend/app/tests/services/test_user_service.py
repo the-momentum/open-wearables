@@ -23,7 +23,7 @@ from app.tests.utils.factories import create_user
 class TestUserServiceCreate:
     """Test user creation with auto-generated fields."""
 
-    def test_create_user_generates_id_and_timestamp(self, db: Session):
+    def test_create_user_generates_id_and_timestamp(self, db: Session) -> None:
         """Should create user with auto-generated ID and created_at."""
         # Arrange
         payload = UserCreate(
@@ -45,7 +45,7 @@ class TestUserServiceCreate:
         # Verify timestamp is recent (within last minute)
         assert (datetime.now(timezone.utc) - user.created_at).total_seconds() < 60
 
-    def test_create_user_with_minimal_data(self, db: Session):
+    def test_create_user_with_minimal_data(self, db: Session) -> None:
         """Should create user with only email."""
         # Arrange
         payload = UserCreate(email="minimal@example.com")
@@ -60,7 +60,7 @@ class TestUserServiceCreate:
         assert user.first_name is None
         assert user.last_name is None
 
-    def test_create_user_with_external_user_id(self, db: Session):
+    def test_create_user_with_external_user_id(self, db: Session) -> None:
         """Should create user with external_user_id."""
         # Arrange
         payload = UserCreate(
@@ -74,7 +74,7 @@ class TestUserServiceCreate:
         # Assert
         assert user.external_user_id == "ext_12345"
 
-    def test_create_user_persists_to_database(self, db: Session):
+    def test_create_user_persists_to_database(self, db: Session) -> None:
         """Should persist user to database."""
         # Arrange
         payload = UserCreate(email="persist@example.com")
@@ -91,7 +91,7 @@ class TestUserServiceCreate:
 class TestUserServiceUpdate:
     """Test user update with auto-set updated_at."""
 
-    def test_update_user_sets_updated_at(self, db: Session):
+    def test_update_user_sets_updated_at(self, db: Session) -> None:
         """Should set updated_at when updating user."""
         # Arrange
         user = create_user(db, email="original@example.com")
@@ -107,7 +107,7 @@ class TestUserServiceUpdate:
         # updated_at should be more recent than created_at
         assert updated_user.updated_at >= updated_user.created_at
 
-    def test_update_user_partial_fields(self, db: Session):
+    def test_update_user_partial_fields(self, db: Session) -> None:
         """Should update only specified fields."""
         # Arrange
         user = create_user(
@@ -127,7 +127,7 @@ class TestUserServiceUpdate:
         assert updated_user.last_name == "Name"  # Unchanged
         assert updated_user.email == "original@example.com"  # Unchanged
 
-    def test_update_nonexistent_user_returns_none(self, db: Session):
+    def test_update_nonexistent_user_returns_none(self, db: Session) -> None:
         """Should return None when updating non-existent user."""
         # Arrange
         fake_id = uuid4()
@@ -139,7 +139,7 @@ class TestUserServiceUpdate:
         # Assert
         assert result is None
 
-    def test_update_user_with_raise_404(self, db: Session):
+    def test_update_user_with_raise_404(self, db: Session) -> None:
         """Should raise ResourceNotFoundError when updating non-existent user with raise_404=True."""
         # Arrange
         from app.utils.exceptions import ResourceNotFoundError
@@ -155,7 +155,7 @@ class TestUserServiceUpdate:
 class TestUserServiceGet:
     """Test getting users by ID."""
 
-    def test_get_existing_user(self, db: Session):
+    def test_get_existing_user(self, db: Session) -> None:
         """Should retrieve existing user by ID."""
         # Arrange
         user = create_user(db, email="get@example.com")
@@ -168,7 +168,7 @@ class TestUserServiceGet:
         assert retrieved.id == user.id
         assert retrieved.email == user.email
 
-    def test_get_nonexistent_user_returns_none(self, db: Session):
+    def test_get_nonexistent_user_returns_none(self, db: Session) -> None:
         """Should return None for non-existent user."""
         # Arrange
         fake_id = uuid4()
@@ -179,7 +179,7 @@ class TestUserServiceGet:
         # Assert
         assert result is None
 
-    def test_get_user_by_string_id(self, db: Session):
+    def test_get_user_by_string_id(self, db: Session) -> None:
         """Should retrieve user using string ID."""
         # Arrange
         user = create_user(db, email="string@example.com")
@@ -195,7 +195,7 @@ class TestUserServiceGet:
 class TestUserServiceDelete:
     """Test user deletion."""
 
-    def test_delete_existing_user(self, db: Session):
+    def test_delete_existing_user(self, db: Session) -> None:
         """Should delete existing user."""
         # Arrange
         user = create_user(db, email="delete@example.com")
@@ -208,7 +208,7 @@ class TestUserServiceDelete:
         result = user_service.get(db, user_id)
         assert result is None
 
-    def test_delete_nonexistent_user(self, db: Session):
+    def test_delete_nonexistent_user(self, db: Session) -> None:
         """Should handle deleting non-existent user gracefully."""
         # Arrange
         fake_id = uuid4()
@@ -220,7 +220,7 @@ class TestUserServiceDelete:
 class TestUserServiceGetCountInRange:
     """Test counting users in date range."""
 
-    def test_get_count_in_range_with_users(self, db: Session):
+    def test_get_count_in_range_with_users(self, db: Session) -> None:
         """Should count users created within date range."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -238,7 +238,7 @@ class TestUserServiceGetCountInRange:
         # Assert
         assert count == 2
 
-    def test_get_count_in_range_empty_result(self, db: Session):
+    def test_get_count_in_range_empty_result(self, db: Session) -> None:
         """Should return 0 when no users in range."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -253,7 +253,7 @@ class TestUserServiceGetCountInRange:
         # Assert
         assert count == 0
 
-    def test_get_count_in_range_boundary_inclusive(self, db: Session):
+    def test_get_count_in_range_boundary_inclusive(self, db: Session) -> None:
         """Should include users created at start boundary but exclude end boundary (half-open interval)."""
         # Arrange
         start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
@@ -273,7 +273,7 @@ class TestUserServiceGetCountInRange:
         # Assert
         assert count == 3
 
-    def test_get_count_in_range_with_no_users(self, db: Session):
+    def test_get_count_in_range_with_no_users(self, db: Session) -> None:
         """Should return 0 when no users exist at all."""
         # Arrange
         now = datetime.now(timezone.utc)

@@ -10,7 +10,7 @@ import pytest
 
 
 @pytest.fixture
-def mock_httpx_response():
+def mock_httpx_response() -> MagicMock:
     """Mock httpx response for provider API calls."""
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -20,7 +20,7 @@ def mock_httpx_response():
 
 
 @pytest.fixture
-def sample_garmin_activity():
+def sample_garmin_activity() -> dict:
     """Sample Garmin activity JSON data."""
     return {
         "activityId": 12345678901,
@@ -38,7 +38,7 @@ def sample_garmin_activity():
 
 
 @pytest.fixture
-def sample_garmin_heart_rate_samples():
+def sample_garmin_heart_rate_samples() -> list[dict]:
     """Sample Garmin heart rate time series data."""
     return [
         {"startTimeGMT": "2024-01-15T07:00:00", "heartRate": 120},
@@ -50,7 +50,7 @@ def sample_garmin_heart_rate_samples():
 
 
 @pytest.fixture
-def sample_polar_exercise():
+def sample_polar_exercise() -> dict:
     """Sample Polar exercise JSON data."""
     return {
         "id": "ABC123",
@@ -75,7 +75,7 @@ def sample_polar_exercise():
 
 
 @pytest.fixture
-def sample_polar_heart_rate_zones():
+def sample_polar_heart_rate_zones() -> dict:
     """Sample Polar heart rate zones data."""
     return {
         "zone_1": {"lower_limit": 93, "upper_limit": 111, "in_zone": "PT10M"},
@@ -87,7 +87,7 @@ def sample_polar_heart_rate_zones():
 
 
 @pytest.fixture
-def sample_suunto_workout():
+def sample_suunto_workout() -> dict:
     """Sample Suunto workout JSON data."""
     return {
         "workoutKey": "suunto-workout-123",
@@ -108,7 +108,7 @@ def sample_suunto_workout():
 
 
 @pytest.fixture
-def sample_suunto_samples():
+def sample_suunto_samples() -> dict:
     """Sample Suunto workout samples data."""
     return {
         "Samples": [
@@ -120,7 +120,7 @@ def sample_suunto_samples():
 
 
 @pytest.fixture
-def sample_apple_auto_export_workout():
+def sample_apple_auto_export_workout() -> dict:
     """Sample Apple Auto Export workout JSON data."""
     return {
         "id": "apple-workout-123",
@@ -143,7 +143,7 @@ def sample_apple_auto_export_workout():
 
 
 @pytest.fixture
-def sample_apple_healthkit_workout():
+def sample_apple_healthkit_workout() -> dict:
     """Sample Apple HealthKit workout JSON data."""
     return {
         "uuid": "12345678-1234-1234-1234-123456789012",
@@ -160,7 +160,7 @@ def sample_apple_healthkit_workout():
 
 
 @pytest.fixture
-def mock_oauth_token_response():
+def mock_oauth_token_response() -> dict:
     """Mock OAuth token exchange response."""
     return {
         "access_token": "test_access_token_abc123",
@@ -172,7 +172,7 @@ def mock_oauth_token_response():
 
 
 @pytest.fixture
-def mock_oauth_refresh_response():
+def mock_oauth_refresh_response() -> dict:
     """Mock OAuth token refresh response."""
     return {
         "access_token": "new_access_token_def456",
@@ -183,7 +183,7 @@ def mock_oauth_refresh_response():
 
 
 @pytest.fixture
-def mock_provider_user_info():
+def mock_provider_user_info() -> dict:
     """Mock provider user info response."""
     return {
         "user_id": "provider_user_12345",

@@ -25,7 +25,7 @@ from app.tests.utils.factories import (
 class TestSystemInfoServiceCalculateWeeklyGrowth:
     """Test weekly growth calculation."""
 
-    def test_calculate_weekly_growth_positive(self):
+    def test_calculate_weekly_growth_positive(self) -> None:
         """Should calculate positive growth percentage."""
         # Arrange
         current = 150
@@ -37,7 +37,7 @@ class TestSystemInfoServiceCalculateWeeklyGrowth:
         # Assert
         assert growth == 50.0  # 50% growth
 
-    def test_calculate_weekly_growth_negative(self):
+    def test_calculate_weekly_growth_negative(self) -> None:
         """Should calculate negative growth percentage."""
         # Arrange
         current = 75
@@ -49,7 +49,7 @@ class TestSystemInfoServiceCalculateWeeklyGrowth:
         # Assert
         assert growth == -25.0  # 25% decline
 
-    def test_calculate_weekly_growth_zero_previous_with_current(self):
+    def test_calculate_weekly_growth_zero_previous_with_current(self) -> None:
         """Should return 100% when previous is 0 and current is positive."""
         # Arrange
         current = 50
@@ -61,7 +61,7 @@ class TestSystemInfoServiceCalculateWeeklyGrowth:
         # Assert
         assert growth == 100.0
 
-    def test_calculate_weekly_growth_both_zero(self):
+    def test_calculate_weekly_growth_both_zero(self) -> None:
         """Should return 0% when both current and previous are 0."""
         # Arrange
         current = 0
@@ -73,7 +73,7 @@ class TestSystemInfoServiceCalculateWeeklyGrowth:
         # Assert
         assert growth == 0.0
 
-    def test_calculate_weekly_growth_no_change(self):
+    def test_calculate_weekly_growth_no_change(self) -> None:
         """Should return 0% when no change."""
         # Arrange
         current = 100
@@ -89,7 +89,7 @@ class TestSystemInfoServiceCalculateWeeklyGrowth:
 class TestSystemInfoServiceGetSystemInfo:
     """Test getting system information."""
 
-    def test_get_system_info_structure(self, db: Session):
+    def test_get_system_info_structure(self, db: Session) -> None:
         """Should return properly structured system info."""
         # Act
         info = system_info_service.get_system_info(db)
@@ -111,7 +111,7 @@ class TestSystemInfoServiceGetSystemInfo:
         assert hasattr(info.data_points, "top_series_types")
         assert hasattr(info.data_points, "top_workout_types")
 
-    def test_get_system_info_total_users(self, db: Session):
+    def test_get_system_info_total_users(self, db: Session) -> None:
         """Should count total users correctly."""
         # Arrange
         initial_info = system_info_service.get_system_info(db)
@@ -127,7 +127,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert info.total_users.count == initial_count + 2
 
-    def test_get_system_info_active_connections(self, db: Session):
+    def test_get_system_info_active_connections(self, db: Session) -> None:
         """Should count active connections correctly."""
         # Arrange
         from app.schemas.oauth import ConnectionStatus
@@ -148,7 +148,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert info.active_conn.count >= initial_count + 2
 
-    def test_get_system_info_data_points_count(self, db: Session):
+    def test_get_system_info_data_points_count(self, db: Session) -> None:
         """Should count total data points correctly."""
         # Arrange
         initial_info = system_info_service.get_system_info(db)
@@ -167,7 +167,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert info.data_points.count == initial_count + 5
 
-    def test_get_system_info_weekly_growth_users(self, db: Session):
+    def test_get_system_info_weekly_growth_users(self, db: Session) -> None:
         """Should calculate weekly growth for users."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -188,7 +188,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Growth = ((2 - 1) / 1) * 100 = 100%
         assert info.total_users.weekly_growth == 100.0
 
-    def test_get_system_info_top_series_types(self, db: Session):
+    def test_get_system_info_top_series_types(self, db: Session) -> None:
         """Should return top series types by count."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -220,7 +220,7 @@ class TestSystemInfoServiceGetSystemInfo:
         assert step_metric is not None
         assert step_metric.count >= 5
 
-    def test_get_system_info_top_series_types_limited_to_five(self, db: Session):
+    def test_get_system_info_top_series_types_limited_to_five(self, db: Session) -> None:
         """Should return at most 5 top series types."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -238,7 +238,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert len(info.data_points.top_series_types) <= 5
 
-    def test_get_system_info_top_workout_types(self, db: Session):
+    def test_get_system_info_top_workout_types(self, db: Session) -> None:
         """Should return top workout types by count."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -274,7 +274,7 @@ class TestSystemInfoServiceGetSystemInfo:
         assert swimming_metric is not None
         assert swimming_metric.count >= 3
 
-    def test_get_system_info_top_workout_types_limited_to_five(self, db: Session):
+    def test_get_system_info_top_workout_types_limited_to_five(self, db: Session) -> None:
         """Should return at most 5 top workout types."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -290,7 +290,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Assert
         assert len(info.data_points.top_workout_types) <= 5
 
-    def test_get_system_info_handles_null_workout_type(self, db: Session):
+    def test_get_system_info_handles_null_workout_type(self, db: Session) -> None:
         """Should handle workouts with null type."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -309,7 +309,7 @@ class TestSystemInfoServiceGetSystemInfo:
         if unknown_metric:
             assert unknown_metric.count >= 2
 
-    def test_get_system_info_empty_database(self, db: Session):
+    def test_get_system_info_empty_database(self, db: Session) -> None:
         """Should handle empty database gracefully."""
         # Act
         info = system_info_service.get_system_info(db)
@@ -321,7 +321,7 @@ class TestSystemInfoServiceGetSystemInfo:
         assert isinstance(info.data_points.top_series_types, list)
         assert isinstance(info.data_points.top_workout_types, list)
 
-    def test_get_system_info_weekly_growth_zero_division(self, db: Session):
+    def test_get_system_info_weekly_growth_zero_division(self, db: Session) -> None:
         """Should handle zero division in weekly growth calculation."""
         # This tests the edge case where last week had 0 items and this week has items
         # The _calculate_weekly_growth should return 100.0 in this case

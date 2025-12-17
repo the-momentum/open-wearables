@@ -23,7 +23,7 @@ class TestProviderSettingsRepository:
         """Create ProviderSettingsRepository instance."""
         return ProviderSettingsRepository()
 
-    def test_get_all_empty_database(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_get_all_empty_database(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test get_all returns empty dict when no settings exist."""
         # Act
         result = provider_repo.get_all(db)
@@ -31,7 +31,7 @@ class TestProviderSettingsRepository:
         # Assert
         assert result == {}
 
-    def test_get_all_single_setting(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_get_all_single_setting(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test get_all returns single provider setting."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=True)
@@ -43,7 +43,7 @@ class TestProviderSettingsRepository:
         assert len(result) == 1
         assert result["garmin"] is True
 
-    def test_get_all_multiple_settings(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_get_all_multiple_settings(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test get_all returns multiple provider settings."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=True)
@@ -59,7 +59,7 @@ class TestProviderSettingsRepository:
         assert result["apple"] is False
         assert result["fitbit"] is True
 
-    def test_upsert_creates_new_provider(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_upsert_creates_new_provider(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test upsert creates a new provider setting when it doesn't exist."""
         # Act
         result = provider_repo.upsert(db, provider="strava", is_enabled=True)
@@ -74,7 +74,7 @@ class TestProviderSettingsRepository:
         assert "strava" in all_settings
         assert all_settings["strava"] is True
 
-    def test_upsert_updates_existing_provider(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_upsert_updates_existing_provider(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test upsert updates an existing provider setting."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=True)
@@ -91,7 +91,7 @@ class TestProviderSettingsRepository:
         all_settings = provider_repo.get_all(db)
         assert all_settings["garmin"] is False
 
-    def test_upsert_toggle_enabled_to_disabled(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_upsert_toggle_enabled_to_disabled(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test upsert can toggle a provider from enabled to disabled."""
         # Arrange
         create_provider_setting(db, provider="apple", is_enabled=True)
@@ -104,7 +104,7 @@ class TestProviderSettingsRepository:
         db.expire_all()
         assert provider_repo.get_all(db)["apple"] is False
 
-    def test_upsert_toggle_disabled_to_enabled(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_upsert_toggle_disabled_to_enabled(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test upsert can toggle a provider from disabled to enabled."""
         # Arrange
         create_provider_setting(db, provider="fitbit", is_enabled=False)
@@ -117,7 +117,9 @@ class TestProviderSettingsRepository:
         db.expire_all()
         assert provider_repo.get_all(db)["fitbit"] is True
 
-    def test_ensure_all_providers_exist_empty_database(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_ensure_all_providers_exist_empty_database(
+        self, db: Session, provider_repo: ProviderSettingsRepository,
+    ) -> None:
         """Test ensure_all_providers_exist adds all providers when database is empty."""
         # Arrange
         providers = ["garmin", "apple", "fitbit", "strava"]
@@ -133,7 +135,9 @@ class TestProviderSettingsRepository:
             assert provider in all_settings
             assert all_settings[provider] is True  # Default enabled
 
-    def test_ensure_all_providers_exist_partial_existing(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_ensure_all_providers_exist_partial_existing(
+        self, db: Session, provider_repo: ProviderSettingsRepository,
+    ) -> None:
         """Test ensure_all_providers_exist adds only missing providers."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=False)
@@ -154,7 +158,9 @@ class TestProviderSettingsRepository:
         assert all_settings["fitbit"] is True
         assert all_settings["strava"] is True
 
-    def test_ensure_all_providers_exist_all_existing(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_ensure_all_providers_exist_all_existing(
+        self, db: Session, provider_repo: ProviderSettingsRepository,
+    ) -> None:
         """Test ensure_all_providers_exist does nothing when all providers exist."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=False)
@@ -172,7 +178,7 @@ class TestProviderSettingsRepository:
         assert all_settings["garmin"] is False
         assert all_settings["apple"] is True
 
-    def test_bulk_update_multiple_providers(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_bulk_update_multiple_providers(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test bulk_update updates multiple providers at once."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=True)
@@ -189,7 +195,7 @@ class TestProviderSettingsRepository:
         assert all_settings["apple"] is False
         assert all_settings["fitbit"] is True
 
-    def test_bulk_update_mixed_insert_and_update(self, db: Session, provider_repo: ProviderSettingsRepository):
+    def test_bulk_update_mixed_insert_and_update(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
         """Test bulk_update can both insert new providers and update existing ones."""
         # Arrange
         create_provider_setting(db, provider="garmin", is_enabled=True)

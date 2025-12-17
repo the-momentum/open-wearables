@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -22,7 +23,7 @@ class TestGarminWorkouts:
     """Tests for GarminWorkouts class."""
 
     @pytest.fixture
-    def garmin_workouts(self, db: Session):
+    def garmin_workouts(self, db: Session) -> GarminWorkouts:
         """Create GarminWorkouts instance for testing."""
         workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
@@ -41,7 +42,7 @@ class TestGarminWorkouts:
         )
 
     @pytest.fixture
-    def sample_activity(self):
+    def sample_activity(self) -> dict[str, Any]:
         """Sample Garmin activity data."""
         return {
             "userId": "garmin_user_123",
@@ -58,7 +59,7 @@ class TestGarminWorkouts:
             "maxHeartRateInBeatsPerMinute": 175,
         }
 
-    def test_get_workouts_builds_correct_params(self, garmin_workouts: GarminWorkouts, db: Session):
+    def test_get_workouts_builds_correct_params(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test get_workouts builds correct API parameters."""
         # Arrange
         user = create_user(db)
@@ -78,28 +79,28 @@ class TestGarminWorkouts:
             assert params["uploadStartTimeInSeconds"] == int(start_date.timestamp())
             assert params["uploadEndTimeInSeconds"] == int(end_date.timestamp())
 
-    def test_parse_timestamp_unix_format(self, garmin_workouts: GarminWorkouts):
+    def test_parse_timestamp_unix_format(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing Unix timestamp."""
         result = garmin_workouts._parse_timestamp("1705309200")
         assert result == 1705309200
 
-    def test_parse_timestamp_iso8601_format(self, garmin_workouts: GarminWorkouts):
+    def test_parse_timestamp_iso8601_format(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing ISO 8601 date format."""
         result = garmin_workouts._parse_timestamp("2024-01-15T08:00:00Z")
         assert result is not None
         assert isinstance(result, int)
 
-    def test_parse_timestamp_invalid_format(self, garmin_workouts: GarminWorkouts):
+    def test_parse_timestamp_invalid_format(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing invalid timestamp returns None."""
         result = garmin_workouts._parse_timestamp("invalid_timestamp")
         assert result is None
 
-    def test_parse_timestamp_none_value(self, garmin_workouts: GarminWorkouts):
+    def test_parse_timestamp_none_value(self, garmin_workouts: GarminWorkouts) -> None:
         """Test parsing None timestamp returns None."""
         result = garmin_workouts._parse_timestamp(None)
         assert result is None
 
-    def test_extract_dates(self, garmin_workouts: GarminWorkouts):
+    def test_extract_dates(self, garmin_workouts: GarminWorkouts) -> None:
         """Test extracting dates from timestamps."""
         start_ts = 1705309200  # 2024-01-15 08:00:00
         end_ts = 1705312800  # 2024-01-15 09:00:00
@@ -111,7 +112,9 @@ class TestGarminWorkouts:
         assert start_date.timestamp() == start_ts
         assert end_date.timestamp() == end_ts
 
-    def test_build_metrics_with_all_values(self, garmin_workouts: GarminWorkouts, sample_activity: dict):
+    def test_build_metrics_with_all_values(
+        self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any],
+    ) -> None:
         """Test building metrics with all values present."""
         activity = GarminActivityJSON(**sample_activity)
         metrics = garmin_workouts._build_metrics(activity)
@@ -121,7 +124,7 @@ class TestGarminWorkouts:
         assert metrics["heart_rate_min"] == 145
         assert metrics["steps_total"] == 8500
 
-    def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts):
+    def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:
         """Test building metrics with missing values."""
         activity_data = {
             "userId": "user_123",
@@ -143,7 +146,7 @@ class TestGarminWorkouts:
         # Should handle zero values
         assert metrics["steps_total"] == 0
 
-    def test_normalize_workout(self, garmin_workouts: GarminWorkouts, sample_activity: dict):
+    def test_normalize_workout(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test normalizing Garmin activity to event record."""
         user_id = uuid4()
         activity = GarminActivityJSON(**sample_activity)
@@ -160,7 +163,7 @@ class TestGarminWorkouts:
         assert record.provider_id == "12345678901"
         assert record.user_id == user_id
 
-    def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts):
+    def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts) -> None:
         """Test normalizing different workout types."""
         user_id = uuid4()
 
@@ -191,7 +194,7 @@ class TestGarminWorkouts:
             record, detail = garmin_workouts._normalize_workout(activity, user_id)
             assert record.type == expected_type.value
 
-    def test_build_bundles(self, garmin_workouts: GarminWorkouts, sample_activity: dict):
+    def test_build_bundles(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test building bundles from multiple activities."""
         user_id = uuid4()
         activities = [
@@ -214,8 +217,8 @@ class TestGarminWorkouts:
         mock_create: MagicMock,
         garmin_workouts: GarminWorkouts,
         db: Session,
-        sample_activity: dict,
-    ):
+        sample_activity: dict[str, Any],
+    ) -> None:
         """Test load_data creates event records."""
         user = create_user(db)
 
@@ -226,7 +229,7 @@ class TestGarminWorkouts:
             assert mock_create.call_count == 1
             assert mock_create_detail.call_count == 1
 
-    def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session):
+    def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting activity detail from API."""
         user = create_user(db)
         create_user_connection(db, user=user, provider="garmin")
@@ -239,7 +242,7 @@ class TestGarminWorkouts:
             assert result == activity_detail
             mock_request.assert_called_once_with(db, user.id, "/wellness-api/rest/activities/123")
 
-    def test_get_workout_detail_from_api(self, garmin_workouts: GarminWorkouts, db: Session):
+    def test_get_workout_detail_from_api(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting workout detail via public API method."""
         user = create_user(db)
 

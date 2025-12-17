@@ -19,7 +19,7 @@ from app.utils.hateoas import (
 class TestBuildQuery:
     """Test suite for _build_query function."""
 
-    def test_build_query_with_id(self):
+    def test_build_query_with_id(self) -> None:
         """Should build correct URL with entity ID."""
         # Arrange
         base_url = "http://localhost:8000"
@@ -34,7 +34,7 @@ class TestBuildQuery:
         assert inst_id in result
         assert f"{name}s" in result
 
-    def test_build_query_without_id(self):
+    def test_build_query_without_id(self) -> None:
         """Should build correct URL without entity ID."""
         # Arrange
         base_url = "http://localhost:8000"
@@ -47,7 +47,7 @@ class TestBuildQuery:
         assert result == "http://localhost:8000/api/v1/users/"
         assert result.endswith("users/")
 
-    def test_build_query_with_empty_string_id(self):
+    def test_build_query_with_empty_string_id(self) -> None:
         """Should build correct URL with empty string ID."""
         # Arrange
         base_url = "http://localhost:8000"
@@ -61,7 +61,7 @@ class TestBuildQuery:
         assert result == "http://localhost:8000/api/v1/developers/"
         assert result.endswith("/")
 
-    def test_build_query_pluralizes_name(self):
+    def test_build_query_pluralizes_name(self) -> None:
         """Should correctly pluralize entity name by adding 's'."""
         # Arrange
         base_url = "http://localhost:8000"
@@ -79,7 +79,7 @@ class TestBuildQuery:
 class TestGenerateItemLinks:
     """Test suite for _generate_item_links function."""
 
-    def test_generate_item_links_basic(self):
+    def test_generate_item_links_basic(self) -> None:
         """Should generate basic CRUD links for an item."""
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
@@ -94,7 +94,7 @@ class TestGenerateItemLinks:
         assert {"rel": "update", "href": built_url, "method": "PUT"} in result
         assert {"rel": "delete", "href": built_url, "method": "DELETE"} in result
 
-    def test_generate_item_links_with_extra_rels(self):
+    def test_generate_item_links_with_extra_rels(self) -> None:
         """Should include extra relations in the links."""
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
@@ -111,7 +111,7 @@ class TestGenerateItemLinks:
         assert connections_link["href"] == "http://localhost:8000/api/v1/users/123/connections"
         assert connections_link["method"] == "GET"
 
-    def test_generate_item_links_with_overwrite(self):
+    def test_generate_item_links_with_overwrite(self) -> None:
         """Should overwrite existing relation when specified."""
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
@@ -131,7 +131,7 @@ class TestGenerateItemLinks:
         assert custom_delete is not None
         assert custom_delete["href"] == "http://localhost:8000/api/v1/users/123/archive"
 
-    def test_generate_item_links_multiple_extra_rels(self):
+    def test_generate_item_links_multiple_extra_rels(self) -> None:
         """Should handle multiple extra relations."""
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
@@ -155,7 +155,7 @@ class TestGenerateItemLinks:
 class TestGenerateCollectionLinks:
     """Test suite for _generate_collection_links function."""
 
-    def test_generate_collection_links_first_page(self):
+    def test_generate_collection_links_first_page(self) -> None:
         """Should generate links for first page of collection."""
         # Arrange
         page = 1
@@ -171,7 +171,7 @@ class TestGenerateCollectionLinks:
         assert {"rel": "next", "href": f"{base_url}?page=2&limit=10", "method": "GET"} in result
         assert not any(link["rel"] == "prev" for link in result)
 
-    def test_generate_collection_links_middle_page(self):
+    def test_generate_collection_links_middle_page(self) -> None:
         """Should generate links for middle page with prev and next."""
         # Arrange
         page = 5
@@ -187,7 +187,7 @@ class TestGenerateCollectionLinks:
         assert {"rel": "next", "href": f"{base_url}?page=6&limit=20", "method": "GET"} in result
         assert {"rel": "prev", "href": f"{base_url}?page=4&limit=20"} in result
 
-    def test_generate_collection_links_with_different_limits(self):
+    def test_generate_collection_links_with_different_limits(self) -> None:
         """Should correctly include limit parameter in URLs."""
         # Arrange
         page = 2
@@ -207,7 +207,7 @@ class TestGenerateCollectionLinks:
 class TestGetHateoasItem:
     """Test suite for get_hateoas_item function."""
 
-    def test_get_hateoas_item_basic(self):
+    def test_get_hateoas_item_basic(self) -> None:
         """Should create HATEOAS item with links."""
         # Arrange
         mock_instance = MagicMock()
@@ -237,7 +237,7 @@ class TestGetHateoasItem:
         assert any(link["rel"] == "update" for link in result["_links"])
         assert any(link["rel"] == "delete" for link in result["_links"])
 
-    def test_get_hateoas_item_with_extra_rels(self):
+    def test_get_hateoas_item_with_extra_rels(self) -> None:
         """Should create HATEOAS item with extra relations."""
         # Arrange
         mock_instance = MagicMock()
@@ -263,7 +263,7 @@ class TestGetHateoasItem:
 class TestGetHateoasList:
     """Test suite for get_hateoas_list function."""
 
-    def test_get_hateoas_list_basic(self):
+    def test_get_hateoas_list_basic(self) -> None:
         """Should create HATEOAS list with items and pagination links."""
         # Arrange
         mock_item1 = MagicMock()
@@ -290,7 +290,7 @@ class TestGetHateoasList:
         assert result["items"][0]["id"] == "1"
         assert result["items"][1]["id"] == "2"
 
-    def test_get_hateoas_list_empty(self):
+    def test_get_hateoas_list_empty(self) -> None:
         """Should handle empty list correctly."""
         # Arrange
         items = []
@@ -309,7 +309,7 @@ class TestGetHateoasList:
         # Links should still be generated
         assert len(result["_links"]) > 0
 
-    def test_get_hateoas_list_with_pagination(self):
+    def test_get_hateoas_list_with_pagination(self) -> None:
         """Should create correct pagination links."""
         # Arrange
         mock_item = MagicMock()

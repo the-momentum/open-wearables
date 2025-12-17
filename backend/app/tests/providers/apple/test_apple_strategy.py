@@ -23,12 +23,12 @@ from app.services.providers.base_strategy import BaseProviderStrategy
 class TestAppleStrategy:
     """Test suite for AppleStrategy."""
 
-    def test_is_subclass_of_base_strategy(self):
+    def test_is_subclass_of_base_strategy(self) -> None:
         """Should be a subclass of BaseProviderStrategy."""
         # Assert
         assert issubclass(AppleStrategy, BaseProviderStrategy)
 
-    def test_initializes_successfully(self):
+    def test_initializes_successfully(self) -> None:
         """Should initialize without errors."""
         # Act
         strategy = AppleStrategy()
@@ -36,7 +36,7 @@ class TestAppleStrategy:
         # Assert
         assert strategy is not None
 
-    def test_initializes_repositories(self):
+    def test_initializes_repositories(self) -> None:
         """Should initialize all required repositories."""
         # Act
         strategy = AppleStrategy()
@@ -48,7 +48,7 @@ class TestAppleStrategy:
         assert isinstance(strategy.workout_repo, EventRecordRepository)
         assert strategy.workout_repo.model == EventRecord
 
-    def test_provider_name(self):
+    def test_provider_name(self) -> None:
         """Should return 'apple' as provider name."""
         # Act
         strategy = AppleStrategy()
@@ -56,7 +56,7 @@ class TestAppleStrategy:
         # Assert
         assert strategy.name == "apple"
 
-    def test_display_name(self):
+    def test_display_name(self) -> None:
         """Should return 'Apple Health' as display name."""
         # Act
         strategy = AppleStrategy()
@@ -64,7 +64,7 @@ class TestAppleStrategy:
         # Assert
         assert strategy.display_name == "Apple Health"
 
-    def test_api_base_url(self):
+    def test_api_base_url(self) -> None:
         """Should return empty string for API base URL."""
         # Act
         strategy = AppleStrategy()
@@ -72,7 +72,7 @@ class TestAppleStrategy:
         # Assert
         assert strategy.api_base_url == ""
 
-    def test_has_no_cloud_api(self):
+    def test_has_no_cloud_api(self) -> None:
         """Should indicate no cloud API support."""
         # Act
         strategy = AppleStrategy()
@@ -81,7 +81,7 @@ class TestAppleStrategy:
         assert strategy.has_cloud_api is False
         assert strategy.oauth is None
 
-    def test_icon_url_generation(self):
+    def test_icon_url_generation(self) -> None:
         """Should generate correct icon URL path."""
         # Act
         strategy = AppleStrategy()
@@ -89,7 +89,7 @@ class TestAppleStrategy:
         # Assert
         assert strategy.icon_url == "/static/provider-icons/apple.svg"
 
-    def test_workouts_component_initialized(self):
+    def test_workouts_component_initialized(self) -> None:
         """Should initialize AppleWorkouts component."""
         # Act
         strategy = AppleStrategy()
@@ -98,7 +98,7 @@ class TestAppleStrategy:
         assert strategy.workouts is not None
         assert isinstance(strategy.workouts, AppleWorkouts)
 
-    def test_workouts_uses_same_repositories(self):
+    def test_workouts_uses_same_repositories(self) -> None:
         """Should pass repositories to workouts component."""
         # Act
         strategy = AppleStrategy()
@@ -107,7 +107,7 @@ class TestAppleStrategy:
         assert strategy.workouts.workout_repo is strategy.workout_repo
         assert strategy.workouts.connection_repo is strategy.connection_repo
 
-    def test_workouts_configured_for_apple(self):
+    def test_workouts_configured_for_apple(self) -> None:
         """Should configure workouts component for Apple provider."""
         # Act
         strategy = AppleStrategy()
@@ -117,7 +117,7 @@ class TestAppleStrategy:
         assert strategy.workouts.api_base_url == ""
         assert strategy.workouts.oauth is None
 
-    def test_multiple_instances_have_separate_repositories(self):
+    def test_multiple_instances_have_separate_repositories(self) -> None:
         """Should create separate repository instances for each strategy."""
         # Act
         strategy1 = AppleStrategy()

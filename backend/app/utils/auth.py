@@ -16,7 +16,7 @@ developer_repository = DeveloperRepository(Developer)
 
 async def get_current_developer(
     db: DbSession,
-    token: Annotated[str, Depends(oauth2_scheme)],
+    token: Annotated[str | None, Depends(oauth2_scheme)],
 ) -> Developer:
     """Get current authenticated developer from JWT token."""
     credentials_exception = HTTPException(
@@ -24,6 +24,10 @@ async def get_current_developer(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if not token:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         developer_id: str = payload.get("sub")

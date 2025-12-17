@@ -4,13 +4,16 @@ Pytest configuration for Celery task tests.
 Provides fixtures specific to testing asynchronous tasks.
 """
 
+from collections.abc import Generator
+from typing import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture
-def mock_celery_app():
+def mock_celery_app() -> Generator[MagicMock, None, None]:
     """
     Configure Celery for synchronous test execution.
 
@@ -26,14 +29,14 @@ def mock_celery_app():
 
 
 @pytest.fixture
-def mock_session_local():
+def mock_session_local() -> Callable[[Session], MagicMock]:
     """
     Mock SessionLocal for Celery tasks that create their own sessions.
 
     Returns a context manager that yields the test database session.
     """
 
-    def _mock_session_context(db):
+    def _mock_session_context(db: Session) -> MagicMock:
         """Create a mock SessionLocal context manager."""
         mock = MagicMock()
         mock.__enter__ = MagicMock(return_value=db)

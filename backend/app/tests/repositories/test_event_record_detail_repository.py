@@ -30,7 +30,7 @@ class TestEventRecordDetailRepository:
         """Create EventRecordDetailRepository instance."""
         return EventRecordDetailRepository(EventRecordDetail)
 
-    def test_create_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_create_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating workout details."""
         # Arrange
         event_record = create_event_record(db, category="workout")
@@ -54,7 +54,7 @@ class TestEventRecordDetailRepository:
         assert result.steps_total == 8500
         assert result.detail_type == "workout"
 
-    def test_create_sleep_details(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_create_sleep_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating sleep details."""
         # Arrange
         event_record = create_event_record(db, category="sleep")
@@ -80,7 +80,7 @@ class TestEventRecordDetailRepository:
         assert result.sleep_awake_minutes == 30
         assert result.detail_type == "sleep"
 
-    def test_create_with_minimal_fields(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_create_with_minimal_fields(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating workout details with only required fields."""
         # Arrange
         event_record = create_event_record(db, category="workout")
@@ -95,7 +95,7 @@ class TestEventRecordDetailRepository:
         assert result.heart_rate_avg is None
         assert result.steps_total is None
 
-    def test_create_with_invalid_detail_type(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_create_with_invalid_detail_type(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating detail with invalid detail_type raises ValueError."""
         # Arrange
         event_record = create_event_record(db)
@@ -105,7 +105,7 @@ class TestEventRecordDetailRepository:
         with pytest.raises(ValueError, match="Unknown detail type: invalid"):
             detail_repo.create(db, detail_data, detail_type="invalid")
 
-    def test_get_by_record_id_workout(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_by_record_id_workout(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test getting workout details by record_id."""
         # Arrange
         workout_details = create_workout_details(db)
@@ -118,7 +118,7 @@ class TestEventRecordDetailRepository:
         assert result.record_id == workout_details.record_id
         assert isinstance(result, WorkoutDetails)
 
-    def test_get_by_record_id_sleep(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_by_record_id_sleep(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test getting sleep details by record_id."""
         # Arrange
         sleep_details = create_sleep_details(db)
@@ -131,7 +131,7 @@ class TestEventRecordDetailRepository:
         assert result.record_id == sleep_details.record_id
         assert isinstance(result, SleepDetails)
 
-    def test_get_by_record_id_nonexistent(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_by_record_id_nonexistent(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test getting detail by nonexistent record_id returns None."""
         # Act
         result = detail_repo.get_by_record_id(db, uuid4())
@@ -139,7 +139,7 @@ class TestEventRecordDetailRepository:
         # Assert
         assert result is None
 
-    def test_get_all_empty_database(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_all_empty_database(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test get_all returns empty list when no details exist."""
         # Act
         result = detail_repo.get_all(db, filters={}, offset=0, limit=10, sort_by=None)
@@ -147,7 +147,7 @@ class TestEventRecordDetailRepository:
         # Assert
         assert result == []
 
-    def test_get_all_multiple_details(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_all_multiple_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test get_all returns multiple detail records."""
         # Arrange
         workout1 = create_workout_details(db)
@@ -164,7 +164,7 @@ class TestEventRecordDetailRepository:
         assert workout2.record_id in record_ids
         assert sleep1.record_id in record_ids
 
-    def test_get_all_with_pagination(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_get_all_with_pagination(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test pagination with offset and limit."""
         # Arrange
         for _ in range(5):
@@ -184,7 +184,7 @@ class TestEventRecordDetailRepository:
         page2_ids = {d.record_id for d in page2}
         assert len(page1_ids & page2_ids) == 0  # No overlap
 
-    def test_update_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_update_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating workout details."""
         # Arrange
         workout_details = create_workout_details(db, heart_rate_avg=Decimal("140.0"), steps_total=5000)
@@ -203,7 +203,7 @@ class TestEventRecordDetailRepository:
         assert updated.heart_rate_avg == Decimal("155.0")
         assert updated.steps_total == 10000
 
-    def test_update_partial_fields(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_update_partial_fields(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating only some fields."""
         # Arrange
         workout_details = create_workout_details(
@@ -222,7 +222,7 @@ class TestEventRecordDetailRepository:
         assert result.heart_rate_max == 180  # Unchanged
         assert result.steps_total == 5000  # Unchanged
 
-    def test_delete_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_delete_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test deleting workout details."""
         # Arrange
         workout_details = create_workout_details(db)
@@ -236,7 +236,7 @@ class TestEventRecordDetailRepository:
         deleted = detail_repo.get_by_record_id(db, record_id)
         assert deleted is None
 
-    def test_polymorphic_inheritance_behavior(self, db: Session, detail_repo: EventRecordDetailRepository):
+    def test_polymorphic_inheritance_behavior(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test that polymorphic inheritance correctly returns specific detail types."""
         # Arrange
         workout_details = create_workout_details(db, heart_rate_avg=Decimal("150.0"))

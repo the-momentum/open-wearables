@@ -27,7 +27,7 @@ from app.schemas.oauth import ConnectionStatus, OAuthTokenResponse, UserConnecti
 class TestEventRecordCreateValidation:
     """Test suite for EventRecordCreate schema validation."""
 
-    def test_valid_event_record_create(self):
+    def test_valid_event_record_create(self) -> None:
         """Should validate with all required fields."""
         # Arrange
         record_id = uuid4()
@@ -51,7 +51,7 @@ class TestEventRecordCreateValidation:
         assert record.category == "workout"
         assert record.source_name == "Apple Watch"
 
-    def test_missing_required_field_source_name(self):
+    def test_missing_required_field_source_name(self) -> None:
         """Should raise ValidationError when source_name is missing."""
         # Arrange
         record_id = uuid4()
@@ -72,7 +72,7 @@ class TestEventRecordCreateValidation:
 class TestEventRecordDetailCreateValidation:
     """Test suite for EventRecordDetailCreate schema validation."""
 
-    def test_valid_event_record_detail_create(self):
+    def test_valid_event_record_detail_create(self) -> None:
         """Should validate with all fields."""
         # Arrange
         record_id = uuid4()
@@ -93,7 +93,7 @@ class TestEventRecordDetailCreateValidation:
         assert detail.heart_rate_avg == Decimal("145.5")
         assert detail.steps_total == 8500
 
-    def test_missing_required_field_record_id(self):
+    def test_missing_required_field_record_id(self) -> None:
         """Should raise ValidationError when record_id is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -108,7 +108,7 @@ class TestEventRecordDetailCreateValidation:
 class TestOAuthTokenResponseValidation:
     """Test suite for OAuthTokenResponse schema validation."""
 
-    def test_valid_oauth_token_response(self):
+    def test_valid_oauth_token_response(self) -> None:
         """Should validate with all required fields."""
         # Act
         response = OAuthTokenResponse(
@@ -122,7 +122,7 @@ class TestOAuthTokenResponseValidation:
         assert response.token_type == "Bearer"
         assert response.expires_in == 3600
 
-    def test_missing_required_field_access_token(self):
+    def test_missing_required_field_access_token(self) -> None:
         """Should raise ValidationError when access_token is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -133,7 +133,7 @@ class TestOAuthTokenResponseValidation:
 
         assert "access_token" in str(exc_info.value)
 
-    def test_missing_required_field_token_type(self):
+    def test_missing_required_field_token_type(self) -> None:
         """Should raise ValidationError when token_type is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
@@ -148,7 +148,7 @@ class TestOAuthTokenResponseValidation:
 class TestUserConnectionCreateValidation:
     """Test suite for UserConnectionCreate schema validation."""
 
-    def test_valid_user_connection_create(self):
+    def test_valid_user_connection_create(self) -> None:
         """Should validate with all required fields."""
         # Arrange
         user_id = uuid4()
@@ -169,7 +169,7 @@ class TestUserConnectionCreateValidation:
         assert connection.token_expires_at == expires_at
         assert connection.status == ConnectionStatus.ACTIVE
 
-    def test_missing_required_field_provider(self):
+    def test_missing_required_field_provider(self) -> None:
         """Should raise ValidationError when provider is missing."""
         # Arrange
         user_id = uuid4()
@@ -184,7 +184,7 @@ class TestUserConnectionCreateValidation:
 
         assert "provider" in str(exc_info.value)
 
-    def test_default_status_is_active(self):
+    def test_default_status_is_active(self) -> None:
         """Should set default status to ACTIVE."""
         # Arrange
         user_id = uuid4()

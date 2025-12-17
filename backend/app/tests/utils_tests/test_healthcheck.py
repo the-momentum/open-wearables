@@ -15,7 +15,7 @@ class TestGetPoolStatus:
     """Test suite for get_pool_status function."""
 
     @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_returns_all_fields(self, mock_engine):
+    def test_get_pool_status_returns_all_fields(self, mock_engine: MagicMock) -> None:
         """Test that get_pool_status returns all required pool fields."""
         # Arrange
         mock_pool = MagicMock()
@@ -35,7 +35,7 @@ class TestGetPoolStatus:
         assert "overflow" in result
 
     @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_returns_string_values(self, mock_engine):
+    def test_get_pool_status_returns_string_values(self, mock_engine: MagicMock) -> None:
         """Test that all pool status values are returned as strings."""
         # Arrange
         mock_pool = MagicMock()
@@ -56,7 +56,7 @@ class TestGetPoolStatus:
         assert all(isinstance(v, str) for v in result.values())
 
     @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_with_zero_connections(self, mock_engine):
+    def test_get_pool_status_with_zero_connections(self, mock_engine: MagicMock) -> None:
         """Test pool status when no connections are active."""
         # Arrange
         mock_pool = MagicMock()
@@ -74,7 +74,7 @@ class TestGetPoolStatus:
         assert result["connections_ready_for_reuse"] == "5"
 
     @patch("app.utils.healthcheck.engine")
-    def test_get_pool_status_with_overflow(self, mock_engine):
+    def test_get_pool_status_with_overflow(self, mock_engine: MagicMock) -> None:
         """Test pool status when overflow connections exist."""
         # Arrange
         mock_pool = MagicMock()
@@ -96,7 +96,7 @@ class TestDatabaseHealth:
     """Test suite for database_health endpoint."""
 
     @pytest.mark.asyncio
-    async def test_database_health_success(self):
+    async def test_database_health_success(self) -> None:
         """Test database health check when database is healthy."""
         # Arrange
         mock_db = MagicMock()
@@ -123,7 +123,7 @@ class TestDatabaseHealth:
             mock_db.execute.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_database_health_executes_test_query(self):
+    async def test_database_health_executes_test_query(self) -> None:
         """Test that database health check executes SELECT 1 query."""
         # Arrange
         mock_db = MagicMock()
@@ -146,7 +146,7 @@ class TestDatabaseHealth:
             assert isinstance(call_args[0][0]._bindparams, dict)
 
     @pytest.mark.asyncio
-    async def test_database_health_failure(self):
+    async def test_database_health_failure(self) -> None:
         """Test database health check when database connection fails."""
         # Arrange
         mock_db = MagicMock()
@@ -163,7 +163,7 @@ class TestDatabaseHealth:
         assert "pool" not in result
 
     @pytest.mark.asyncio
-    async def test_database_health_with_connection_timeout(self):
+    async def test_database_health_with_connection_timeout(self) -> None:
         """Test database health check with connection timeout error."""
         # Arrange
         mock_db = MagicMock()
@@ -177,7 +177,7 @@ class TestDatabaseHealth:
         assert "Connection timeout" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_database_health_with_database_error(self):
+    async def test_database_health_with_database_error(self) -> None:
         """Test database health check with database-specific error."""
         # Arrange
         mock_db = MagicMock()
@@ -191,7 +191,7 @@ class TestDatabaseHealth:
         assert result["error"] == "Database is shutting down"
 
     @pytest.mark.asyncio
-    async def test_database_health_includes_pool_status_on_success(self):
+    async def test_database_health_includes_pool_status_on_success(self) -> None:
         """Test that successful health check includes pool status."""
         # Arrange
         mock_db = MagicMock()

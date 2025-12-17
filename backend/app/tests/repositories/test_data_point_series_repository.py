@@ -29,7 +29,7 @@ class TestDataPointSeriesRepository:
         """Create DataPointSeriesRepository instance."""
         return DataPointSeriesRepository(DataPointSeries)
 
-    def test_create_with_existing_mapping(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_create_with_existing_mapping(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test creating a data point with an existing external mapping."""
         # Arrange
         user = create_user(db)
@@ -63,7 +63,7 @@ class TestDataPointSeriesRepository:
         db_sample = series_repo.get(db, sample_data.id)
         assert db_sample is not None
 
-    def test_create_auto_creates_mapping(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_create_auto_creates_mapping(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
         # Arrange
         user = create_user(db)
@@ -96,7 +96,7 @@ class TestDataPointSeriesRepository:
         assert mapping.provider_id == "garmin"
         assert mapping.device_id == "device456"
 
-    def test_create_sets_series_type_id(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_create_sets_series_type_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that series_type_id is correctly set from series_type enum."""
         # Arrange
         user = create_user(db)
@@ -124,7 +124,7 @@ class TestDataPointSeriesRepository:
         expected_id = get_series_type_id(SeriesType.steps)
         assert result.series_type_id == expected_id
 
-    def test_get_samples_requires_device_filter(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_requires_device_filter(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples requires at least device_id or external_mapping_id."""
         # Arrange
         user = create_user(db)
@@ -136,7 +136,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert results == []  # Returns empty list when no device filter provided
 
-    def test_get_samples_by_device_id(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_by_device_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test getting samples filtered by device ID."""
         # Arrange
         user = create_user(db)
@@ -182,7 +182,7 @@ class TestDataPointSeriesRepository:
         for _, mapping in results:
             assert mapping.device_id == "device1"
 
-    def test_get_samples_by_external_mapping_id(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_by_external_mapping_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test getting samples filtered by external mapping ID."""
         # Arrange
         user = create_user(db)
@@ -215,7 +215,7 @@ class TestDataPointSeriesRepository:
         for sample, _ in results:
             assert sample.external_mapping_id == mapping.id
 
-    def test_get_samples_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples only returns samples of the specified series type."""
         # Arrange
         user = create_user(db)
@@ -262,7 +262,7 @@ class TestDataPointSeriesRepository:
         for sample, _ in results:
             assert sample.series_type_id == expected_type_id
 
-    def test_get_samples_by_date_range(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_by_date_range(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test filtering samples by date range."""
         # Arrange
         user = create_user(db)
@@ -301,7 +301,7 @@ class TestDataPointSeriesRepository:
             assert sample.recorded_at >= yesterday
             assert sample.recorded_at <= now
 
-    def test_get_samples_by_provider(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test filtering samples by provider ID."""
         # Arrange
         user = create_user(db)
@@ -345,7 +345,7 @@ class TestDataPointSeriesRepository:
         _, mapping = results[0]
         assert mapping.provider_id == "apple"
 
-    def test_get_samples_ordered_by_recorded_at_desc(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_ordered_by_recorded_at_desc(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that samples are ordered by recorded_at descending."""
         # Arrange
         user = create_user(db)
@@ -378,7 +378,7 @@ class TestDataPointSeriesRepository:
         for i in range(len(results) - 1):
             assert results[i][0].recorded_at >= results[i + 1][0].recorded_at
 
-    def test_get_samples_limit_1000(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_limit_1000(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples is limited to 1000 records."""
         # Arrange
         user = create_user(db)
@@ -394,7 +394,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) <= 1000
 
-    def test_get_total_count(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_total_count(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test counting total data points."""
         # Arrange
         initial_count = series_repo.get_total_count(db)
@@ -422,7 +422,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert result == initial_count + 3
 
-    def test_get_count_in_range(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_count_in_range(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test counting data points within a datetime range."""
         # Arrange
         user = create_user(db)
@@ -452,7 +452,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert result == 2  # Two samples from yesterday
 
-    def test_get_daily_histogram(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_daily_histogram(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test getting daily histogram of data points."""
         # Arrange
         user = create_user(db)
@@ -493,7 +493,7 @@ class TestDataPointSeriesRepository:
         assert result[1] == 2  # Yesterday
         assert result[2] == 3  # Today
 
-    def test_get_count_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_count_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test aggregating data point counts by series type."""
         # Arrange
         user = create_user(db)
@@ -541,7 +541,7 @@ class TestDataPointSeriesRepository:
         assert counts_dict.get(hr_type_id, 0) >= 3
         assert counts_dict.get(steps_type_id, 0) >= 2
 
-    def test_get_count_by_provider(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_count_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test aggregating data point counts by provider."""
         # Arrange
         user = create_user(db)
@@ -586,7 +586,7 @@ class TestDataPointSeriesRepository:
         assert counts_dict.get("apple", 0) >= 3
         assert counts_dict.get("garmin", 0) >= 2
 
-    def test_get_samples_filters_by_user(self, db: Session, series_repo: DataPointSeriesRepository):
+    def test_get_samples_filters_by_user(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that samples are filtered by user ID."""
         # Arrange
         user1 = create_user(db)

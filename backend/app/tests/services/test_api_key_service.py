@@ -22,7 +22,7 @@ from app.tests.utils.factories import create_api_key, create_developer
 class TestApiKeyServiceCreateApiKey:
     """Test API key creation with proper format."""
 
-    def test_create_api_key_generates_sk_prefix(self, db: Session):
+    def test_create_api_key_generates_sk_prefix(self, db: Session) -> None:
         """Should generate API key with sk- prefix."""
         # Arrange
         developer = create_developer(db)
@@ -35,7 +35,7 @@ class TestApiKeyServiceCreateApiKey:
         assert api_key.name == "Test Key"
         assert api_key.created_by == developer.id
 
-    def test_create_api_key_has_correct_length(self, db: Session):
+    def test_create_api_key_has_correct_length(self, db: Session) -> None:
         """Should generate key with correct format: sk- + 32 hex chars."""
         # Arrange
         developer = create_developer(db)
@@ -50,7 +50,7 @@ class TestApiKeyServiceCreateApiKey:
         hex_portion = api_key.id[3:]
         assert all(c in "0123456789abcdef" for c in hex_portion)
 
-    def test_create_api_key_default_name(self, db: Session):
+    def test_create_api_key_default_name(self, db: Session) -> None:
         """Should use default name when not provided."""
         # Arrange
         developer = create_developer(db)
@@ -61,7 +61,7 @@ class TestApiKeyServiceCreateApiKey:
         # Assert
         assert api_key.name == "Default"
 
-    def test_create_api_key_without_developer(self, db: Session):
+    def test_create_api_key_without_developer(self, db: Session) -> None:
         """Should create API key with None as created_by."""
         # Act
         api_key = api_key_service.create_api_key(db, None, "Anonymous Key")
@@ -71,7 +71,7 @@ class TestApiKeyServiceCreateApiKey:
         assert api_key.created_by is None
         assert api_key.name == "Anonymous Key"
 
-    def test_create_api_key_sets_created_at(self, db: Session):
+    def test_create_api_key_sets_created_at(self, db: Session) -> None:
         """Should set created_at timestamp."""
         # Arrange
         developer = create_developer(db)
@@ -84,7 +84,7 @@ class TestApiKeyServiceCreateApiKey:
         # Verify timestamp is recent (within last minute)
         assert (datetime.now(timezone.utc) - api_key.created_at).total_seconds() < 60
 
-    def test_create_api_key_generates_unique_keys(self, db: Session):
+    def test_create_api_key_generates_unique_keys(self, db: Session) -> None:
         """Should generate unique keys for each creation."""
         # Arrange
         developer = create_developer(db)
@@ -100,7 +100,7 @@ class TestApiKeyServiceCreateApiKey:
 class TestApiKeyServiceGenerateKeyValue:
     """Test internal key generation method."""
 
-    def test_generate_key_value_format(self):
+    def test_generate_key_value_format(self) -> None:
         """Should generate key with sk- prefix and 32 hex chars."""
         # Act
         key = api_key_service._generate_key_value()
@@ -111,7 +111,7 @@ class TestApiKeyServiceGenerateKeyValue:
         hex_portion = key[3:]
         assert all(c in "0123456789abcdef" for c in hex_portion)
 
-    def test_generate_key_value_uniqueness(self):
+    def test_generate_key_value_uniqueness(self) -> None:
         """Should generate unique keys on each call."""
         # Act
         keys = [api_key_service._generate_key_value() for _ in range(100)]
@@ -123,7 +123,7 @@ class TestApiKeyServiceGenerateKeyValue:
 class TestApiKeyServiceListApiKeys:
     """Test listing API keys."""
 
-    def test_list_api_keys_ordered_by_created_at(self, db: Session):
+    def test_list_api_keys_ordered_by_created_at(self, db: Session) -> None:
         """Should list API keys ordered by creation date."""
         # Arrange
         developer = create_developer(db)
@@ -147,7 +147,7 @@ class TestApiKeyServiceListApiKeys:
         assert test_keys[1].id == key2.id
         assert test_keys[2].id == key1.id
 
-    def test_list_api_keys_empty(self, db: Session):
+    def test_list_api_keys_empty(self, db: Session) -> None:
         """Should return empty list when no API keys exist."""
         # Act
         keys = api_key_service.list_api_keys(db)
@@ -155,7 +155,7 @@ class TestApiKeyServiceListApiKeys:
         # Assert
         assert keys == []
 
-    def test_list_api_keys_multiple_developers(self, db: Session):
+    def test_list_api_keys_multiple_developers(self, db: Session) -> None:
         """Should list keys from all developers."""
         # Arrange
         dev1 = create_developer(db, email="dev1@example.com")
@@ -176,7 +176,7 @@ class TestApiKeyServiceListApiKeys:
 class TestApiKeyServiceRotateApiKey:
     """Test API key rotation."""
 
-    def test_rotate_api_key_deletes_old_creates_new(self, db: Session):
+    def test_rotate_api_key_deletes_old_creates_new(self, db: Session) -> None:
         """Should delete old key and create new one."""
         # Arrange
         developer = create_developer(db)
@@ -194,7 +194,7 @@ class TestApiKeyServiceRotateApiKey:
         # Verify old key is deleted
         assert api_key_service.get(db, old_key_id) is None
 
-    def test_rotate_api_key_with_none_creator(self, db: Session):
+    def test_rotate_api_key_with_none_creator(self, db: Session) -> None:
         """Should rotate key with None as creator."""
         # Arrange
         old_key = create_api_key(db, developer=None)
@@ -207,7 +207,7 @@ class TestApiKeyServiceRotateApiKey:
         assert new_key.id != old_key_id
         assert new_key.created_by is None
 
-    def test_rotate_nonexistent_key_raises_404(self, db: Session):
+    def test_rotate_nonexistent_key_raises_404(self, db: Session) -> None:
         """Should raise ResourceNotFoundError when rotating non-existent key."""
         # Arrange
         from app.utils.exceptions import ResourceNotFoundError
@@ -223,7 +223,7 @@ class TestApiKeyServiceRotateApiKey:
 class TestApiKeyServiceValidateApiKey:
     """Test API key validation."""
 
-    def test_validate_api_key_existing_key(self, db: Session):
+    def test_validate_api_key_existing_key(self, db: Session) -> None:
         """Should validate and return existing API key."""
         # Arrange
         developer = create_developer(db)
@@ -236,7 +236,7 @@ class TestApiKeyServiceValidateApiKey:
         assert validated.id == api_key.id
         assert validated.created_by == developer.id
 
-    def test_validate_api_key_nonexistent_raises_401(self, db: Session):
+    def test_validate_api_key_nonexistent_raises_401(self, db: Session) -> None:
         """Should raise 401 for non-existent key."""
         # Arrange
         fake_key = "sk-nonexistent12345678901234567890"
@@ -248,7 +248,7 @@ class TestApiKeyServiceValidateApiKey:
         assert exc_info.value.status_code == 401
         assert "Invalid or missing API key" in exc_info.value.detail
 
-    def test_validate_api_key_empty_string_raises_401(self, db: Session):
+    def test_validate_api_key_empty_string_raises_401(self, db: Session) -> None:
         """Should raise 401 for empty key."""
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:
@@ -260,7 +260,7 @@ class TestApiKeyServiceValidateApiKey:
 class TestApiKeyServiceGet:
     """Test getting API key by ID."""
 
-    def test_get_existing_api_key(self, db: Session):
+    def test_get_existing_api_key(self, db: Session) -> None:
         """Should retrieve existing API key."""
         # Arrange
         developer = create_developer(db)
@@ -274,7 +274,7 @@ class TestApiKeyServiceGet:
         assert retrieved.id == api_key.id
         assert retrieved.name == "Test Key"
 
-    def test_get_nonexistent_api_key_returns_none(self, db: Session):
+    def test_get_nonexistent_api_key_returns_none(self, db: Session) -> None:
         """Should return None for non-existent key."""
         # Arrange
         fake_key = "sk-doesnotexist123456789012345678"
@@ -289,7 +289,7 @@ class TestApiKeyServiceGet:
 class TestApiKeyServiceDelete:
     """Test API key deletion."""
 
-    def test_delete_existing_api_key(self, db: Session):
+    def test_delete_existing_api_key(self, db: Session) -> None:
         """Should delete existing API key."""
         # Arrange
         developer = create_developer(db)
@@ -303,7 +303,7 @@ class TestApiKeyServiceDelete:
         result = api_key_service.get(db, key_id)
         assert result is None
 
-    def test_delete_nonexistent_api_key(self, db: Session):
+    def test_delete_nonexistent_api_key(self, db: Session) -> None:
         """Should handle deleting non-existent key gracefully."""
         # Arrange
         fake_key = "sk-doesnotexist123456789012345678"

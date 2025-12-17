@@ -27,7 +27,7 @@ class TestDeveloperRepository:
         """Create DeveloperRepository instance."""
         return DeveloperRepository(Developer)
 
-    def test_create(self, db: Session, developer_repo: DeveloperRepository):
+    def test_create(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test creating a new developer."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -55,7 +55,7 @@ class TestDeveloperRepository:
         assert db_developer is not None
         assert db_developer.email == "dev@example.com"
 
-    def test_get(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test retrieving a developer by ID."""
         # Arrange
         developer = create_developer(db, email="test@example.com")
@@ -68,7 +68,7 @@ class TestDeveloperRepository:
         assert result.id == developer.id
         assert result.email == "test@example.com"
 
-    def test_get_nonexistent(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get_nonexistent(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test retrieving a nonexistent developer returns None."""
         # Act
         result = developer_repo.get(db, uuid4())
@@ -76,7 +76,7 @@ class TestDeveloperRepository:
         # Assert
         assert result is None
 
-    def test_get_all(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get_all(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test listing all developers."""
         # Arrange
         dev1 = create_developer(db, email="dev1@example.com")
@@ -93,7 +93,7 @@ class TestDeveloperRepository:
         assert dev2.id in developer_ids
         assert dev3.id in developer_ids
 
-    def test_get_all_with_email_filter(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get_all_with_email_filter(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test filtering developers by email."""
         # Arrange
         dev1 = create_developer(db, email="target@example.com")
@@ -114,7 +114,7 @@ class TestDeveloperRepository:
         assert results[0].email == "target@example.com"
         assert results[0].id == dev1.id
 
-    def test_get_all_with_pagination(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get_all_with_pagination(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test pagination with offset and limit."""
         # Arrange
         for i in range(5):
@@ -134,7 +134,7 @@ class TestDeveloperRepository:
         page2_ids = {d.id for d in page2}
         assert len(page1_ids & page2_ids) == 0  # No overlap
 
-    def test_get_all_with_sort(self, db: Session, developer_repo: DeveloperRepository):
+    def test_get_all_with_sort(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test sorting developers by email."""
         # Arrange
         create_developer(db, email="charlie@example.com")
@@ -152,7 +152,7 @@ class TestDeveloperRepository:
         ]
         assert emails == sorted(emails)
 
-    def test_update(self, db: Session, developer_repo: DeveloperRepository):
+    def test_update(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test updating an existing developer."""
         # Arrange
         developer = create_developer(db, email="old@example.com", password="old_password")
@@ -175,7 +175,7 @@ class TestDeveloperRepository:
         assert db_developer.email == "new@example.com"
         assert db_developer.hashed_password == "hashed_new_password"
 
-    def test_update_email_only(self, db: Session, developer_repo: DeveloperRepository):
+    def test_update_email_only(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test updating only the email."""
         # Arrange
         developer = create_developer(db, email="old@example.com", password="password123")
@@ -189,7 +189,7 @@ class TestDeveloperRepository:
         assert result.email == "new@example.com"
         assert result.hashed_password == original_password  # Password unchanged
 
-    def test_update_password_only(self, db: Session, developer_repo: DeveloperRepository):
+    def test_update_password_only(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test updating only the password."""
         # Arrange
         developer = create_developer(db, email="dev@example.com", password="old_password")
@@ -202,7 +202,7 @@ class TestDeveloperRepository:
         assert result.email == "dev@example.com"  # Email unchanged
         assert result.hashed_password == "hashed_new_password"
 
-    def test_delete(self, db: Session, developer_repo: DeveloperRepository):
+    def test_delete(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test deleting a developer."""
         # Arrange
         developer = create_developer(db)
@@ -216,7 +216,7 @@ class TestDeveloperRepository:
         deleted_developer = developer_repo.get(db, developer_id)
         assert deleted_developer is None
 
-    def test_create_multiple_developers(self, db: Session, developer_repo: DeveloperRepository):
+    def test_create_multiple_developers(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test creating multiple developers with unique emails."""
         # Arrange
         emails = ["dev1@example.com", "dev2@example.com", "dev3@example.com"]
@@ -238,7 +238,7 @@ class TestDeveloperRepository:
         created_emails = {d.email for d in created_developers}
         assert created_emails == set(emails)
 
-    def test_filter_by_id(self, db: Session, developer_repo: DeveloperRepository):
+    def test_filter_by_id(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test filtering developers by ID."""
         # Arrange
         dev = create_developer(db, email="test@example.com")
@@ -257,7 +257,7 @@ class TestDeveloperRepository:
         assert len(results) == 1
         assert results[0].id == dev.id
 
-    def test_timestamps_on_create(self, db: Session, developer_repo: DeveloperRepository):
+    def test_timestamps_on_create(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test that created_at and updated_at are set correctly on creation."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -276,7 +276,7 @@ class TestDeveloperRepository:
         assert result.created_at == now
         assert result.updated_at == now
 
-    def test_timestamps_on_update(self, db: Session, developer_repo: DeveloperRepository):
+    def test_timestamps_on_update(self, db: Session, developer_repo: DeveloperRepository) -> None:
         """Test that updated_at changes on update."""
         # Arrange
         developer = create_developer(db, email="dev@example.com")

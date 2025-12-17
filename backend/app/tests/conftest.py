@@ -33,7 +33,7 @@ TEST_DATABASE_URL = os.environ.get(
 
 
 @pytest.fixture(scope="session")
-def engine():
+def engine() -> Any:
     """Create test database engine and tables."""
     test_engine = create_engine(
         TEST_DATABASE_URL,
@@ -62,13 +62,13 @@ def engine():
 
 
 @pytest.fixture(scope="session")
-def session_factory(engine):
+def session_factory(engine: Any) -> Any:
     """Create session factory bound to test engine."""
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture
-def db(engine, session_factory) -> Generator[Session, None, None]:
+def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
     """
     Create a test database session with transaction rollback.
     Each test runs in its own transaction that gets rolled back.
@@ -132,14 +132,23 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 
 
 @pytest.fixture(autouse=True)
-def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to run synchronously."""
-    with patch("celery.current_app") as mock_celery:
+    # Mock the poll_sqs_task specifically
+    mock_task = MagicMock()
+    mock_task.delay.return_value = MagicMock()
+    mock_task.apply_async.return_value = MagicMock()
+
+    with (
+        patch("celery.current_app") as mock_celery,
+        patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
+        patch("app.api.routes.v1.import_data.poll_sqs_task", mock_task),
+    ):
         mock_celery.conf = {
             "task_always_eager": True,
             "task_eager_propagates": True,
         }
-        yield
+        yield mock_task
 
 
 @pytest.fixture(autouse=True)
@@ -147,20 +156,36 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
     """Mock external API calls (Garmin, Polar, Suunto, AWS)."""
     mocks: dict[str, MagicMock] = {}
 
+    # Configure boto3 S3 mock
+    mock_s3 = MagicMock()
+    mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
+    mock_s3.generate_presigned_post.return_value = {
+        "url": "https://test-bucket.s3.amazonaws.com",
+        "fields": {
+            "key": "test-user/raw/test.xml",
+            "Content-Type": "application/xml",
+            "policy": "test-policy",
+            "x-amz-algorithm": "AWS4-HMAC-SHA256",
+            "x-amz-credential": "test-credential",
+            "x-amz-date": "20251217T000000Z",
+            "x-amz-signature": "test-signature",
+        },
+    }
+    mock_s3.head_bucket.return_value = {}
+    mock_s3.put_object.return_value = {"ETag": "test-etag"}
+
     with (
         patch("httpx.AsyncClient") as mock_httpx,
-        patch("boto3.client") as mock_boto3,
+        patch("boto3.client", return_value=mock_s3) as mock_boto3,
         patch("requests.Session") as mock_requests,
+        patch("app.services.apple.apple_xml.aws_service.AWS_BUCKET_NAME", "test-bucket"),
+        patch("app.services.apple.apple_xml.presigned_url_service.AWS_BUCKET_NAME", "test-bucket"),
+        patch("app.services.apple.apple_xml.aws_service.s3_client", mock_s3),
+        patch("app.services.apple.apple_xml.presigned_url_service.s3_client", mock_s3),
     ):
         mocks["httpx"] = mock_httpx
         mocks["boto3"] = mock_boto3
         mocks["requests"] = mock_requests
-
-        # Configure boto3 S3 mock
-        mock_s3 = MagicMock()
-        mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
-        mock_s3.put_object.return_value = {"ETag": "test-etag"}
-        mock_boto3.return_value = mock_s3
         mocks["s3"] = mock_s3
 
         yield mocks

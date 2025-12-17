@@ -26,12 +26,12 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
     def test_process_uploaded_file_success(
         self,
-        mock_import_xml_data,
-        mock_s3_client,
-        mock_session_local,
+        mock_import_xml_data: MagicMock,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test successful processing of uploaded XML file."""
         # Arrange
         user = create_user(db)
@@ -42,7 +42,7 @@ class TestProcessUploadTask:
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
 
         # Mock S3 download
-        def mock_download(bucket, key, local_path):
+        def mock_download(bucket: str, key: str, local_path: str) -> None:
             # Create a dummy file
             with open(local_path, "w") as f:
                 f.write("<HealthData></HealthData>")
@@ -73,12 +73,12 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
     def test_process_uploaded_file_cleans_up_temp_file(
         self,
-        mock_import_xml_data,
-        mock_s3_client,
-        mock_session_local,
+        mock_import_xml_data: MagicMock,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that temporary file is cleaned up after processing."""
         # Arrange
         user = create_user(db)
@@ -90,7 +90,7 @@ class TestProcessUploadTask:
 
         temp_file_path = None
 
-        def mock_download(bucket, key, local_path):
+        def mock_download(bucket: str, key: str, local_path: str) -> None:
             nonlocal temp_file_path
             temp_file_path = local_path
             with open(local_path, "w") as f:
@@ -109,11 +109,11 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task.s3_client")
     def test_process_uploaded_file_s3_download_error(
         self,
-        mock_s3_client,
-        mock_session_local,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test handling of S3 download errors."""
         # Arrange
         user = create_user(db)
@@ -135,12 +135,12 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
     def test_process_uploaded_file_import_error_rolls_back(
         self,
-        mock_import_xml_data,
-        mock_s3_client,
-        mock_session_local,
+        mock_import_xml_data: MagicMock,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that database transaction is rolled back on import error."""
         # Arrange
         user = create_user(db)
@@ -151,7 +151,7 @@ class TestProcessUploadTask:
         mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
 
-        def mock_download(bucket, key, local_path):
+        def mock_download(bucket: str, key: str, local_path: str) -> None:
             with open(local_path, "w") as f:
                 f.write("<HealthData></HealthData>")
 
@@ -172,12 +172,12 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
     def test_process_uploaded_file_extracts_user_id_from_key(
         self,
-        mock_import_xml_data,
-        mock_s3_client,
-        mock_session_local,
+        mock_import_xml_data: MagicMock,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that user ID is correctly extracted from object key."""
         # Arrange
         user_id = "550e8400-e29b-41d4-a716-446655440000"
@@ -187,7 +187,7 @@ class TestProcessUploadTask:
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
 
-        def mock_download(bucket, key, local_path):
+        def mock_download(bucket: str, key: str, local_path: str) -> None:
             with open(local_path, "w") as f:
                 f.write("<HealthData></HealthData>")
 
@@ -204,12 +204,12 @@ class TestProcessUploadTask:
     @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
     def test_process_uploaded_file_commits_on_success(
         self,
-        mock_import_xml_data,
-        mock_s3_client,
-        mock_session_local,
+        mock_import_xml_data: MagicMock,
+        mock_s3_client: MagicMock,
+        mock_session_local: MagicMock,
         db: Session,
-        mock_celery_app,
-    ):
+        mock_celery_app: MagicMock,
+    ) -> None:
         """Test that database transaction is committed on success."""
         # Arrange
         user = create_user(db)
@@ -220,7 +220,7 @@ class TestProcessUploadTask:
         mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
 
-        def mock_download(bucket, key, local_path):
+        def mock_download(bucket: str, key: str, local_path: str) -> None:
             with open(local_path, "w") as f:
                 f.write("<HealthData></HealthData>")
 
@@ -241,11 +241,11 @@ class TestImportXmlData:
     @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
     def test_import_xml_data_creates_records(
         self,
-        mock_time_series_service,
-        mock_event_record_service,
-        mock_xml_service_class,
+        mock_time_series_service: MagicMock,
+        mock_event_record_service: MagicMock,
+        mock_xml_service_class: MagicMock,
         db: Session,
-    ):
+    ) -> None:
         """Test that XML data is properly imported into database."""
         # Arrange
         user = create_user(db)
@@ -277,11 +277,11 @@ class TestImportXmlData:
     @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
     def test_import_xml_data_handles_multiple_workouts(
         self,
-        mock_time_series_service,
-        mock_event_record_service,
-        mock_xml_service_class,
+        mock_time_series_service: MagicMock,
+        mock_event_record_service: MagicMock,
+        mock_xml_service_class: MagicMock,
         db: Session,
-    ):
+    ) -> None:
         """Test importing XML data with multiple workouts."""
         # Arrange
         user = create_user(db)
@@ -307,11 +307,11 @@ class TestImportXmlData:
     @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
     def test_import_xml_data_skips_empty_time_series(
         self,
-        mock_time_series_service,
-        mock_event_record_service,
-        mock_xml_service_class,
+        mock_time_series_service: MagicMock,
+        mock_event_record_service: MagicMock,
+        mock_xml_service_class: MagicMock,
         db: Session,
-    ):
+    ) -> None:
         """Test that empty time series data is not imported."""
         # Arrange
         user = create_user(db)
@@ -336,11 +336,11 @@ class TestImportXmlData:
     @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
     def test_import_xml_data_with_heart_rate_only(
         self,
-        mock_time_series_service,
-        mock_event_record_service,
-        mock_xml_service_class,
+        mock_time_series_service: MagicMock,
+        mock_event_record_service: MagicMock,
+        mock_xml_service_class: MagicMock,
         db: Session,
-    ):
+    ) -> None:
         """Test importing only heart rate data."""
         # Arrange
         user = create_user(db)
@@ -364,10 +364,10 @@ class TestImportXmlData:
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")
     def test_import_xml_data_xmlservice_receives_correct_params(
         self,
-        mock_event_record_service,
-        mock_xml_service_class,
+        mock_event_record_service: MagicMock,
+        mock_xml_service_class: MagicMock,
         db: Session,
-    ):
+    ) -> None:
         """Test that XMLService is initialized with correct parameters."""
         # Arrange
         user = create_user(db)

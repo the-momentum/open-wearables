@@ -5,6 +5,7 @@ Tests end-to-end import of Garmin activities and workouts.
 """
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -22,7 +23,7 @@ class TestGarminWorkoutImport:
     """Tests for Garmin workout import functionality."""
 
     @pytest.fixture
-    def sample_garmin_activities(self):
+    def sample_garmin_activities(self) -> list[dict[str, Any]]:
         """Sample Garmin activities API response."""
         return [
             {
@@ -58,8 +59,8 @@ class TestGarminWorkoutImport:
     def test_import_garmin_activities_success(
         self,
         db: Session,
-        sample_garmin_activities: list[dict],
-    ):
+        sample_garmin_activities: list[dict[str, Any]],
+    ) -> None:
         """Test successful import of Garmin activities."""
         # Arrange
         user = create_user(db)
@@ -82,8 +83,8 @@ class TestGarminWorkoutImport:
     def test_import_garmin_activities_with_date_range(
         self,
         db: Session,
-        sample_garmin_activities: list[dict],
-    ):
+        sample_garmin_activities: list[dict[str, Any]],
+    ) -> None:
         """Test importing activities with specific date range."""
         # Arrange
         user = create_user(db)
@@ -102,7 +103,7 @@ class TestGarminWorkoutImport:
             assert activities[0]["activityType"] == "RUNNING"
             assert activities[1]["activityType"] == "CYCLING"
 
-    def test_import_garmin_activities_empty_response(self, db: Session):
+    def test_import_garmin_activities_empty_response(self, db: Session) -> None:
         """Test handling empty activities response."""
         # Arrange
         user = create_user(db)
@@ -117,7 +118,7 @@ class TestGarminWorkoutImport:
             # Assert
             assert result is True
 
-    def test_get_activity_detail(self, db: Session):
+    def test_get_activity_detail(self, db: Session) -> None:
         """Test fetching detailed activity data."""
         # Arrange
         user = create_user(db)
@@ -151,7 +152,7 @@ class TestGarminWorkoutImport:
     def test_import_normalizes_workout_types(
         self,
         db: Session,
-    ):
+    ) -> None:
         """Test that Garmin activity types are normalized correctly."""
         # Arrange
         user = create_user(db)
@@ -183,7 +184,7 @@ class TestGarminWorkoutImport:
             # Assert
             assert result is True
 
-    def test_import_handles_missing_heart_rate(self, db: Session):
+    def test_import_handles_missing_heart_rate(self, db: Session) -> None:
         """Test importing activities without heart rate data."""
         # Arrange
         user = create_user(db)
@@ -215,7 +216,7 @@ class TestGarminWorkoutImport:
             # Assert
             assert result is True
 
-    def test_import_handles_api_error(self, db: Session):
+    def test_import_handles_api_error(self, db: Session) -> None:
         """Test handling API errors during import."""
         # Arrange
         user = create_user(db)
@@ -229,7 +230,7 @@ class TestGarminWorkoutImport:
         ):
             strategy.workouts.load_data(db, user.id)
 
-    def test_get_workouts_from_api_with_params(self, db: Session):
+    def test_get_workouts_from_api_with_params(self, db: Session) -> None:
         """Test getting workouts from API with custom parameters."""
         # Arrange
         user = create_user(db)
@@ -253,7 +254,7 @@ class TestGarminWorkoutImport:
             assert "uploadStartTimeInSeconds" in params
             assert "uploadEndTimeInSeconds" in params
 
-    def test_strategy_components_initialized(self):
+    def test_strategy_components_initialized(self) -> None:
         """Test that Garmin strategy has all required components."""
         strategy = GarminStrategy()
 
@@ -262,7 +263,7 @@ class TestGarminWorkoutImport:
         assert strategy.workouts is not None
         assert isinstance(strategy.workouts, GarminWorkouts)
 
-    def test_import_multiple_activity_types(self, db: Session):
+    def test_import_multiple_activity_types(self, db: Session) -> None:
         """Test importing activities with various types."""
         # Arrange
         user = create_user(db)

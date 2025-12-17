@@ -5,7 +5,6 @@ Tests cover:
 - GET /api/v1/dashboard/stats - get system dashboard statistics
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -23,7 +22,7 @@ from app.tests.utils import (
 class TestGetDashboardStats:
     """Tests for GET /api/v1/dashboard/stats."""
 
-    def test_get_dashboard_stats_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting dashboard statistics with valid authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -74,7 +73,7 @@ class TestGetDashboardStats:
         assert isinstance(data["data_points"]["top_series_types"], list)
         assert isinstance(data["data_points"]["top_workout_types"], list)
 
-    def test_get_dashboard_stats_with_data(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_with_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test dashboard statistics reflect actual data."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -105,7 +104,7 @@ class TestGetDashboardStats:
         assert data["active_conn"]["count"] >= 2
         assert data["data_points"]["count"] >= 3
 
-    def test_get_dashboard_stats_empty_database(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_empty_database(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test dashboard statistics with empty database."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -126,7 +125,7 @@ class TestGetDashboardStats:
         assert isinstance(data["active_conn"]["count"], int)
         assert isinstance(data["data_points"]["count"], int)
 
-    def test_get_dashboard_stats_top_series_types(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_top_series_types(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that top series types are correctly reported."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -158,7 +157,7 @@ class TestGetDashboardStats:
             assert "count" in top_series[0]
             assert isinstance(top_series[0]["count"], int)
 
-    def test_get_dashboard_stats_top_workout_types(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_top_workout_types(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that top workout types are correctly reported."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -187,8 +186,7 @@ class TestGetDashboardStats:
             assert "count" in top_workouts[0]
             assert isinstance(top_workouts[0]["count"], int)
 
-    @pytest.mark.skip(reason="Auth dependency doesn't handle missing token gracefully - needs logic fix")
-    def test_get_dashboard_stats_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_get_dashboard_stats_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting dashboard stats fails without authentication."""
         # Act
         response = client.get(f"{api_v1_prefix}/dashboard/stats")
@@ -196,7 +194,7 @@ class TestGetDashboardStats:
         # Assert
         assert response.status_code == 401
 
-    def test_get_dashboard_stats_invalid_token(self, client: TestClient, api_v1_prefix: str):
+    def test_get_dashboard_stats_invalid_token(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting dashboard stats fails with invalid token."""
         # Act
         response = client.get(
@@ -207,7 +205,12 @@ class TestGetDashboardStats:
         # Assert
         assert response.status_code == 401
 
-    def test_get_dashboard_stats_weekly_growth_calculation(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_weekly_growth_calculation(
+        self,
+        client: TestClient,
+        db: Session,
+        api_v1_prefix: str,
+    ) -> None:
         """Test that weekly growth is calculated and returned."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -231,7 +234,7 @@ class TestGetDashboardStats:
         assert isinstance(data["active_conn"]["weekly_growth"], (int, float))
         assert isinstance(data["data_points"]["weekly_growth"], (int, float))
 
-    def test_get_dashboard_stats_multiple_developers(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_multiple_developers(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that each developer can access dashboard stats independently."""
         # Arrange
         developer1 = create_developer(db, email="dev1@example.com", password="test123")
@@ -258,7 +261,7 @@ class TestGetDashboardStats:
         assert data1["total_users"]["count"] == data2["total_users"]["count"]
         assert data1["data_points"]["count"] == data2["data_points"]["count"]
 
-    def test_get_dashboard_stats_response_schema(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_response_schema(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that dashboard stats response matches expected schema."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -296,7 +299,7 @@ class TestGetDashboardStats:
             assert "workout_type" in workout_type
             assert "count" in workout_type
 
-    def test_get_dashboard_stats_concurrent_requests(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_dashboard_stats_concurrent_requests(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test that concurrent requests to dashboard stats work correctly."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")

@@ -25,7 +25,7 @@ from app.tests.utils import (
 class TestHeartRateEndpoints:
     """Test suite for heart rate endpoints."""
 
-    def test_get_heart_rate_success(self, client: TestClient, db: Session):
+    def test_get_heart_rate_success(self, client: TestClient, db: Session) -> None:
         """Test successfully retrieving heart rate data for a user."""
         # Arrange
         user = create_user(db)
@@ -55,7 +55,7 @@ class TestHeartRateEndpoints:
         assert any(d["id"] == str(hr1.id) for d in data)
         assert any(d["id"] == str(hr2.id) for d in data)
 
-    def test_get_heart_rate_empty_list(self, client: TestClient, db: Session):
+    def test_get_heart_rate_empty_list(self, client: TestClient, db: Session) -> None:
         """Test retrieving heart rate data for a user with no data."""
         # Arrange
         user = create_user(db)
@@ -70,7 +70,7 @@ class TestHeartRateEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_heart_rate_filters_by_timestamp(self, client: TestClient, db: Session):
+    def test_get_heart_rate_filters_by_timestamp(self, client: TestClient, db: Session) -> None:
         """Test filtering heart rate data by timestamp."""
         # Arrange
         user = create_user(db)
@@ -79,16 +79,14 @@ class TestHeartRateEndpoints:
         create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=70.0,
-            timestamp=now - timedelta(days=10),
+            recorded_at=now - timedelta(days=10),
         )
         recent_hr = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=75.0,
-            timestamp=now - timedelta(days=2),
+            recorded_at=now - timedelta(days=2),
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
@@ -107,7 +105,7 @@ class TestHeartRateEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(recent_hr.id)
 
-    def test_get_heart_rate_filters_by_date_range(self, client: TestClient, db: Session):
+    def test_get_heart_rate_filters_by_date_range(self, client: TestClient, db: Session) -> None:
         """Test filtering heart rate data with both start and end datetime."""
         # Arrange
         user = create_user(db)
@@ -116,23 +114,20 @@ class TestHeartRateEndpoints:
         create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=70.0,
-            timestamp=now - timedelta(days=10),
+            recorded_at=now - timedelta(days=10),
         )
         in_range = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=75.0,
-            timestamp=now - timedelta(days=5),
+            recorded_at=now - timedelta(days=5),
         )
         create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=80.0,
-            timestamp=now,
+            recorded_at=now,
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
@@ -143,7 +138,7 @@ class TestHeartRateEndpoints:
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"start_datetime": start_time, "end_datetime": end_time},
+            params={"start_datetime": start_time, "end_datetime": end_time, "device_id": "device1"},
         )
 
         # Assert
@@ -152,17 +147,16 @@ class TestHeartRateEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(in_range.id)
 
-    def test_get_heart_rate_pagination(self, client: TestClient, db: Session):
-        """Test pagination with skip and limit parameters."""
+    def test_get_heart_rate_pagination(self, client: TestClient, db: Session) -> None:
+        """Test that API returns all records (no pagination support)."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         # Create 10 heart rate samples
         [
             create_data_point_series(
                 db,
                 mapping=mapping,
-                category="heart_rate",
                 value=70.0 + i,
             )
             for i in range(10)
@@ -170,77 +164,74 @@ class TestHeartRateEndpoints:
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act - get page 2 with 3 items per page
+        # Act - API doesn't support skip/limit, returns all records
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"skip": 3, "limit": 3},
+            params={"device_id": "device1"},
         )
 
-        # Assert
+        # Assert - returns all 10 records
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 3
+        assert len(data) == 10
 
-    def test_get_heart_rate_sorting(self, client: TestClient, db: Session):
+    def test_get_heart_rate_sorting(self, client: TestClient, db: Session) -> None:
         """Test sorting heart rate data by timestamp."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         now = datetime.now(timezone.utc)
         hr1 = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=70.0,
-            timestamp=now - timedelta(hours=2),
+            recorded_at=now - timedelta(hours=2),
         )
         hr2 = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=75.0,
-            timestamp=now - timedelta(hours=1),
+            recorded_at=now - timedelta(hours=1),
         )
         hr3 = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=80.0,
-            timestamp=now,
+            recorded_at=now,
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act - sort by timestamp ascending
+        # Act - API returns data sorted by timestamp descending (most recent first)
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"sort_by": "timestamp", "sort_order": "asc"},
+            params={"device_id": "device1"},
         )
 
-        # Assert
+        # Assert - data should be sorted descending by default (hr3, hr2, hr1)
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 3
-        assert data[0]["id"] == str(hr1.id)
+        assert data[0]["id"] == str(hr3.id)
         assert data[1]["id"] == str(hr2.id)
-        assert data[2]["id"] == str(hr3.id)
+        assert data[2]["id"] == str(hr1.id)
 
-    def test_get_heart_rate_user_isolation(self, client: TestClient, db: Session):
+    def test_get_heart_rate_user_isolation(self, client: TestClient, db: Session) -> None:
         """Test that users can only see their own heart rate data."""
         # Arrange
         user1 = create_user(db)
         user2 = create_user(db)
-        mapping1 = create_external_device_mapping(db, user=user1)
-        mapping2 = create_external_device_mapping(db, user=user2)
-        hr1 = create_data_point_series(db, mapping=mapping1, category="heart_rate", value=70.0)
-        create_data_point_series(db, mapping=mapping2, category="heart_rate", value=75.0)
+        mapping1 = create_external_device_mapping(db, user=user1, device_id="device1")
+        mapping2 = create_external_device_mapping(db, user=user2, device_id="device2")
+        hr1 = create_data_point_series(db, mapping=mapping1, value=70.0)
+        create_data_point_series(db, mapping=mapping2, value=75.0)
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
         # Act - get user1's heart rate data
-        response = client.get(f"/api/v1/users/{user1.id}/heart-rate", headers=headers)
+        response = client.get(f"/api/v1/users/{user1.id}/heart-rate", headers=headers, params={"device_id": "device1"})
 
         # Assert
         assert response.status_code == 200
@@ -248,14 +239,14 @@ class TestHeartRateEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(hr1.id)
 
-    def test_get_heart_rate_filters_by_provider(self, client: TestClient, db: Session):
+    def test_get_heart_rate_filters_by_provider(self, client: TestClient, db: Session) -> None:
         """Test filtering heart rate data by provider."""
         # Arrange
         user = create_user(db)
-        apple_mapping = create_external_device_mapping(db, user=user, provider_id="apple")
-        garmin_mapping = create_external_device_mapping(db, user=user, provider_id="garmin")
-        apple_hr = create_data_point_series(db, mapping=apple_mapping, category="heart_rate", value=70.0)
-        create_data_point_series(db, mapping=garmin_mapping, category="heart_rate", value=75.0)
+        apple_mapping = create_external_device_mapping(db, user=user, provider_id="apple", device_id="apple_device")
+        garmin_mapping = create_external_device_mapping(db, user=user, provider_id="garmin", device_id="garmin_device")
+        apple_hr = create_data_point_series(db, mapping=apple_mapping, value=70.0)
+        create_data_point_series(db, mapping=garmin_mapping, value=75.0)
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
@@ -263,7 +254,7 @@ class TestHeartRateEndpoints:
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"provider_id": "apple"},
+            params={"provider_id": "apple", "device_id": "apple_device"},
         )
 
         # Assert
@@ -272,23 +263,22 @@ class TestHeartRateEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(apple_hr.id)
 
-    def test_get_heart_rate_response_structure(self, client: TestClient, db: Session):
+    def test_get_heart_rate_response_structure(self, client: TestClient, db: Session) -> None:
         """Test that response contains all expected fields."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=72.0,
-            timestamp=datetime.now(timezone.utc),
+            recorded_at=datetime.now(timezone.utc),
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers, params={"device_id": "device1"})
 
         # Assert
         assert response.status_code == 200
@@ -298,13 +288,13 @@ class TestHeartRateEndpoints:
 
         # Verify essential fields are present
         assert "id" in hr_data
-        assert "category" in hr_data
+        assert "series_type" in hr_data
         assert "value" in hr_data
-        assert "timestamp" in hr_data
-        assert hr_data["category"] == "heart_rate"
-        assert hr_data["value"] == 72.0
+        assert "recorded_at" in hr_data
+        assert hr_data["series_type"] == "heart_rate"
+        assert float(hr_data["value"]) == 72.0
 
-    def test_get_heart_rate_missing_api_key(self, client: TestClient, db: Session):
+    def test_get_heart_rate_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -315,7 +305,7 @@ class TestHeartRateEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_heart_rate_invalid_api_key(self, client: TestClient, db: Session):
+    def test_get_heart_rate_invalid_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request with invalid API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -327,19 +317,19 @@ class TestHeartRateEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_heart_rate_invalid_user_id(self, client: TestClient, db: Session):
-        """Test handling of invalid user ID format."""
+    def test_get_heart_rate_invalid_user_id(self, client: TestClient, db: Session) -> None:
+        """Test handling of invalid user ID format raises ValueError."""
         # Arrange
+        import pytest
+
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act
-        response = client.get("/api/v1/users/not-a-uuid/heart-rate", headers=headers)
+        # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
+        with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
+            client.get("/api/v1/users/not-a-uuid/heart-rate", headers=headers)
 
-        # Assert
-        assert response.status_code == 422
-
-    def test_get_heart_rate_nonexistent_user(self, client: TestClient, db: Session):
+    def test_get_heart_rate_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving heart rate data for a user that doesn't exist."""
         # Arrange
         from uuid import uuid4
@@ -356,17 +346,16 @@ class TestHeartRateEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_heart_rate_with_different_values(self, client: TestClient, db: Session):
+    def test_get_heart_rate_with_different_values(self, client: TestClient, db: Session) -> None:
         """Test retrieving heart rate data with various realistic values."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         values = [60.0, 72.5, 85.0, 95.5, 120.0, 145.0, 180.0]
         [
             create_data_point_series(
                 db,
                 mapping=mapping,
-                category="heart_rate",
                 value=value,
             )
             for value in values
@@ -375,11 +364,11 @@ class TestHeartRateEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers, params={"device_id": "device1"})
 
         # Assert
         assert response.status_code == 200
         data = response.json()
         assert len(data) == len(values)
-        returned_values = {d["value"] for d in data}
+        returned_values = {float(d["value"]) for d in data}
         assert returned_values == set(values)

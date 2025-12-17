@@ -17,7 +17,7 @@ from app.tests.utils import create_user
 class TestPolarOAuthConfiguration:
     """Tests for Polar OAuth configuration and endpoints."""
 
-    def test_polar_oauth_endpoints(self, db: Session):
+    def test_polar_oauth_endpoints(self, db: Session) -> None:
         """Test Polar OAuth endpoints are configured correctly."""
         # Arrange
         from app.models import User
@@ -40,7 +40,7 @@ class TestPolarOAuthConfiguration:
         assert endpoints.authorize_url == "https://flow.polar.com/oauth2/authorization"
         assert endpoints.token_url == "https://polarremote.com/v2/oauth2/token"
 
-    def test_polar_oauth_credentials_structure(self, db: Session):
+    def test_polar_oauth_credentials_structure(self, db: Session) -> None:
         """Test Polar OAuth credentials are structured correctly."""
         # Arrange
         from app.models import User
@@ -66,7 +66,7 @@ class TestPolarOAuthConfiguration:
         assert isinstance(credentials.client_id, str)
         assert isinstance(credentials.client_secret, str)
 
-    def test_polar_oauth_uses_basic_auth(self, db: Session):
+    def test_polar_oauth_uses_basic_auth(self, db: Session) -> None:
         """Test Polar OAuth uses Basic Authentication method."""
         # Arrange
         from app.models import User
@@ -86,7 +86,7 @@ class TestPolarOAuthConfiguration:
         # Assert
         assert oauth.auth_method == AuthenticationMethod.BASIC_AUTH
 
-    def test_polar_oauth_does_not_use_pkce(self, db: Session):
+    def test_polar_oauth_does_not_use_pkce(self, db: Session) -> None:
         """Test Polar OAuth does not use PKCE."""
         # Arrange
         from app.models import User
@@ -109,8 +109,8 @@ class TestPolarOAuthConfiguration:
 class TestPolarOAuthAuthorization:
     """Tests for Polar OAuth authorization URL generation."""
 
-    @patch("app.integrations.redis_client.get_redis_client")
-    def test_get_authorization_url(self, mock_redis_client, db: Session):
+    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    def test_get_authorization_url(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test generating authorization URL for Polar."""
         # Arrange
         from app.models import User
@@ -121,6 +121,7 @@ class TestPolarOAuthAuthorization:
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
 
+        # Setup mock redis before creating OAuth instance
         mock_redis = MagicMock()
         mock_redis.setex.return_value = True
         mock_redis_client.return_value = mock_redis
@@ -143,10 +144,16 @@ class TestPolarOAuthAuthorization:
         assert "redirect_uri=" in auth_url
         assert state is not None
         assert len(state) > 0
-        mock_redis.setex.assert_called_once()
+        # Verify the mock redis client setex was called
+        mock_redis.setex.assert_called()
+        # Verify the call was made with the correct state key pattern
+        call_args = mock_redis.setex.call_args_list[-1]  # Get the last call
+        assert call_args[0][0].startswith("oauth_state:")
+        assert call_args[0][1] == 900  # TTL
+        assert str(user.id) in call_args[0][2]  # State contains user_id
 
     @patch("app.integrations.redis_client.get_redis_client")
-    def test_authorization_url_includes_scope(self, mock_redis_client, db: Session):
+    def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test authorization URL includes default scope."""
         # Arrange
         from app.models import User
@@ -181,7 +188,7 @@ class TestPolarOAuthUserInfo:
     """Tests for extracting Polar user info from token response."""
 
     @patch("httpx.post")
-    def test_get_provider_user_info_with_x_user_id(self, mock_post, db: Session):
+    def test_get_provider_user_info_with_x_user_id(self, mock_post: MagicMock, db: Session) -> None:
         """Test extracting user info when x_user_id is present."""
         # Arrange
         from app.models import User
@@ -220,7 +227,7 @@ class TestPolarOAuthUserInfo:
         assert user_info["username"] is None
         mock_post.assert_called_once()
 
-    def test_get_provider_user_info_without_x_user_id(self, db: Session):
+    def test_get_provider_user_info_without_x_user_id(self, db: Session) -> None:
         """Test extracting user info when x_user_id is None."""
         # Arrange
         from app.models import User
@@ -258,7 +265,7 @@ class TestPolarUserRegistration:
     """Tests for Polar user registration API call."""
 
     @patch("httpx.post")
-    def test_register_user_success(self, mock_post, db: Session):
+    def test_register_user_success(self, mock_post: MagicMock, db: Session) -> None:
         """Test successful user registration with Polar API."""
         # Arrange
         from app.models import User
@@ -292,7 +299,7 @@ class TestPolarUserRegistration:
         assert call_args[1]["json"]["member-id"] == str(user.id)
 
     @patch("httpx.post")
-    def test_register_user_handles_failure_gracefully(self, mock_post, db: Session):
+    def test_register_user_handles_failure_gracefully(self, mock_post: MagicMock, db: Session) -> None:
         """Test user registration handles API errors without raising exceptions."""
         # Arrange
         from app.models import User

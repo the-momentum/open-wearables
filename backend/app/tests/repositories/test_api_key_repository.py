@@ -27,7 +27,7 @@ class TestApiKeyRepository:
         """Create ApiKeyRepository instance."""
         return ApiKeyRepository(ApiKey)
 
-    def test_create(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_create(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test creating a new API key."""
         # Arrange
         developer = create_developer(db)
@@ -54,7 +54,7 @@ class TestApiKeyRepository:
         assert db_api_key is not None
         assert db_api_key.name == "Test API Key"
 
-    def test_create_without_developer(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_create_without_developer(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test creating an API key without a developer (orphaned key)."""
         # Arrange
         key_id = f"sk-{uuid4().hex[:32]}"
@@ -72,7 +72,7 @@ class TestApiKeyRepository:
         assert result.name == "Orphaned Key"
         assert result.created_by is None
 
-    def test_get(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test retrieving an API key by ID."""
         # Arrange
         api_key = create_api_key(db, name="My Test Key")
@@ -85,7 +85,7 @@ class TestApiKeyRepository:
         assert result.id == api_key.id
         assert result.name == "My Test Key"
 
-    def test_get_nonexistent(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_nonexistent(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test retrieving a nonexistent API key returns None."""
         # Act
         result = api_key_repo.get(db, "sk-nonexistent-key-12345")
@@ -93,7 +93,7 @@ class TestApiKeyRepository:
         # Assert
         assert result is None
 
-    def test_get_all(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test listing all API keys."""
         # Arrange
         key1 = create_api_key(db, name="Key 1")
@@ -110,7 +110,7 @@ class TestApiKeyRepository:
         assert key2.id in key_ids
         assert key3.id in key_ids
 
-    def test_get_all_with_name_filter(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all_with_name_filter(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test filtering API keys by name."""
         # Arrange
         key1 = create_api_key(db, name="Production Key")
@@ -131,7 +131,7 @@ class TestApiKeyRepository:
         assert results[0].name == "Production Key"
         assert results[0].id == key1.id
 
-    def test_get_all_with_developer_filter(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all_with_developer_filter(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test filtering API keys by developer."""
         # Arrange
         dev1 = create_developer(db, email="dev1@example.com")
@@ -154,7 +154,7 @@ class TestApiKeyRepository:
         assert len(results) == 1
         assert results[0].name == "Dev1 Key"
 
-    def test_get_all_with_pagination(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all_with_pagination(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test pagination with offset and limit."""
         # Arrange
         for i in range(5):
@@ -174,7 +174,7 @@ class TestApiKeyRepository:
         page2_ids = {k.id for k in page2}
         assert len(page1_ids & page2_ids) == 0  # No overlap
 
-    def test_get_all_ordered(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all_ordered(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test getting all API keys ordered by creation date (most recent first)."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -201,7 +201,7 @@ class TestApiKeyRepository:
         assert test_keys[2].id == key2.id  # Middle
         assert test_keys[3].id == key1.id  # Oldest
 
-    def test_delete(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_delete(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test deleting an API key."""
         # Arrange
         api_key = create_api_key(db, name="Key to Delete")
@@ -215,7 +215,7 @@ class TestApiKeyRepository:
         deleted_key = api_key_repo.get(db, key_id)
         assert deleted_key is None
 
-    def test_update_not_implemented(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_update_not_implemented(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test that update works (though ApiKey doesn't have a custom update schema)."""
         # Arrange
         api_key = create_api_key(db, name="Original Name")
@@ -232,7 +232,7 @@ class TestApiKeyRepository:
         db_key = api_key_repo.get(db, api_key.id)
         assert db_key.name == "Updated Name"
 
-    def test_create_with_custom_timestamp(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_create_with_custom_timestamp(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test creating an API key with a specific timestamp."""
         # Arrange
         custom_time = datetime(2023, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
@@ -249,7 +249,7 @@ class TestApiKeyRepository:
         # Assert
         assert result.created_at == custom_time
 
-    def test_multiple_keys_same_developer(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_multiple_keys_same_developer(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test that a developer can have multiple API keys."""
         # Arrange
         developer = create_developer(db)
@@ -268,7 +268,7 @@ class TestApiKeyRepository:
         assert "Key 2" in key_names
         assert "Key 3" in key_names
 
-    def test_api_key_id_format(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_api_key_id_format(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test that API key IDs are stored correctly (string format)."""
         # Arrange
         key_id = "sk-test-custom-key-id-12345"
@@ -285,7 +285,7 @@ class TestApiKeyRepository:
         assert result.id == key_id
         assert result.id.startswith("sk-")
 
-    def test_get_all_ordered_empty_database(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_get_all_ordered_empty_database(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test get_all_ordered with no API keys."""
         # Arrange - Delete all keys if any exist
         all_keys = api_key_repo.get_all_ordered(db)
@@ -298,7 +298,7 @@ class TestApiKeyRepository:
         # Assert
         assert results == []
 
-    def test_sort_by_name(self, db: Session, api_key_repo: ApiKeyRepository):
+    def test_sort_by_name(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test sorting API keys by name."""
         # Arrange
         create_api_key(db, name="Zebra Key")

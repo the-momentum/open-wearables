@@ -21,7 +21,7 @@ from app.tests.utils import create_developer, developer_auth_headers
 class TestLogin:
     """Tests for POST /api/v1/login."""
 
-    def test_login_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_login_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test successful login with valid credentials."""
         # Arrange
         create_developer(db, email="test@example.com", password="test123")
@@ -40,7 +40,7 @@ class TestLogin:
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
 
-    def test_login_invalid_password(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_login_invalid_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with incorrect password."""
         # Arrange
         create_developer(db, email="test@example.com", password="correct_password")
@@ -56,7 +56,7 @@ class TestLogin:
         data = response.json()
         assert data["detail"] == "Incorrect email or password"
 
-    def test_login_nonexistent_user(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_login_nonexistent_user(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails for non-existent user."""
         # Act
         response = client.post(
@@ -69,7 +69,7 @@ class TestLogin:
         data = response.json()
         assert data["detail"] == "Incorrect email or password"
 
-    def test_login_missing_username(self, client: TestClient, api_v1_prefix: str):
+    def test_login_missing_username(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test login fails with missing username."""
         # Act
         response = client.post(
@@ -80,7 +80,7 @@ class TestLogin:
         # Assert
         assert response.status_code in [400, 422]
 
-    def test_login_missing_password(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_login_missing_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test login fails with missing password."""
         # Arrange
         create_developer(db, email="test@example.com", password="test123")
@@ -94,7 +94,7 @@ class TestLogin:
         # Assert
         assert response.status_code in [400, 422]
 
-    def test_login_empty_credentials(self, client: TestClient, api_v1_prefix: str):
+    def test_login_empty_credentials(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test login fails with empty credentials."""
         # Act
         response = client.post(
@@ -109,7 +109,7 @@ class TestLogin:
 class TestLogout:
     """Tests for POST /api/v1/logout."""
 
-    def test_logout_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_logout_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test successful logout with valid token."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -123,13 +123,15 @@ class TestLogout:
         data = response.json()
         assert data["message"] == "Successfully logged out"
 
-    def test_logout_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_logout_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test logout fails without authentication."""
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.post(f"{api_v1_prefix}/auth/logout")
+        # Act
+        response = client.post(f"{api_v1_prefix}/auth/logout")
 
-    def test_logout_invalid_token(self, client: TestClient, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_logout_invalid_token(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test logout fails with invalid token."""
         # Act
         response = client.post(
@@ -144,7 +146,7 @@ class TestLogout:
 class TestGetCurrentDeveloper:
     """Tests for GET /api/v1/me."""
 
-    def test_get_current_developer_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_current_developer_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting current developer info with valid authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -161,13 +163,15 @@ class TestGetCurrentDeveloper:
         assert "created_at" in data
         assert "updated_at" in data
 
-    def test_get_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_get_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting current developer fails without authentication."""
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.get(f"{api_v1_prefix}/auth/me")
+        # Act
+        response = client.get(f"{api_v1_prefix}/auth/me")
 
-    def test_get_current_developer_invalid_token(self, client: TestClient, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_get_current_developer_invalid_token(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting current developer fails with invalid token."""
         # Act
         response = client.get(
@@ -182,7 +186,7 @@ class TestGetCurrentDeveloper:
 class TestUpdateCurrentDeveloper:
     """Tests for PATCH /api/v1/me."""
 
-    def test_update_current_developer_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating current developer's email."""
         # Arrange
         developer = create_developer(db, email="old@example.com", password="test123")
@@ -202,7 +206,7 @@ class TestUpdateCurrentDeveloper:
         db.refresh(developer)
         assert developer.email == "new@example.com"
 
-    def test_update_current_developer_password(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating current developer's password."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="old_password")
@@ -222,7 +226,7 @@ class TestUpdateCurrentDeveloper:
         # Password is updated with the hashed_ prefix pattern from the fixture
         assert developer.hashed_password == "hashed_new_password123"
 
-    def test_update_current_developer_both_fields(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_both_fields(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating both email and password."""
         # Arrange
         developer = create_developer(db, email="old@example.com", password="old_password")
@@ -243,7 +247,7 @@ class TestUpdateCurrentDeveloper:
         # Password is updated with the hashed_ prefix pattern from the fixture
         assert developer.hashed_password == "hashed_new_password123"
 
-    def test_update_current_developer_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_empty_payload(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with empty payload."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -258,7 +262,7 @@ class TestUpdateCurrentDeveloper:
         data = response.json()
         assert data["email"] == "test@example.com"
 
-    def test_update_current_developer_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with invalid email format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -271,7 +275,7 @@ class TestUpdateCurrentDeveloper:
         # Assert
         assert response.status_code in [400, 422]
 
-    def test_update_current_developer_short_password(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_current_developer_short_password(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating with password that's too short."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -284,17 +288,19 @@ class TestUpdateCurrentDeveloper:
         # Assert
         assert response.status_code in [400, 422]
 
-    def test_update_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str):
+    def test_update_current_developer_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test updating current developer fails without authentication."""
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.patch(f"{api_v1_prefix}/auth/me", json={"email": "new@example.com"})
+        # Act
+        response = client.patch(f"{api_v1_prefix}/auth/me", json={"email": "new@example.com"})
+
+        # Assert
+        assert response.status_code == 401
 
 
 class TestGetDeveloperById:
     """Tests for GET /api/v1/{developer_id}."""
 
-    def test_get_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer by ID with valid authentication."""
         # Arrange
         auth_developer = create_developer(db, email="auth@example.com", password="test123")
@@ -310,7 +316,7 @@ class TestGetDeveloperById:
         assert data["id"] == str(target_developer.id)
         assert data["email"] == "target@example.com"
 
-    def test_get_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent developer raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -323,7 +329,7 @@ class TestGetDeveloperById:
         with pytest.raises(ResourceNotFoundError):
             client.get(f"{api_v1_prefix}/auth/{fake_id}", headers=headers)
 
-    def test_get_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer with invalid UUID format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
@@ -335,20 +341,22 @@ class TestGetDeveloperById:
         # Assert
         assert response.status_code in [400, 422]
 
-    def test_get_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_get_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer by ID fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.get(f"{api_v1_prefix}/auth/{developer.id}")
+        # Act
+        response = client.get(f"{api_v1_prefix}/auth/{developer.id}")
+
+        # Assert
+        assert response.status_code == 401
 
 
 class TestUpdateDeveloperById:
     """Tests for PATCH /api/v1/{developer_id}."""
 
-    def test_update_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID."""
         # Arrange
         auth_developer = create_developer(db, email="auth@example.com", password="test123")
@@ -372,7 +380,7 @@ class TestUpdateDeveloperById:
         db.refresh(target_developer)
         assert target_developer.email == "updated@example.com"
 
-    def test_update_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent developer raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -386,17 +394,19 @@ class TestUpdateDeveloperById:
         with pytest.raises(ResourceNotFoundError):
             client.patch(f"{api_v1_prefix}/auth/{fake_id}", json=payload, headers=headers)
 
-    def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
         payload = {"email": "updated@example.com"}
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.patch(f"{api_v1_prefix}/auth/{developer.id}", json=payload)
+        # Act
+        response = client.patch(f"{api_v1_prefix}/auth/{developer.id}", json=payload)
 
-    def test_update_developer_by_id_invalid_data(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_update_developer_by_id_invalid_data(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer with invalid data."""
         # Arrange
         auth_developer = create_developer(db, email="auth@example.com", password="test123")
@@ -418,7 +428,7 @@ class TestUpdateDeveloperById:
 class TestDeleteDeveloperById:
     """Tests for DELETE /api/v1/{developer_id}."""
 
-    def test_delete_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer by ID."""
         # Arrange
         auth_developer = create_developer(db, email="auth@example.com", password="test123")
@@ -441,7 +451,7 @@ class TestDeleteDeveloperById:
         deleted_developer = developer_service.get(db, target_id, raise_404=False)
         assert deleted_developer is None
 
-    def test_delete_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent developer raises ResourceNotFoundError."""
         from app.utils.exceptions import ResourceNotFoundError
 
@@ -454,16 +464,18 @@ class TestDeleteDeveloperById:
         with pytest.raises(ResourceNotFoundError):
             client.delete(f"{api_v1_prefix}/auth/{fake_id}", headers=headers)
 
-    def test_delete_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str):
+    def test_delete_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer fails without authentication."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")
 
-        # Act & Assert - No token causes AttributeError in current implementation
-        with pytest.raises(AttributeError):
-            client.delete(f"{api_v1_prefix}/auth/{developer.id}")
+        # Act
+        response = client.delete(f"{api_v1_prefix}/auth/{developer.id}")
 
-    def test_delete_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str):
+        # Assert
+        assert response.status_code == 401
+
+    def test_delete_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer with invalid UUID format."""
         # Arrange
         developer = create_developer(db, email="test@example.com", password="test123")

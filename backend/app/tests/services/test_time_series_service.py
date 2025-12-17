@@ -36,7 +36,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
     """Test bulk creation of time series samples."""
 
     @pytest.mark.asyncio
-    async def test_bulk_create_heart_rate_samples(self, db: Session):
+    async def test_bulk_create_heart_rate_samples(self, db: Session) -> None:
         """Should bulk create heart rate samples."""
         # Arrange
         user = create_user(db)
@@ -64,7 +64,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         assert len(retrieved_samples) == 5
 
     @pytest.mark.asyncio
-    async def test_bulk_create_step_samples(self, db: Session):
+    async def test_bulk_create_step_samples(self, db: Session) -> None:
         """Should bulk create step samples."""
         # Arrange
         user = create_user(db)
@@ -91,7 +91,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         retrieved_samples = await time_series_service.get_user_step_series(db, str(user.id), query_params)
         assert len(retrieved_samples) == 3
 
-    def test_bulk_create_mixed_series_types(self, db: Session):
+    def test_bulk_create_mixed_series_types(self, db: Session) -> None:
         """Should bulk create samples of different series types."""
         # Arrange
         user = create_user(db)
@@ -129,7 +129,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
     """Test retrieving user heart rate series."""
 
     @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_basic(self, db: Session):
+    async def test_get_user_heart_rate_series_basic(self, db: Session) -> None:
         """Should retrieve heart rate samples for user."""
         # Arrange
         user = create_user(db)
@@ -165,7 +165,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         assert hr2.id in sample_ids
 
     @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_filters_by_device(self, db: Session):
+    async def test_get_user_heart_rate_series_filters_by_device(self, db: Session) -> None:
         """Should filter heart rate samples by device_id."""
         # Arrange
         user = create_user(db)
@@ -187,7 +187,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         assert hr2.id not in sample_ids
 
     @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_filters_by_date_range(self, db: Session):
+    async def test_get_user_heart_rate_series_filters_by_date_range(self, db: Session) -> None:
         """Should filter heart rate samples by date range."""
         # Arrange
         user = create_user(db)
@@ -222,7 +222,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         assert hr_recent.id not in sample_ids
 
     @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_user_isolation(self, db: Session):
+    async def test_get_user_heart_rate_series_user_isolation(self, db: Session) -> None:
         """Should only return samples for specified user."""
         # Arrange
         user1 = create_user(db, email="user1@example.com")
@@ -247,7 +247,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         assert hr2.id not in sample_ids
 
     @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_requires_device_id(self, db: Session):
+    async def test_get_user_heart_rate_series_requires_device_id(self, db: Session) -> None:
         """Should return empty list without device_id or external_mapping_id."""
         # Arrange
         user = create_user(db)
@@ -264,7 +264,7 @@ class TestTimeSeriesServiceGetUserStepSeries:
     """Test retrieving user step series."""
 
     @pytest.mark.asyncio
-    async def test_get_user_step_series_basic(self, db: Session):
+    async def test_get_user_step_series_basic(self, db: Session) -> None:
         """Should retrieve step samples for user."""
         # Arrange
         user = create_user(db)
@@ -289,7 +289,7 @@ class TestTimeSeriesServiceGetUserStepSeries:
 class TestTimeSeriesServiceGetDailyHistogram:
     """Test getting daily histogram of data points."""
 
-    def test_get_daily_histogram_groups_by_day(self, db: Session):
+    def test_get_daily_histogram_groups_by_day(self, db: Session) -> None:
         """Should group data points by day."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -333,7 +333,7 @@ class TestTimeSeriesServiceGetDailyHistogram:
         assert histogram[1] == 2  # Day 2
         assert histogram[2] == 1  # Day 3
 
-    def test_get_daily_histogram_empty_range(self, db: Session):
+    def test_get_daily_histogram_empty_range(self, db: Session) -> None:
         """Should return empty list for range with no data."""
         # Arrange
         start_date = datetime(2024, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
@@ -349,7 +349,7 @@ class TestTimeSeriesServiceGetDailyHistogram:
 class TestTimeSeriesServiceGetCountBySeriesType:
     """Test counting data points by series type."""
 
-    def test_get_count_by_series_type_groups_correctly(self, db: Session):
+    def test_get_count_by_series_type_groups_correctly(self, db: Session) -> None:
         """Should group and count data points by series type."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -372,7 +372,7 @@ class TestTimeSeriesServiceGetCountBySeriesType:
         assert results_dict[hr_type.id] == 3
         assert results_dict[step_type.id] == 2
 
-    def test_get_count_by_series_type_ordered_by_count(self, db: Session):
+    def test_get_count_by_series_type_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -395,7 +395,7 @@ class TestTimeSeriesServiceGetCountBySeriesType:
         # Results should be ordered by count descending
         assert results[0][1] >= results[1][1]
 
-    def test_get_count_by_series_type_empty_result(self, db: Session):
+    def test_get_count_by_series_type_empty_result(self, db: Session) -> None:
         """Should return empty list when no data points exist."""
         # Act
         results = time_series_service.get_count_by_series_type(db)
@@ -407,7 +407,7 @@ class TestTimeSeriesServiceGetCountBySeriesType:
 class TestTimeSeriesServiceGetCountByProvider:
     """Test counting data points by provider."""
 
-    def test_get_count_by_provider_groups_correctly(self, db: Session):
+    def test_get_count_by_provider_groups_correctly(self, db: Session) -> None:
         """Should group and count data points by provider."""
         # Arrange
         user = create_user(db)
@@ -432,7 +432,7 @@ class TestTimeSeriesServiceGetCountByProvider:
         assert results_dict["apple"] == 4
         assert results_dict["garmin"] == 2
 
-    def test_get_count_by_provider_ordered_by_count(self, db: Session):
+    def test_get_count_by_provider_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
         results = time_series_service.get_count_by_provider(db)
@@ -442,7 +442,7 @@ class TestTimeSeriesServiceGetCountByProvider:
             for i in range(len(results) - 1):
                 assert results[i][1] >= results[i + 1][1]
 
-    def test_get_count_by_provider_empty_result(self, db: Session):
+    def test_get_count_by_provider_empty_result(self, db: Session) -> None:
         """Should return empty list when no data points exist."""
         # Act
         results = time_series_service.get_count_by_provider(db)
@@ -454,7 +454,7 @@ class TestTimeSeriesServiceGetCountByProvider:
 class TestTimeSeriesServiceGetTotalCount:
     """Test getting total count of data points."""
 
-    def test_get_total_count(self, db: Session):
+    def test_get_total_count(self, db: Session) -> None:
         """Should return total count of all data points."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -472,7 +472,7 @@ class TestTimeSeriesServiceGetTotalCount:
         # Assert
         assert total_count == initial_count + 5
 
-    def test_get_total_count_empty_database(self, db: Session):
+    def test_get_total_count_empty_database(self, db: Session) -> None:
         """Should return 0 when no data points exist."""
         # Note: This test might fail if there's existing data in the test DB
         # from other tests running in the same session
@@ -486,7 +486,7 @@ class TestTimeSeriesServiceGetTotalCount:
 class TestTimeSeriesServiceGetCountInRange:
     """Test counting data points in date range."""
 
-    def test_get_count_in_range(self, db: Session):
+    def test_get_count_in_range(self, db: Session) -> None:
         """Should count data points within date range."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -514,7 +514,7 @@ class TestTimeSeriesServiceGetCountInRange:
         # Assert
         assert count == 2
 
-    def test_get_count_in_range_empty_result(self, db: Session):
+    def test_get_count_in_range_empty_result(self, db: Session) -> None:
         """Should return 0 when no data points in range."""
         # Arrange
         now = datetime.now(timezone.utc)

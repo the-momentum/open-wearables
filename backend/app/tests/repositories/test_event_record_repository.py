@@ -29,7 +29,7 @@ class TestEventRecordRepository:
         """Create EventRecordRepository instance."""
         return EventRecordRepository(EventRecord)
 
-    def test_create_with_existing_mapping(self, db: Session, event_repo: EventRecordRepository):
+    def test_create_with_existing_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test creating an event record with an existing external mapping."""
         # Arrange
         user = create_user(db)
@@ -66,7 +66,7 @@ class TestEventRecordRepository:
         assert db_event is not None
         assert db_event.external_mapping_id == mapping.id
 
-    def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository):
+    def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
         # Arrange
         user = create_user(db)
@@ -102,7 +102,7 @@ class TestEventRecordRepository:
         assert mapping.provider_id == "garmin"
         assert mapping.device_id == "device456"
 
-    def test_get(self, db: Session, event_repo: EventRecordRepository):
+    def test_get(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test retrieving an event record by ID."""
         # Arrange
         event = create_event_record(db, category="workout", type_="swimming")
@@ -116,7 +116,7 @@ class TestEventRecordRepository:
         assert result.category == "workout"
         assert result.type == "swimming"
 
-    def test_get_records_with_filters_by_category(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_category(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by category."""
         # Arrange
         user = create_user(db)
@@ -141,7 +141,7 @@ class TestEventRecordRepository:
         for event, _ in results:
             assert event.category == "workout"
 
-    def test_get_records_with_filters_by_type(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_type(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by type (with ILIKE)."""
         # Arrange
         user = create_user(db)
@@ -166,7 +166,7 @@ class TestEventRecordRepository:
         for event, _ in results:
             assert "running" in event.type.lower()
 
-    def test_get_records_with_filters_by_device_id(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_device_id(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by device ID."""
         # Arrange
         user = create_user(db)
@@ -192,7 +192,7 @@ class TestEventRecordRepository:
         for _, mapping in results:
             assert mapping.device_id == "device1"
 
-    def test_get_records_with_filters_by_provider(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_provider(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by provider ID."""
         # Arrange
         user = create_user(db)
@@ -217,7 +217,7 @@ class TestEventRecordRepository:
         _, mapping = results[0]
         assert mapping.provider_id == "apple"
 
-    def test_get_records_with_filters_by_date_range(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_date_range(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by date range."""
         # Arrange
         user = create_user(db)
@@ -250,7 +250,7 @@ class TestEventRecordRepository:
         assert event.start_datetime >= yesterday
         assert event.end_datetime <= now
 
-    def test_get_records_with_filters_by_duration(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_duration(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by duration range."""
         # Arrange
         user = create_user(db)
@@ -276,7 +276,7 @@ class TestEventRecordRepository:
         event, _ = results[0]
         assert event.duration_seconds == 3600
 
-    def test_get_records_with_filters_by_source_name(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_filters_by_source_name(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by source name (ILIKE)."""
         # Arrange
         user = create_user(db)
@@ -301,7 +301,7 @@ class TestEventRecordRepository:
         for event, _ in results:
             assert "apple watch" in event.source_name.lower()
 
-    def test_get_records_with_pagination(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_pagination(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test pagination of event records."""
         # Arrange
         user = create_user(db)
@@ -327,7 +327,7 @@ class TestEventRecordRepository:
         page2_ids = {event.id for event, _ in page2}
         assert len(page1_ids & page2_ids) == 0
 
-    def test_get_records_with_sort_by_start_datetime_desc(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_sort_by_start_datetime_desc(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test sorting event records by start_datetime descending (default)."""
         # Arrange
         user = create_user(db)
@@ -357,7 +357,7 @@ class TestEventRecordRepository:
         assert result_events[1].id == event2.id
         assert result_events[2].id == event1.id
 
-    def test_get_records_with_sort_by_duration_asc(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_with_sort_by_duration_asc(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test sorting event records by duration ascending."""
         # Arrange
         user = create_user(db)
@@ -386,7 +386,7 @@ class TestEventRecordRepository:
         assert result_events[1].id == event3.id  # 3600
         assert result_events[2].id == event1.id  # 7200
 
-    def test_get_count_by_workout_type(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_count_by_workout_type(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test aggregating workout counts by type."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -409,7 +409,7 @@ class TestEventRecordRepository:
         # Sleep should not be included
         assert "deep" not in counts_dict or counts_dict["deep"] == 0
 
-    def test_get_count_by_workout_type_ordered(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_count_by_workout_type_ordered(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that workout type counts are ordered by count descending."""
         # Arrange
         mapping = create_external_device_mapping(db)
@@ -434,7 +434,7 @@ class TestEventRecordRepository:
         cycling_idx = next(i for i, (t, _) in enumerate(test_types) if t == "cycling")
         assert running_idx < cycling_idx
 
-    def test_get_records_filters_by_user_id(self, db: Session, event_repo: EventRecordRepository):
+    def test_get_records_filters_by_user_id(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that records are filtered by user ID."""
         # Arrange
         user1 = create_user(db)
@@ -456,7 +456,7 @@ class TestEventRecordRepository:
         for _, mapping in results:
             assert mapping.user_id == user1.id
 
-    def test_delete(self, db: Session, event_repo: EventRecordRepository):
+    def test_delete(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test deleting an event record."""
         # Arrange
         event = create_event_record(db)
@@ -470,7 +470,7 @@ class TestEventRecordRepository:
         deleted_event = event_repo.get(db, event_id)
         assert deleted_event is None
 
-    def test_complex_filter_combination(self, db: Session, event_repo: EventRecordRepository):
+    def test_complex_filter_combination(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test combining multiple filters."""
         # Arrange
         user = create_user(db)

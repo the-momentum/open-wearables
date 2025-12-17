@@ -18,7 +18,7 @@ from app.services.provider_settings_service import ProviderSettingsService
 class TestProviderSettingsServiceGetAllProviders:
     """Test getting all providers."""
 
-    def test_get_all_providers_returns_all_provider_types(self, db: Session):
+    def test_get_all_providers_returns_all_provider_types(self, db: Session) -> None:
         """Should return all provider types defined in ProviderName enum."""
         # Arrange
         service = ProviderSettingsService()
@@ -31,7 +31,7 @@ class TestProviderSettingsServiceGetAllProviders:
         expected_names = {p.value for p in ProviderName}
         assert provider_names == expected_names
 
-    def test_get_all_providers_includes_display_name(self, db: Session):
+    def test_get_all_providers_includes_display_name(self, db: Session) -> None:
         """Should include display name for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -44,7 +44,7 @@ class TestProviderSettingsServiceGetAllProviders:
             assert provider.name is not None
             assert len(provider.name) > 0
 
-    def test_get_all_providers_includes_has_cloud_api(self, db: Session):
+    def test_get_all_providers_includes_has_cloud_api(self, db: Session) -> None:
         """Should include has_cloud_api flag for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -56,7 +56,7 @@ class TestProviderSettingsServiceGetAllProviders:
         for provider in providers:
             assert isinstance(provider.has_cloud_api, bool)
 
-    def test_get_all_providers_includes_icon_url(self, db: Session):
+    def test_get_all_providers_includes_icon_url(self, db: Session) -> None:
         """Should include icon_url for each provider."""
         # Arrange
         service = ProviderSettingsService()
@@ -69,7 +69,7 @@ class TestProviderSettingsServiceGetAllProviders:
             # icon_url can be None or a string
             assert provider.icon_url is None or isinstance(provider.icon_url, str)
 
-    def test_get_all_providers_default_enabled_true(self, db: Session):
+    def test_get_all_providers_default_enabled_true(self, db: Session) -> None:
         """Should default to enabled=True when no database setting exists."""
         # Arrange
         service = ProviderSettingsService()
@@ -82,7 +82,7 @@ class TestProviderSettingsServiceGetAllProviders:
         for provider in providers:
             assert provider.is_enabled is True
 
-    def test_get_all_providers_merges_database_settings(self, db: Session):
+    def test_get_all_providers_merges_database_settings(self, db: Session) -> None:
         """Should merge database settings with provider strategies."""
         # Arrange
         service = ProviderSettingsService()
@@ -107,7 +107,7 @@ class TestProviderSettingsServiceGetAllProviders:
 class TestProviderSettingsServiceUpdateProviderStatus:
     """Test updating individual provider status."""
 
-    def test_update_provider_status_enable_to_disable(self, db: Session):
+    def test_update_provider_status_enable_to_disable(self, db: Session) -> None:
         """Should update provider from enabled to disabled."""
         # Arrange
         service = ProviderSettingsService()
@@ -125,7 +125,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         garmin = next(p for p in providers if p.provider == "garmin")
         assert garmin.is_enabled is False
 
-    def test_update_provider_status_disable_to_enable(self, db: Session):
+    def test_update_provider_status_disable_to_enable(self, db: Session) -> None:
         """Should update provider from disabled to enabled."""
         # Arrange
         service = ProviderSettingsService()
@@ -140,7 +140,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         assert result.provider == "polar"
         assert result.is_enabled is True
 
-    def test_update_provider_status_includes_metadata(self, db: Session):
+    def test_update_provider_status_includes_metadata(self, db: Session) -> None:
         """Should return provider metadata along with status."""
         # Arrange
         service = ProviderSettingsService()
@@ -154,7 +154,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         assert result.name is not None
         assert isinstance(result.has_cloud_api, bool)
 
-    def test_update_provider_status_invalid_provider_raises_error(self, db: Session):
+    def test_update_provider_status_invalid_provider_raises_error(self, db: Session) -> None:
         """Should raise ValueError for invalid provider name."""
         # Arrange
         service = ProviderSettingsService()
@@ -164,7 +164,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         with pytest.raises(ValueError, match="Unknown provider"):
             service.update_provider_status(db, "invalid_provider", update)
 
-    def test_update_provider_status_case_sensitive(self, db: Session):
+    def test_update_provider_status_case_sensitive(self, db: Session) -> None:
         """Should handle provider names case-sensitively."""
         # Arrange
         service = ProviderSettingsService()
@@ -178,7 +178,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
 class TestProviderSettingsServiceBulkUpdateProviders:
     """Test bulk updating provider settings."""
 
-    def test_bulk_update_providers_multiple_updates(self, db: Session):
+    def test_bulk_update_providers_multiple_updates(self, db: Session) -> None:
         """Should update multiple providers at once."""
         # Arrange
         service = ProviderSettingsService()
@@ -197,7 +197,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         assert results_dict["garmin"] is False
         assert results_dict["polar"] is True
 
-    def test_bulk_update_providers_validates_all_before_updating(self, db: Session):
+    def test_bulk_update_providers_validates_all_before_updating(self, db: Session) -> None:
         """Should validate all provider names before applying any updates."""
         # Arrange
         service = ProviderSettingsService()
@@ -215,7 +215,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         apple = next(p for p in providers if p.provider == "apple")
         assert apple.is_enabled is True  # Should remain enabled
 
-    def test_bulk_update_providers_empty_updates(self, db: Session):
+    def test_bulk_update_providers_empty_updates(self, db: Session) -> None:
         """Should handle empty update dictionary."""
         # Arrange
         service = ProviderSettingsService()
@@ -228,7 +228,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         # Should return all providers with their current settings
         assert len(results) == len(list(ProviderName))
 
-    def test_bulk_update_providers_single_update(self, db: Session):
+    def test_bulk_update_providers_single_update(self, db: Session) -> None:
         """Should handle single provider update."""
         # Arrange
         service = ProviderSettingsService()
@@ -246,7 +246,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         for provider in others:
             assert provider.is_enabled is True
 
-    def test_bulk_update_providers_returns_all_providers(self, db: Session):
+    def test_bulk_update_providers_returns_all_providers(self, db: Session) -> None:
         """Should return all providers after bulk update."""
         # Arrange
         service = ProviderSettingsService()
@@ -261,7 +261,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         expected_names = {p.value for p in ProviderName}
         assert provider_names == expected_names
 
-    def test_bulk_update_providers_validates_first_then_updates(self, db: Session):
+    def test_bulk_update_providers_validates_first_then_updates(self, db: Session) -> None:
         """Should validate all providers exist before making any changes."""
         # Arrange
         service = ProviderSettingsService()
@@ -288,7 +288,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
 class TestProviderSettingsServiceProviderFactory:
     """Test provider factory integration."""
 
-    def test_get_all_providers_uses_factory_metadata(self, db: Session):
+    def test_get_all_providers_uses_factory_metadata(self, db: Session) -> None:
         """Should use provider factory for display names and metadata."""
         # Arrange
         service = ProviderSettingsService()
@@ -303,7 +303,7 @@ class TestProviderSettingsServiceProviderFactory:
             assert provider.name is not None  # From factory
             assert isinstance(provider.has_cloud_api, bool)  # From factory
 
-    def test_update_provider_validates_against_factory(self, db: Session):
+    def test_update_provider_validates_against_factory(self, db: Session) -> None:
         """Should validate provider exists in factory."""
         # Arrange
         service = ProviderSettingsService()

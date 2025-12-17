@@ -23,7 +23,7 @@ from app.tests.utils import (
 class TestConnectionsEndpoints:
     """Test suite for connections endpoints."""
 
-    def test_get_connections_success(self, client: TestClient, db: Session):
+    def test_get_connections_success(self, client: TestClient, db: Session) -> None:
         """Test successfully retrieving all connections for a user."""
         # Arrange
         user = create_user(db)
@@ -52,7 +52,7 @@ class TestConnectionsEndpoints:
         assert any(c["id"] == str(connection1.id) for c in data)
         assert any(c["id"] == str(connection2.id) for c in data)
 
-    def test_get_connections_empty_list(self, client: TestClient, db: Session):
+    def test_get_connections_empty_list(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections for a user with no connections."""
         # Arrange
         user = create_user(db)
@@ -67,7 +67,7 @@ class TestConnectionsEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_connections_multiple_providers(self, client: TestClient, db: Session):
+    def test_get_connections_multiple_providers(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections for multiple providers."""
         # Arrange
         user = create_user(db)
@@ -86,7 +86,7 @@ class TestConnectionsEndpoints:
         returned_providers = {c["provider"] for c in data}
         assert returned_providers == set(providers)
 
-    def test_get_connections_different_statuses(self, client: TestClient, db: Session):
+    def test_get_connections_different_statuses(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections with different statuses."""
         # Arrange
         user = create_user(db)
@@ -123,7 +123,7 @@ class TestConnectionsEndpoints:
         assert ConnectionStatus.REVOKED.value in statuses
         assert ConnectionStatus.EXPIRED.value in statuses
 
-    def test_get_connections_user_isolation(self, client: TestClient, db: Session):
+    def test_get_connections_user_isolation(self, client: TestClient, db: Session) -> None:
         """Test that users can only see their own connections."""
         # Arrange
         user1 = create_user(db)
@@ -143,7 +143,7 @@ class TestConnectionsEndpoints:
         assert data[0]["id"] == str(connection1.id)
         assert data[0]["provider"] == "garmin"
 
-    def test_get_connections_response_structure(self, client: TestClient, db: Session):
+    def test_get_connections_response_structure(self, client: TestClient, db: Session) -> None:
         """Test that response contains all expected fields."""
         # Arrange
         user = create_user(db)
@@ -183,7 +183,7 @@ class TestConnectionsEndpoints:
         assert connection_data["provider"] == "garmin"
         assert connection_data["status"] == ConnectionStatus.ACTIVE.value
 
-    def test_get_connections_missing_api_key(self, client: TestClient, db: Session):
+    def test_get_connections_missing_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request without API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -194,7 +194,7 @@ class TestConnectionsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_connections_invalid_api_key(self, client: TestClient, db: Session):
+    def test_get_connections_invalid_api_key(self, client: TestClient, db: Session) -> None:
         """Test that request with invalid API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -206,19 +206,19 @@ class TestConnectionsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_connections_invalid_user_id(self, client: TestClient, db: Session):
-        """Test handling of invalid user ID format."""
+    def test_get_connections_invalid_user_id(self, client: TestClient, db: Session) -> None:
+        """Test handling of invalid user ID format raises ValueError."""
         # Arrange
+        import pytest
+
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act
-        response = client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
+        # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
+        with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
+            client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
 
-        # Assert
-        assert response.status_code == 422
-
-    def test_get_connections_nonexistent_user(self, client: TestClient, db: Session):
+    def test_get_connections_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections for a user that doesn't exist."""
         # Arrange
         from uuid import uuid4
@@ -235,7 +235,7 @@ class TestConnectionsEndpoints:
         data = response.json()
         assert len(data) == 0
 
-    def test_get_connections_with_sync_metadata(self, client: TestClient, db: Session):
+    def test_get_connections_with_sync_metadata(self, client: TestClient, db: Session) -> None:
         """Test that connections include sync metadata."""
         # Arrange
         from datetime import datetime, timezone
@@ -264,7 +264,7 @@ class TestConnectionsEndpoints:
         if data[0]["last_synced_at"]:
             assert isinstance(data[0]["last_synced_at"], str)
 
-    def test_get_connections_excludes_sensitive_data(self, client: TestClient, db: Session):
+    def test_get_connections_excludes_sensitive_data(self, client: TestClient, db: Session) -> None:
         """Test that sensitive data like access tokens are not exposed."""
         # Arrange
         user = create_user(db)

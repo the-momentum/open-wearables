@@ -4,6 +4,7 @@ Integration tests for OAuth provider flows.
 Tests complete OAuth authorization flows for Garmin, Polar, and Suunto providers.
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -25,7 +26,7 @@ class TestGarminOAuth:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Garmin OAuth authorization initiates redirect."""
         # Arrange
         user = create_user(db)
@@ -48,7 +49,7 @@ class TestGarminOAuth:
         mock_httpx: MagicMock,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Garmin OAuth callback handles tokens."""
         # Arrange
         user = create_user(db)
@@ -84,13 +85,13 @@ class TestGarminOAuth:
         )
 
         # Assert - May redirect to success page or return JSON
-        assert response.status_code in [200, 302, 307, 400, 422]
+        assert response.status_code in [200, 302, 303, 307, 400, 422]
 
     def test_garmin_callback_error(
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Garmin OAuth callback handles errors."""
         # Arrange
         user = create_user(db)
@@ -110,7 +111,7 @@ class TestGarminOAuth:
         )
 
         # Assert
-        assert response.status_code in [302, 307, 400, 422]
+        assert response.status_code in [302, 303, 307, 400, 422]
 
 
 class TestPolarOAuth:
@@ -120,7 +121,7 @@ class TestPolarOAuth:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Polar OAuth authorization initiates redirect."""
         # Arrange
         user = create_user(db)
@@ -137,16 +138,49 @@ class TestPolarOAuth:
         # Assert
         assert response.status_code in [200, 302, 307, 422]
 
-    @patch("httpx.AsyncClient")
+    @patch("app.integrations.celery.tasks.sync_vendor_data.delay")
+    @patch("httpx.post")
     def test_polar_callback_success(
         self,
-        mock_httpx: MagicMock,
+        mock_httpx_post: MagicMock,
+        mock_sync_task: MagicMock,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Polar OAuth callback handles tokens."""
         # Arrange
+
+        from app.integrations.redis_client import get_redis_client
+        from app.services.providers.factory import ProviderFactory
+
         user = create_user(db)
+
+        # Create a simple in-memory store for Redis mock
+        redis_store: dict[str, Any] = {}
+
+        def mock_setex(key: str, ttl: int, value: str) -> bool:
+            redis_store[key] = value
+            return True
+
+        def mock_get(key: str) -> Any:
+            return redis_store.get(key)
+
+        def mock_delete(key: str) -> bool:
+            redis_store.pop(key, None)
+            return True
+
+        # Patch the redis client to use our in-memory store
+        redis_client = get_redis_client()
+        redis_client.setex = mock_setex
+        redis_client.get = mock_get
+        redis_client.delete = mock_delete
+
+        factory = ProviderFactory()
+        polar_strategy = factory.get_provider("polar")
+
+        # Get authorization URL to set up OAuth state properly
+        assert polar_strategy.oauth
+        auth_url, state = polar_strategy.oauth.get_authorization_url(user.id)
 
         # Mock token exchange
         mock_response = MagicMock()
@@ -157,25 +191,21 @@ class TestPolarOAuth:
             "x_user_id": 12345,
         }
         mock_response.status_code = 200
-
-        mock_client_instance = MagicMock()
-        mock_client_instance.post.return_value = mock_response
-        mock_client_instance.__aenter__ = MagicMock(return_value=mock_client_instance)
-        mock_client_instance.__aexit__ = MagicMock(return_value=None)
-        mock_httpx.return_value = mock_client_instance
+        mock_response.raise_for_status = MagicMock()
+        mock_httpx_post.return_value = mock_response
 
         # Act
         response = client.get(
             "/api/v1/oauth/polar/callback",
             params={
                 "code": "authorization_code",
-                "state": str(user.id),
+                "state": state,
             },
             follow_redirects=False,
         )
 
         # Assert
-        assert response.status_code in [200, 302, 307, 400, 422]
+        assert response.status_code in [200, 302, 303, 307, 400, 422]
 
 
 class TestSuuntoOAuth:
@@ -185,7 +215,7 @@ class TestSuuntoOAuth:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test Suunto OAuth authorization initiates redirect."""
         # Arrange
         user = create_user(db)
@@ -210,7 +240,7 @@ class TestOAuthProviderManagement:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test listing all available OAuth providers."""
         # Arrange
         developer = create_developer(db)
@@ -229,7 +259,7 @@ class TestOAuthProviderManagement:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test updating a provider's enabled status."""
         # Arrange
         developer = create_developer(db)
@@ -239,11 +269,11 @@ class TestOAuthProviderManagement:
         response = client.put(
             "/api/v1/oauth/providers/garmin",
             headers=headers,
-            json={"enabled": True},
+            json={"is_enabled": True},
         )
 
         # Assert
-        assert response.status_code in [200, 404, 422]
+        assert response.status_code in [200, 400, 404, 422]
 
 
 class TestConnectionManagement:
@@ -253,7 +283,7 @@ class TestConnectionManagement:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test listing user's OAuth connections."""
         # Arrange
         from app.tests.utils import api_key_headers, create_api_key
@@ -286,7 +316,7 @@ class TestConnectionManagement:
         self,
         client: TestClient,
         db: Session,
-    ):
+    ) -> None:
         """Test checking connection status."""
         # Arrange
         from app.tests.utils import api_key_headers, create_api_key

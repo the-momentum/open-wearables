@@ -27,7 +27,7 @@ class TestUserRepository:
         """Create UserRepository instance."""
         return UserRepository(User)
 
-    def test_create(self, db: Session, user_repo: UserRepository):
+    def test_create(self, db: Session, user_repo: UserRepository) -> None:
         """Test creating a new user."""
         # Arrange
         user_data = UserCreateInternal(
@@ -55,7 +55,7 @@ class TestUserRepository:
         assert db_user is not None
         assert db_user.email == "test@example.com"
 
-    def test_create_minimal_fields(self, db: Session, user_repo: UserRepository):
+    def test_create_minimal_fields(self, db: Session, user_repo: UserRepository) -> None:
         """Test creating a user with only required fields."""
         # Arrange
         user_data = UserCreateInternal(
@@ -73,7 +73,7 @@ class TestUserRepository:
         assert result.last_name is None
         assert result.external_user_id is None
 
-    def test_get(self, db: Session, user_repo: UserRepository):
+    def test_get(self, db: Session, user_repo: UserRepository) -> None:
         """Test retrieving a user by ID."""
         # Arrange
         user = create_user(db, email="test@example.com", first_name="Jane")
@@ -87,7 +87,7 @@ class TestUserRepository:
         assert result.email == "test@example.com"
         assert result.first_name == "Jane"
 
-    def test_get_nonexistent(self, db: Session, user_repo: UserRepository):
+    def test_get_nonexistent(self, db: Session, user_repo: UserRepository) -> None:
         """Test retrieving a nonexistent user returns None."""
         # Act
         result = user_repo.get(db, uuid4())
@@ -95,7 +95,7 @@ class TestUserRepository:
         # Assert
         assert result is None
 
-    def test_get_all(self, db: Session, user_repo: UserRepository):
+    def test_get_all(self, db: Session, user_repo: UserRepository) -> None:
         """Test listing all users."""
         # Arrange
         user1 = create_user(db, email="user1@example.com")
@@ -112,7 +112,7 @@ class TestUserRepository:
         assert user2.id in user_ids
         assert user3.id in user_ids
 
-    def test_get_all_with_email_filter(self, db: Session, user_repo: UserRepository):
+    def test_get_all_with_email_filter(self, db: Session, user_repo: UserRepository) -> None:
         """Test filtering users by email."""
         # Arrange
         user1 = create_user(db, email="test1@example.com")
@@ -133,7 +133,7 @@ class TestUserRepository:
         assert results[0].email == "test1@example.com"
         assert results[0].id == user1.id
 
-    def test_get_all_with_pagination(self, db: Session, user_repo: UserRepository):
+    def test_get_all_with_pagination(self, db: Session, user_repo: UserRepository) -> None:
         """Test pagination with offset and limit."""
         # Arrange
         for i in range(5):
@@ -153,7 +153,7 @@ class TestUserRepository:
         page2_ids = {u.id for u in page2}
         assert len(page1_ids & page2_ids) == 0  # No overlap
 
-    def test_get_all_with_sort(self, db: Session, user_repo: UserRepository):
+    def test_get_all_with_sort(self, db: Session, user_repo: UserRepository) -> None:
         """Test sorting users by a field."""
         # Arrange
         create_user(db, email="charlie@example.com", first_name="Charlie")
@@ -169,7 +169,7 @@ class TestUserRepository:
         first_names = [u.first_name for u in results if u.first_name in ["Alice", "Bob", "Charlie"]]
         assert first_names == sorted(first_names)
 
-    def test_update(self, db: Session, user_repo: UserRepository):
+    def test_update(self, db: Session, user_repo: UserRepository) -> None:
         """Test updating an existing user."""
         # Arrange
         user = create_user(db, first_name="Original", last_name="Name")
@@ -191,7 +191,7 @@ class TestUserRepository:
         assert db_user.first_name == "Updated"
         assert db_user.last_name == "NewName"
 
-    def test_update_partial(self, db: Session, user_repo: UserRepository):
+    def test_update_partial(self, db: Session, user_repo: UserRepository) -> None:
         """Test updating only some fields."""
         # Arrange
         user = create_user(db, email="old@example.com", first_name="John", last_name="Doe")
@@ -205,7 +205,7 @@ class TestUserRepository:
         assert result.first_name == "John"  # Unchanged
         assert result.last_name == "Doe"  # Unchanged
 
-    def test_delete(self, db: Session, user_repo: UserRepository):
+    def test_delete(self, db: Session, user_repo: UserRepository) -> None:
         """Test deleting a user."""
         # Arrange
         user = create_user(db)
@@ -219,7 +219,7 @@ class TestUserRepository:
         deleted_user = user_repo.get(db, user_id)
         assert deleted_user is None
 
-    def test_get_total_count(self, db: Session, user_repo: UserRepository):
+    def test_get_total_count(self, db: Session, user_repo: UserRepository) -> None:
         """Test counting total users."""
         # Arrange
         initial_count = user_repo.get_total_count(db)
@@ -233,7 +233,7 @@ class TestUserRepository:
         # Assert
         assert result == initial_count + 3
 
-    def test_get_count_in_range(self, db: Session, user_repo: UserRepository):
+    def test_get_count_in_range(self, db: Session, user_repo: UserRepository) -> None:
         """Test counting users created within a date range."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -253,7 +253,7 @@ class TestUserRepository:
         # Assert
         assert result == 2  # Two users created on one_day_ago
 
-    def test_get_count_in_range_empty(self, db: Session, user_repo: UserRepository):
+    def test_get_count_in_range_empty(self, db: Session, user_repo: UserRepository) -> None:
         """Test counting users in a range with no results."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -268,7 +268,7 @@ class TestUserRepository:
         # Assert
         assert result == 0
 
-    def test_get_count_in_range_inclusive_start(self, db: Session, user_repo: UserRepository):
+    def test_get_count_in_range_inclusive_start(self, db: Session, user_repo: UserRepository) -> None:
         """Test that start date is inclusive."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -282,7 +282,7 @@ class TestUserRepository:
         # Assert
         assert result >= 1  # Should include user created at exact start time
 
-    def test_get_count_in_range_exclusive_end(self, db: Session, user_repo: UserRepository):
+    def test_get_count_in_range_exclusive_end(self, db: Session, user_repo: UserRepository) -> None:
         """Test that end date is exclusive."""
         # Arrange
         now = datetime.now(timezone.utc)
@@ -296,7 +296,7 @@ class TestUserRepository:
         # Assert
         assert result == 0  # Should NOT include user created at exact end time
 
-    def test_multiple_filters(self, db: Session, user_repo: UserRepository):
+    def test_multiple_filters(self, db: Session, user_repo: UserRepository) -> None:
         """Test filtering with multiple criteria."""
         # Arrange
         create_user(db, email="test@example.com", first_name="John")

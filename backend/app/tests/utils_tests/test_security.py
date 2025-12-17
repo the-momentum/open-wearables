@@ -16,7 +16,7 @@ from app.utils.security import create_access_token, get_password_hash, verify_pa
 class TestCreateAccessToken:
     """Test suite for create_access_token function."""
 
-    def test_create_access_token_with_default_expiry(self):
+    def test_create_access_token_with_default_expiry(self) -> None:
         """Test creating access token with default expiration time."""
         # Arrange
         subject = "test-user-id-12345"
@@ -38,7 +38,7 @@ class TestCreateAccessToken:
         exp_datetime = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
         assert exp_datetime > datetime.now(timezone.utc)
 
-    def test_create_access_token_with_custom_expiry(self):
+    def test_create_access_token_with_custom_expiry(self) -> None:
         """Test creating access token with custom expiration delta."""
         # Arrange
         subject = "test-user-id-67890"
@@ -60,7 +60,7 @@ class TestCreateAccessToken:
         time_diff = abs((exp_datetime - expected_exp).total_seconds())
         assert time_diff < 5
 
-    def test_create_access_token_with_uuid_subject(self):
+    def test_create_access_token_with_uuid_subject(self) -> None:
         """Test creating access token with UUID as subject."""
         # Arrange
         from uuid import uuid4
@@ -74,7 +74,7 @@ class TestCreateAccessToken:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         assert payload["sub"] == str(subject)
 
-    def test_create_access_token_with_integer_subject(self):
+    def test_create_access_token_with_integer_subject(self) -> None:
         """Test creating access token with integer as subject."""
         # Arrange
         subject = 12345
@@ -86,7 +86,7 @@ class TestCreateAccessToken:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         assert payload["sub"] == str(subject)
 
-    def test_create_access_token_with_short_expiry(self):
+    def test_create_access_token_with_short_expiry(self) -> None:
         """Test creating access token with very short expiration."""
         # Arrange
         subject = "test-user-short-expiry"
@@ -103,7 +103,7 @@ class TestCreateAccessToken:
         time_until_expiry = (exp_datetime - datetime.now(timezone.utc)).total_seconds()
         assert 0 < time_until_expiry < 2
 
-    def test_create_access_token_with_long_expiry(self):
+    def test_create_access_token_with_long_expiry(self) -> None:
         """Test creating access token with long expiration."""
         # Arrange
         subject = "test-user-long-expiry"
@@ -121,7 +121,7 @@ class TestCreateAccessToken:
         expected_seconds = long_expiry.total_seconds()
         assert abs(time_until_expiry - expected_seconds) < 5
 
-    def test_create_access_token_uses_correct_algorithm(self):
+    def test_create_access_token_uses_correct_algorithm(self) -> None:
         """Test that token is created with the correct algorithm."""
         # Arrange
         subject = "test-user-algorithm"
@@ -142,14 +142,14 @@ class TestCreateAccessToken:
 class TestPasswordHashing:
     """Test suite for password hashing and verification functions."""
 
-    def test_get_password_hash_returns_bcrypt_format(self):
+    def test_get_password_hash_returns_bcrypt_format(self) -> None:
         """Test that password hash is in bcrypt format."""
         # Note: This test is skipped in regular test runs because of fast_password_hashing fixture
         # It's here to document expected behavior in production
         # Arrange
 
         # Act
-        # In production (without fast_password_hashing fixture):
+        # In production (without fast_password_hashing fixture) -> None:
         # hashed = get_password_hash(password)
 
         # Assert
@@ -158,13 +158,13 @@ class TestPasswordHashing:
         # assert len(hashed) == 60  # bcrypt hashes are 60 characters
         pass
 
-    def test_get_password_hash_different_for_same_password(self):
+    def test_get_password_hash_different_for_same_password(self) -> None:
         """Test that hashing the same password twice produces different hashes."""
         # Note: This behavior is important for bcrypt but not tested with fast_password_hashing
         # Arrange
 
         # Act
-        # In production (without fast_password_hashing fixture):
+        # In production (without fast_password_hashing fixture) -> None:
         # hash1 = get_password_hash(password)
         # hash2 = get_password_hash(password)
 
@@ -172,7 +172,7 @@ class TestPasswordHashing:
         # assert hash1 != hash2  # Different salts produce different hashes
         pass
 
-    def test_verify_password_correct(self, fast_password_hashing):
+    def test_verify_password_correct(self, fast_password_hashing: None) -> None:
         """Test verifying correct password."""
         # Arrange
         password = "correct_password_123"
@@ -184,7 +184,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_verify_password_incorrect(self, fast_password_hashing):
+    def test_verify_password_incorrect(self, fast_password_hashing: None) -> None:
         """Test verifying incorrect password."""
         # Arrange
         correct_password = "correct_password_123"
@@ -197,7 +197,7 @@ class TestPasswordHashing:
         # Assert
         assert result is False
 
-    def test_verify_password_empty_password(self, fast_password_hashing):
+    def test_verify_password_empty_password(self, fast_password_hashing: None) -> None:
         """Test verifying empty password."""
         # Arrange
         hashed = get_password_hash("some_password")
@@ -208,7 +208,7 @@ class TestPasswordHashing:
         # Assert
         assert result is False
 
-    def test_verify_password_case_sensitive(self, fast_password_hashing):
+    def test_verify_password_case_sensitive(self, fast_password_hashing: None) -> None:
         """Test that password verification is case-sensitive."""
         # Arrange
         password = "TestPassword123"
@@ -222,7 +222,7 @@ class TestPasswordHashing:
         assert result_uppercase is False
         assert result_lowercase is False
 
-    def test_verify_password_with_special_characters(self, fast_password_hashing):
+    def test_verify_password_with_special_characters(self, fast_password_hashing: None) -> None:
         """Test password verification with special characters."""
         # Arrange
         password = "P@ssw0rd!#$%^&*()"
@@ -234,7 +234,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_verify_password_with_unicode(self, fast_password_hashing):
+    def test_verify_password_with_unicode(self, fast_password_hashing: None) -> None:
         """Test password verification with unicode characters."""
         # Arrange
         password = "пароль🔒密码"
@@ -246,7 +246,7 @@ class TestPasswordHashing:
         # Assert
         assert result is True
 
-    def test_get_password_hash_with_long_password(self, fast_password_hashing):
+    def test_get_password_hash_with_long_password(self, fast_password_hashing: None) -> None:
         """Test hashing very long password gets truncated to 72 bytes."""
         # Arrange
         password = "a" * 100  # 100 character password exceeds bcrypt's 72 byte limit
@@ -261,7 +261,7 @@ class TestPasswordHashing:
         # Note: verify_password also needs truncation since bcrypt.checkpw has the same limit
         assert verify_password(password[:72], hashed)
 
-    def test_get_password_hash_with_max_length_password(self):
+    def test_get_password_hash_with_max_length_password(self) -> None:
         """Test hashing password at bcrypt's 72 byte limit."""
         # Note: bcrypt has a 72 byte limit
         # Arrange
@@ -273,7 +273,7 @@ class TestPasswordHashing:
         # Assert
         assert hashed is not None
 
-    def test_get_password_hash_truncates_over_limit(self, fast_password_hashing):
+    def test_get_password_hash_truncates_over_limit(self, fast_password_hashing: None) -> None:
         """Test that passwords over 72 bytes are truncated."""
         # Arrange
         password_73 = "x" * 73
@@ -294,7 +294,7 @@ class TestPasswordHashing:
 class TestPasswordWorkflow:
     """Integration tests for password hashing and verification workflow."""
 
-    def test_full_password_workflow(self, fast_password_hashing):
+    def test_full_password_workflow(self, fast_password_hashing: None) -> None:
         """Test complete workflow: hash -> store -> verify."""
         # Arrange
         original_password = "user_password_123"
@@ -317,7 +317,7 @@ class TestPasswordWorkflow:
         # Assert
         assert incorrect_verification is False
 
-    def test_multiple_users_same_password(self, fast_password_hashing):
+    def test_multiple_users_same_password(self, fast_password_hashing: None) -> None:
         """Test that same password for different users produces different hashes."""
         # Arrange
         password = "common_password_123"
