@@ -13,6 +13,9 @@ def handle_duplicates(func: Callable[..., T]) -> Callable[..., T | None]:
     """
     Decorator that handles duplicate inserts by querying for existing records
     based on unique constraints or primary keys.
+
+    When a unique constraint violation occurs, this decorator tries each unique
+    constraint sequentially until it finds the existing record that caused the violation.
     """
 
     @wraps(func)
@@ -27,28 +30,31 @@ def handle_duplicates(func: Callable[..., T]) -> Callable[..., T | None]:
 
                 db_session.rollback()
 
-                query = db_session.query(model)
                 creator_data = creator.model_dump()
-
                 mapper = inspect(model)
                 table = mapper.local_table
 
-                unique_constraint = next(
-                    (constraint for constraint in table.constraints if isinstance(constraint, UniqueConstraint)),
-                    None,
-                )
+                for constraint in table.constraints:
+                    if isinstance(constraint, UniqueConstraint):
+                        query = db_session.query(model)
 
-                if unique_constraint:
-                    for column in unique_constraint.columns:
-                        column_name = column.name
-                        if column_name in creator_data:
-                            query = query.filter(getattr(model, column_name) == creator_data[column_name])
+                        all_columns_present = True
+                        for column in constraint.columns:
+                            if column.name in creator_data:
+                                query = query.filter(
+                                    getattr(model, column.name) == creator_data[column.name],
+                                )
+                            else:
+                                all_columns_present = False
+                                break
 
-                    existing = query.one_or_none()
-                    if existing:
-                        return existing
-                    raise
+                        if all_columns_present:
+                            existing = query.one_or_none()
+                            if existing:
+                                return existing
 
+                # fallback to primary key
+                query = db_session.query(model)
                 for key in mapper.primary_key:
                     if key.name in creator_data:
                         query = query.filter(getattr(model, key.name) == creator_data[key.name])

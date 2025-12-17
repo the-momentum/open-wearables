@@ -10,7 +10,7 @@ class Device(BaseDbModel):
     """A device is a physical device that can be used to collect data."""
 
     id: Mapped[PrimaryKey[UUID]]
-    
+
     serial_number: Mapped[str_100]
     provider_name: Mapped[str_10]
     name: Mapped[str_100]

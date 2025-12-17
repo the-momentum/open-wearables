@@ -35,7 +35,7 @@ class EventRecordDetailBase(BaseModel):
     sleep_light_minutes: int | None = None
     sleep_awake_minutes: int | None = None
 
-    is_nap: bool = False
+    is_nap: bool | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

@@ -5,10 +5,10 @@ from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
 from .event_record_detail import EventRecordDetail
 
 
-class WorkoutDetail(EventRecordDetail):
+class WorkoutDetails(EventRecordDetail):
     """Per-workout aggregates and metrics."""
 
-    __tablename__ = "workout_detail"
+    __tablename__ = "workout_details"
     __mapper_args__ = {"polymorphic_identity": "workout"}
 
     record_id: Mapped[FKEventRecordDetail]

@@ -7,10 +7,10 @@ from .external_device_mapping import ExternalDeviceMapping
 from .personal_record import PersonalRecord
 from .provider_setting import ProviderSetting
 from .series_type_definition import SeriesTypeDefinition
-from .sleep_detail import SleepDetail
+from .sleep_details import SleepDetails
 from .user import User
 from .user_connection import UserConnection
-from .workout_detail import WorkoutDetail
+from .workout_details import WorkoutDetails
 
 __all__ = [
     "ApiKey",
@@ -20,8 +20,8 @@ __all__ = [
     "UserConnection",
     "EventRecord",
     "EventRecordDetail",
-    "SleepDetail",
-    "WorkoutDetail",
+    "SleepDetails",
+    "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",
     "ExternalDeviceMapping",

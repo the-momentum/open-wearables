@@ -43,7 +43,6 @@ def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
 
             try:
                 _import_xml_data(db, temp_xml_file, user_id_str)
-                db.commit()
             except Exception as e:
                 db.rollback()
                 raise e
