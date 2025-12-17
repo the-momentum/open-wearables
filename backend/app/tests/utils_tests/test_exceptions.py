@@ -4,10 +4,10 @@ Tests for exception utilities.
 Tests custom exceptions, exception handlers, and exception decorator.
 """
 
-import pytest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi.exceptions import HTTPException, RequestValidationError
 from psycopg.errors import IntegrityError as PsycopgIntegrityError
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
@@ -58,7 +58,7 @@ class TestResourceNotFoundError:
 
         # Assert
         assert error.entity_name == entity_name
-        assert entity_id in error.detail
+        assert str(entity_id) in error.detail
         assert error.detail == f"Device with ID: {entity_id} not found."
 
     def test_init_capitalizes_entity_name(self):
@@ -222,7 +222,7 @@ class TestHandleExceptionWithRequestValidationError:
             {
                 "msg": "Invalid email format",
                 "ctx": {"error": "Must be a valid email address"},
-            }
+            },
         ]
         exc = RequestValidationError(error_data)
         entity = "user"
@@ -291,6 +291,7 @@ class TestHandleExceptionWithUnknownError:
 
     def test_handle_custom_exception_raises(self):
         """Test that custom exceptions are re-raised."""
+
         # Arrange
         class CustomError(Exception):
             pass
@@ -408,6 +409,7 @@ class TestHandleExceptionsDecorator:
 
     def test_decorator_preserves_function_metadata(self):
         """Test decorator preserves original function metadata."""
+
         # Arrange
         @handle_exceptions
         def test_function():

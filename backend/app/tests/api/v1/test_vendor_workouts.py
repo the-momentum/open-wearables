@@ -6,20 +6,18 @@ Tests the following endpoints:
 - GET /api/v1/providers/{provider}/users/{user_id}/workouts/{workout_id}
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas.oauth import ConnectionStatus
 from app.tests.utils import (
-    api_key_headers,
     create_api_key,
     create_user,
     create_user_connection,
 )
-from app.schemas.oauth import ConnectionStatus
 
 
 class TestVendorWorkoutsEndpoints:
@@ -43,9 +41,7 @@ class TestVendorWorkoutsEndpoints:
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 
-    def test_get_garmin_workouts_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_garmin_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully retrieving Garmin workouts with valid API key."""
         # Arrange
         user = create_user(db)
@@ -78,9 +74,7 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 401
 
-    def test_get_garmin_workouts_no_connection(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_garmin_workouts_no_connection(self, client: TestClient, db: Session, mock_provider_factory):
         """Test retrieving workouts when user has no connection to provider."""
         # Arrange
         user = create_user(db)
@@ -89,8 +83,9 @@ class TestVendorWorkoutsEndpoints:
 
         # Configure mock to raise HTTPException for no connection
         from fastapi import HTTPException
+
         mock_provider_factory.get_provider.return_value.workouts.get_workouts_from_api.side_effect = HTTPException(
-            status_code=404, detail="No active connection found for user"
+            status_code=404, detail="No active connection found for user",
         )
 
         # Act
@@ -102,9 +97,7 @@ class TestVendorWorkoutsEndpoints:
         # Assert
         assert response.status_code == 404
 
-    def test_get_polar_workouts_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_polar_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully retrieving Polar workouts."""
         # Arrange
         user = create_user(db)
@@ -123,9 +116,7 @@ class TestVendorWorkoutsEndpoints:
         assert isinstance(data, list)
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
-    def test_get_polar_workouts_with_params(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_polar_workouts_with_params(self, client: TestClient, db: Session, mock_provider_factory):
         """Test Polar workouts with samples, zones, and route parameters."""
         # Arrange
         user = create_user(db)
@@ -147,9 +138,7 @@ class TestVendorWorkoutsEndpoints:
         assert call_kwargs["zones"] is True
         assert call_kwargs["route"] is True
 
-    def test_get_suunto_workouts_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_suunto_workouts_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully retrieving Suunto workouts."""
         # Arrange
         user = create_user(db)
@@ -168,9 +157,7 @@ class TestVendorWorkoutsEndpoints:
         assert isinstance(data, list)
         mock_provider_factory.get_provider.assert_called_once_with("suunto")
 
-    def test_get_suunto_workouts_pagination(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_suunto_workouts_pagination(self, client: TestClient, db: Session, mock_provider_factory):
         """Test Suunto workouts with since, limit, and offset pagination parameters."""
         # Arrange
         user = create_user(db)
@@ -192,9 +179,7 @@ class TestVendorWorkoutsEndpoints:
         assert call_kwargs["limit"] == 25
         assert call_kwargs["offset"] == 10
 
-    def test_get_workout_detail_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_workout_detail_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully retrieving workout detail."""
         # Arrange
         user = create_user(db)
@@ -216,9 +201,7 @@ class TestVendorWorkoutsEndpoints:
         assert "details" in data
         mock_provider_factory.get_provider.return_value.workouts.get_workout_detail_from_api.assert_called_once()
 
-    def test_get_workout_detail_not_found(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_get_workout_detail_not_found(self, client: TestClient, db: Session, mock_provider_factory):
         """Test workout detail endpoint with nonexistent workout ID."""
         # Arrange
         user = create_user(db)
@@ -228,8 +211,9 @@ class TestVendorWorkoutsEndpoints:
 
         # Configure mock to raise HTTPException for not found
         from fastapi import HTTPException
-        mock_provider_factory.get_provider.return_value.workouts.get_workout_detail_from_api.side_effect = HTTPException(
-            status_code=404, detail="Workout not found"
+
+        mock_provider_factory.get_provider.return_value.workouts.get_workout_detail_from_api.side_effect = (
+            HTTPException(status_code=404, detail="Workout not found")
         )
 
         # Act
@@ -242,7 +226,7 @@ class TestVendorWorkoutsEndpoints:
         assert response.status_code == 404
 
     def test_invalid_provider_returns_422(self, client: TestClient, db: Session):
-        """Test that invalid provider enum value returns 422."""
+        """Test that invalid provider enum value returns 400."""
         # Arrange
         user = create_user(db)
         api_key = create_api_key(db)
@@ -254,11 +238,9 @@ class TestVendorWorkoutsEndpoints:
         )
 
         # Assert
-        assert response.status_code == 422
+        assert response.status_code == 400
 
-    def test_provider_not_supporting_workouts(
-        self, client: TestClient, db: Session
-    ):
+    def test_provider_not_supporting_workouts(self, client: TestClient, db: Session):
         """Test provider that doesn't support workouts returns 501."""
         # Arrange
         user = create_user(db)

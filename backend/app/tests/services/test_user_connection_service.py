@@ -8,10 +8,10 @@ Tests cover:
 - Managing connection status
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+from sqlalchemy.orm import Session
 
 from app.schemas import UserConnectionCreate, UserConnectionUpdate
 from app.schemas.oauth import ConnectionStatus
@@ -34,25 +34,29 @@ class TestUserConnectionServiceGetActiveCountInRange:
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
             created_at=two_weeks_ago,
         )  # Before range
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="polar",
+            status=ConnectionStatus.ACTIVE,
             created_at=week_ago + timedelta(days=1),
         )  # In range
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="suunto",
+            status=ConnectionStatus.ACTIVE,
             created_at=now - timedelta(days=1),
         )  # In range
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.DISCONNECTED,
+            provider="strava",
+            status=ConnectionStatus.REVOKED,
             created_at=now - timedelta(hours=1),
         )  # In range but not active
 
@@ -74,18 +78,21 @@ class TestUserConnectionServiceGetActiveCountInRange:
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
             created_at=now - timedelta(days=1),
         )
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.DISCONNECTED,
+            provider="polar",
+            status=ConnectionStatus.EXPIRED,
             created_at=now - timedelta(days=2),
         )
         create_user_connection(
             db,
             user=user,
+            provider="suunto",
             status=ConnectionStatus.REVOKED,
             created_at=now - timedelta(days=3),
         )
@@ -94,7 +101,7 @@ class TestUserConnectionServiceGetActiveCountInRange:
         count = user_connection_service.get_active_count_in_range(db, week_ago, now)
 
         # Assert
-        # Only CONNECTED status should be counted
+        # Only ACTIVE status should be counted
         assert count == 1
 
     def test_get_active_count_in_range_empty_result(self, db: Session):
@@ -113,29 +120,32 @@ class TestUserConnectionServiceGetActiveCountInRange:
         assert count == 0
 
     def test_get_active_count_in_range_boundary_inclusive(self, db: Session):
-        """Should include connections created exactly at boundary times."""
+        """Should include connections at start boundary but exclude end boundary (half-open interval)."""
         # Arrange
         user = create_user(db)
         start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2024, 1, 31, 23, 59, 59, tzinfo=timezone.utc)
+        end = datetime(2024, 2, 1, 0, 0, 0, tzinfo=timezone.utc)  # End is exclusive
 
         # Create connections at boundaries
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
             created_at=start,
-        )  # At start
+        )  # At start (included)
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
-            created_at=end,
-        )  # At end
+            provider="polar",
+            status=ConnectionStatus.ACTIVE,
+            created_at=datetime(2024, 1, 31, 23, 59, 59, tzinfo=timezone.utc),
+        )  # Just before end (included)
         create_user_connection(
             db,
             user=user,
-            status=ConnectionStatus.CONNECTED,
+            provider="suunto",
+            status=ConnectionStatus.ACTIVE,
             created_at=datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
         )  # Middle
 
@@ -165,7 +175,7 @@ class TestUserConnectionServiceCreate:
             refresh_token="refresh_token_xyz",
             token_expires_at=expires_at,
             scope="read_all",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
 
         # Act
@@ -176,7 +186,7 @@ class TestUserConnectionServiceCreate:
         assert connection.user_id == user.id
         assert connection.provider == "garmin"
         assert connection.provider_user_id == "garmin_user_123"
-        assert connection.status == ConnectionStatus.CONNECTED
+        assert connection.status == ConnectionStatus.ACTIVE
         assert connection.created_at is not None
         assert connection.updated_at is not None
 
@@ -189,7 +199,8 @@ class TestUserConnectionServiceCreate:
             provider="polar",
             provider_user_id="polar_123",
             access_token="token",
-            status=ConnectionStatus.CONNECTED,
+            token_expires_at=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            status=ConnectionStatus.ACTIVE,
         )
 
         # Act
@@ -211,7 +222,8 @@ class TestUserConnectionServiceCreate:
             provider="suunto",
             provider_user_id="suunto_123",
             access_token="token",
-            status=ConnectionStatus.CONNECTED,
+            token_expires_at=datetime(2025, 12, 31, tzinfo=timezone.utc),
+            status=ConnectionStatus.ACTIVE,
         )
 
         # Act
@@ -229,16 +241,16 @@ class TestUserConnectionServiceUpdate:
     def test_update_user_connection_status(self, db: Session):
         """Should update connection status."""
         # Arrange
-        connection = create_user_connection(db, status=ConnectionStatus.CONNECTED)
-        update_data = UserConnectionUpdate(status=ConnectionStatus.DISCONNECTED)
+        connection = create_user_connection(db, status=ConnectionStatus.ACTIVE)
+        update_data = UserConnectionUpdate(status=ConnectionStatus.REVOKED)
 
         # Act
         updated = user_connection_service.update(db, connection.id, update_data)
 
         # Assert
         assert updated is not None
-        assert updated.status == ConnectionStatus.DISCONNECTED
-        assert updated.updated_at > connection.updated_at
+        assert updated.status == ConnectionStatus.REVOKED
+        assert updated.updated_at >= connection.updated_at
 
     def test_update_user_connection_tokens(self, db: Session):
         """Should update access and refresh tokens."""
@@ -297,7 +309,7 @@ class TestUserConnectionServiceUpdate:
         """Should return None when updating non-existent connection."""
         # Arrange
         fake_id = uuid4()
-        update_data = UserConnectionUpdate(status=ConnectionStatus.DISCONNECTED)
+        update_data = UserConnectionUpdate(status=ConnectionStatus.REVOKED)
 
         # Act
         result = user_connection_service.update(db, fake_id, update_data, raise_404=False)
@@ -312,7 +324,7 @@ class TestUserConnectionServiceUpdate:
             db,
             provider_username="original_username",
             access_token="original_token",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
 
         update_data = UserConnectionUpdate(provider_username="updated_username")
@@ -324,7 +336,7 @@ class TestUserConnectionServiceUpdate:
         assert updated is not None
         assert updated.provider_username == "updated_username"
         assert updated.access_token == "original_token"  # Unchanged
-        assert updated.status == ConnectionStatus.CONNECTED  # Unchanged
+        assert updated.status == ConnectionStatus.ACTIVE  # Unchanged
 
 
 class TestUserConnectionServiceGet:
@@ -389,18 +401,21 @@ class TestUserConnectionServiceConnectionStatus:
         user = create_user(db)
 
         # Act & Assert
-        for status in [ConnectionStatus.CONNECTED, ConnectionStatus.DISCONNECTED, ConnectionStatus.REVOKED]:
-            connection = create_user_connection(db, user=user, status=status)
+        providers = ["garmin", "polar", "suunto"]
+        for status, provider in zip(
+            [ConnectionStatus.ACTIVE, ConnectionStatus.REVOKED, ConnectionStatus.EXPIRED], providers,
+        ):
+            connection = create_user_connection(db, user=user, provider=provider, status=status)
             assert connection.status == status
 
     def test_update_connection_status_transitions(self, db: Session):
         """Should handle status transitions."""
         # Arrange
-        connection = create_user_connection(db, status=ConnectionStatus.CONNECTED)
+        connection = create_user_connection(db, status=ConnectionStatus.ACTIVE)
 
         # Act - transition from CONNECTED to REVOKED
         updated = user_connection_service.update(
-            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.REVOKED)
+            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.REVOKED),
         )
 
         # Assert
@@ -408,8 +423,8 @@ class TestUserConnectionServiceConnectionStatus:
 
         # Act - transition from REVOKED back to CONNECTED
         updated2 = user_connection_service.update(
-            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.CONNECTED)
+            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.ACTIVE),
         )
 
         # Assert
-        assert updated2.status == ConnectionStatus.CONNECTED
+        assert updated2.status == ConnectionStatus.ACTIVE

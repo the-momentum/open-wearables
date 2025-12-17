@@ -10,7 +10,6 @@ Tests the /api/v1/users/{user_id}/heart-rate endpoint including:
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,7 @@ class TestHeartRateEndpoints:
         """Test successfully retrieving heart rate data for a user."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         hr1 = create_data_point_series(
             db,
             mapping=mapping,
@@ -46,8 +45,8 @@ class TestHeartRateEndpoints:
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act
-        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers)
+        # Act - device_id is required to get non-empty results
+        response = client.get(f"/api/v1/users/{user.id}/heart-rate", headers=headers, params={"device_id": "device1"})
 
         # Assert
         assert response.status_code == 200
@@ -75,9 +74,9 @@ class TestHeartRateEndpoints:
         """Test filtering heart rate data by timestamp."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         now = datetime.now(timezone.utc)
-        old_hr = create_data_point_series(
+        create_data_point_series(
             db,
             mapping=mapping,
             category="heart_rate",
@@ -94,12 +93,12 @@ class TestHeartRateEndpoints:
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
-        # Act - filter for last 5 days
+        # Act - filter for last 5 days (device_id required)
         start_time = (now - timedelta(days=5)).isoformat()
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"start_datetime": start_time},
+            params={"start_datetime": start_time, "device_id": "device1"},
         )
 
         # Assert
@@ -112,9 +111,9 @@ class TestHeartRateEndpoints:
         """Test filtering heart rate data with both start and end datetime."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         now = datetime.now(timezone.utc)
-        before_range = create_data_point_series(
+        create_data_point_series(
             db,
             mapping=mapping,
             category="heart_rate",
@@ -128,7 +127,7 @@ class TestHeartRateEndpoints:
             value=75.0,
             timestamp=now - timedelta(days=5),
         )
-        after_range = create_data_point_series(
+        create_data_point_series(
             db,
             mapping=mapping,
             category="heart_rate",
@@ -159,7 +158,7 @@ class TestHeartRateEndpoints:
         user = create_user(db)
         mapping = create_external_device_mapping(db, user=user)
         # Create 10 heart rate samples
-        samples = [
+        [
             create_data_point_series(
                 db,
                 mapping=mapping,
@@ -236,7 +235,7 @@ class TestHeartRateEndpoints:
         mapping1 = create_external_device_mapping(db, user=user1)
         mapping2 = create_external_device_mapping(db, user=user2)
         hr1 = create_data_point_series(db, mapping=mapping1, category="heart_rate", value=70.0)
-        hr2 = create_data_point_series(db, mapping=mapping2, category="heart_rate", value=75.0)
+        create_data_point_series(db, mapping=mapping2, category="heart_rate", value=75.0)
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
@@ -255,12 +254,8 @@ class TestHeartRateEndpoints:
         user = create_user(db)
         apple_mapping = create_external_device_mapping(db, user=user, provider_id="apple")
         garmin_mapping = create_external_device_mapping(db, user=user, provider_id="garmin")
-        apple_hr = create_data_point_series(
-            db, mapping=apple_mapping, category="heart_rate", value=70.0
-        )
-        garmin_hr = create_data_point_series(
-            db, mapping=garmin_mapping, category="heart_rate", value=75.0
-        )
+        apple_hr = create_data_point_series(db, mapping=apple_mapping, category="heart_rate", value=70.0)
+        create_data_point_series(db, mapping=garmin_mapping, category="heart_rate", value=75.0)
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
@@ -282,7 +277,7 @@ class TestHeartRateEndpoints:
         # Arrange
         user = create_user(db)
         mapping = create_external_device_mapping(db, user=user)
-        hr = create_data_point_series(
+        create_data_point_series(
             db,
             mapping=mapping,
             category="heart_rate",
@@ -354,9 +349,7 @@ class TestHeartRateEndpoints:
         nonexistent_user_id = uuid4()
 
         # Act
-        response = client.get(
-            f"/api/v1/users/{nonexistent_user_id}/heart-rate", headers=headers
-        )
+        response = client.get(f"/api/v1/users/{nonexistent_user_id}/heart-rate", headers=headers)
 
         # Assert - should return empty list, not 404
         assert response.status_code == 200
@@ -369,7 +362,7 @@ class TestHeartRateEndpoints:
         user = create_user(db)
         mapping = create_external_device_mapping(db, user=user)
         values = [60.0, 72.5, 85.0, 95.5, 120.0, 145.0, 180.0]
-        samples = [
+        [
             create_data_point_series(
                 db,
                 mapping=mapping,

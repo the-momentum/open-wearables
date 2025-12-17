@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from app.schemas.event_record import EventRecordCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.oauth import OAuthTokenResponse, UserConnectionCreate, ConnectionStatus
+from app.schemas.oauth import ConnectionStatus, OAuthTokenResponse, UserConnectionCreate
 
 
 class TestEventRecordCreateValidation:
@@ -67,6 +67,7 @@ class TestEventRecordCreateValidation:
             )
 
         assert "source_name" in str(exc_info.value)
+
 
 class TestEventRecordDetailCreateValidation:
     """Test suite for EventRecordDetailCreate schema validation."""
@@ -142,6 +143,7 @@ class TestOAuthTokenResponseValidation:
             )
 
         assert "token_type" in str(exc_info.value)
+
 
 class TestUserConnectionCreateValidation:
     """Test suite for UserConnectionCreate schema validation."""

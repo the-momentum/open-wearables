@@ -9,9 +9,10 @@ Tests cover:
 - Pagination and sorting
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord
@@ -91,8 +92,9 @@ class TestEventRecordRepository:
         # Assert
         assert result.external_mapping_id is not None
         # Verify mapping was created
-        from app.repositories.external_mapping_repository import ExternalMappingRepository
         from app.models import ExternalDeviceMapping
+        from app.repositories.external_mapping_repository import ExternalMappingRepository
+
         mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
         mapping = mapping_repo.get(db, result.external_mapping_id)
         assert mapping is not None
@@ -225,7 +227,9 @@ class TestEventRecordRepository:
         yesterday = now - timedelta(days=1)
         two_days_ago = now - timedelta(days=2)
 
-        create_event_record(db, mapping=mapping, start_datetime=two_days_ago, end_datetime=two_days_ago + timedelta(hours=1))
+        create_event_record(
+            db, mapping=mapping, start_datetime=two_days_ago, end_datetime=two_days_ago + timedelta(hours=1),
+        )
         create_event_record(db, mapping=mapping, start_datetime=yesterday, end_datetime=yesterday + timedelta(hours=1))
         create_event_record(db, mapping=mapping, start_datetime=now, end_datetime=now + timedelta(hours=1))
 
@@ -421,7 +425,9 @@ class TestEventRecordRepository:
 
         # Assert
         # Find our test types
-        test_types = [(workout_type, count) for workout_type, count in results if workout_type in ["running", "cycling"]]
+        test_types = [
+            (workout_type, count) for workout_type, count in results if workout_type in ["running", "cycling"]
+        ]
         assert len(test_types) >= 2
         # Running should come first (higher count)
         running_idx = next(i for i, (t, _) in enumerate(test_types) if t == "running")

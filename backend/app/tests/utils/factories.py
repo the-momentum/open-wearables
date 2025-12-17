@@ -8,6 +8,7 @@ Following patterns from know-how-tests.md:
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 from faker import Faker
@@ -154,7 +155,7 @@ def create_user_connection(
     *,
     user: User | None = None,
     provider: str = "garmin",
-    status: ConnectionStatus = ConnectionStatus.CONNECTED,
+    status: ConnectionStatus = ConnectionStatus.ACTIVE,
     **kwargs,
 ) -> UserConnection:
     """Create a test user connection to a provider."""
@@ -305,7 +306,6 @@ def create_workout_details(
     heart_rate_max: int | None = None,
     heart_rate_min: int | None = None,
     steps_total: int | None = None,
-    calories_total: Decimal | None = None,
     **kwargs,
 ) -> WorkoutDetails:
     """Create a test workout details record."""
@@ -320,7 +320,6 @@ def create_workout_details(
         heart_rate_max=heart_rate_max or 175,
         heart_rate_min=heart_rate_min or 95,
         steps_total=steps_total or 8500,
-        calories_total=calories_total or Dec("650.0"),
         **kwargs,
     )
     db.add(details)
@@ -333,11 +332,11 @@ def create_sleep_details(
     db: Session,
     *,
     event_record: EventRecord | None = None,
-    sleep_duration_seconds: int | None = None,
-    deep_sleep_seconds: int | None = None,
-    light_sleep_seconds: int | None = None,
-    rem_sleep_seconds: int | None = None,
-    awake_seconds: int | None = None,
+    sleep_total_duration_minutes: int | None = None,
+    sleep_deep_minutes: int | None = None,
+    sleep_light_minutes: int | None = None,
+    sleep_rem_minutes: int | None = None,
+    sleep_awake_minutes: int | None = None,
     **kwargs,
 ) -> SleepDetails:
     """Create a test sleep details record."""
@@ -346,11 +345,11 @@ def create_sleep_details(
 
     details = SleepDetails(
         record_id=event_record.id,
-        sleep_duration_seconds=sleep_duration_seconds or 28800,  # 8 hours
-        deep_sleep_seconds=deep_sleep_seconds or 7200,  # 2 hours
-        light_sleep_seconds=light_sleep_seconds or 14400,  # 4 hours
-        rem_sleep_seconds=rem_sleep_seconds or 5400,  # 1.5 hours
-        awake_seconds=awake_seconds or 1800,  # 30 min
+        sleep_total_duration_minutes=sleep_total_duration_minutes or 480,  # 8 hours
+        sleep_deep_minutes=sleep_deep_minutes or 120,  # 2 hours
+        sleep_light_minutes=sleep_light_minutes or 240,  # 4 hours
+        sleep_rem_minutes=sleep_rem_minutes or 90,  # 1.5 hours
+        sleep_awake_minutes=sleep_awake_minutes or 30,  # 30 min
         **kwargs,
     )
     db.add(details)

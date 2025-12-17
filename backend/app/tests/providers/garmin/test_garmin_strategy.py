@@ -1,7 +1,5 @@
 """Tests for Garmin strategy."""
 
-import pytest
-from sqlalchemy.orm import Session
 
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.strategy import GarminStrategy

@@ -5,16 +5,15 @@ Tests XML file processing from S3 for Apple Health data imports.
 """
 
 import os
-import pytest
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.process_upload_task import (
-    process_uploaded_file,
     _import_xml_data,
+    process_uploaded_file,
 )
 from app.tests.utils.factories import create_user
 
@@ -128,10 +127,8 @@ class TestProcessUploadTask:
         mock_s3_client.download_file.side_effect = Exception("S3 connection failed")
 
         # Act & Assert
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="S3 connection failed"):
             process_uploaded_file(bucket_name, object_key)
-
-        assert "S3 connection failed" in str(exc_info.value)
 
     @patch("app.integrations.celery.tasks.process_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_upload_task.s3_client")
@@ -164,10 +161,9 @@ class TestProcessUploadTask:
         mock_import_xml_data.side_effect = Exception("XML parsing error")
 
         # Act & Assert
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="XML parsing error"):
             process_uploaded_file(bucket_name, object_key)
 
-        assert "XML parsing error" in str(exc_info.value)
         # Verify rollback was called
         mock_db.rollback.assert_called_once()
 
@@ -263,7 +259,7 @@ class TestImportXmlData:
 
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            (mock_heart_rate_records, mock_step_records, [(mock_record, mock_detail)])
+            (mock_heart_rate_records, mock_step_records, [(mock_record, mock_detail)]),
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
@@ -296,9 +292,7 @@ class TestImportXmlData:
         workout2 = (MagicMock(), MagicMock())
 
         mock_xml_service = MagicMock()
-        mock_xml_service.parse_xml.return_value = [
-            ([], [], [workout1, workout2])
-        ]
+        mock_xml_service.parse_xml.return_value = [([], [], [workout1, workout2])]
         mock_xml_service_class.return_value = mock_xml_service
 
         # Act
@@ -326,7 +320,7 @@ class TestImportXmlData:
         # Mock XMLService with empty time series
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            ([], [], [])  # Empty heart rate, steps, and workouts
+            ([], [], []),  # Empty heart rate, steps, and workouts
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
@@ -356,7 +350,7 @@ class TestImportXmlData:
 
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            (mock_heart_rate_records, [], [])  # Only heart rate
+            (mock_heart_rate_records, [], []),  # Only heart rate
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
@@ -364,9 +358,7 @@ class TestImportXmlData:
         _import_xml_data(db, xml_path, str(user.id))
 
         # Assert
-        mock_time_series_service.bulk_create_samples.assert_called_once_with(
-            db, mock_heart_rate_records
-        )
+        mock_time_series_service.bulk_create_samples.assert_called_once_with(db, mock_heart_rate_records)
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")

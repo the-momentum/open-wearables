@@ -7,9 +7,10 @@ Tests cover:
 - Filtering and pagination
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import User
@@ -238,7 +239,7 @@ class TestUserRepository:
         now = datetime.now(timezone.utc)
         two_days_ago = now - timedelta(days=2)
         one_day_ago = now - timedelta(days=1)
-        tomorrow = now + timedelta(days=1)
+        now + timedelta(days=1)
 
         # Create users at different times
         create_user(db, created_at=two_days_ago)

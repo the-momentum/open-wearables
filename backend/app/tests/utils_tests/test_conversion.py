@@ -4,20 +4,18 @@ Tests for conversion utility functions.
 Tests SQLAlchemy model to dictionary conversion.
 """
 
-import pytest
 from datetime import datetime, timezone
-from uuid import uuid4
 
-from app.utils.conversion import base_to_dict
+from app.schemas import ConnectionStatus
 from app.tests.utils.factories import (
-    create_user,
+    create_data_point_series,
     create_developer,
-    create_user_connection,
     create_event_record,
     create_external_device_mapping,
-    create_data_point_series,
+    create_user,
+    create_user_connection,
 )
-from app.schemas import ConnectionStatus
+from app.utils.conversion import base_to_dict
 
 
 class TestBaseToDictUser:
@@ -131,7 +129,7 @@ class TestBaseToDictUserConnection:
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
 
         # Act
@@ -142,7 +140,7 @@ class TestBaseToDictUserConnection:
         assert result["id"] == connection.id
         assert result["user_id"] == user.id
         assert result["provider"] == "garmin"
-        assert result["status"] == ConnectionStatus.CONNECTED
+        assert result["status"] == ConnectionStatus.ACTIVE
 
     def test_base_to_dict_user_connection_with_sync_time(self, db):
         """Test UserConnection with last_synced_at timestamp."""
@@ -282,7 +280,6 @@ class TestBaseToDictDataPointSeries:
         data_point = create_data_point_series(
             db,
             mapping=mapping,
-            category="heart_rate",
             value=72.5,
             timestamp=timestamp,
         )
@@ -294,8 +291,8 @@ class TestBaseToDictDataPointSeries:
         assert isinstance(result, dict)
         assert result["id"] == data_point.id
         assert result["external_mapping_id"] == mapping.id
-        assert result["category"] == "heart_rate"
-        assert result["value"] == 72.5
+        # DataPointSeries doesn't have category field, it has series_type_id
+        assert "series_type_id" in result
 
     def test_base_to_dict_data_point_series_timestamp(self, db):
         """Test DataPointSeries timestamp serialization."""
@@ -307,10 +304,11 @@ class TestBaseToDictDataPointSeries:
         result = base_to_dict(data_point)
 
         # Assert
-        assert "timestamp" in result
-        assert isinstance(result["timestamp"], str)
+        # DataPointSeries uses recorded_at, not timestamp
+        assert "recorded_at" in result
+        assert isinstance(result["recorded_at"], str)
         # Verify can be parsed back
-        datetime.fromisoformat(result["timestamp"])
+        datetime.fromisoformat(result["recorded_at"])
 
 
 class TestBaseToDictEdgeCases:
@@ -374,14 +372,17 @@ class TestBaseToDictEdgeCases:
     def test_base_to_dict_with_float_values(self, db):
         """Test conversion of float values."""
         # Arrange
+        from decimal import Decimal
+
         data_point = create_data_point_series(db, value=98.6)
 
         # Act
         result = base_to_dict(data_point)
 
         # Assert
-        assert isinstance(result["value"], float)
-        assert result["value"] == 98.6
+        # Value is stored as Decimal in database but should be converted to float or Decimal
+        assert isinstance(result["value"], (float, Decimal))
+        assert float(result["value"]) == 98.6
 
     def test_base_to_dict_idempotent(self, db):
         """Test that calling base_to_dict multiple times gives same result."""

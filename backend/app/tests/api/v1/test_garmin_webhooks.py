@@ -9,7 +9,6 @@ Tests the /api/v1/garmin/webhooks endpoints including:
 - Error cases
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -22,13 +21,11 @@ from app.tests.utils import (
 class TestGarminPingWebhook:
     """Test suite for Garmin ping webhook endpoint."""
 
-    def test_ping_webhook_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully receiving Garmin ping notification."""
         # Arrange
         user = create_user(db)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
@@ -40,8 +37,8 @@ class TestGarminPingWebhook:
                 {
                     "userId": "garmin_user_123",
                     "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?uploadStartTimeInSeconds=1234567890&uploadEndTimeInSeconds=1234567900&token=abc123",
-                }
-            ]
+                },
+            ],
         }
 
         # Mock httpx response for callback URL
@@ -53,7 +50,7 @@ class TestGarminPingWebhook:
                 "activityId": 12345,
                 "activityName": "Morning Run",
                 "startTimeInSeconds": 1234567890,
-            }
+            },
         ]
 
         # Act
@@ -78,8 +75,8 @@ class TestGarminPingWebhook:
                 {
                     "userId": "garmin_user_123",
                     "callbackURL": "https://example.com/callback",
-                }
-            ]
+                },
+            ],
         }
 
         # Act
@@ -91,9 +88,7 @@ class TestGarminPingWebhook:
         # Assert
         assert response.status_code == 401
 
-    def test_ping_webhook_unknown_user(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_unknown_user(self, client: TestClient, db: Session, mock_external_apis):
         """Test ping webhook with unknown Garmin user."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
@@ -102,8 +97,8 @@ class TestGarminPingWebhook:
                 {
                     "userId": "unknown_garmin_user",
                     "callbackURL": "https://example.com/callback",
-                }
-            ]
+                },
+            ],
         }
 
         # Act
@@ -119,13 +114,11 @@ class TestGarminPingWebhook:
         assert "errors" in data
         assert len(data["errors"]) > 0
 
-    def test_ping_webhook_no_callback_url(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_no_callback_url(self, client: TestClient, db: Session, mock_external_apis):
         """Test ping webhook with missing callback URL."""
         # Arrange
         user = create_user(db)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
@@ -137,8 +130,8 @@ class TestGarminPingWebhook:
                 {
                     "userId": "garmin_user_123",
                     # Missing callbackURL
-                }
-            ]
+                },
+            ],
         }
 
         # Act
@@ -153,20 +146,18 @@ class TestGarminPingWebhook:
         data = response.json()
         assert "processed" in data
 
-    def test_ping_webhook_multiple_activities(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_multiple_activities(self, client: TestClient, db: Session, mock_external_apis):
         """Test ping webhook with multiple activities."""
         # Arrange
         user1 = create_user(db)
         user2 = create_user(db)
-        connection1 = create_user_connection(
+        create_user_connection(
             db,
             user=user1,
             provider="garmin",
             provider_user_id="garmin_user_1",
         )
-        connection2 = create_user_connection(
+        create_user_connection(
             db,
             user=user2,
             provider="garmin",
@@ -183,7 +174,7 @@ class TestGarminPingWebhook:
                     "userId": "garmin_user_2",
                     "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=token2",
                 },
-            ]
+            ],
         }
 
         # Mock httpx response
@@ -205,13 +196,11 @@ class TestGarminPingWebhook:
         assert "processed" in data
         assert "activities" in data
 
-    def test_ping_webhook_with_summary_types(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_with_summary_types(self, client: TestClient, db: Session, mock_external_apis):
         """Test ping webhook with different summary types."""
         # Arrange
         user = create_user(db)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
@@ -235,13 +224,11 @@ class TestGarminPingWebhook:
         # Assert
         assert response.status_code == 200
 
-    def test_ping_webhook_callback_fetch_error(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_ping_webhook_callback_fetch_error(self, client: TestClient, db: Session, mock_external_apis):
         """Test ping webhook when callback URL fetch fails."""
         # Arrange
         user = create_user(db)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
@@ -253,8 +240,8 @@ class TestGarminPingWebhook:
                 {
                     "userId": "garmin_user_123",
                     "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=abc123",
-                }
-            ]
+                },
+            ],
         }
 
         # Mock httpx to raise an error
@@ -280,9 +267,7 @@ class TestGarminPingWebhook:
 class TestGarminPushWebhook:
     """Test suite for Garmin push webhook endpoint."""
 
-    def test_push_webhook_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_push_webhook_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully receiving Garmin push notification."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
@@ -299,8 +284,8 @@ class TestGarminPushWebhook:
                     "deviceName": "Forerunner 965",
                     "manual": False,
                     "isWebUpload": False,
-                }
-            ]
+                },
+            ],
         }
 
         # Act
@@ -326,8 +311,8 @@ class TestGarminPushWebhook:
                     "userId": "garmin_user_123",
                     "activityId": 12345,
                     "activityName": "Test Activity",
-                }
-            ]
+                },
+            ],
         }
 
         # Act
@@ -339,9 +324,7 @@ class TestGarminPushWebhook:
         # Assert
         assert response.status_code == 401
 
-    def test_push_webhook_multiple_activities(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_push_webhook_multiple_activities(self, client: TestClient, db: Session, mock_external_apis):
         """Test push webhook with multiple activities."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
@@ -359,7 +342,7 @@ class TestGarminPushWebhook:
                     "activityName": "Evening Bike",
                     "activityType": "CYCLING",
                 },
-            ]
+            ],
         }
 
         # Act
@@ -376,9 +359,7 @@ class TestGarminPushWebhook:
         assert data["processed"] == 2
         assert len(data["activities"]) == 2
 
-    def test_push_webhook_different_activity_types(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_push_webhook_different_activity_types(self, client: TestClient, db: Session, mock_external_apis):
         """Test push webhook with different activity types."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
@@ -392,7 +373,7 @@ class TestGarminPushWebhook:
                     "activityType": activity_type,
                 }
                 for i, activity_type in enumerate(activity_types)
-            ]
+            ],
         }
 
         # Act
@@ -407,9 +388,7 @@ class TestGarminPushWebhook:
         data = response.json()
         assert data["processed"] == len(activity_types)
 
-    def test_push_webhook_empty_activities(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_push_webhook_empty_activities(self, client: TestClient, db: Session, mock_external_apis):
         """Test push webhook with empty activities list."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}

@@ -7,9 +7,10 @@ Tests cover:
 - API key specific behaviors (string ID)
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import ApiKey
@@ -136,7 +137,7 @@ class TestApiKeyRepository:
         dev1 = create_developer(db, email="dev1@example.com")
         dev2 = create_developer(db, email="dev2@example.com")
 
-        key1 = create_api_key(db, developer=dev1, name="Dev1 Key")
+        create_api_key(db, developer=dev1, name="Dev1 Key")
         create_api_key(db, developer=dev2, name="Dev2 Key")
 
         # Act
@@ -149,9 +150,9 @@ class TestApiKeyRepository:
         )
 
         # Assert
-        # Note: created_by is UUID, so string comparison may not work
-        # This documents current behavior
-        assert len(results) == 0  # String comparison doesn't match UUID
+        # created_by filter works - string ID is converted to UUID properly
+        assert len(results) == 1
+        assert results[0].name == "Dev1 Key"
 
     def test_get_all_with_pagination(self, db: Session, api_key_repo: ApiKeyRepository):
         """Test pagination with offset and limit."""
@@ -252,9 +253,9 @@ class TestApiKeyRepository:
         """Test that a developer can have multiple API keys."""
         # Arrange
         developer = create_developer(db)
-        key1 = create_api_key(db, developer=developer, name="Key 1")
-        key2 = create_api_key(db, developer=developer, name="Key 2")
-        key3 = create_api_key(db, developer=developer, name="Key 3")
+        create_api_key(db, developer=developer, name="Key 1")
+        create_api_key(db, developer=developer, name="Key 2")
+        create_api_key(db, developer=developer, name="Key 3")
 
         # Act - Get all keys (we can't filter by UUID properly, so get all)
         all_keys = api_key_repo.get_all(db, filters={}, offset=0, limit=100, sort_by=None)

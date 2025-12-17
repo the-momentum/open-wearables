@@ -9,7 +9,6 @@ Tests the /api/v1/oauth endpoints including:
 
 from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -212,8 +211,8 @@ class TestOAuthProvidersEndpoint:
         data = response.json()
         assert isinstance(data, list)
         # Should include both enabled and disabled
-        has_enabled = any(p["is_enabled"] for p in data)
-        has_disabled = any(not p["is_enabled"] for p in data)
+        any(p["is_enabled"] for p in data)
+        any(not p["is_enabled"] for p in data)
         # At least one of each should exist (assuming test data setup)
         # If all are enabled or disabled, that's also valid
 
@@ -243,9 +242,7 @@ class TestOAuthProvidersEndpoint:
 class TestOAuthUpdateProviderEndpoint:
     """Test suite for updating provider status endpoint."""
 
-    def test_update_provider_status_enable(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_provider_status_enable(self, client: TestClient, db: Session, mock_external_apis):
         """Test enabling a provider."""
         # Arrange
         developer = create_developer(db)
@@ -265,9 +262,7 @@ class TestOAuthUpdateProviderEndpoint:
         assert data["provider_id"] == "garmin"
         assert data["is_enabled"] is True
 
-    def test_update_provider_status_disable(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_provider_status_disable(self, client: TestClient, db: Session, mock_external_apis):
         """Test disabling a provider."""
         # Arrange
         developer = create_developer(db)
@@ -287,9 +282,7 @@ class TestOAuthUpdateProviderEndpoint:
         assert data["provider_id"] == "polar"
         assert data["is_enabled"] is False
 
-    def test_update_provider_requires_authentication(
-        self, client: TestClient, db: Session
-    ):
+    def test_update_provider_requires_authentication(self, client: TestClient, db: Session):
         """Test that updating provider status requires authentication."""
         # Arrange
         update_data = {"is_enabled": True}
@@ -319,9 +312,7 @@ class TestOAuthUpdateProviderEndpoint:
         # Assert
         assert response.status_code == 401
 
-    def test_update_nonexistent_provider(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_nonexistent_provider(self, client: TestClient, db: Session, mock_external_apis):
         """Test updating a provider that doesn't exist."""
         # Arrange
         developer = create_developer(db)
@@ -338,9 +329,7 @@ class TestOAuthUpdateProviderEndpoint:
         # Assert
         assert response.status_code == 404
 
-    def test_update_provider_invalid_payload(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_provider_invalid_payload(self, client: TestClient, db: Session, mock_external_apis):
         """Test updating provider with invalid payload."""
         # Arrange
         developer = create_developer(db)
@@ -357,9 +346,7 @@ class TestOAuthUpdateProviderEndpoint:
         # Assert
         assert response.status_code == 422
 
-    def test_update_provider_response_structure(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_provider_response_structure(self, client: TestClient, db: Session, mock_external_apis):
         """Test response structure of update endpoint."""
         # Arrange
         developer = create_developer(db)
@@ -382,9 +369,7 @@ class TestOAuthUpdateProviderEndpoint:
         assert "has_cloud_api" in data
         assert "is_enabled" in data
 
-    def test_update_multiple_providers_sequentially(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_update_multiple_providers_sequentially(self, client: TestClient, db: Session, mock_external_apis):
         """Test updating multiple providers one after another."""
         # Arrange
         developer = create_developer(db)

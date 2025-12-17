@@ -7,9 +7,10 @@ Tests cover:
 - Pagination and sorting
 """
 
-import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Developer
@@ -146,7 +147,9 @@ class TestDeveloperRepository:
         # Assert
         assert len(results) >= 3
         # Verify alphabetical order (at least for our test developers)
-        emails = [d.email for d in results if d.email in ["alice@example.com", "bob@example.com", "charlie@example.com"]]
+        emails = [
+            d.email for d in results if d.email in ["alice@example.com", "bob@example.com", "charlie@example.com"]
+        ]
         assert emails == sorted(emails)
 
     def test_update(self, db: Session, developer_repo: DeveloperRepository):
@@ -250,9 +253,9 @@ class TestDeveloperRepository:
         )
 
         # Assert
-        # Note: The filter uses string comparison, so this might not work
-        # This test documents the current behavior
-        assert len(results) == 0  # ID filter expects string comparison which won't match UUID
+        # The filter works with string representation of UUID
+        assert len(results) == 1
+        assert results[0].id == dev.id
 
     def test_timestamps_on_create(self, db: Session, developer_repo: DeveloperRepository):
         """Test that created_at and updated_at are set correctly on creation."""
@@ -282,6 +285,7 @@ class TestDeveloperRepository:
 
         # Wait a tiny bit to ensure timestamp difference
         import time
+
         time.sleep(0.01)
 
         update_data = DeveloperUpdateInternal(email="updated@example.com")

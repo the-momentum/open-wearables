@@ -25,7 +25,6 @@ os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # bas
 from app.database import BaseDbModel, _get_db_dependency
 from app.main import api
 
-
 # Test database URL - uses test PostgreSQL database
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -43,6 +42,21 @@ def engine():
         max_overflow=10,
     )
     BaseDbModel.metadata.create_all(bind=test_engine)
+
+    # Seed series type definitions (these need to exist for foreign key constraints)
+    from sqlalchemy.orm import Session as SessionClass
+
+    from app.constants.series_types import SERIES_TYPE_DEFINITIONS
+    from app.models import SeriesTypeDefinition
+
+    with SessionClass(bind=test_engine) as session:
+        for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == type_id).first()
+            if not existing:
+                series_type = SeriesTypeDefinition(id=type_id, code=enum.value, unit=unit)
+                session.add(series_type)
+        session.commit()
+
     yield test_engine
     BaseDbModel.metadata.drop_all(bind=test_engine)
 
@@ -120,7 +134,7 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
 @pytest.fixture(autouse=True)
 def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mock Celery tasks to run synchronously."""
-    with patch("app.integrations.celery.celery_app") as mock_celery:
+    with patch("celery.current_app") as mock_celery:
         mock_celery.conf = {
             "task_always_eager": True,
             "task_eager_propagates": True,
@@ -155,6 +169,7 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
 @pytest.fixture(autouse=True)
 def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Speed up tests by using simple password hashing."""
+    import sys
 
     def simple_hash(password: str) -> str:
         return f"hashed_{password}"
@@ -162,8 +177,13 @@ def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     def simple_verify(plain: str, hashed: str) -> bool:
         return hashed == f"hashed_{plain}"
 
+    # Patch in the source module
     monkeypatch.setattr("app.utils.security.get_password_hash", simple_hash)
     monkeypatch.setattr("app.utils.security.verify_password", simple_verify)
+    # Also patch in modules that import these functions directly (use sys.modules to avoid name shadowing)
+    if "app.services.developer_service" in sys.modules:
+        monkeypatch.setattr(sys.modules["app.services.developer_service"], "get_password_hash", simple_hash)
+    monkeypatch.setattr("app.api.routes.v1.auth.verify_password", simple_verify)
 
 
 # ============================================================================

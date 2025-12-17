@@ -9,9 +9,10 @@ Tests cover:
 - Token expiration queries (get_expiring_tokens)
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import UserConnection
@@ -112,7 +113,7 @@ class TestUserConnectionRepository:
         # Arrange
         user = create_user(db)
         active_conn = create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.REVOKED)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.REVOKED)
 
         # Act
         result = connection_repo.get_active_connection(db, user.id, "garmin")
@@ -127,7 +128,9 @@ class TestUserConnectionRepository:
         # Arrange
         user = create_user(db)
         create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.REVOKED)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.EXPIRED)
+        # Create another user to avoid unique constraint violation
+        user2 = create_user(db)
+        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.EXPIRED)
 
         # Act
         result = connection_repo.get_active_connection(db, user.id, "polar")
@@ -269,6 +272,7 @@ class TestUserConnectionRepository:
 
         # Wait to ensure timestamp difference
         import time
+
         time.sleep(0.01)
 
         # Act
@@ -295,6 +299,7 @@ class TestUserConnectionRepository:
 
         # Wait to ensure timestamp difference
         import time
+
         time.sleep(0.01)
 
         # Act
@@ -398,7 +403,9 @@ class TestUserConnectionRepository:
         user3 = create_user(db)
 
         create_user_connection(db, user=user1, status=ConnectionStatus.ACTIVE)
-        create_user_connection(db, user=user1, provider="polar", status=ConnectionStatus.ACTIVE)  # Same user, different provider
+        create_user_connection(
+            db, user=user1, provider="polar", status=ConnectionStatus.ACTIVE,
+        )  # Same user, different provider
         create_user_connection(db, user=user2, status=ConnectionStatus.ACTIVE)
         create_user_connection(db, user=user3, status=ConnectionStatus.REVOKED)  # Should not be included
 
@@ -442,7 +449,9 @@ class TestUserConnectionRepository:
         deleted_connection = connection_repo.get(db, connection_id)
         assert deleted_connection is None
 
-    def test_multiple_connections_same_user_different_providers(self, db: Session, connection_repo: UserConnectionRepository):
+    def test_multiple_connections_same_user_different_providers(
+        self, db: Session, connection_repo: UserConnectionRepository,
+    ):
         """Test that a user can have connections to multiple providers."""
         # Arrange
         user = create_user(db)

@@ -4,7 +4,6 @@ Tests for Polar provider strategy.
 Tests the main PolarStrategy class that coordinates OAuth and workouts components.
 """
 
-import pytest
 
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository

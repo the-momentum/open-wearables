@@ -5,19 +5,14 @@ Tests end-to-end import of Garmin activities and workouts.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.tests.utils import (
-    api_key_headers,
-    create_api_key,
-    create_developer,
     create_user,
     create_user_connection,
 )
@@ -228,10 +223,11 @@ class TestGarminWorkoutImport:
 
         strategy = GarminStrategy()
 
-        with patch.object(strategy.workouts, "_make_api_request", side_effect=Exception("API Error")):
-            # Act & Assert
-            with pytest.raises(Exception, match="API Error"):
-                strategy.workouts.load_data(db, user.id)
+        with (
+            patch.object(strategy.workouts, "_make_api_request", side_effect=Exception("API Error")),
+            pytest.raises(Exception, match="API Error"),
+        ):
+            strategy.workouts.load_data(db, user.id)
 
     def test_get_workouts_from_api_with_params(self, db: Session):
         """Test getting workouts from API with custom parameters."""

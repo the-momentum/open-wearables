@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.constants.workout_types.garmin import get_unified_workout_type
+from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import EventRecordCreate, EventRecordDetailCreate, GarminActivityJSON
@@ -24,7 +24,7 @@ class TestGarminWorkouts:
     @pytest.fixture
     def garmin_workouts(self, db: Session):
         """Create GarminWorkouts instance for testing."""
-        workout_repo = EventRecordRepository()
+        workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = GarminOAuth(
             user_repo=MagicMock(),

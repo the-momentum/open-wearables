@@ -10,13 +10,12 @@ Tests cover:
 - Counting data points by provider
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from decimal import Decimal
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from app.constants.series_types import get_series_type_id
+import pytest
+from sqlalchemy.orm import Session
+
 from app.schemas.time_series import (
     HeartRateSampleCreate,
     SeriesType,
@@ -41,7 +40,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create heart rate samples."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user, device_id="device_1")
+        create_external_device_mapping(db, user=user, device_id="device_1")
 
         now = datetime.now(timezone.utc)
         samples = [
@@ -61,9 +60,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
 
         # Assert - verify samples were created
         query_params = TimeSeriesQueryParams(device_id="device_1")
-        retrieved_samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user.id), query_params
-        )
+        retrieved_samples = await time_series_service.get_user_heart_rate_series(db, str(user.id), query_params)
         assert len(retrieved_samples) == 5
 
     @pytest.mark.asyncio
@@ -71,7 +68,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create step samples."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user, device_id="device_2")
+        create_external_device_mapping(db, user=user, device_id="device_2")
 
         now = datetime.now(timezone.utc)
         samples = [
@@ -91,16 +88,14 @@ class TestTimeSeriesServiceBulkCreateSamples:
 
         # Assert
         query_params = TimeSeriesQueryParams(device_id="device_2")
-        retrieved_samples = await time_series_service.get_user_step_series(
-            db, str(user.id), query_params
-        )
+        retrieved_samples = await time_series_service.get_user_step_series(db, str(user.id), query_params)
         assert len(retrieved_samples) == 3
 
     def test_bulk_create_mixed_series_types(self, db: Session):
         """Should bulk create samples of different series types."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user, device_id="device_3")
+        create_external_device_mapping(db, user=user, device_id="device_3")
 
         now = datetime.now(timezone.utc)
         samples = [
@@ -161,9 +156,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         query_params = TimeSeriesQueryParams(device_id="watch_1")
 
         # Act
-        samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user.id), query_params
-        )
+        samples = await time_series_service.get_user_heart_rate_series(db, str(user.id), query_params)
 
         # Assert
         assert len(samples) >= 2
@@ -186,9 +179,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         query_params = TimeSeriesQueryParams(device_id="watch_1")
 
         # Act
-        samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user.id), query_params
-        )
+        samples = await time_series_service.get_user_heart_rate_series(db, str(user.id), query_params)
 
         # Assert
         sample_ids = [s.id for s in samples]
@@ -208,14 +199,12 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         end = now - timedelta(days=1)
 
         hr_old = create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10)
+            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10),
         )
         hr_in_range = create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5)
+            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5),
         )
-        hr_recent = create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now
-        )
+        hr_recent = create_data_point_series(db, mapping=mapping, series_type=series_type, recorded_at=now)
 
         query_params = TimeSeriesQueryParams(
             device_id="watch_1",
@@ -224,9 +213,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         )
 
         # Act
-        samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user.id), query_params
-        )
+        samples = await time_series_service.get_user_heart_rate_series(db, str(user.id), query_params)
 
         # Assert
         sample_ids = [s.id for s in samples]
@@ -252,9 +239,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         query_params = TimeSeriesQueryParams(device_id="watch_1")
 
         # Act
-        samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user1.id), query_params
-        )
+        samples = await time_series_service.get_user_heart_rate_series(db, str(user1.id), query_params)
 
         # Assert
         sample_ids = [s.id for s in samples]
@@ -269,9 +254,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         query_params = TimeSeriesQueryParams()  # No device_id or mapping_id
 
         # Act
-        samples = await time_series_service.get_user_heart_rate_series(
-            db, str(user.id), query_params
-        )
+        samples = await time_series_service.get_user_heart_rate_series(db, str(user.id), query_params)
 
         # Assert
         assert samples == []
@@ -294,9 +277,7 @@ class TestTimeSeriesServiceGetUserStepSeries:
         query_params = TimeSeriesQueryParams(device_id="tracker_1")
 
         # Act
-        samples = await time_series_service.get_user_step_series(
-            db, str(user.id), query_params
-        )
+        samples = await time_series_service.get_user_step_series(db, str(user.id), query_params)
 
         # Assert
         assert len(samples) >= 2
@@ -395,8 +376,9 @@ class TestTimeSeriesServiceGetCountBySeriesType:
         """Should order results by count descending."""
         # Arrange
         mapping = create_external_device_mapping(db)
-        type1 = create_series_type_definition(db, code="type1", unit="unit1")
-        type2 = create_series_type_definition(db, code="type2", unit="unit2")
+        # Use existing seeded series types to avoid ID conflicts
+        type1 = create_series_type_definition(db, code="heart_rate", unit="bpm")
+        type2 = create_series_type_definition(db, code="steps", unit="count")
 
         # Create more of type1
         for _ in range(5):
@@ -516,17 +498,15 @@ class TestTimeSeriesServiceGetCountInRange:
 
         # Create samples at different times
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10)
+            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10),
         )  # Before range
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5)
+            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5),
         )  # In range
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=3)
+            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=3),
         )  # In range
-        create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now
-        )  # After range
+        create_data_point_series(db, mapping=mapping, series_type=series_type, recorded_at=now)  # After range
 
         # Act
         count = time_series_service.get_count_in_range(db, start, end)

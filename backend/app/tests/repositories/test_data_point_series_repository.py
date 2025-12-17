@@ -8,15 +8,16 @@ Tests cover:
 - get_count_by_series_type and get_count_by_provider
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas.time_series import SeriesType, TimeSeriesSampleCreate, TimeSeriesQueryParams
+from app.schemas.time_series import SeriesType, TimeSeriesQueryParams, TimeSeriesSampleCreate
 from app.tests.utils.factories import create_external_device_mapping, create_user
 
 
@@ -85,8 +86,9 @@ class TestDataPointSeriesRepository:
         # Assert
         assert result.external_mapping_id is not None
         # Verify mapping was created
-        from app.repositories.external_mapping_repository import ExternalMappingRepository
         from app.models import ExternalDeviceMapping
+        from app.repositories.external_mapping_repository import ExternalMappingRepository
+
         mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
         mapping = mapping_repo.get(db, result.external_mapping_id)
         assert mapping is not None
@@ -118,6 +120,7 @@ class TestDataPointSeriesRepository:
         assert result.series_type_id is not None
         # Verify it's different from heart_rate
         from app.constants.series_types import get_series_type_id
+
         expected_id = get_series_type_id(SeriesType.steps)
         assert result.series_type_id == expected_id
 
@@ -216,7 +219,7 @@ class TestDataPointSeriesRepository:
         """Test that get_samples only returns samples of the specified series type."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
         now = datetime.now(timezone.utc)
 
         # Create heart rate samples
@@ -254,6 +257,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 2
         from app.constants.series_types import get_series_type_id
+
         expected_type_id = get_series_type_id(SeriesType.heart_rate)
         for sample, _ in results:
             assert sample.series_type_id == expected_type_id
@@ -262,7 +266,7 @@ class TestDataPointSeriesRepository:
         """Test filtering samples by date range."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
 
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
@@ -345,7 +349,7 @@ class TestDataPointSeriesRepository:
         """Test that samples are ordered by recorded_at descending."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        mapping = create_external_device_mapping(db, user=user, device_id="device1")
 
         now = datetime.now(timezone.utc)
         times = [now - timedelta(hours=i) for i in range(3)]
@@ -378,7 +382,7 @@ class TestDataPointSeriesRepository:
         """Test that get_samples is limited to 1000 records."""
         # Arrange
         user = create_user(db)
-        mapping = create_external_device_mapping(db, user=user)
+        create_external_device_mapping(db, user=user)
 
         # Note: Creating 1000+ records would be slow, so we just verify the limit exists
         # by checking the method implementation
@@ -530,6 +534,7 @@ class TestDataPointSeriesRepository:
         # Assert
         counts_dict = dict(results)
         from app.constants.series_types import get_series_type_id
+
         hr_type_id = get_series_type_id(SeriesType.heart_rate)
         steps_type_id = get_series_type_id(SeriesType.steps)
 

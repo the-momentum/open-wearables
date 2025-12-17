@@ -4,11 +4,11 @@ Tests for healthcheck utilities.
 Tests database health check endpoint and pool status monitoring.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-from sqlalchemy import text
+from unittest.mock import MagicMock, patch
 
-from app.utils.healthcheck import get_pool_status, database_health
+import pytest
+
+from app.utils.healthcheck import database_health, get_pool_status
 
 
 class TestGetPoolStatus:

@@ -1,15 +1,13 @@
 """Tests for Garmin OAuth implementation."""
 
-import json
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import httpx
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas import AuthenticationMethod, OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
@@ -23,7 +21,7 @@ class TestGarminOAuth:
     @pytest.fixture
     def garmin_oauth(self, db: Session):
         """Create GarminOAuth instance for testing."""
-        user_repo = UserRepository()
+        user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         return GarminOAuth(
             user_repo=user_repo,
@@ -70,7 +68,7 @@ class TestGarminOAuth:
 
         # Assert
         assert "https://connect.garmin.com/oauth2Confirm" in auth_url
-        assert f"client_id=" in auth_url
+        assert "client_id=" in auth_url
         assert f"state={state}" in auth_url
         assert "code_challenge=" in auth_url
         assert "code_challenge_method=S256" in auth_url

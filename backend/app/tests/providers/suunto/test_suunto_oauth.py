@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 from jose import jwt
 
+from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.oauth import OAuthTokenResponse
@@ -30,7 +31,7 @@ class TestSuuntoOAuth:
     @pytest.fixture
     def suunto_oauth(self):
         """Create SuuntoOAuth instance for testing."""
-        user_repo = UserRepository()
+        user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         return SuuntoOAuth(
             user_repo=user_repo,
@@ -70,7 +71,7 @@ class TestSuuntoOAuth:
 
         # Assert
         assert "https://cloudapi-oauth.suunto.com/oauth/authorize" in auth_url
-        assert f"client_id=" in auth_url
+        assert "client_id=" in auth_url
         assert f"state={state}" in auth_url
         assert "response_type=code" in auth_url
         assert len(state) > 0

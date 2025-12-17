@@ -37,6 +37,7 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
     "faker>=33.1.0",
+    "psycopg-binary>=3.3.2",
 ]
 
 [tool.ruff]

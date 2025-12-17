@@ -11,7 +11,6 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 import pytest
 from jose import jwt
@@ -140,7 +139,7 @@ class TestSuuntoImport:
         """Should fetch workouts from Suunto API."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         mock_workouts.get_workouts_from_api.return_value = sample_suunto_api_response
 
@@ -173,7 +172,7 @@ class TestSuuntoImport:
         """Should load data and create event records in database."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
         mock_request.return_value = sample_suunto_api_response
 
         # Act
@@ -202,7 +201,7 @@ class TestSuuntoImport:
         """Should fetch detailed workout data from API."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         workout_key = "suunto-workout-123"
         mock_request.return_value = {
@@ -231,7 +230,7 @@ class TestSuuntoImport:
             db,
             user=user,
             provider="suunto",
-            status=ConnectionStatus.TOKEN_EXPIRED,
+            status=ConnectionStatus.EXPIRED,
             refresh_token="old_refresh_token",
         )
 
@@ -263,7 +262,7 @@ class TestSuuntoImport:
         """Should include subscription key in API requests."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         with patch.object(suunto_strategy.oauth, "credentials") as mock_creds:
             mock_creds.subscription_key = "test_subscription_key"
@@ -284,7 +283,7 @@ class TestSuuntoImport:
         """Should handle API error responses gracefully."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         # Simulate error response
         mock_request.return_value = {

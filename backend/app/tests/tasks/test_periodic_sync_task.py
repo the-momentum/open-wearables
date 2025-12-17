@@ -4,14 +4,13 @@ Tests for sync_all_users periodic Celery task.
 Tests the periodic task that syncs data for all users with active connections.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.periodic_sync_task import sync_all_users
-from app.tests.utils.factories import create_user, create_user_connection
 from app.schemas import ConnectionStatus
+from app.tests.utils.factories import create_user, create_user_connection
 
 
 class TestSyncAllUsersTask:
@@ -32,9 +31,9 @@ class TestSyncAllUsersTask:
         user2 = create_user(db)
         user3 = create_user(db)
 
-        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user3, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user3, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -64,7 +63,7 @@ class TestSyncAllUsersTask:
         """Test syncing all users with specific date range."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -98,10 +97,10 @@ class TestSyncAllUsersTask:
         user2 = create_user(db)
 
         # User 1 has active connection
-        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         # User 2 has disconnected connection
-        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.DISCONNECTED)
+        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.REVOKED)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -152,9 +151,9 @@ class TestSyncAllUsersTask:
         user = create_user(db)
 
         # User has multiple active connections
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -183,14 +182,14 @@ class TestSyncAllUsersTask:
         user3 = create_user(db)
 
         # User 1: connected
-        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user1, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         # User 2: mixed statuses (has at least one connected)
-        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user2, provider="suunto", status=ConnectionStatus.DISCONNECTED)
+        create_user_connection(db, user=user2, provider="polar", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user2, provider="suunto", status=ConnectionStatus.REVOKED)
 
         # User 3: all disconnected
-        create_user_connection(db, user=user3, provider="garmin", status=ConnectionStatus.DISCONNECTED)
+        create_user_connection(db, user=user3, provider="garmin", status=ConnectionStatus.REVOKED)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -219,7 +218,7 @@ class TestSyncAllUsersTask:
         """Test that sync tasks are queued asynchronously with delay."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -230,9 +229,7 @@ class TestSyncAllUsersTask:
         # Assert - verify .delay() was called (async execution)
         mock_sync_vendor_data.delay.assert_called_once()
         # Verify .apply() or direct call was NOT used
-        mock_sync_vendor_data.apply.assert_not_called() if hasattr(
-            mock_sync_vendor_data, "apply"
-        ) else None
+        mock_sync_vendor_data.apply.assert_not_called() if hasattr(mock_sync_vendor_data, "apply") else None
 
     @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
@@ -249,7 +246,7 @@ class TestSyncAllUsersTask:
         for i in range(10):
             user = create_user(db)
             users.append(user)
-            create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
+            create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)

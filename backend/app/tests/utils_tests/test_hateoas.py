@@ -5,13 +5,12 @@ Tests URL building, link generation, and HATEOAS response formatting
 for both individual items and collections.
 """
 
-import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.utils.hateoas import (
     _build_query,
-    _generate_item_links,
     _generate_collection_links,
+    _generate_item_links,
     get_hateoas_item,
     get_hateoas_list,
 )
@@ -31,7 +30,7 @@ class TestBuildQuery:
         result = _build_query(base_url, name, inst_id)
 
         # Assert
-        assert "http://localhost:8000/api/v1/users/123e4567-e89b-12d3-a456-426614174000" == result
+        assert result == "http://localhost:8000/api/v1/users/123e4567-e89b-12d3-a456-426614174000"
         assert inst_id in result
         assert f"{name}s" in result
 
@@ -100,9 +99,7 @@ class TestGenerateItemLinks:
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
         url = "http://localhost:8000/api/v1/users/123"
-        extra_rels = [
-            {"rel": "connections", "endpoint": "/connections", "method": "GET"}
-        ]
+        extra_rels = [{"rel": "connections", "endpoint": "/connections", "method": "GET"}]
 
         # Act
         result = _generate_item_links(built_url, url, extra_rels)
@@ -119,9 +116,7 @@ class TestGenerateItemLinks:
         # Arrange
         built_url = "http://localhost:8000/api/v1/users/123"
         url = "http://localhost:8000/api/v1/users/123"
-        extra_rels = [
-            {"rel": "custom_delete", "endpoint": "/archive", "method": "POST", "overwrite": "delete"}
-        ]
+        extra_rels = [{"rel": "custom_delete", "endpoint": "/archive", "method": "POST", "overwrite": "delete"}]
 
         # Act
         result = _generate_item_links(built_url, url, extra_rels)
@@ -144,7 +139,7 @@ class TestGenerateItemLinks:
         extra_rels = [
             {"rel": "connections", "endpoint": "/connections", "method": "GET"},
             {"rel": "records", "endpoint": "/records", "method": "GET"},
-            {"rel": "export", "endpoint": "/export", "method": "POST"}
+            {"rel": "export", "endpoint": "/export", "method": "POST"},
         ]
 
         # Act
@@ -223,11 +218,11 @@ class TestGetHateoasItem:
         url = "http://localhost:8000/api/v1/users/123e4567-e89b-12d3-a456-426614174000"
 
         # Mock the base_to_dict function through the instance
-        with pytest.mock.patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
             mock_base_to_dict.return_value = {
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "first_name": "John",
-                "last_name": "Doe"
+                "last_name": "Doe",
             }
 
             # Act
@@ -251,11 +246,9 @@ class TestGetHateoasItem:
 
         base_url = "http://localhost:8000"
         url = "http://localhost:8000/api/v1/users/123"
-        extra_rels = [
-            {"rel": "connections", "endpoint": "/connections", "method": "GET"}
-        ]
+        extra_rels = [{"rel": "connections", "endpoint": "/connections", "method": "GET"}]
 
-        with pytest.mock.patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
             mock_base_to_dict.return_value = {"id": "123", "name": "Test User"}
 
             # Act
@@ -283,11 +276,8 @@ class TestGetHateoasList:
         limit = 10
         base_url = "http://localhost:8000"
 
-        with pytest.mock.patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
-            mock_base_to_dict.side_effect = [
-                {"id": "1", "name": "User 1"},
-                {"id": "2", "name": "User 2"}
-            ]
+        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+            mock_base_to_dict.side_effect = [{"id": "1", "name": "User 1"}, {"id": "2", "name": "User 2"}]
 
             # Act
             result = get_hateoas_list(items, page, limit, base_url)
@@ -330,7 +320,7 @@ class TestGetHateoasList:
         limit = 25
         base_url = "http://localhost:8000"
 
-        with pytest.mock.patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
+        with patch("app.utils.hateoas.base_to_dict") as mock_base_to_dict:
             mock_base_to_dict.return_value = {"id": "1"}
 
             # Act

@@ -4,23 +4,19 @@ Tests for sync_vendor_data Celery task.
 Tests synchronization of workout data from external providers (Garmin, Polar, Suunto).
 """
 
-import pytest
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.sync_vendor_data_task import (
-    sync_vendor_data,
     _build_sync_params,
+    sync_vendor_data,
 )
+from app.schemas import ConnectionStatus
 from app.tests.utils.factories import (
     create_user,
     create_user_connection,
-    create_external_device_mapping,
 )
-from app.schemas import ConnectionStatus
 
 
 class TestSyncVendorDataTask:
@@ -42,7 +38,7 @@ class TestSyncVendorDataTask:
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
 
         # Mock the database session
@@ -61,7 +57,7 @@ class TestSyncVendorDataTask:
         result = sync_vendor_data(str(user.id))
 
         # Assert
-        assert result["user_id"] == str(user.id)
+        assert str(result["user_id"]) == str(user.id)
         assert "garmin" in result["providers_synced"]
         assert result["providers_synced"]["garmin"]["success"] is True
         assert result["errors"] == {}
@@ -87,7 +83,7 @@ class TestSyncVendorDataTask:
             db,
             user=user,
             provider="polar",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -107,7 +103,7 @@ class TestSyncVendorDataTask:
         result = sync_vendor_data(str(user.id), start_date=start_date, end_date=end_date)
 
         # Assert
-        assert result["user_id"] == str(user.id)
+        assert str(result["user_id"]) == str(user.id)
         assert result["start_date"] == start_date
         assert result["end_date"] == end_date
         assert "polar" in result["providers_synced"]
@@ -125,9 +121,9 @@ class TestSyncVendorDataTask:
         """Test sync with multiple provider connections."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -161,8 +157,8 @@ class TestSyncVendorDataTask:
         """Test sync with specific provider filter."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -198,7 +194,7 @@ class TestSyncVendorDataTask:
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.DISCONNECTED,
+            status=ConnectionStatus.REVOKED,
         )
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -208,7 +204,7 @@ class TestSyncVendorDataTask:
         result = sync_vendor_data(str(user.id))
 
         # Assert
-        assert result["user_id"] == str(user.id)
+        assert str(result["user_id"]) == str(user.id)
         assert result["providers_synced"] == {}
         assert result["message"] == "No active provider connections found"
 
@@ -224,7 +220,7 @@ class TestSyncVendorDataTask:
         """Test handling of provider API errors."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -236,7 +232,7 @@ class TestSyncVendorDataTask:
         result = sync_vendor_data(str(user.id))
 
         # Assert
-        assert result["user_id"] == str(user.id)
+        assert str(result["user_id"]) == str(user.id)
         assert "garmin" in result["errors"]
         assert "Provider API unavailable" in result["errors"]["garmin"]
         assert result["providers_synced"] == {}
@@ -253,7 +249,7 @@ class TestSyncVendorDataTask:
         """Test handling when provider sync returns False."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -285,7 +281,7 @@ class TestSyncVendorDataTask:
         """Test handling when provider doesn't support workouts."""
         # Arrange
         user = create_user(db)
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)

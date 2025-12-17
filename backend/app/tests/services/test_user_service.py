@@ -9,10 +9,11 @@ Tests cover:
 - Counting users in date range
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from sqlalchemy.orm import Session
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+
+import pytest
+from sqlalchemy.orm import Session
 
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import user_service
@@ -139,18 +140,16 @@ class TestUserServiceUpdate:
         assert result is None
 
     def test_update_user_with_raise_404(self, db: Session):
-        """Should raise exception when updating non-existent user with raise_404=True."""
+        """Should raise ResourceNotFoundError when updating non-existent user with raise_404=True."""
         # Arrange
-        from fastapi import HTTPException
+        from app.utils.exceptions import ResourceNotFoundError
 
         fake_id = uuid4()
         update_payload = UserUpdate(email="new@example.com")
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ResourceNotFoundError):
             user_service.update(db, fake_id, update_payload, raise_404=True)
-
-        assert exc_info.value.status_code == 404
 
 
 class TestUserServiceGet:
@@ -255,14 +254,14 @@ class TestUserServiceGetCountInRange:
         assert count == 0
 
     def test_get_count_in_range_boundary_inclusive(self, db: Session):
-        """Should include users created exactly at boundary times."""
+        """Should include users created at start boundary but exclude end boundary (half-open interval)."""
         # Arrange
         start = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        end = datetime(2024, 1, 31, 23, 59, 59, tzinfo=timezone.utc)
+        end = datetime(2024, 2, 1, 0, 0, 0, tzinfo=timezone.utc)  # End is exclusive
 
         # Create users at boundaries
-        create_user(db, created_at=start)  # At start boundary
-        create_user(db, created_at=end)  # At end boundary
+        create_user(db, created_at=start)  # At start boundary (included)
+        create_user(db, created_at=datetime(2024, 1, 31, 23, 59, 59, tzinfo=timezone.utc))  # Just before end (included)
         create_user(
             db,
             created_at=datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc),

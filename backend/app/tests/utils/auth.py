@@ -15,8 +15,8 @@ def developer_auth_headers(developer_id: UUID | str) -> dict[str, str]:
 
 
 def api_key_headers(api_key: str) -> dict[str, str]:
-    """Generate X-API-Key headers for API key authentication."""
-    return {"X-API-Key": api_key}
+    """Generate X-Open-Wearables-API-Key headers for API key authentication."""
+    return {"X-Open-Wearables-API-Key": api_key}
 
 
 def create_test_token(

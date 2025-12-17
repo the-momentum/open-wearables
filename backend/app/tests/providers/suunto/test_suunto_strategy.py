@@ -10,7 +10,6 @@ Tests cover:
 - Cloud API support
 """
 
-import pytest
 
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository

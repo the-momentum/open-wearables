@@ -10,15 +10,16 @@ Tests cover:
 - polymorphic inheritance behavior
 """
 
-import pytest
 from decimal import Decimal
 from uuid import uuid4
+
+import pytest
 from sqlalchemy.orm import Session
 
-from app.models import EventRecordDetail, WorkoutDetails, SleepDetails
+from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
-from app.tests.utils.factories import create_event_record, create_workout_details, create_sleep_details
+from app.tests.utils.factories import create_event_record, create_sleep_details, create_workout_details
 
 
 class TestEventRecordDetailRepository:
@@ -186,12 +187,8 @@ class TestEventRecordDetailRepository:
     def test_update_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository):
         """Test updating workout details."""
         # Arrange
-        workout_details = create_workout_details(
-            db, heart_rate_avg=Decimal("140.0"), steps_total=5000
-        )
-        update_data = EventRecordDetailUpdate(
-            heart_rate_avg=Decimal("155.0"), steps_total=10000
-        )
+        workout_details = create_workout_details(db, heart_rate_avg=Decimal("140.0"), steps_total=5000)
+        update_data = EventRecordDetailUpdate(heart_rate_avg=Decimal("155.0"), steps_total=10000)
 
         # Act
         result = detail_repo.update(db, workout_details, update_data)

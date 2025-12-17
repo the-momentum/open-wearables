@@ -5,7 +5,7 @@ Tests SQS message polling and S3 event processing.
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, patch
 
 import pytest
 
@@ -46,17 +46,18 @@ class TestPollSqsMessages:
         """Test processing a single valid S3 event message."""
         # Arrange
         message = {
-            "Body": json.dumps({
-                "Records": [{
-                    "eventSource": "aws:s3",
-                    "s3": {
-                        "bucket": {"name": "test-bucket"},
-                        "object": {"key": "test-key"}
-                    }
-                }]
-            }),
+            "Body": json.dumps(
+                {
+                    "Records": [
+                        {
+                            "eventSource": "aws:s3",
+                            "s3": {"bucket": {"name": "test-bucket"}, "object": {"key": "test-key"}},
+                        },
+                    ],
+                },
+            ),
             "ReceiptHandle": "receipt-123",
-            "MessageId": "msg-123"
+            "MessageId": "msg-123",
         }
         mock_sqs.receive_message.return_value = {"Messages": [message]}
 
@@ -73,44 +74,47 @@ class TestPollSqsMessages:
         # Arrange
         messages = [
             {
-                "Body": json.dumps({
-                    "Records": [{
-                        "eventSource": "aws:s3",
-                        "s3": {
-                            "bucket": {"name": "bucket-1"},
-                            "object": {"key": "key-1"}
-                        }
-                    }]
-                }),
+                "Body": json.dumps(
+                    {
+                        "Records": [
+                            {
+                                "eventSource": "aws:s3",
+                                "s3": {"bucket": {"name": "bucket-1"}, "object": {"key": "key-1"}},
+                            },
+                        ],
+                    },
+                ),
                 "ReceiptHandle": "receipt-1",
-                "MessageId": "msg-1"
+                "MessageId": "msg-1",
             },
             {
-                "Body": json.dumps({
-                    "Records": [{
-                        "eventSource": "aws:s3",
-                        "s3": {
-                            "bucket": {"name": "bucket-2"},
-                            "object": {"key": "key-2"}
-                        }
-                    }]
-                }),
+                "Body": json.dumps(
+                    {
+                        "Records": [
+                            {
+                                "eventSource": "aws:s3",
+                                "s3": {"bucket": {"name": "bucket-2"}, "object": {"key": "key-2"}},
+                            },
+                        ],
+                    },
+                ),
                 "ReceiptHandle": "receipt-2",
-                "MessageId": "msg-2"
+                "MessageId": "msg-2",
             },
             {
-                "Body": json.dumps({
-                    "Records": [{
-                        "eventSource": "aws:s3",
-                        "s3": {
-                            "bucket": {"name": "bucket-3"},
-                            "object": {"key": "key-3"}
-                        }
-                    }]
-                }),
+                "Body": json.dumps(
+                    {
+                        "Records": [
+                            {
+                                "eventSource": "aws:s3",
+                                "s3": {"bucket": {"name": "bucket-3"}, "object": {"key": "key-3"}},
+                            },
+                        ],
+                    },
+                ),
                 "ReceiptHandle": "receipt-3",
-                "MessageId": "msg-3"
-            }
+                "MessageId": "msg-3",
+            },
         ]
         mock_sqs.receive_message.return_value = {"Messages": messages}
 
@@ -125,11 +129,7 @@ class TestPollSqsMessages:
     def test_poll_sqs_invalid_message_format_skipped(self, mock_sqs, mock_process_upload):
         """Test non-JSON message is skipped, deleted, and counted as failed."""
         # Arrange
-        message = {
-            "Body": "not-valid-json{{{",
-            "ReceiptHandle": "receipt-123",
-            "MessageId": "msg-123"
-        }
+        message = {"Body": "not-valid-json{{{", "ReceiptHandle": "receipt-123", "MessageId": "msg-123"}
         mock_sqs.receive_message.return_value = {"Messages": [message]}
 
         # Act
@@ -139,8 +139,8 @@ class TestPollSqsMessages:
         assert result == {"messages_processed": 0, "messages_failed": 1, "total_messages": 1}
         mock_process_upload.delay.assert_not_called()
         mock_sqs.delete_message.assert_called_once_with(
-            QueueUrl=mock_sqs.receive_message.return_value.get("QueueUrl", None) or pytest.mock.ANY,
-            ReceiptHandle="receipt-123"
+            QueueUrl=mock_sqs.receive_message.return_value.get("QueueUrl", None) or ANY,
+            ReceiptHandle="receipt-123",
         )
 
     def test_poll_sqs_no_records_field(self, mock_sqs, mock_process_upload):
@@ -149,7 +149,7 @@ class TestPollSqsMessages:
         message = {
             "Body": json.dumps({"some": "other", "fields": "here"}),
             "ReceiptHandle": "receipt-123",
-            "MessageId": "msg-123"
+            "MessageId": "msg-123",
         }
         mock_sqs.receive_message.return_value = {"Messages": [message]}
 
@@ -165,17 +165,18 @@ class TestPollSqsMessages:
         """Test SQS delete_message is called with correct receipt handle."""
         # Arrange
         message = {
-            "Body": json.dumps({
-                "Records": [{
-                    "eventSource": "aws:s3",
-                    "s3": {
-                        "bucket": {"name": "test-bucket"},
-                        "object": {"key": "test-key"}
-                    }
-                }]
-            }),
+            "Body": json.dumps(
+                {
+                    "Records": [
+                        {
+                            "eventSource": "aws:s3",
+                            "s3": {"bucket": {"name": "test-bucket"}, "object": {"key": "test-key"}},
+                        },
+                    ],
+                },
+            ),
             "ReceiptHandle": "unique-receipt-handle-789",
-            "MessageId": "msg-456"
+            "MessageId": "msg-456",
         }
         mock_sqs.receive_message.return_value = {"Messages": [message]}
 
@@ -242,9 +243,11 @@ class TestPollSqsTask:
         mock_sqs.receive_message.return_value = {"Messages": []}
 
         # Act
-        with patch.object(poll_sqs_task, "apply_async"):
-            with patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_messages") as mock_poll:
-                poll_sqs_task(expiration_seconds=60, iterations_done=0)
+        with (
+            patch.object(poll_sqs_task, "apply_async"),
+            patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_messages") as mock_poll,
+        ):
+            poll_sqs_task(expiration_seconds=60, iterations_done=0)
 
-                # Assert
-                mock_poll.assert_called_once()
+            # Assert
+            mock_poll.assert_called_once()

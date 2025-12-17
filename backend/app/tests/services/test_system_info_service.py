@@ -7,8 +7,8 @@ Tests cover:
 - Aggregating metrics from multiple services
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
 
 from app.services.system_info_service import system_info_service
@@ -137,10 +137,10 @@ class TestSystemInfoServiceGetSystemInfo:
 
         user = create_user(db)
 
-        # Create active and inactive connections
-        create_user_connection(db, user=user, status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, status=ConnectionStatus.DISCONNECTED)
+        # Create active and inactive connections with different providers
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.REVOKED)
 
         # Act
         info = system_info_service.get_system_info(db)
@@ -225,11 +225,10 @@ class TestSystemInfoServiceGetSystemInfo:
         # Arrange
         mapping = create_external_device_mapping(db)
 
-        # Create 6 different series types with different counts
-        for i in range(6):
-            series_type = create_series_type_definition(
-                db, code=f"type_{i}", unit=f"unit_{i}"
-            )
+        # Use existing seeded series types to avoid ID conflicts
+        series_codes = ["steps", "heart_rate", "energy", "height", "weight", "body_fat_percentage"]
+        for i, code in enumerate(series_codes):
+            series_type = create_series_type_definition(db, code=code, unit=f"unit_{i}")
             for _ in range(i + 1):  # Create 1, 2, 3, 4, 5, 6 samples respectively
                 create_data_point_series(db, mapping=mapping, series_type=series_type)
 
@@ -283,9 +282,7 @@ class TestSystemInfoServiceGetSystemInfo:
         # Create 6 different workout types
         for i in range(6):
             for _ in range(i + 1):
-                create_event_record(
-                    db, mapping=mapping, category="workout", type_=f"workout_{i}"
-                )
+                create_event_record(db, mapping=mapping, category="workout", type_=f"workout_{i}")
 
         # Act
         info = system_info_service.get_system_info(db)
@@ -331,7 +328,7 @@ class TestSystemInfoServiceGetSystemInfo:
 
         # Arrange - clear any existing data or use isolated test scenario
         now = datetime.now(timezone.utc)
-        week_ago = now - timedelta(days=7)
+        now - timedelta(days=7)
 
         # Create user only in this week (not last week)
         create_user(db, created_at=now - timedelta(hours=1))

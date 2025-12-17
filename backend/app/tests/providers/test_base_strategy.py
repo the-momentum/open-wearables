@@ -9,8 +9,9 @@ Tests cover:
 - Display names and icons
 """
 
-import pytest
 from abc import ABC
+
+import pytest
 
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository

@@ -134,9 +134,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         service.update_provider_status(db, "polar", ProviderSettingUpdate(is_enabled=False))
 
         # Act - re-enable
-        result = service.update_provider_status(
-            db, "polar", ProviderSettingUpdate(is_enabled=True)
-        )
+        result = service.update_provider_status(db, "polar", ProviderSettingUpdate(is_enabled=True))
 
         # Assert
         assert result.provider == "polar"
@@ -163,10 +161,8 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Unknown provider"):
             service.update_provider_status(db, "invalid_provider", update)
-
-        assert "Unknown provider" in str(exc_info.value)
 
     def test_update_provider_status_case_sensitive(self, db: Session):
         """Should handle provider names case-sensitively."""
@@ -175,7 +171,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert - uppercase should fail
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Unknown provider"):
             service.update_provider_status(db, "APPLE", update)
 
 
@@ -211,10 +207,8 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
-
-        assert "Unknown provider" in str(exc_info.value)
 
         # Verify no updates were applied (transaction rolled back)
         providers = service.get_all_providers(db)
@@ -282,7 +276,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         }
 
         # Act & Assert
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Unknown provider"):
             service.bulk_update_providers(db, updates)
 
         # Verify apple is still disabled (update didn't go through)
@@ -316,5 +310,5 @@ class TestProviderSettingsServiceProviderFactory:
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act & Assert
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Unknown provider"):
             service.update_provider_status(db, "nonexistent", update)

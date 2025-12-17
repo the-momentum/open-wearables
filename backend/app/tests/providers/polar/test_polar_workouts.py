@@ -4,10 +4,9 @@ Tests for Polar workouts implementation.
 Tests the PolarWorkouts class for fetching and processing workout data from Polar API.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -24,7 +23,7 @@ class TestPolarWorkoutsInitialization:
     def test_polar_workouts_initialization(self, db: Session):
         """Test PolarWorkouts initializes with required dependencies."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -62,7 +61,7 @@ class TestPolarWorkoutsDateExtraction:
     def test_extract_dates_with_offset_positive_offset(self, db: Session):
         """Test extracting dates with positive UTC offset."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -101,7 +100,7 @@ class TestPolarWorkoutsDateExtraction:
     def test_extract_dates_with_offset_negative_offset(self, db: Session):
         """Test extracting dates with negative UTC offset."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -139,7 +138,7 @@ class TestPolarWorkoutsDateExtraction:
     def test_extract_dates_not_implemented_fallback(self, db: Session):
         """Test that _extract_dates raises NotImplementedError for Polar."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -173,7 +172,7 @@ class TestPolarWorkoutsMetricsBuilding:
     def test_build_metrics_with_heart_rate_data(self, db: Session, sample_polar_exercise):
         """Test building metrics with complete heart rate data."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -211,7 +210,7 @@ class TestPolarWorkoutsMetricsBuilding:
     def test_build_metrics_without_heart_rate_data(self, db: Session):
         """Test building metrics when heart rate data is missing."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -264,7 +263,7 @@ class TestPolarWorkoutsNormalization:
     def test_normalize_workout_complete_data(self, db: Session, sample_polar_exercise):
         """Test normalizing workout with complete data."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -307,7 +306,7 @@ class TestPolarWorkoutsNormalization:
     def test_normalize_workout_workout_type_mapping(self, db: Session):
         """Test workout type is correctly mapped from Polar sport type."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -357,11 +356,11 @@ class TestPolarWorkoutsNormalization:
 class TestPolarWorkoutsAPIRequests:
     """Tests for API request methods."""
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_workouts_from_api_default_params(self, mock_request, db: Session):
         """Test getting workouts with default parameters."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -390,7 +389,7 @@ class TestPolarWorkoutsAPIRequests:
         mock_request.return_value = []
 
         # Act
-        result = workouts.get_workouts_from_api(db, user.id)
+        workouts.get_workouts_from_api(db, user.id)
 
         # Assert
         mock_request.assert_called_once()
@@ -400,11 +399,11 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["zones"] == "false"
         assert call_kwargs["params"]["route"] == "false"
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_workouts_from_api_with_options(self, mock_request, db: Session):
         """Test getting workouts with samples, zones, and route enabled."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -433,7 +432,7 @@ class TestPolarWorkoutsAPIRequests:
         mock_request.return_value = []
 
         # Act
-        result = workouts.get_workouts_from_api(db, user.id, samples=True, zones=True, route=True)
+        workouts.get_workouts_from_api(db, user.id, samples=True, zones=True, route=True)
 
         # Assert
         mock_request.assert_called_once()
@@ -442,11 +441,11 @@ class TestPolarWorkoutsAPIRequests:
         assert call_kwargs["params"]["zones"] == "true"
         assert call_kwargs["params"]["route"] == "true"
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_workout_detail_from_api(self, mock_request, db: Session):
         """Test getting detailed workout data for specific exercise."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -476,7 +475,7 @@ class TestPolarWorkoutsAPIRequests:
         workout_id = "ABC123"
 
         # Act
-        result = workouts.get_workout_detail_from_api(db, user.id, workout_id, samples=True)
+        workouts.get_workout_detail_from_api(db, user.id, workout_id, samples=True)
 
         # Assert
         mock_request.assert_called_once()
@@ -488,15 +487,13 @@ class TestPolarWorkoutsAPIRequests:
 class TestPolarWorkoutsDataLoading:
     """Tests for loading workout data from Polar API."""
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
-    def test_load_data_success(
-        self, mock_create_detail, mock_create, mock_request, db: Session, sample_polar_exercise
-    ):
+    def test_load_data_success(self, mock_create_detail, mock_create, mock_request, db: Session, sample_polar_exercise):
         """Test successful data loading from Polar API."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
@@ -532,11 +529,11 @@ class TestPolarWorkoutsDataLoading:
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_load_data_empty_response(self, mock_request, db: Session):
         """Test loading data when API returns empty list."""
         # Arrange
-        from app.models import EventRecord, User, UserConnection
+        from app.models import EventRecord, User
         from app.repositories.event_record_repository import EventRecordRepository
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository

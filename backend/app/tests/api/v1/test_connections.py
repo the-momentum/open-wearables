@@ -8,7 +8,6 @@ Tests the /api/v1/users/{user_id}/connections endpoint including:
 - Error cases
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -32,13 +31,13 @@ class TestConnectionsEndpoints:
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
         connection2 = create_user_connection(
             db,
             user=user,
             provider="polar",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
@@ -73,10 +72,7 @@ class TestConnectionsEndpoints:
         # Arrange
         user = create_user(db)
         providers = ["garmin", "polar", "suunto", "apple"]
-        connections = [
-            create_user_connection(db, user=user, provider=provider)
-            for provider in providers
-        ]
+        [create_user_connection(db, user=user, provider=provider) for provider in providers]
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
@@ -94,23 +90,23 @@ class TestConnectionsEndpoints:
         """Test retrieving connections with different statuses."""
         # Arrange
         user = create_user(db)
-        connected = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
-        error = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="polar",
-            status=ConnectionStatus.ERROR,
+            status=ConnectionStatus.REVOKED,
         )
-        disconnected = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="suunto",
-            status=ConnectionStatus.DISCONNECTED,
+            status=ConnectionStatus.EXPIRED,
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
@@ -123,9 +119,9 @@ class TestConnectionsEndpoints:
         data = response.json()
         assert len(data) == 3
         statuses = {c["status"] for c in data}
-        assert ConnectionStatus.CONNECTED.value in statuses
-        assert ConnectionStatus.ERROR.value in statuses
-        assert ConnectionStatus.DISCONNECTED.value in statuses
+        assert ConnectionStatus.ACTIVE.value in statuses
+        assert ConnectionStatus.REVOKED.value in statuses
+        assert ConnectionStatus.EXPIRED.value in statuses
 
     def test_get_connections_user_isolation(self, client: TestClient, db: Session):
         """Test that users can only see their own connections."""
@@ -133,7 +129,7 @@ class TestConnectionsEndpoints:
         user1 = create_user(db)
         user2 = create_user(db)
         connection1 = create_user_connection(db, user=user1, provider="garmin")
-        connection2 = create_user_connection(db, user=user2, provider="polar")
+        create_user_connection(db, user=user2, provider="polar")
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
 
@@ -157,7 +153,7 @@ class TestConnectionsEndpoints:
             provider="garmin",
             provider_user_id="test_user_123",
             provider_username="test_user",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
         )
         api_key = create_api_key(db)
         headers = api_key_headers(api_key.id)
@@ -185,7 +181,7 @@ class TestConnectionsEndpoints:
         assert connection_data["id"] == str(connection.id)
         assert connection_data["user_id"] == str(user.id)
         assert connection_data["provider"] == "garmin"
-        assert connection_data["status"] == ConnectionStatus.CONNECTED.value
+        assert connection_data["status"] == ConnectionStatus.ACTIVE.value
 
     def test_get_connections_missing_api_key(self, client: TestClient, db: Session):
         """Test that request without API key is rejected."""
@@ -232,9 +228,7 @@ class TestConnectionsEndpoints:
         nonexistent_user_id = uuid4()
 
         # Act
-        response = client.get(
-            f"/api/v1/users/{nonexistent_user_id}/connections", headers=headers
-        )
+        response = client.get(f"/api/v1/users/{nonexistent_user_id}/connections", headers=headers)
 
         # Assert - should return empty list, not 404
         assert response.status_code == 200
@@ -248,11 +242,11 @@ class TestConnectionsEndpoints:
 
         user = create_user(db)
         last_synced = datetime(2025, 12, 15, 12, 0, 0, tzinfo=timezone.utc)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.CONNECTED,
+            status=ConnectionStatus.ACTIVE,
             last_synced_at=last_synced,
         )
         api_key = create_api_key(db)
@@ -274,7 +268,7 @@ class TestConnectionsEndpoints:
         """Test that sensitive data like access tokens are not exposed."""
         # Arrange
         user = create_user(db)
-        connection = create_user_connection(
+        create_user_connection(
             db,
             user=user,
             provider="garmin",

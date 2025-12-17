@@ -5,20 +5,18 @@ Tests the following endpoint:
 - POST /api/v1/providers/{provider}/users/{user_id}/sync
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas.oauth import ConnectionStatus
 from app.tests.utils import (
-    api_key_headers,
     create_api_key,
     create_user,
     create_user_connection,
 )
-from app.schemas.oauth import ConnectionStatus
 
 
 class TestSyncDataEndpoint:
@@ -33,9 +31,7 @@ class TestSyncDataEndpoint:
             mock_factory.get_provider.return_value = mock_strategy
             yield mock_factory
 
-    def test_sync_garmin_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_sync_garmin_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully syncing Garmin data."""
         # Arrange
         user = create_user(db)
@@ -66,9 +62,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 401
 
-    def test_sync_garmin_no_connection(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_sync_garmin_no_connection(self, client: TestClient, db: Session, mock_provider_factory):
         """Test syncing when user has no connection to provider."""
         # Arrange
         user = create_user(db)
@@ -77,8 +71,9 @@ class TestSyncDataEndpoint:
 
         # Configure mock to raise HTTPException for no connection
         from fastapi import HTTPException
+
         mock_provider_factory.get_provider.return_value.workouts.load_data.side_effect = HTTPException(
-            status_code=404, detail="No active connection found for user"
+            status_code=404, detail="No active connection found for user",
         )
 
         # Act
@@ -90,9 +85,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 404
 
-    def test_sync_polar_success(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_sync_polar_success(self, client: TestClient, db: Session, mock_provider_factory):
         """Test successfully syncing Polar data."""
         # Arrange
         user = create_user(db)
@@ -111,9 +104,7 @@ class TestSyncDataEndpoint:
         assert data == {"success": True}
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
-    def test_sync_suunto_with_params(
-        self, client: TestClient, db: Session, mock_provider_factory
-    ):
+    def test_sync_suunto_with_params(self, client: TestClient, db: Session, mock_provider_factory):
         """Test Suunto sync with since, limit, and offset parameters."""
         # Arrange
         user = create_user(db)
@@ -153,9 +144,7 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 422
 
-    def test_sync_provider_not_supporting_workouts(
-        self, client: TestClient, db: Session
-    ):
+    def test_sync_provider_not_supporting_workouts(self, client: TestClient, db: Session):
         """Test provider that doesn't support workouts returns 501."""
         # Arrange
         user = create_user(db)

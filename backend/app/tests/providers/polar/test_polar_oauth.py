@@ -4,18 +4,14 @@ Tests for Polar OAuth implementation.
 Tests the PolarOAuth class for OAuth 2.0 authentication flow with Polar API.
 """
 
-import json
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 import httpx
-import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas import OAuthTokenResponse
 from app.services.providers.polar.oauth import PolarOAuth
-from app.tests.utils import create_user, create_user_connection
+from app.tests.utils import create_user
 
 
 class TestPolarOAuthConfiguration:
@@ -24,7 +20,7 @@ class TestPolarOAuthConfiguration:
     def test_polar_oauth_endpoints(self, db: Session):
         """Test Polar OAuth endpoints are configured correctly."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -47,7 +43,7 @@ class TestPolarOAuthConfiguration:
     def test_polar_oauth_credentials_structure(self, db: Session):
         """Test Polar OAuth credentials are structured correctly."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -73,7 +69,7 @@ class TestPolarOAuthConfiguration:
     def test_polar_oauth_uses_basic_auth(self, db: Session):
         """Test Polar OAuth uses Basic Authentication method."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
         from app.schemas.oauth import AuthenticationMethod
@@ -93,7 +89,7 @@ class TestPolarOAuthConfiguration:
     def test_polar_oauth_does_not_use_pkce(self, db: Session):
         """Test Polar OAuth does not use PKCE."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -117,7 +113,7 @@ class TestPolarOAuthAuthorization:
     def test_get_authorization_url(self, mock_redis_client, db: Session):
         """Test generating authorization URL for Polar."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -153,7 +149,7 @@ class TestPolarOAuthAuthorization:
     def test_authorization_url_includes_scope(self, mock_redis_client, db: Session):
         """Test authorization URL includes default scope."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -188,7 +184,7 @@ class TestPolarOAuthUserInfo:
     def test_get_provider_user_info_with_x_user_id(self, mock_post, db: Session):
         """Test extracting user info when x_user_id is present."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -227,7 +223,7 @@ class TestPolarOAuthUserInfo:
     def test_get_provider_user_info_without_x_user_id(self, db: Session):
         """Test extracting user info when x_user_id is None."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -265,7 +261,7 @@ class TestPolarUserRegistration:
     def test_register_user_success(self, mock_post, db: Session):
         """Test successful user registration with Polar API."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 
@@ -299,7 +295,7 @@ class TestPolarUserRegistration:
     def test_register_user_handles_failure_gracefully(self, mock_post, db: Session):
         """Test user registration handles API errors without raising exceptions."""
         # Arrange
-        from app.models import User, UserConnection
+        from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
 

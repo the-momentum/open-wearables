@@ -4,15 +4,38 @@ Integration tests for Polar data import.
 Tests end-to-end import flows for Polar exercise data through API endpoints.
 """
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.tests.utils import api_key_headers, create_api_key, create_developer, create_user, create_user_connection
+
+
+@pytest.fixture
+def sample_polar_exercise():
+    """Sample Polar exercise JSON data."""
+    return {
+        "id": "ABC123",
+        "upload_time": "2024-01-15T09:00:00.000Z",
+        "polar_user": "https://www.polaraccesslink.com/v3/users/12345",
+        "transaction_id": 67890,
+        "device": "Polar Vantage V2",
+        "device_id": "12345678",
+        "start_time": "2024-01-15T08:00:00",
+        "start_time_utc_offset": 60,
+        "duration": "PT1H0M0S",
+        "distance": 10000.0,
+        "heart_rate": {
+            "average": 145,
+            "maximum": 175,
+        },
+        "training_load": 150.0,
+        "sport": "RUNNING",
+        "has_route": True,
+        "detailed_sport_info": "RUNNING",
+    }
 
 
 class TestPolarOAuthFlow:
@@ -50,7 +73,7 @@ class TestPolarOAuthFlow:
         # Arrange
         user = create_user(db)
         developer = create_developer(db)
-        api_key = create_api_key(db, developer=developer)
+        create_api_key(db, developer=developer)
 
         # Mock Redis for state validation
         mock_redis = MagicMock()
@@ -88,7 +111,7 @@ class TestPolarOAuthFlow:
 class TestPolarWorkoutsAPI:
     """Tests for Polar workouts API endpoints."""
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_polar_workouts_list(self, mock_request, client: TestClient, db: Session, sample_polar_exercise):
         """Test getting list of Polar workouts."""
         # Arrange
@@ -109,7 +132,7 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_polar_workout_detail(self, mock_request, client: TestClient, db: Session, sample_polar_exercise):
         """Test getting detailed Polar workout data."""
         # Arrange
@@ -131,7 +154,7 @@ class TestPolarWorkoutsAPI:
         # Assert
         assert response.status_code in [200, 404, 422]
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_polar_workouts_with_samples(self, mock_request, client: TestClient, db: Session):
         """Test getting Polar workouts with samples parameter."""
         # Arrange
@@ -174,7 +197,7 @@ class TestPolarWorkoutsAPI:
 class TestPolarDataSync:
     """Tests for syncing Polar data."""
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
     def test_sync_polar_data_success(
@@ -205,7 +228,7 @@ class TestPolarDataSync:
         # Assert
         assert response.status_code in [200, 201, 202, 404, 422]
 
-    @patch("app.services.providers.api_client.make_authenticated_request")
+    @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_sync_polar_data_with_date_range(self, mock_request, client: TestClient, db: Session):
         """Test syncing Polar data with specific date range."""
         # Arrange

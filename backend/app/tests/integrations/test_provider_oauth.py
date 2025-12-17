@@ -5,9 +5,7 @@ Tests complete OAuth authorization flows for Garmin, Polar, and Suunto providers
 """
 
 from unittest.mock import MagicMock, patch
-from urllib.parse import parse_qs, urlparse
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -266,8 +264,8 @@ class TestConnectionManagement:
         headers = api_key_headers(api_key.id)
 
         # Create test connections
-        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.CONNECTED)
-        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.CONNECTED)
+        create_user_connection(db, user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+        create_user_connection(db, user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
         # Act
         response = client.get(
@@ -303,7 +301,7 @@ class TestConnectionManagement:
             db,
             user=user,
             provider="garmin",
-            status=ConnectionStatus.TOKEN_EXPIRED,
+            status=ConnectionStatus.EXPIRED,
         )
 
         # Act

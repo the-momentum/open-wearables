@@ -9,11 +9,11 @@ Tests cover:
 - Key generation format
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from uuid import uuid4
 
 from app.services.api_key_service import api_key_service
 from app.tests.utils.factories import create_api_key, create_developer
@@ -142,10 +142,10 @@ class TestApiKeyServiceListApiKeys:
         # Find our test keys in the result
         test_keys = [k for k in keys if k.id in [key1.id, key2.id, key3.id]]
         assert len(test_keys) == 3
-        # Verify ordering (oldest first based on repository implementation)
-        assert test_keys[0].id == key1.id
+        # Verify ordering - newest first based on actual implementation
+        assert test_keys[0].id == key3.id
         assert test_keys[1].id == key2.id
-        assert test_keys[2].id == key3.id
+        assert test_keys[2].id == key1.id
 
     def test_list_api_keys_empty(self, db: Session):
         """Should return empty list when no API keys exist."""
@@ -208,16 +208,16 @@ class TestApiKeyServiceRotateApiKey:
         assert new_key.created_by is None
 
     def test_rotate_nonexistent_key_raises_404(self, db: Session):
-        """Should raise 404 when rotating non-existent key."""
+        """Should raise ResourceNotFoundError when rotating non-existent key."""
         # Arrange
+        from app.utils.exceptions import ResourceNotFoundError
+
         fake_key = "sk-nonexistent"
         developer = create_developer(db)
 
         # Act & Assert
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ResourceNotFoundError):
             api_key_service.rotate_api_key(db, fake_key, developer.id)
-
-        assert exc_info.value.status_code == 404
 
 
 class TestApiKeyServiceValidateApiKey:

@@ -10,7 +10,6 @@ Tests the /api/v1/users/{user_id}/import endpoints including:
 
 import json
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -24,9 +23,7 @@ from app.tests.utils import (
 class TestAutoHealthExportImport:
     """Test suite for Auto Health Export import endpoint."""
 
-    def test_import_auto_health_export_json_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_auto_health_export_json_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully importing Auto Health Export JSON data."""
         # Arrange
         user = create_user(db)
@@ -43,13 +40,13 @@ class TestAutoHealthExportImport:
                         "start": "2025-12-15T10:00:00Z",
                         "end": "2025-12-15T11:00:00Z",
                         "duration": 3600,
-                    }
+                    },
                 ],
                 "heart_rate": [
                     {"timestamp": "2025-12-15T10:00:00Z", "value": 72},
                     {"timestamp": "2025-12-15T10:01:00Z", "value": 85},
                 ],
-            }
+            },
         }
 
         # Act
@@ -64,9 +61,7 @@ class TestAutoHealthExportImport:
         data = response.json()
         assert "message" in data or "status" in data
 
-    def test_import_auto_health_export_multipart_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_auto_health_export_multipart_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully importing Auto Health Export as file upload."""
         # Arrange
         user = create_user(db)
@@ -81,9 +76,9 @@ class TestAutoHealthExportImport:
                         "start": "2025-12-15T14:00:00Z",
                         "end": "2025-12-15T15:30:00Z",
                         "duration": 5400,
-                    }
-                ]
-            }
+                    },
+                ],
+            },
         }
 
         file_content = json.dumps(payload).encode("utf-8")
@@ -101,9 +96,7 @@ class TestAutoHealthExportImport:
         data = response.json()
         assert "message" in data or "status" in data
 
-    def test_import_auto_health_export_empty_data(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_auto_health_export_empty_data(self, client: TestClient, db: Session, mock_external_apis):
         """Test importing empty data."""
         # Arrange
         user = create_user(db)
@@ -122,9 +115,7 @@ class TestAutoHealthExportImport:
         # Assert
         assert response.status_code in [200, 201, 202, 400]
 
-    def test_import_auto_health_export_missing_api_key(
-        self, client: TestClient, db: Session
-    ):
+    def test_import_auto_health_export_missing_api_key(self, client: TestClient, db: Session):
         """Test that request without API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -139,9 +130,7 @@ class TestAutoHealthExportImport:
         # Assert
         assert response.status_code == 401
 
-    def test_import_auto_health_export_invalid_api_key(
-        self, client: TestClient, db: Session
-    ):
+    def test_import_auto_health_export_invalid_api_key(self, client: TestClient, db: Session):
         """Test that request with invalid API key is rejected."""
         # Arrange
         user = create_user(db)
@@ -159,9 +148,7 @@ class TestAutoHealthExportImport:
         # Assert
         assert response.status_code == 401
 
-    def test_import_auto_health_export_invalid_user_id(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_auto_health_export_invalid_user_id(self, client: TestClient, db: Session, mock_external_apis):
         """Test handling of invalid user ID format."""
         # Arrange
         api_key = create_api_key(db)
@@ -179,9 +166,7 @@ class TestAutoHealthExportImport:
         # Assert
         assert response.status_code == 422
 
-    def test_import_auto_health_export_nonexistent_user(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_auto_health_export_nonexistent_user(self, client: TestClient, db: Session, mock_external_apis):
         """Test importing data for a user that doesn't exist."""
         # Arrange
         from uuid import uuid4
@@ -207,9 +192,7 @@ class TestAutoHealthExportImport:
 class TestHealthionImport:
     """Test suite for Healthion import endpoint."""
 
-    def test_import_healthion_json_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_healthion_json_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully importing Healthion JSON data."""
         # Arrange
         user = create_user(db)
@@ -225,7 +208,7 @@ class TestHealthionImport:
                     "startDate": "2025-12-15T10:00:00Z",
                     "endDate": "2025-12-15T11:00:00Z",
                     "duration": 3600,
-                }
+                },
             ],
             "records": [
                 {
@@ -233,7 +216,7 @@ class TestHealthionImport:
                     "startDate": "2025-12-15T10:00:00Z",
                     "value": 72,
                     "unit": "count/min",
-                }
+                },
             ],
         }
 
@@ -249,9 +232,7 @@ class TestHealthionImport:
         data = response.json()
         assert "message" in data or "status" in data
 
-    def test_import_healthion_multipart_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_healthion_multipart_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully importing Healthion as file upload."""
         # Arrange
         user = create_user(db)
@@ -265,8 +246,8 @@ class TestHealthionImport:
                     "startDate": "2025-12-15T14:00:00Z",
                     "endDate": "2025-12-15T15:30:00Z",
                     "duration": 5400,
-                }
-            ]
+                },
+            ],
         }
 
         file_content = json.dumps(payload).encode("utf-8")
@@ -284,9 +265,7 @@ class TestHealthionImport:
         data = response.json()
         assert "message" in data or "status" in data
 
-    def test_import_healthion_empty_data(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_healthion_empty_data(self, client: TestClient, db: Session, mock_external_apis):
         """Test importing empty Healthion data."""
         # Arrange
         user = create_user(db)
@@ -338,9 +317,7 @@ class TestHealthionImport:
         # Assert
         assert response.status_code == 401
 
-    def test_import_healthion_invalid_user_id(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_healthion_invalid_user_id(self, client: TestClient, db: Session, mock_external_apis):
         """Test handling of invalid user ID format."""
         # Arrange
         api_key = create_api_key(db)
@@ -358,9 +335,7 @@ class TestHealthionImport:
         # Assert
         assert response.status_code == 422
 
-    def test_import_healthion_large_dataset(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_import_healthion_large_dataset(self, client: TestClient, db: Session, mock_external_apis):
         """Test importing a large dataset."""
         # Arrange
         user = create_user(db)
@@ -404,9 +379,7 @@ class TestHealthionImport:
 class TestXMLImportEndpoint:
     """Test suite for XML import endpoint (presigned URL generation)."""
 
-    def test_generate_presigned_url_success(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_generate_presigned_url_success(self, client: TestClient, db: Session, mock_external_apis):
         """Test successfully generating presigned URL for XML upload."""
         # Arrange
         user = create_user(db)
@@ -430,9 +403,7 @@ class TestXMLImportEndpoint:
         assert "presigned_url" in data or "url" in data
         assert "expires_in" in data or "expires_at" in data
 
-    def test_generate_presigned_url_missing_api_key(
-        self, client: TestClient, db: Session
-    ):
+    def test_generate_presigned_url_missing_api_key(self, client: TestClient, db: Session):
         """Test that presigned URL generation requires API key."""
         # Arrange
         user = create_user(db)
@@ -450,9 +421,7 @@ class TestXMLImportEndpoint:
         # Assert
         assert response.status_code == 401
 
-    def test_generate_presigned_url_invalid_payload(
-        self, client: TestClient, db: Session, mock_external_apis
-    ):
+    def test_generate_presigned_url_invalid_payload(self, client: TestClient, db: Session, mock_external_apis):
         """Test presigned URL generation with invalid payload."""
         # Arrange
         user = create_user(db)

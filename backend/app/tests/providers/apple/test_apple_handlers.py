@@ -9,13 +9,9 @@ Tests cover:
 - Data structure handling
 """
 
-from unittest.mock import MagicMock
-from uuid import uuid4
 
 import pytest
 
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler

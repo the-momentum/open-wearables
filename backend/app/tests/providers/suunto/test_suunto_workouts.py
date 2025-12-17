@@ -12,13 +12,14 @@ Tests cover:
 - Workout type mapping
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import SuuntoWorkoutJSON
@@ -33,7 +34,7 @@ class TestSuuntoWorkouts:
     @pytest.fixture
     def suunto_workouts(self):
         """Create SuuntoWorkouts instance for testing."""
-        workout_repo = EventRecordRepository()
+        workout_repo = EventRecordRepository(EventRecord)
         connection_repo = UserConnectionRepository()
         oauth = SuuntoOAuth(
             user_repo=MagicMock(),
@@ -111,13 +112,13 @@ class TestSuuntoWorkouts:
 
     def test_build_metrics_with_missing_heart_rate(self, suunto_workouts, sample_workout_data):
         """Should handle missing heart rate data."""
-        # Arrange
-        sample_workout_data["hrdata"]["avg"] = None
-        sample_workout_data["hrdata"]["max"] = None
-        workout = SuuntoWorkoutJSON(**sample_workout_data)
+        # Arrange - use MagicMock to simulate a workout with None hrdata values
+        mock_workout = MagicMock()
+        mock_workout.hrdata = None
+        mock_workout.stepCount = 8500
 
         # Act
-        metrics = suunto_workouts._build_metrics(workout)
+        metrics = suunto_workouts._build_metrics(mock_workout)
 
         # Assert
         assert metrics["heart_rate_avg"] is None
@@ -126,12 +127,14 @@ class TestSuuntoWorkouts:
 
     def test_build_metrics_with_missing_steps(self, suunto_workouts, sample_workout_data):
         """Should handle missing step count."""
-        # Arrange
-        sample_workout_data["stepCount"] = None
-        workout = SuuntoWorkoutJSON(**sample_workout_data)
+        # Arrange - use MagicMock to simulate a workout with None stepCount
+        mock_workout = MagicMock()
+        mock_workout.hrdata.avg = 145
+        mock_workout.hrdata.max = 175
+        mock_workout.stepCount = None
 
         # Act
-        metrics = suunto_workouts._build_metrics(workout)
+        metrics = suunto_workouts._build_metrics(mock_workout)
 
         # Assert
         assert metrics["steps_total"] is None
@@ -189,9 +192,11 @@ class TestSuuntoWorkouts:
     def test_get_suunto_headers_with_subscription_key(self, suunto_workouts):
         """Should include subscription key in headers when available."""
         # Arrange
-        # Mock subscription key
-        with patch.object(suunto_workouts.oauth, "credentials") as mock_creds:
-            mock_creds.subscription_key = "test_subscription_key"
+        # Mock credentials property using PropertyMock
+        mock_creds = MagicMock()
+        mock_creds.subscription_key = "test_subscription_key"
+        with patch.object(type(suunto_workouts.oauth), "credentials", new_callable=PropertyMock) as mock_prop:
+            mock_prop.return_value = mock_creds
 
             # Act
             headers = suunto_workouts._get_suunto_headers()
@@ -221,7 +226,8 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        assert call_args[1]["endpoint"] == "/v3/workouts/"
+        # endpoint is third positional argument (db, user_id, endpoint)
+        assert call_args[0][2] == "/v3/workouts/"
         assert call_args[1]["params"]["since"] == 1705309200
         assert call_args[1]["params"]["limit"] == 50
         assert result["payload"] == [sample_workout_data]
@@ -258,7 +264,8 @@ class TestSuuntoWorkouts:
         # Assert
         mock_request.assert_called_once()
         call_args = mock_request.call_args
-        assert call_args[1]["endpoint"] == f"/v3/workouts/{workout_key}"
+        # endpoint is third positional argument (db, user_id, endpoint)
+        assert call_args[0][2] == f"/v3/workouts/{workout_key}"
         assert result["workoutKey"] == workout_key
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
