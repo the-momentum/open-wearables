@@ -224,7 +224,9 @@ class TestExternalMappingRepository:
         assert len(suunto_mappings) == 1
 
     def test_ensure_mapping_uses_provided_mapping_id(
-        self, db: Session, mapping_repo: ExternalMappingRepository,
+        self,
+        db: Session,
+        mapping_repo: ExternalMappingRepository,
     ) -> None:
         """Test that ensure_mapping uses the provided mapping_id if it exists."""
         # Arrange
@@ -250,7 +252,9 @@ class TestExternalMappingRepository:
         assert result.id == existing_mapping.id
 
     def test_ensure_mapping_creates_with_specific_id(
-        self, db: Session, mapping_repo: ExternalMappingRepository,
+        self,
+        db: Session,
+        mapping_repo: ExternalMappingRepository,
     ) -> None:
         """Test that ensure_mapping creates mapping with specific ID if provided and not found."""
         # Arrange
@@ -460,10 +464,16 @@ class TestExternalMappingRepository:
         # Create mappings with overlapping attributes
         mapping1 = create_external_device_mapping(db, user=user1, provider_id="apple", device_id="watch1")
         create_external_device_mapping(
-            db, user=user2, provider_id="apple", device_id="watch1",
+            db,
+            user=user2,
+            provider_id="apple",
+            device_id="watch1",
         )  # Same provider/device, different user
         create_external_device_mapping(
-            db, user=user1, provider_id="apple", device_id="watch2",
+            db,
+            user=user1,
+            provider_id="apple",
+            device_id="watch2",
         )  # Same user/provider, different device
 
         # Act - Search for exact match

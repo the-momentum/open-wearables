@@ -44,7 +44,10 @@ class TestPolarOAuthFlow:
 
     @patch("app.integrations.redis_client.get_redis_client")
     def test_get_polar_authorization_url(
-        self, mock_redis_client: MagicMock, client: TestClient, db: Session,
+        self,
+        mock_redis_client: MagicMock,
+        client: TestClient,
+        db: Session,
     ) -> None:
         """Test getting Polar authorization URL."""
         # Arrange
@@ -89,6 +92,7 @@ class TestPolarOAuthFlow:
         # Mock Redis for state validation - must return proper state data
         mock_redis = MagicMock()
         import json
+
         state_data = {
             "user_id": str(user.id),
             "provider": "polar",
@@ -128,7 +132,11 @@ class TestPolarWorkoutsAPI:
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_polar_workouts_list(
-        self, mock_request: MagicMock, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any],
+        self,
+        mock_request: MagicMock,
+        client: TestClient,
+        db: Session,
+        sample_polar_exercise: dict[str, Any],
     ) -> None:
         """Test getting list of Polar workouts."""
         # Arrange
@@ -151,7 +159,11 @@ class TestPolarWorkoutsAPI:
 
     @patch("app.services.providers.templates.base_workouts.make_authenticated_request")
     def test_get_polar_workout_detail(
-        self, mock_request: MagicMock, client: TestClient, db: Session, sample_polar_exercise: dict[str, Any],
+        self,
+        mock_request: MagicMock,
+        client: TestClient,
+        db: Session,
+        sample_polar_exercise: dict[str, Any],
     ) -> None:
         """Test getting detailed Polar workout data."""
         # Arrange

@@ -118,7 +118,9 @@ class TestProviderSettingsRepository:
         assert provider_repo.get_all(db)["fitbit"] is True
 
     def test_ensure_all_providers_exist_empty_database(
-        self, db: Session, provider_repo: ProviderSettingsRepository,
+        self,
+        db: Session,
+        provider_repo: ProviderSettingsRepository,
     ) -> None:
         """Test ensure_all_providers_exist adds all providers when database is empty."""
         # Arrange
@@ -136,7 +138,9 @@ class TestProviderSettingsRepository:
             assert all_settings[provider] is True  # Default enabled
 
     def test_ensure_all_providers_exist_partial_existing(
-        self, db: Session, provider_repo: ProviderSettingsRepository,
+        self,
+        db: Session,
+        provider_repo: ProviderSettingsRepository,
     ) -> None:
         """Test ensure_all_providers_exist adds only missing providers."""
         # Arrange
@@ -159,7 +163,9 @@ class TestProviderSettingsRepository:
         assert all_settings["strava"] is True
 
     def test_ensure_all_providers_exist_all_existing(
-        self, db: Session, provider_repo: ProviderSettingsRepository,
+        self,
+        db: Session,
+        provider_repo: ProviderSettingsRepository,
     ) -> None:
         """Test ensure_all_providers_exist does nothing when all providers exist."""
         # Arrange

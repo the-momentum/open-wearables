@@ -113,7 +113,9 @@ class TestGarminWorkouts:
         assert end_date.timestamp() == end_ts
 
     def test_build_metrics_with_all_values(
-        self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any],
+        self,
+        garmin_workouts: GarminWorkouts,
+        sample_activity: dict[str, Any],
     ) -> None:
         """Test building metrics with all values present."""
         activity = GarminActivityJSON(**sample_activity)

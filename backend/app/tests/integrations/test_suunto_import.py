@@ -89,7 +89,10 @@ class TestSuuntoImport:
 
     @patch("httpx.post")
     def test_oauth_token_exchange_with_jwt(
-        self, mock_post: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+        self,
+        mock_post: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
     ) -> None:
         """Should exchange OAuth code and decode JWT for user info."""
         # Arrange
@@ -139,7 +142,10 @@ class TestSuuntoImport:
             assert connection.provider_username == "test_suunto_athlete"
 
     def test_fetch_workouts_from_api(
-        self, suunto_strategy: SuuntoStrategy, db: Session, sample_suunto_api_response: dict[str, Any],
+        self,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
+        sample_suunto_api_response: dict[str, Any],
     ) -> None:
         """Should fetch workouts from Suunto API."""
         # Arrange
@@ -203,7 +209,10 @@ class TestSuuntoImport:
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     def test_get_workout_detail_from_api(
-        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+        self,
+        mock_request: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
     ) -> None:
         """Should fetch detailed workout data from API."""
         # Arrange
@@ -230,7 +239,10 @@ class TestSuuntoImport:
 
     @patch("httpx.post")
     def test_token_refresh_flow(
-        self, mock_post: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+        self,
+        mock_post: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
     ) -> None:
         """Should refresh expired access tokens."""
         # Arrange
@@ -268,7 +280,10 @@ class TestSuuntoImport:
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     def test_subscription_key_included_in_requests(
-        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+        self,
+        mock_request: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
     ) -> None:
         """Should include subscription key in API requests."""
         # Arrange
@@ -294,7 +309,10 @@ class TestSuuntoImport:
 
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     def test_error_response_handling(
-        self, mock_request: MagicMock, suunto_strategy: SuuntoStrategy, db: Session,
+        self,
+        mock_request: MagicMock,
+        suunto_strategy: SuuntoStrategy,
+        db: Session,
     ) -> None:
         """Should handle API error responses gracefully."""
         # Arrange

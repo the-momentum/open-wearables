@@ -403,7 +403,8 @@ class TestUserConnectionServiceConnectionStatus:
         # Act & Assert
         providers = ["garmin", "polar", "suunto"]
         for status, provider in zip(
-            [ConnectionStatus.ACTIVE, ConnectionStatus.REVOKED, ConnectionStatus.EXPIRED], providers,
+            [ConnectionStatus.ACTIVE, ConnectionStatus.REVOKED, ConnectionStatus.EXPIRED],
+            providers,
         ):
             connection = create_user_connection(db, user=user, provider=provider, status=status)
             assert connection.status == status
@@ -415,7 +416,9 @@ class TestUserConnectionServiceConnectionStatus:
 
         # Act - transition from CONNECTED to REVOKED
         updated = user_connection_service.update(
-            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.REVOKED),
+            db,
+            connection.id,
+            UserConnectionUpdate(status=ConnectionStatus.REVOKED),
         )
 
         # Assert
@@ -423,7 +426,9 @@ class TestUserConnectionServiceConnectionStatus:
 
         # Act - transition from REVOKED back to CONNECTED
         updated2 = user_connection_service.update(
-            db, connection.id, UserConnectionUpdate(status=ConnectionStatus.ACTIVE),
+            db,
+            connection.id,
+            UserConnectionUpdate(status=ConnectionStatus.ACTIVE),
         )
 
         # Assert

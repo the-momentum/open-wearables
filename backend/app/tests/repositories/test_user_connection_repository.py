@@ -97,7 +97,9 @@ class TestUserConnectionRepository:
         assert result.provider == "garmin"
 
     def test_get_by_user_and_provider_not_found(
-        self, db: Session, connection_repo: UserConnectionRepository,
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
     ) -> None:
         """Test get_by_user_and_provider returns None when not found."""
         # Arrange
@@ -126,7 +128,9 @@ class TestUserConnectionRepository:
         assert result.status == ConnectionStatus.ACTIVE
 
     def test_get_active_connection_only_returns_active(
-        self, db: Session, connection_repo: UserConnectionRepository,
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
     ) -> None:
         """Test that get_active_connection ignores revoked connections."""
         # Arrange
@@ -161,7 +165,9 @@ class TestUserConnectionRepository:
         assert result.provider_user_id == "garmin_athlete_789"
 
     def test_get_by_provider_user_id_only_returns_active(
-        self, db: Session, connection_repo: UserConnectionRepository,
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
     ) -> None:
         """Test that get_by_provider_user_id only returns active connections."""
         # Arrange
@@ -196,7 +202,9 @@ class TestUserConnectionRepository:
         assert conn2.id in connection_ids
 
     def test_get_by_user_id_ordered_by_created_desc(
-        self, db: Session, connection_repo: UserConnectionRepository,
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
     ) -> None:
         """Test that get_by_user_id returns connections ordered by creation date descending."""
         # Arrange
@@ -416,7 +424,10 @@ class TestUserConnectionRepository:
 
         create_user_connection(db, user=user1, status=ConnectionStatus.ACTIVE)
         create_user_connection(
-            db, user=user1, provider="polar", status=ConnectionStatus.ACTIVE,
+            db,
+            user=user1,
+            provider="polar",
+            status=ConnectionStatus.ACTIVE,
         )  # Same user, different provider
         create_user_connection(db, user=user2, status=ConnectionStatus.ACTIVE)
         create_user_connection(db, user=user3, status=ConnectionStatus.REVOKED)  # Should not be included
@@ -462,7 +473,9 @@ class TestUserConnectionRepository:
         assert deleted_connection is None
 
     def test_multiple_connections_same_user_different_providers(
-        self, db: Session, connection_repo: UserConnectionRepository,
+        self,
+        db: Session,
+        connection_repo: UserConnectionRepository,
     ) -> None:
         """Test that a user can have connections to multiple providers."""
         # Arrange

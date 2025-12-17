@@ -1,6 +1,5 @@
 """Tests for Garmin strategy."""
 
-
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.garmin.workouts import GarminWorkouts

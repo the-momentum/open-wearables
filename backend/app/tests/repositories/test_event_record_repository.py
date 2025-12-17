@@ -228,7 +228,10 @@ class TestEventRecordRepository:
         two_days_ago = now - timedelta(days=2)
 
         create_event_record(
-            db, mapping=mapping, start_datetime=two_days_ago, end_datetime=two_days_ago + timedelta(hours=1),
+            db,
+            mapping=mapping,
+            start_datetime=two_days_ago,
+            end_datetime=two_days_ago + timedelta(hours=1),
         )
         create_event_record(db, mapping=mapping, start_datetime=yesterday, end_datetime=yesterday + timedelta(hours=1))
         create_event_record(db, mapping=mapping, start_datetime=now, end_datetime=now + timedelta(hours=1))

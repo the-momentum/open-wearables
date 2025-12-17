@@ -10,7 +10,6 @@ Tests cover:
 - Cloud API support
 """
 
-
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository

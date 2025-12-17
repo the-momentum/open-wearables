@@ -130,7 +130,8 @@ class TestProviderFactory:
         assert strategy.workouts is not None
 
     def test_provider_polar_has_oauth(
-        self, factory: ProviderFactory,
+        self,
+        factory: ProviderFactory,
     ) -> None:
         """Should initialize OAuth component for Polar."""
         # Act
@@ -141,7 +142,8 @@ class TestProviderFactory:
         assert strategy.has_cloud_api is True
 
     def test_provider_suunto_has_oauth(
-        self, factory: ProviderFactory,
+        self,
+        factory: ProviderFactory,
     ) -> None:
         """Should initialize OAuth component for Suunto."""
         # Act
@@ -152,7 +154,8 @@ class TestProviderFactory:
         assert strategy.has_cloud_api is True
 
     def test_multiple_calls_create_new_instances(
-        self, factory: ProviderFactory,
+        self,
+        factory: ProviderFactory,
     ) -> None:
         """Should create new instances on each call (not singleton)."""
         # Act

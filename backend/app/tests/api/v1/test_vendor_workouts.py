@@ -96,7 +96,8 @@ class TestVendorWorkoutsEndpoints:
         from fastapi import HTTPException
 
         mock_provider_factory.get_provider.return_value.workouts.get_workouts_from_api.side_effect = HTTPException(
-            status_code=404, detail="No active connection found for user",
+            status_code=404,
+            detail="No active connection found for user",
         )
 
         # Act

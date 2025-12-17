@@ -97,7 +97,9 @@ class TestSuuntoWorkouts:
         assert end_date > start_date
 
     def test_build_metrics_with_complete_data(
-        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
     ) -> None:
         """Should build metrics from complete workout data."""
         # Arrange
@@ -114,7 +116,9 @@ class TestSuuntoWorkouts:
         assert metrics["steps_avg"] == Decimal("8500")
 
     def test_build_metrics_with_missing_heart_rate(
-        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
     ) -> None:
         """Should handle missing heart rate data."""
         # Arrange - use MagicMock to simulate a workout with None hrdata values
@@ -131,7 +135,9 @@ class TestSuuntoWorkouts:
         assert metrics["heart_rate_min"] is None
 
     def test_build_metrics_with_missing_steps(
-        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
     ) -> None:
         """Should handle missing step count."""
         # Arrange - use MagicMock to simulate a workout with None stepCount
@@ -150,7 +156,9 @@ class TestSuuntoWorkouts:
         assert metrics["steps_max"] is None
 
     def test_normalize_workout_creates_event_record(
-        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
     ) -> None:
         """Should normalize Suunto workout to EventRecordCreate."""
         # Arrange
@@ -184,7 +192,9 @@ class TestSuuntoWorkouts:
         assert record.device_id is None
 
     def test_normalize_workout_creates_detail_with_metrics(
-        self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict,
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
     ) -> None:
         """Should create workout detail with metrics."""
         # Arrange
@@ -218,7 +228,11 @@ class TestSuuntoWorkouts:
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
     def test_get_workouts_from_api(
-        self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session, sample_workout_data: dict,
+        self,
+        mock_request: MagicMock,
+        suunto_workouts: SuuntoWorkouts,
+        db: Session,
+        sample_workout_data: dict,
     ) -> None:
         """Should fetch workouts from Suunto API with correct parameters."""
         # Arrange
@@ -247,7 +261,10 @@ class TestSuuntoWorkouts:
 
     @patch.object(SuuntoWorkouts, "_make_api_request")
     def test_get_workouts_respects_max_limit(
-        self, mock_request: MagicMock, suunto_workouts: SuuntoWorkouts, db: Session,
+        self,
+        mock_request: MagicMock,
+        suunto_workouts: SuuntoWorkouts,
+        db: Session,
     ) -> None:
         """Should respect maximum limit of 100 workouts per request."""
         # Arrange

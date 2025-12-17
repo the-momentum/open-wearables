@@ -199,10 +199,16 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
         end = now - timedelta(days=1)
 
         hr_old = create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10),
+            db,
+            mapping=mapping,
+            series_type=series_type,
+            recorded_at=now - timedelta(days=10),
         )
         hr_in_range = create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5),
+            db,
+            mapping=mapping,
+            series_type=series_type,
+            recorded_at=now - timedelta(days=5),
         )
         hr_recent = create_data_point_series(db, mapping=mapping, series_type=series_type, recorded_at=now)
 
@@ -498,13 +504,22 @@ class TestTimeSeriesServiceGetCountInRange:
 
         # Create samples at different times
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=10),
+            db,
+            mapping=mapping,
+            series_type=series_type,
+            recorded_at=now - timedelta(days=10),
         )  # Before range
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=5),
+            db,
+            mapping=mapping,
+            series_type=series_type,
+            recorded_at=now - timedelta(days=5),
         )  # In range
         create_data_point_series(
-            db, mapping=mapping, series_type=series_type, recorded_at=now - timedelta(days=3),
+            db,
+            mapping=mapping,
+            series_type=series_type,
+            recorded_at=now - timedelta(days=3),
         )  # In range
         create_data_point_series(db, mapping=mapping, series_type=series_type, recorded_at=now)  # After range
 
