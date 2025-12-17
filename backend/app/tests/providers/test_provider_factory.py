@@ -70,26 +70,20 @@ class TestProviderFactory:
     def test_get_provider_unknown_raises_error(self, factory: ProviderFactory) -> None:
         """Should raise ValueError for unknown provider."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Unknown provider: unknown_provider"):
             factory.get_provider("unknown_provider")
-
-        assert "Unknown provider: unknown_provider" in str(exc_info.value)
 
     def test_get_provider_case_sensitive(self, factory: ProviderFactory) -> None:
         """Should be case-sensitive for provider names."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Unknown provider: GARMIN"):
             factory.get_provider("GARMIN")
-
-        assert "Unknown provider: GARMIN" in str(exc_info.value)
 
     def test_get_provider_empty_string(self, factory: ProviderFactory) -> None:
         """Should raise ValueError for empty provider name."""
         # Act & Assert
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match="Unknown provider: "):
             factory.get_provider("")
-
-        assert "Unknown provider: " in str(exc_info.value)
 
     def test_provider_has_repositories(self, factory: ProviderFactory) -> None:
         """Should initialize all required repositories."""

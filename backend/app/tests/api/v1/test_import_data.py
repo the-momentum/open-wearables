@@ -65,7 +65,8 @@ class TestAutoHealthExportImport:
         # Assert
         assert response.status_code in [200, 201, 202]
         data = response.json()
-        assert "status_code" in data and "response" in data
+        assert "status_code" in data
+        assert "response" in data
         assert data["status_code"] == 200
         assert data["response"] == "Import successful"
 
@@ -111,7 +112,8 @@ class TestAutoHealthExportImport:
         # Assert - HTTP status should always be 200 for this endpoint
         assert response.status_code == 200
         data = response.json()
-        assert "status_code" in data and "response" in data
+        assert "status_code" in data
+        assert "response" in data
         # Multipart file uploads may result in "No valid data found" due to TestClient
         # multipart handling differences, so we accept either success or this error
         assert data["status_code"] in [200, 400]
@@ -280,7 +282,8 @@ class TestHealthionImport:
         # Debug: print the response if it fails
         if data.get("status_code") != 200:
             print(f"Response data: {data}")
-        assert "status_code" in data and "response" in data
+        assert "status_code" in data
+        assert "response" in data
         assert data["status_code"] == 200, f"Expected 200 but got {data['status_code']}: {data['response']}"
         assert data["response"] == "Import successful"
 
@@ -326,7 +329,8 @@ class TestHealthionImport:
         # Assert - HTTP status should always be 200 for this endpoint
         assert response.status_code == 200
         data = response.json()
-        assert "status_code" in data and "response" in data
+        assert "status_code" in data
+        assert "response" in data
         # Multipart file uploads may result in "No valid data found" due to TestClient
         # multipart handling differences, so we accept either success or this error
         assert data["status_code"] in [200, 400]
