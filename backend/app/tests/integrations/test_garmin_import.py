@@ -5,7 +5,7 @@ Tests end-to-end import of Garmin activities and workouts.
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -147,7 +147,7 @@ class TestGarminWorkoutImport:
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=activity_detail):
             # Act
-            result = strategy.workouts.get_activity_detail(db, user.id, "12345678901")
+            result = cast(GarminWorkouts, strategy.workouts).get_activity_detail(db, user.id, "12345678901")
 
             # Assert
             assert result["activityId"] == "12345678901"

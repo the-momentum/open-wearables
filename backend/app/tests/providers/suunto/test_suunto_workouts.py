@@ -71,6 +71,7 @@ class TestSuuntoWorkouts:
                 "avg": 145,
                 "hrmax": 175,  # Match max for consistency
                 "max": 175,
+                "min": 120,  # Minimum HR during workout
             },
             "gear": {
                 "manufacturer": "Suunto",
@@ -124,7 +125,7 @@ class TestSuuntoWorkouts:
         # Assert
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] == 145
+        assert metrics["heart_rate_min"] == 120
         assert metrics["steps_total"] == 8500
         assert metrics["steps_avg"] == Decimal("8500")
 
@@ -210,8 +211,8 @@ class TestSuuntoWorkouts:
         # Act
         record, detail = suunto_workouts._normalize_workout(workout, user_id)
 
-        # Assert
-        assert record.source_name == "Unknown"
+        # Assert - when gear is None, source_name defaults to "Suunto"
+        assert record.source_name == "Suunto"
         assert record.device_id is None
 
     def test_normalize_workout_creates_detail_with_metrics(

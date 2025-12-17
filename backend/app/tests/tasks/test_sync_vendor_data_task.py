@@ -322,14 +322,13 @@ class TestBuildSyncParams:
         # Act
         params = _build_sync_params("suunto", start_date, end_date)
 
-        # Assert
+        # Assert - Suunto uses generic params (since/until timestamps)
         assert "since" in params
-        assert "limit" in params
-        assert params["limit"] == 100
-        assert "offset" in params
-        assert params["offset"] == 0
-        assert params["filter_by_modification_time"] is True
+        assert "until" in params
         assert isinstance(params["since"], int)
+        assert isinstance(params["until"], int)
+        assert params["start_date"] == start_date
+        assert params["end_date"] == end_date
 
     def test_build_sync_params_polar(self) -> None:
         """Test building Polar-specific parameters."""
@@ -368,12 +367,15 @@ class TestBuildSyncParams:
         assert "summary_end_time" not in params
 
     def test_build_sync_params_suunto_no_start_date(self) -> None:
-        """Test Suunto parameters without start date defaults to 0."""
+        """Test Suunto parameters without start date has no since/until."""
         # Act
         params = _build_sync_params("suunto", None, None)
 
-        # Assert
-        assert params["since"] == 0  # 0 means all history for Suunto
+        # Assert - when no dates provided, since/until are not set
+        assert "since" not in params
+        assert "until" not in params
+        assert params["start_date"] is None
+        assert params["end_date"] is None
 
     def test_build_sync_params_invalid_date_format(self) -> None:
         """Test handling of invalid date formats."""

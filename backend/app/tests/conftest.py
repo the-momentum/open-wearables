@@ -46,7 +46,7 @@ def engine() -> Any:
     # Seed series type definitions (these need to exist for foreign key constraints)
     from sqlalchemy.orm import Session as SessionClass
 
-    from app.constants.series_types import SERIES_TYPE_DEFINITIONS
+    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
     from app.models import SeriesTypeDefinition
 
     with SessionClass(bind=test_engine) as session:

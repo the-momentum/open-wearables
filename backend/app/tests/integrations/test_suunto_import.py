@@ -10,7 +10,7 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.oauth import ConnectionStatus
 from app.services.providers.suunto.strategy import SuuntoStrategy
+from app.services.providers.suunto.workouts import SuuntoWorkouts
 from app.tests.utils import create_user, create_user_connection
 
 
@@ -235,7 +236,7 @@ class TestSuuntoImport:
         assert suunto_strategy.workouts is not None
 
         # Act
-        result = suunto_strategy.workouts.get_workout_detail(db, user.id, workout_key)
+        result = cast(SuuntoWorkouts, suunto_strategy.workouts).get_workout_detail(db, user.id, workout_key)
 
         # Assert
         assert result["workoutKey"] == workout_key
