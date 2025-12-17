@@ -4,8 +4,8 @@ from .api_keys import router as api_keys_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
-from .events import router as events_router
 from .developers import router as developers_router
+from .events import router as events_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .heart_rate import router as heart_rate_router
 from .import_xml import router as import_xml_router
