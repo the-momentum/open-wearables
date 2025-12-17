@@ -238,10 +238,10 @@ class TestImportXmlData:
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")
-    @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
+    @patch("app.integrations.celery.tasks.process_upload_task.timeseries_service")
     def test_import_xml_data_creates_records(
         self,
-        mock_time_series_service: MagicMock,
+        mock_timeseries_service: MagicMock,
         mock_event_record_service: MagicMock,
         mock_xml_service_class: MagicMock,
         db: Session,
@@ -269,15 +269,15 @@ class TestImportXmlData:
         # Assert
         mock_event_record_service.create.assert_called_once_with(db, mock_record)
         mock_event_record_service.create_detail.assert_called_once_with(db, mock_detail)
-        mock_time_series_service.bulk_create_samples.assert_any_call(db, mock_heart_rate_records)
-        mock_time_series_service.bulk_create_samples.assert_any_call(db, mock_step_records)
+        mock_timeseries_service.bulk_create_samples.assert_any_call(db, mock_heart_rate_records)
+        mock_timeseries_service.bulk_create_samples.assert_any_call(db, mock_step_records)
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")
-    @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
+    @patch("app.integrations.celery.tasks.process_upload_task.timeseries_service")
     def test_import_xml_data_handles_multiple_workouts(
         self,
-        mock_time_series_service: MagicMock,
+        mock_timeseries_service: MagicMock,
         mock_event_record_service: MagicMock,
         mock_xml_service_class: MagicMock,
         db: Session,
@@ -304,10 +304,10 @@ class TestImportXmlData:
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")
-    @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
+    @patch("app.integrations.celery.tasks.process_upload_task.timeseries_service")
     def test_import_xml_data_skips_empty_time_series(
         self,
-        mock_time_series_service: MagicMock,
+        mock_timeseries_service: MagicMock,
         mock_event_record_service: MagicMock,
         mock_xml_service_class: MagicMock,
         db: Session,
@@ -328,15 +328,15 @@ class TestImportXmlData:
         _import_xml_data(db, xml_path, str(user.id))
 
         # Assert
-        mock_time_series_service.bulk_create_samples.assert_not_called()
+        mock_timeseries_service.bulk_create_samples.assert_not_called()
         mock_event_record_service.create.assert_not_called()
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")
-    @patch("app.integrations.celery.tasks.process_upload_task.time_series_service")
+    @patch("app.integrations.celery.tasks.process_upload_task.timeseries_service")
     def test_import_xml_data_with_heart_rate_only(
         self,
-        mock_time_series_service: MagicMock,
+        mock_timeseries_service: MagicMock,
         mock_event_record_service: MagicMock,
         mock_xml_service_class: MagicMock,
         db: Session,
@@ -358,7 +358,7 @@ class TestImportXmlData:
         _import_xml_data(db, xml_path, str(user.id))
 
         # Assert
-        mock_time_series_service.bulk_create_samples.assert_called_once_with(db, mock_heart_rate_records)
+        mock_timeseries_service.bulk_create_samples.assert_called_once_with(db, mock_heart_rate_records)
 
     @patch("app.integrations.celery.tasks.process_upload_task.XMLService")
     @patch("app.integrations.celery.tasks.process_upload_task.event_record_service")

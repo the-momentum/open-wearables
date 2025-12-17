@@ -264,10 +264,10 @@ class TestSyncVendorDataTask:
         # Act
         result = sync_vendor_data(str(user.id))
 
-        # Assert
-        assert "polar" in result["errors"]
-        assert result["errors"]["polar"] == "Sync returned False"
-        assert result["providers_synced"] == {}
+        # Assert - provider is added to providers_synced with workouts success=False
+        assert "polar" in result["providers_synced"]
+        assert result["providers_synced"]["polar"]["params"]["workouts"]["success"] is False
+        assert result["errors"] == {}
 
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
@@ -289,15 +289,17 @@ class TestSyncVendorDataTask:
         # Mock provider without workout support
         mock_strategy = MagicMock()
         mock_strategy.workouts = None
+        # Also ensure data_247 is not set so the strategy is still processed
+        del mock_strategy.data_247
         mock_get_provider.return_value = mock_strategy
 
         # Act
         result = sync_vendor_data(str(user.id))
 
-        # Assert
-        assert "garmin" in result["errors"]
-        assert result["errors"]["garmin"] == "Workouts not supported"
-        assert result["providers_synced"] == {}
+        # Assert - provider is added to providers_synced without workout params
+        assert "garmin" in result["providers_synced"]
+        assert "workouts" not in result["providers_synced"]["garmin"]["params"]
+        assert result["errors"] == {}
 
     def test_sync_vendor_data_invalid_user_id(self, mock_celery_app: MagicMock) -> None:
         """Test handling of invalid user ID format."""

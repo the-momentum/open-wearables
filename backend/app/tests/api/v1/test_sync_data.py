@@ -163,10 +163,11 @@ class TestSyncDataEndpoint:
         mock_strategy.workouts = None
         mock_provider_factory.get_provider.return_value = mock_strategy
 
-        # Act
+        # Act - explicitly request only workouts to trigger 501
         response = client.post(
             f"/api/v1/providers/apple/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
+            params={"data_type": "workouts"},
         )
 
         # Assert

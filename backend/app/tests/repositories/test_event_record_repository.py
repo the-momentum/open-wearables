@@ -75,7 +75,7 @@ class TestEventRecordRepository:
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_id="garmin",
+            provider_name="garmin",  # Use provider_name for external mapping
             device_id="device456",
             external_mapping_id=None,
             category="workout",
