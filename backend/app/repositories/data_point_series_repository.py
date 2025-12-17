@@ -7,7 +7,11 @@ from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import TimeSeriesQueryParams, TimeSeriesSampleCreate, TimeSeriesSampleUpdate
+from app.schemas import (
+    TimeSeriesQueryParams,
+    TimeSeriesSampleCreate,
+    TimeSeriesSampleUpdate,
+)
 from app.schemas.series_types import SeriesType, get_series_type_id
 
 

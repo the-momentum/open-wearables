@@ -1,16 +1,79 @@
-from app.schemas.time_series import SeriesType
+from app.schemas.series_types import SeriesType
 
 METRIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
+    # =========================================================================
+    # Heart & Cardiovascular
+    # =========================================================================
     "HKQuantityTypeIdentifierHeartRate": SeriesType.heart_rate,
+    "HKQuantityTypeIdentifierRestingHeartRate": SeriesType.resting_heart_rate,
+    "HKQuantityTypeIdentifierHeartRateVariabilitySDNN": SeriesType.heart_rate_variability_sdnn,
+    "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute": SeriesType.heart_rate_recovery_one_minute,
+    "HKQuantityTypeIdentifierWalkingHeartRateAverage": SeriesType.walking_heart_rate_average,
+    # =========================================================================
+    # Blood & Respiratory
+    # =========================================================================
+    "HKQuantityTypeIdentifierOxygenSaturation": SeriesType.oxygen_saturation,
+    "HKQuantityTypeIdentifierBloodGlucose": SeriesType.blood_glucose,
+    "HKQuantityTypeIdentifierBloodPressureSystolic": SeriesType.blood_pressure_systolic,
+    "HKQuantityTypeIdentifierBloodPressureDiastolic": SeriesType.blood_pressure_diastolic,
+    "HKQuantityTypeIdentifierRespiratoryRate": SeriesType.respiratory_rate,
+    # =========================================================================
+    # Body Composition
+    # =========================================================================
+    "HKQuantityTypeIdentifierHeight": SeriesType.height,
+    "HKQuantityTypeIdentifierBodyMass": SeriesType.weight,
+    "HKQuantityTypeIdentifierBodyFatPercentage": SeriesType.body_fat_percentage,
+    "HKQuantityTypeIdentifierBodyMassIndex": SeriesType.body_mass_index,
+    "HKQuantityTypeIdentifierLeanBodyMass": SeriesType.lean_body_mass,
+    "HKQuantityTypeIdentifierBodyTemperature": SeriesType.body_temperature,
+    # =========================================================================
+    # Fitness Metrics
+    # =========================================================================
+    "HKQuantityTypeIdentifierVO2Max": SeriesType.vo2_max,
+    "HKQuantityTypeIdentifierSixMinuteWalkTestDistance": SeriesType.six_minute_walk_test_distance,
+    # =========================================================================
+    # Activity - Basic
+    # =========================================================================
     "HKQuantityTypeIdentifierStepCount": SeriesType.steps,
     "HKQuantityTypeIdentifierActiveEnergyBurned": SeriesType.energy,
-    "HKQuantityTypeIdentifierBasalEnergyBurned": SeriesType.energy,
-    "HKQuantityTypeIdentifierRespiratoryRate": SeriesType.respiratory_rate,
-    "HKQuantityTypeIdentifierWalkingHeartRateAverage": SeriesType.walking_heart_rate_average,
-    "HKQuantityTypeIdentifierHeartRateVariabilitySDNN": SeriesType.heart_rate_variability_sdnn,
-    "HKQuantityTypeIdentifierOxygenSaturation": SeriesType.oxygen_saturation,
-    "HKQuantityTypeIdentifierHeight": SeriesType.height,
+    "HKQuantityTypeIdentifierBasalEnergyBurned": SeriesType.basal_energy,
+    "HKQuantityTypeIdentifierAppleStandTime": SeriesType.stand_time,
+    "HKQuantityTypeIdentifierAppleExerciseTime": SeriesType.exercise_time,
+    "HKQuantityTypeIdentifierFlightsClimbed": SeriesType.flights_climbed,
+    # =========================================================================
+    # Activity - Distance
+    # =========================================================================
     "HKQuantityTypeIdentifierDistanceWalkingRunning": SeriesType.distance_walking_running,
+    "HKQuantityTypeIdentifierDistanceCycling": SeriesType.distance_cycling,
+    "HKQuantityTypeIdentifierDistanceSwimming": SeriesType.distance_swimming,
+    "HKQuantityTypeIdentifierDistanceDownhillSnowSports": SeriesType.distance_downhill_snow_sports,
+    # =========================================================================
+    # Walking Metrics
+    # =========================================================================
+    "HKQuantityTypeIdentifierWalkingStepLength": SeriesType.walking_step_length,
+    "HKQuantityTypeIdentifierWalkingSpeed": SeriesType.walking_speed,
+    "HKQuantityTypeIdentifierWalkingDoubleSupportPercentage": SeriesType.walking_double_support_percentage,
+    "HKQuantityTypeIdentifierWalkingAsymmetryPercentage": SeriesType.walking_asymmetry_percentage,
+    "HKQuantityTypeIdentifierAppleWalkingSteadiness": SeriesType.walking_steadiness,
+    "HKQuantityTypeIdentifierStairDescentSpeed": SeriesType.stair_descent_speed,
+    "HKQuantityTypeIdentifierStairAscentSpeed": SeriesType.stair_ascent_speed,
+    # =========================================================================
+    # Running Metrics
+    # =========================================================================
+    "HKQuantityTypeIdentifierRunningPower": SeriesType.running_power,
+    "HKQuantityTypeIdentifierRunningSpeed": SeriesType.running_speed,
+    "HKQuantityTypeIdentifierRunningVerticalOscillation": SeriesType.running_vertical_oscillation,
+    "HKQuantityTypeIdentifierRunningGroundContactTime": SeriesType.running_ground_contact_time,
+    "HKQuantityTypeIdentifierRunningStrideLength": SeriesType.running_stride_length,
+    # =========================================================================
+    # Swimming Metrics
+    # =========================================================================
+    "HKQuantityTypeIdentifierSwimmingStrokeCount": SeriesType.swimming_stroke_count,
+    # =========================================================================
+    # Environmental
+    # =========================================================================
+    "HKQuantityTypeIdentifierEnvironmentalAudioExposure": SeriesType.environmental_audio_exposure,
+    "HKQuantityTypeIdentifierHeadphoneAudioExposure": SeriesType.headphone_audio_exposure,
 }
 
 HEALTHION_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
