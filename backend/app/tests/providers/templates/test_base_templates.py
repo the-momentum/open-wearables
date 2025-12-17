@@ -106,7 +106,9 @@ class TestBaseWorkoutsTemplate:
                 return []
 
             def _normalize_workout(
-                self, raw_workout: Any, user_id: Any,
+                self,
+                raw_workout: Any,
+                user_id: Any,
             ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
                 raise NotImplementedError("Test implementation")
 

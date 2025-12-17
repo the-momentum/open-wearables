@@ -24,6 +24,7 @@ from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import SuuntoWorkoutJSON
+from app.schemas.suunto.workout_import import HeartRateJSON
 from app.schemas.workout_types import WorkoutType
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
@@ -68,7 +69,7 @@ class TestSuuntoWorkouts:
                 "workoutAvgHR": 145,
                 "userMaxHR": 190,
                 "avg": 145,
-                "hrmax": 190,
+                "hrmax": 175,  # Match max for consistency
                 "max": 175,
             },
             "gear": {
@@ -78,6 +79,18 @@ class TestSuuntoWorkouts:
                 "serialNumber": "SN123456",
             },
         }
+
+    @pytest.fixture
+    def sample_hrdata(self) -> HeartRateJSON:
+        """Sample heart rate data as a proper model for model_construct tests."""
+        return HeartRateJSON(
+            workoutMaxHR=175,
+            workoutAvgHR=145,
+            userMaxHR=190,
+            avg=145,
+            hrmax=175,
+            max=175,
+        )
 
     def test_extract_dates_from_millisecond_timestamps(self, suunto_workouts: SuuntoWorkouts) -> None:
         """Should extract datetime objects from millisecond timestamps."""
@@ -138,11 +151,14 @@ class TestSuuntoWorkouts:
         self,
         suunto_workouts: SuuntoWorkouts,
         sample_workout_data: dict,
+        sample_hrdata: HeartRateJSON,
     ) -> None:
         """Should handle missing step count."""
         # Arrange - create workout data without stepCount
         workout_data = sample_workout_data.copy()
         workout_data["stepCount"] = None
+        # Use proper HeartRateJSON model for hrdata when using model_construct
+        workout_data["hrdata"] = sample_hrdata
         workout = SuuntoWorkoutJSON.model_construct(**workout_data)
 
         # Act
@@ -176,11 +192,18 @@ class TestSuuntoWorkouts:
         assert record.provider_id == "123456789"
         assert record.user_id == user_id
 
-    def test_normalize_workout_without_device(self, suunto_workouts: SuuntoWorkouts, sample_workout_data: dict) -> None:
+    def test_normalize_workout_without_device(
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        sample_workout_data: dict,
+        sample_hrdata: HeartRateJSON,
+    ) -> None:
         """Should handle workout without device/gear information."""
         # Arrange - use a copy to avoid modifying the fixture
         workout_data = sample_workout_data.copy()
         workout_data["gear"] = None
+        # Use proper HeartRateJSON model for hrdata when using model_construct
+        workout_data["hrdata"] = sample_hrdata
         workout = SuuntoWorkoutJSON.model_construct(**workout_data)
         user_id = uuid4()
 
