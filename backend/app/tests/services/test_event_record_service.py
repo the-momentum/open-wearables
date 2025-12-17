@@ -35,12 +35,12 @@ class TestEventRecordServiceCreateDetail:
         # Act
         detail = event_record_service.create_detail(db, detail_payload)
 
-        # Assert
+        # Assert (using getattr for polymorphic attributes)
         assert detail.record_id is not None
         assert detail.record_id == event_record.id
-        assert detail.heart_rate_min == 120
-        assert detail.heart_rate_max == 180
-        assert detail.heart_rate_avg == Decimal("150.5")
+        assert getattr(detail, "heart_rate_min") == 120
+        assert getattr(detail, "heart_rate_max") == 180
+        assert getattr(detail, "heart_rate_avg") == Decimal("150.5")
 
     def test_create_detail_with_step_metrics(self, db: Session) -> None:
         """Should create event record detail with step metrics."""
@@ -57,11 +57,11 @@ class TestEventRecordServiceCreateDetail:
         # Act
         detail = event_record_service.create_detail(db, detail_payload)
 
-        # Assert
-        assert detail.steps_min == 50
-        assert detail.steps_max == 200
-        assert detail.steps_avg == Decimal("125.3")
-        assert detail.steps_total == 5000
+        # Assert (using getattr for polymorphic attributes)
+        assert getattr(detail, "steps_min") == 50
+        assert getattr(detail, "steps_max") == 200
+        assert getattr(detail, "steps_avg") == Decimal("125.3")
+        assert getattr(detail, "steps_total") == 5000
 
     def test_create_detail_with_workout_metrics(self, db: Session) -> None:
         """Should create event record detail with workout metrics."""
@@ -82,13 +82,13 @@ class TestEventRecordServiceCreateDetail:
         # Act
         detail = event_record_service.create_detail(db, detail_payload)
 
-        # Assert
-        assert detail.max_speed == Decimal("35.5")
-        assert detail.average_speed == Decimal("25.2")
-        assert detail.max_watts == Decimal("350.0")
-        assert detail.average_watts == Decimal("210.5")
-        assert detail.moving_time_seconds == 3600
-        assert detail.total_elevation_gain == Decimal("450.0")
+        # Assert (using getattr for polymorphic attributes)
+        assert getattr(detail, "max_speed") == Decimal("35.5")
+        assert getattr(detail, "average_speed") == Decimal("25.2")
+        assert getattr(detail, "max_watts") == Decimal("350.0")
+        assert getattr(detail, "average_watts") == Decimal("210.5")
+        assert getattr(detail, "moving_time_seconds") == 3600
+        assert getattr(detail, "total_elevation_gain") == Decimal("450.0")
 
     def test_create_detail_minimal_data(self, db: Session) -> None:
         """Should create event record detail with minimal data."""
@@ -99,12 +99,12 @@ class TestEventRecordServiceCreateDetail:
         # Act
         detail = event_record_service.create_detail(db, detail_payload)
 
-        # Assert
+        # Assert (using getattr for polymorphic attributes)
         assert detail.record_id is not None
         assert detail.record_id == event_record.id
         # All optional fields should be None
-        assert detail.heart_rate_min is None
-        assert detail.steps_total is None
+        assert getattr(detail, "heart_rate_min", None) is None
+        assert getattr(detail, "steps_total", None) is None
 
 
 class TestEventRecordServiceGetRecordsResponse:

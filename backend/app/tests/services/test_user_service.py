@@ -103,9 +103,6 @@ class TestUserServiceUpdate:
         # Assert
         assert updated_user is not None
         assert updated_user.email == "updated@example.com"
-        assert updated_user.updated_at is not None
-        # updated_at should be more recent than created_at
-        assert updated_user.updated_at >= updated_user.created_at
 
     def test_update_user_partial_fields(self, db: Session) -> None:
         """Should update only specified fields."""

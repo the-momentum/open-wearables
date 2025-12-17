@@ -128,21 +128,20 @@ class TestGarminWorkouts:
 
     def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:
         """Test building metrics with missing values."""
-        activity_data = {
-            "userId": "user_123",
-            "activityId": "act_123",
-            "summaryId": "sum_123",
-            "activityType": "RUNNING",
-            "startTimeInSeconds": 1705309200,
-            "durationInSeconds": 3600,
-            "deviceName": "Garmin Device",
-            "distanceInMeters": 10000,
-            "steps": 0,
-            "activeKilocalories": 0,
-            "averageHeartRateInBeatsPerMinute": 0,
-            "maxHeartRateInBeatsPerMinute": 0,
-        }
-        activity = GarminActivityJSON(**activity_data)
+        activity = GarminActivityJSON(
+            userId="user_123",
+            activityId="act_123",
+            summaryId="sum_123",
+            activityType="RUNNING",
+            startTimeInSeconds=1705309200,
+            durationInSeconds=3600,
+            deviceName="Garmin Device",
+            distanceInMeters=10000,
+            steps=0,
+            activeKilocalories=0,
+            averageHeartRateInBeatsPerMinute=0,
+            maxHeartRateInBeatsPerMinute=0,
+        )
         metrics = garmin_workouts._build_metrics(activity)
 
         # Should handle zero values
@@ -178,31 +177,42 @@ class TestGarminWorkouts:
         ]
 
         for garmin_type, expected_type in test_cases:
-            activity_data = {
-                "userId": "user_123",
-                "activityId": f"act_{garmin_type}",
-                "summaryId": "sum_123",
-                "activityType": garmin_type,
-                "startTimeInSeconds": 1705309200,
-                "durationInSeconds": 3600,
-                "deviceName": "Garmin Device",
-                "distanceInMeters": 10000,
-                "steps": 1000,
-                "activeKilocalories": 500,
-                "averageHeartRateInBeatsPerMinute": 140,
-                "maxHeartRateInBeatsPerMinute": 170,
-            }
-            activity = GarminActivityJSON(**activity_data)
+            activity = GarminActivityJSON(
+                userId="user_123",
+                activityId=f"act_{garmin_type}",
+                summaryId="sum_123",
+                activityType=garmin_type,
+                startTimeInSeconds=1705309200,
+                durationInSeconds=3600,
+                deviceName="Garmin Device",
+                distanceInMeters=10000,
+                steps=1000,
+                activeKilocalories=500,
+                averageHeartRateInBeatsPerMinute=140,
+                maxHeartRateInBeatsPerMinute=170,
+            )
             record, detail = garmin_workouts._normalize_workout(activity, user_id)
             assert record.type == expected_type.value
 
     def test_build_bundles(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test building bundles from multiple activities."""
         user_id = uuid4()
-        activities = [
-            GarminActivityJSON(**sample_activity),
-            GarminActivityJSON(**{**sample_activity, "activityId": "different_id"}),
-        ]
+        activity1 = GarminActivityJSON(**sample_activity)
+        activity2 = GarminActivityJSON(
+            userId=sample_activity["userId"],
+            activityId="different_id",
+            summaryId=sample_activity["summaryId"],
+            activityType=sample_activity["activityType"],
+            startTimeInSeconds=sample_activity["startTimeInSeconds"],
+            durationInSeconds=sample_activity["durationInSeconds"],
+            deviceName=sample_activity["deviceName"],
+            distanceInMeters=sample_activity["distanceInMeters"],
+            steps=sample_activity["steps"],
+            activeKilocalories=sample_activity["activeKilocalories"],
+            averageHeartRateInBeatsPerMinute=sample_activity["averageHeartRateInBeatsPerMinute"],
+            maxHeartRateInBeatsPerMinute=sample_activity["maxHeartRateInBeatsPerMinute"],
+        )
+        activities = [activity1, activity2]
 
         bundles = list(garmin_workouts._build_bundles(activities, user_id))
 

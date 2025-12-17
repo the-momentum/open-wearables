@@ -8,7 +8,8 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from typing import cast
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.orm import Session
@@ -17,6 +18,11 @@ from app.models import ApiKey
 from app.repositories.api_key_repository import ApiKeyRepository
 from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
 from app.tests.utils.factories import create_api_key, create_developer
+
+
+def _str_id_as_uuid(str_id: str) -> UUID:
+    """Cast string ID to UUID for type checker (ApiKey uses string IDs)."""
+    return cast(UUID, str_id)
 
 
 class TestApiKeyRepository:
@@ -50,7 +56,7 @@ class TestApiKeyRepository:
 
         # Verify in database
         db.expire_all()
-        db_api_key = api_key_repo.get(db, key_id)
+        db_api_key = api_key_repo.get(db, _str_id_as_uuid(key_id))
         assert db_api_key is not None
         assert db_api_key.name == "Test API Key"
 
@@ -78,7 +84,7 @@ class TestApiKeyRepository:
         api_key = create_api_key(db, name="My Test Key")
 
         # Act
-        result = api_key_repo.get(db, api_key.id)
+        result = api_key_repo.get(db, _str_id_as_uuid(api_key.id))
 
         # Assert
         assert result is not None
@@ -88,7 +94,7 @@ class TestApiKeyRepository:
     def test_get_nonexistent(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
         """Test retrieving a nonexistent API key returns None."""
         # Act
-        result = api_key_repo.get(db, "sk-nonexistent-key-12345")
+        result = api_key_repo.get(db, _str_id_as_uuid("sk-nonexistent-key-12345"))
 
         # Assert
         assert result is None
@@ -212,7 +218,7 @@ class TestApiKeyRepository:
 
         # Assert
         db.expire_all()
-        deleted_key = api_key_repo.get(db, key_id)
+        deleted_key = api_key_repo.get(db, _str_id_as_uuid(key_id))
         assert deleted_key is None
 
     def test_update_not_implemented(self, db: Session, api_key_repo: ApiKeyRepository) -> None:
@@ -229,7 +235,8 @@ class TestApiKeyRepository:
 
         # Verify in database
         db.expire_all()
-        db_key = api_key_repo.get(db, api_key.id)
+        db_key = api_key_repo.get(db, _str_id_as_uuid(api_key.id))
+        assert db_key is not None
         assert db_key.name == "Updated Name"
 
     def test_create_with_custom_timestamp(self, db: Session, api_key_repo: ApiKeyRepository) -> None:

@@ -67,6 +67,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=sample_garmin_activities):
             # Act
@@ -91,6 +92,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
         start_date = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end_date = datetime(2024, 1, 31, tzinfo=timezone.utc)
 
@@ -110,6 +112,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=[]):
             # Act
@@ -125,6 +128,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
         activity_detail = {
             "activityId": "12345678901",
             "summaryId": "summary_001",
@@ -176,6 +180,7 @@ class TestGarminWorkoutImport:
         ]
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
             # Act
@@ -208,6 +213,7 @@ class TestGarminWorkoutImport:
         ]
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
             # Act
@@ -223,6 +229,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with (
             patch.object(strategy.workouts, "_make_api_request", side_effect=Exception("API Error")),
@@ -237,6 +244,7 @@ class TestGarminWorkoutImport:
         create_user_connection(db, user=user, provider="garmin")
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=[]) as mock_request:
             # Act
@@ -301,6 +309,7 @@ class TestGarminWorkoutImport:
         ]
 
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
             # Act

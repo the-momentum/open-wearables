@@ -19,6 +19,7 @@ import pytest
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas import EventRecordCreate, EventRecordDetailCreate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
@@ -104,8 +105,10 @@ class TestBaseWorkoutsTemplate:
             def get_workouts(self, db: Any, user_id: Any, start_date: Any, end_date: Any) -> list:
                 return []
 
-            def _normalize_workout(self, raw_workout: Any, user_id: Any) -> None:
-                pass
+            def _normalize_workout(
+                self, raw_workout: Any, user_id: Any
+            ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+                raise NotImplementedError("Test implementation")
 
         # Arrange
         mock_workout_repo = MagicMock(spec=EventRecordRepository)

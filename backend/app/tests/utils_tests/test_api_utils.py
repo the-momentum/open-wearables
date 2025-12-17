@@ -5,6 +5,7 @@ Tests the format_response decorator that adds HATEOAS formatting
 to API responses.
 """
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,7 +23,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response()
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
@@ -57,7 +58,7 @@ class TestFormatResponseDecorator:
         mock_item2.__tablename__ = "user"
 
         @format_response()
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             return [mock_item1, mock_item2]
 
         mock_request = MagicMock()
@@ -84,7 +85,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response(status_code=201)
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
@@ -110,7 +111,7 @@ class TestFormatResponseDecorator:
         extra_rels = [{"rel": "connections", "endpoint": "/connections", "method": "GET"}]
 
         @format_response(extra_rels=extra_rels)
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
@@ -148,7 +149,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response()
-        async def test_endpoint() -> None:
+        async def test_endpoint() -> Any:
             return MagicMock()
 
         # Act & Assert
@@ -161,7 +162,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response()
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"
@@ -189,7 +190,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response()
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             """Test endpoint docstring."""
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
@@ -206,7 +207,7 @@ class TestFormatResponseDecorator:
 
         # Arrange
         @format_response()
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             return []
 
         mock_request = MagicMock()
@@ -242,7 +243,7 @@ class TestFormatResponseDecorator:
         ]
 
         @format_response(extra_rels=extra_rels)
-        async def test_endpoint(**kwargs) -> None:
+        async def test_endpoint(**kwargs) -> Any:
             mock_item = MagicMock()
             mock_item.__tablename__ = "user"
             mock_item.id_str = "123"

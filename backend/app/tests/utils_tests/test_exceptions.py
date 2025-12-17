@@ -92,7 +92,7 @@ class TestHandleExceptionWithSQLAIntegrityError:
         """Test handling SQLAlchemy IntegrityError."""
         # Arrange
         error_msg = "duplicate key value violates unique constraint"
-        exc = SQLAIntegrityError("statement", "params", error_msg)
+        exc = SQLAIntegrityError("statement", "params", Exception(error_msg))
         entity = "user"
 
         # Act
@@ -107,7 +107,7 @@ class TestHandleExceptionWithSQLAIntegrityError:
     def test_handle_sqlalchemy_integrity_error_capitalizes_entity(self) -> None:
         """Test that entity name is capitalized in error message."""
         # Arrange
-        exc = SQLAIntegrityError("statement", "params", "error details")
+        exc = SQLAIntegrityError("statement", "params", Exception("error details"))
         entity = "device"
 
         # Act
@@ -348,7 +348,7 @@ class TestHandleExceptionsDecorator:
 
         @handle_exceptions
         def test_function(instance: object) -> None:
-            raise SQLAIntegrityError("stmt", "params", "duplicate key")
+            raise SQLAIntegrityError("stmt", "params", Exception("duplicate key"))
 
         # Act & Assert
         with pytest.raises(HTTPException) as exc_info:

@@ -5,6 +5,7 @@ Tests URL building, link generation, and HATEOAS response formatting
 for both individual items and collections.
 """
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from app.utils.hateoas import (
@@ -232,10 +233,11 @@ class TestGetHateoasItem:
         assert "id" in result
         assert "first_name" in result
         assert "_links" in result
-        assert len(result["_links"]) == 3
-        assert any(link["rel"] == "self" for link in result["_links"])
-        assert any(link["rel"] == "update" for link in result["_links"])
-        assert any(link["rel"] == "delete" for link in result["_links"])
+        links = cast(list[dict[str, Any]], result["_links"])
+        assert len(links) == 3
+        assert any(link["rel"] == "self" for link in links)
+        assert any(link["rel"] == "update" for link in links)
+        assert any(link["rel"] == "delete" for link in links)
 
     def test_get_hateoas_item_with_extra_rels(self) -> None:
         """Should create HATEOAS item with extra relations."""
@@ -256,8 +258,9 @@ class TestGetHateoasItem:
 
         # Assert
         assert "_links" in result
-        assert len(result["_links"]) == 4
-        assert any(link["rel"] == "connections" for link in result["_links"])
+        links = cast(list[dict[str, Any]], result["_links"])
+        assert len(links) == 4
+        assert any(link["rel"] == "connections" for link in links)
 
 
 class TestGetHateoasList:

@@ -118,7 +118,7 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def mock_redis(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
     """Globally mock Redis to prevent connection errors in tests."""
     mock = MagicMock()
     mock.lock.return_value.__enter__ = MagicMock(return_value=None)

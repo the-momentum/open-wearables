@@ -283,6 +283,7 @@ class TestAuthWorkflow:
         result_required = await get_current_developer(db=db, token=valid_token)
         result_optional = await get_current_developer_optional(db=db, token=valid_token)
         assert result_required.id == developer.id
+        assert result_optional is not None
         assert result_optional.id == developer.id
 
         # Act & Assert - Invalid token: required raises, optional returns None

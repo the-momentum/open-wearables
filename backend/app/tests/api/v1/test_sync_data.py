@@ -5,6 +5,7 @@ Tests the following endpoint:
 - POST /api/v1/providers/{provider}/users/{user_id}/sync
 """
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,7 +24,7 @@ class TestSyncDataEndpoint:
     """Test suite for sync data endpoint."""
 
     @pytest.fixture
-    def mock_provider_factory(self) -> MagicMock:
+    def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
         """Mock the ProviderFactory to avoid external API calls."""
         with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
             mock_strategy = MagicMock()

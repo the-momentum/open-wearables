@@ -233,20 +233,15 @@ class TestPolarWorkoutsMetricsBuilding:
             oauth=oauth,
         )
 
-        exercise_data = {
-            "id": "ABC123",
-            "upload_time": "2024-01-15T09:00:00.000Z",
-            "polar_user": "https://www.polaraccesslink.com/v3/users/12345",
-            "transaction_id": 67890,
-            "device": "Polar Vantage V2",
-            "device_id": "12345678",
-            "start_time": "2024-01-15T08:00:00",
-            "start_time_utc_offset": 60,
-            "duration": "PT1H0M0S",
-            "sport": "RUNNING",
-            "detailed_sport_info": "RUNNING",
-        }
-        exercise = PolarExerciseJSON(**exercise_data)
+        exercise = PolarExerciseJSON(
+            id="ABC123",
+            device="Polar Vantage V2",
+            start_time="2024-01-15T08:00:00",
+            start_time_utc_offset=60,
+            duration="PT1H0M0S",
+            sport="RUNNING",
+            detailed_sport_info="RUNNING",
+        )
 
         # Act
         metrics = workouts._build_metrics(exercise)
@@ -331,20 +326,15 @@ class TestPolarWorkoutsNormalization:
         )
 
         # Test cycling
-        exercise_data = {
-            "id": "CYC123",
-            "upload_time": "2024-01-15T09:00:00.000Z",
-            "polar_user": "https://www.polaraccesslink.com/v3/users/12345",
-            "transaction_id": 67890,
-            "device": "Polar Vantage V2",
-            "device_id": "12345678",
-            "start_time": "2024-01-15T08:00:00",
-            "start_time_utc_offset": 60,
-            "duration": "PT1H0M0S",
-            "sport": "CYCLING",
-            "detailed_sport_info": "CYCLING_ROAD",
-        }
-        exercise = PolarExerciseJSON(**exercise_data)
+        exercise = PolarExerciseJSON(
+            id="CYC123",
+            device="Polar Vantage V2",
+            start_time="2024-01-15T08:00:00",
+            start_time_utc_offset=60,
+            duration="PT1H0M0S",
+            sport="CYCLING",
+            detailed_sport_info="CYCLING_ROAD",
+        )
 
         # Act
         record, detail = workouts._normalize_workout(exercise, user.id)

@@ -118,6 +118,7 @@ class TestSuuntoImport:
         mock_post.return_value = mock_response
 
         # Mock Redis state
+        assert suunto_strategy.oauth is not None
         with patch.object(suunto_strategy.oauth.redis_client, "get") as mock_redis_get:
             state_data = {
                 "user_id": str(user.id),
@@ -129,6 +130,7 @@ class TestSuuntoImport:
             mock_redis_get.return_value = json.dumps(state_data)
 
             # Act
+            assert suunto_strategy.oauth is not None
             oauth_state = suunto_strategy.oauth.handle_callback(db, "test_code", "test_state")
 
             # Assert
@@ -153,6 +155,7 @@ class TestSuuntoImport:
         create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
         # Mock the get_workouts_from_api method directly on the instance
+        assert suunto_strategy.workouts is not None
         with patch.object(suunto_strategy.workouts, "get_workouts_from_api", return_value=sample_suunto_api_response):
             # Act
             result = suunto_strategy.workouts.get_workouts_from_api(
@@ -185,6 +188,7 @@ class TestSuuntoImport:
         user = create_user(db)
         create_user_connection(db, user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
         mock_request.return_value = sample_suunto_api_response
+        assert suunto_strategy.workouts is not None
 
         # Act
         result = suunto_strategy.workouts.load_data(db, user.id, since=0, limit=50)
@@ -228,6 +232,7 @@ class TestSuuntoImport:
                 {"TimeISO8601": "2024-01-15T08:01:00Z", "HR": 135},
             ],
         }
+        assert suunto_strategy.workouts is not None
 
         # Act
         result = suunto_strategy.workouts.get_workout_detail(db, user.id, workout_key)
@@ -265,6 +270,7 @@ class TestSuuntoImport:
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
+        assert suunto_strategy.oauth is not None
 
         # Act
         token_response = suunto_strategy.oauth.refresh_access_token(db, user.id, "old_refresh_token")
@@ -296,6 +302,8 @@ class TestSuuntoImport:
         mock_request.return_value = {"payload": []}
 
         # Patch the credentials property using PropertyMock
+        assert suunto_strategy.oauth is not None
+        assert suunto_strategy.workouts is not None
         with patch.object(type(suunto_strategy.oauth), "credentials", new_callable=lambda: mock_creds):
             # Act
             suunto_strategy.workouts.get_workouts_from_api(db, user.id, since=0, limit=10)
@@ -324,6 +332,7 @@ class TestSuuntoImport:
             "error": "Rate limit exceeded",
             "payload": [],
         }
+        assert suunto_strategy.workouts is not None
 
         # Act
         result = suunto_strategy.workouts.get_workouts_from_api(db, user.id, since=0, limit=10)

@@ -59,7 +59,7 @@ class TestEventRecordCreateValidation:
 
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            EventRecordCreate(
+            EventRecordCreate(  # type: ignore[call-arg]
                 id=record_id,
                 user_id=user_id,
                 start_datetime=datetime.now(timezone.utc),
@@ -97,7 +97,7 @@ class TestEventRecordDetailCreateValidation:
         """Should raise ValidationError when record_id is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            EventRecordDetailCreate(
+            EventRecordDetailCreate(  # type: ignore[call-arg]
                 heart_rate_min=120,
                 heart_rate_max=175,
             )
@@ -126,7 +126,7 @@ class TestOAuthTokenResponseValidation:
         """Should raise ValidationError when access_token is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            OAuthTokenResponse(
+            OAuthTokenResponse(  # type: ignore[call-arg]
                 token_type="Bearer",
                 expires_in=3600,
             )
@@ -137,7 +137,7 @@ class TestOAuthTokenResponseValidation:
         """Should raise ValidationError when token_type is missing."""
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            OAuthTokenResponse(
+            OAuthTokenResponse(  # type: ignore[call-arg]
                 access_token="test_token",
                 expires_in=3600,
             )
@@ -176,7 +176,7 @@ class TestUserConnectionCreateValidation:
 
         # Act & Assert
         with pytest.raises(ValidationError) as exc_info:
-            UserConnectionCreate(
+            UserConnectionCreate(  # type: ignore[call-arg]
                 user_id=user_id,
                 access_token="test_token",
                 token_expires_at=datetime.now(timezone.utc),

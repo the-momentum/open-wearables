@@ -505,6 +505,7 @@ class TestUserConnectionRepository:
         revoked_conn = connection_repo.get(db, connection.id)
 
         # Assert
+        assert revoked_conn is not None
         assert revoked_conn.status == ConnectionStatus.REVOKED
 
         # Update to expired
@@ -513,6 +514,7 @@ class TestUserConnectionRepository:
         db.expire_all()
         expired_conn = connection_repo.get(db, connection.id)
 
+        assert expired_conn is not None
         assert expired_conn.status == ConnectionStatus.EXPIRED
 
     def test_last_synced_at_update(self, db: Session, connection_repo: UserConnectionRepository) -> None:

@@ -48,21 +48,25 @@ class TestGarminStrategy:
     def test_oauth_has_correct_provider_name(self) -> None:
         """OAuth component should have correct provider name."""
         strategy = GarminStrategy()
+        assert strategy.oauth is not None
         assert strategy.oauth.provider_name == "garmin"
 
     def test_oauth_has_correct_api_base_url(self) -> None:
         """OAuth component should have correct API base URL."""
         strategy = GarminStrategy()
+        assert strategy.oauth is not None
         assert strategy.oauth.api_base_url == "https://apis.garmin.com"
 
     def test_workouts_has_correct_provider_name(self) -> None:
         """Workouts component should have correct provider name."""
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
         assert strategy.workouts.provider_name == "garmin"
 
     def test_workouts_has_correct_api_base_url(self) -> None:
         """Workouts component should have correct API base URL."""
         strategy = GarminStrategy()
+        assert strategy.workouts is not None
         assert strategy.workouts.api_base_url == "https://apis.garmin.com"
 
     def test_repositories_initialized(self) -> None:

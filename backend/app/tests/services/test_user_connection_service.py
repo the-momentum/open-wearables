@@ -422,6 +422,7 @@ class TestUserConnectionServiceConnectionStatus:
         )
 
         # Assert
+        assert updated is not None
         assert updated.status == ConnectionStatus.REVOKED
 
         # Act - transition from REVOKED back to CONNECTED
@@ -432,4 +433,5 @@ class TestUserConnectionServiceConnectionStatus:
         )
 
         # Assert
+        assert updated2 is not None
         assert updated2.status == ConnectionStatus.ACTIVE

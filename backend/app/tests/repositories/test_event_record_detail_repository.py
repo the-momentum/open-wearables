@@ -193,15 +193,16 @@ class TestEventRecordDetailRepository:
         # Act
         result = detail_repo.update(db, workout_details, update_data)
 
-        # Assert
-        assert result.heart_rate_avg == Decimal("155.0")
-        assert result.steps_total == 10000
+        # Assert (using getattr for polymorphic attributes)
+        assert getattr(result, "heart_rate_avg") == Decimal("155.0")
+        assert getattr(result, "steps_total") == 10000
 
         # Verify in database
         db.expire_all()
         updated = detail_repo.get_by_record_id(db, workout_details.record_id)
-        assert updated.heart_rate_avg == Decimal("155.0")
-        assert updated.steps_total == 10000
+        assert updated is not None
+        assert getattr(updated, "heart_rate_avg") == Decimal("155.0")
+        assert getattr(updated, "steps_total") == 10000
 
     def test_update_partial_fields(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating only some fields."""
@@ -217,10 +218,10 @@ class TestEventRecordDetailRepository:
         # Act
         result = detail_repo.update(db, workout_details, update_data)
 
-        # Assert
-        assert result.heart_rate_avg == Decimal("150.0")
-        assert result.heart_rate_max == 180  # Unchanged
-        assert result.steps_total == 5000  # Unchanged
+        # Assert (using getattr for polymorphic attributes)
+        assert getattr(result, "heart_rate_avg") == Decimal("150.0")
+        assert getattr(result, "heart_rate_max") == 180  # Unchanged
+        assert getattr(result, "steps_total") == 5000  # Unchanged
 
     def test_delete_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test deleting workout details."""

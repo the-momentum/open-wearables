@@ -517,5 +517,5 @@ class TestEventRecordRepository:
         assert total_count == 1
         event, mapping_result = results[0]
         assert event.category == "workout"
-        assert "running" in event.type
+        assert event.type is not None and "running" in event.type
         assert mapping_result.device_id == "watch1"

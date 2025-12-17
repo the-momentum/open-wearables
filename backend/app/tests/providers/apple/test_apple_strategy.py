@@ -103,6 +103,7 @@ class TestAppleStrategy:
         strategy = AppleStrategy()
 
         # Assert
+        assert strategy.workouts is not None
         assert strategy.workouts.workout_repo is strategy.workout_repo
         assert strategy.workouts.connection_repo is strategy.connection_repo
 
@@ -112,6 +113,7 @@ class TestAppleStrategy:
         strategy = AppleStrategy()
 
         # Assert
+        assert strategy.workouts is not None
         assert strategy.workouts.provider_name == "apple"
         assert strategy.workouts.api_base_url == ""
         assert strategy.workouts.oauth is None
