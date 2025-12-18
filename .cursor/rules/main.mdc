@@ -1,0 +1,8 @@
+---
+description: Main project rules - imports AGENTS.md
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+@../AGENTS.md
