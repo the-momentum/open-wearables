@@ -18,8 +18,8 @@ from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.personal_record import PersonalRecordCreate
 from app.schemas.series_types import SeriesType
 from app.schemas.timeseries import TimeSeriesSampleCreate
-from app.schemas.workout_types import WorkoutType
 from app.schemas.user import UserCreate
+from app.schemas.workout_types import WorkoutType
 from app.services import event_record_service, timeseries_service, user_service
 
 fake = Faker()
@@ -41,16 +41,16 @@ GENDERS = ["female", "male", "nonbinary", "other"]
 
 
 # Load series type configuration from CSV
-def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], dict[SeriesType, float]]:
+def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], dict[SeriesType, int]]:
     """Load series type configuration from CSV file.
-    
+
     Returns:
         Tuple of (values_ranges, series_type_percentages) dictionaries
     """
     config_path = Path(__file__).parent / "series_type_config.csv"
     values_ranges = {}
     series_type_percentages = {}
-    
+
     with open(config_path, encoding="utf-8", newline="") as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
@@ -58,20 +58,19 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
                 series_type = SeriesType(row["series_type"])
                 min_val = float(row["min_value"])
                 max_val = float(row["max_value"])
-                percentage = float(row["percentage"])
-                
+                percentage = int(row["percentage"])
+
                 values_ranges[series_type] = (min_val, max_val)
                 series_type_percentages[series_type] = percentage
             except (ValueError, KeyError) as e:
                 print(f"Warning: Skipping invalid row in config: {row}. Error: {e}")
                 continue
-    
+
     return values_ranges, series_type_percentages
 
 
 # Load configuration at module level
 SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
-
 
 
 def generate_workout(
@@ -149,7 +148,7 @@ def generate_sleep(
     rem_minutes = fake_instance.random_int(min=60, max=150)
     light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - fake_instance.random_int(min=10, max=30)
     awake_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - light_minutes
-    
+
     is_nap = fake_instance.boolean(chance_of_getting_true=20)
 
     sleep_id = uuid4()
@@ -216,10 +215,9 @@ def generate_time_series_samples(
 
     # Generate samples every 30 seconds during the workout
     while current_time <= workout_end:
-        
         for series_type, percentage in SERIES_TYPE_PERCENTAGES.items():
             min_value, max_value = SERIES_VALUES_RANGES[series_type]
-            
+
             # Generate value based on whether the range has fractional values
             if min_value != int(min_value) or max_value != int(max_value):
                 # Float range - use uniform distribution
@@ -227,17 +225,19 @@ def generate_time_series_samples(
             else:
                 # Integer range
                 value = fake_instance.random_int(min=int(min_value), max=int(max_value))
-            
+
             if fake_instance.boolean(chance_of_getting_true=percentage):
-                samples.append(TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    provider_name=provider_name,
-                    device_id=device_id,
-                    recorded_at=current_time,
-                    value=Decimal(str(value)),
-                    series_type=series_type,
-                ))
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=provider_name,
+                        device_id=device_id,
+                        recorded_at=current_time,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
 
         current_time += timedelta(seconds=fake_instance.random_int(min=10, max=60))
 
