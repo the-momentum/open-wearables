@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Date, cast, desc, func
+from sqlalchemy import Date, asc, cast, func, tuple_
 
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
@@ -13,6 +13,8 @@ from app.schemas import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.series_types import SeriesType, get_series_type_id
+from app.utils.dates import parse_query_datetime
+from app.utils.exceptions import InvalidCursorError
 
 
 class DataPointSeriesRepository(
@@ -76,7 +78,27 @@ class DataPointSeriesRepository(
         if params.end_datetime:
             query = query.filter(self.model.recorded_at <= params.end_datetime)
 
-        return query.order_by(desc(self.model.recorded_at)).limit(1000).all()
+        # Cursor pagination (keyset)
+        if params.cursor:
+            # Expected cursor format: "timestamp_iso|id"
+            try:
+                cursor_ts_str, cursor_id_str = params.cursor.split("|")
+                cursor_ts = parse_query_datetime(cursor_ts_str)
+                cursor_id = UUID(cursor_id_str)
+            except (ValueError, TypeError):
+                raise InvalidCursorError(cursor=params.cursor)
+
+            # WHERE (recorded_at, id) > (cursor_ts, cursor_id)
+            # Since we order by recorded_at ASC, id ASC
+            query = query.filter(
+                tuple_(self.model.recorded_at, self.model.id) > (cursor_ts, cursor_id),
+            )
+
+        query = query.order_by(asc(self.model.recorded_at), asc(self.model.id))
+
+        # Limit + 1 to check for next page
+        limit = params.limit or 50
+        return query.limit(limit + 1).all()
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

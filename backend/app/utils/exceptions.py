@@ -20,6 +20,11 @@ class ResourceNotFoundError(Exception):
             self.detail = f"{entity_name.capitalize()} not found."
 
 
+class InvalidCursorError(Exception):
+    def __init__(self, cursor: str):
+        self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
+
+
 @singledispatch
 def handle_exception(exc: Exception, _: str) -> HTTPException:
     raise exc
@@ -36,6 +41,11 @@ def _(exc: SQLAIntegrityError | PsycopgIntegrityError, entity: str) -> HTTPExcep
 @handle_exception.register
 def _(exc: ResourceNotFoundError, _: str) -> HTTPException:
     return HTTPException(status_code=404, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: InvalidCursorError, _: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.detail)
 
 
 @handle_exception.register

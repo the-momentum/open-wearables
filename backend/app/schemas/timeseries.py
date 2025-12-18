@@ -120,3 +120,5 @@ class TimeSeriesQueryParams(BaseModel):
         None,
         description="Direct mapping identifier filter (skips device lookup).",
     )
+    limit: int = Field(50, ge=1, le=1000, description="Maximum number of samples to return")
+    cursor: str | None = Field(None, description="Pagination cursor")

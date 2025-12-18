@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -16,6 +15,7 @@ from app.schemas.timeseries import (
     TimeSeriesQueryParams,
 )
 from app.services import ApiKeyDep, timeseries_service
+from app.utils.dates import parse_query_datetime
 
 router = APIRouter()
 
@@ -34,7 +34,9 @@ async def get_timeseries(
 ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample | StepsSample]:
     """Returns granular time series data (biometrics or activity)."""
     params = TimeSeriesQueryParams(
-        start_datetime=datetime.fromisoformat(start_time),
-        end_datetime=datetime.fromisoformat(end_time),
+        start_datetime=parse_query_datetime(start_time),
+        end_datetime=parse_query_datetime(end_time),
+        limit=limit,
+        cursor=cursor,
     )
     return await timeseries_service.get_timeseries(db, user_id, type, params)
