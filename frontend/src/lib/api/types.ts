@@ -5,14 +5,6 @@ export interface ApiErrorResponse {
   details?: Record<string, unknown>;
 }
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-  hasMore: boolean;
-}
-
 export interface ApiResponse<T> {
   data: T;
   message?: string;
@@ -32,6 +24,26 @@ export interface UserCreate {
   last_name?: string | null;
   email?: string | null;
   external_user_id?: string | null;
+}
+
+export interface UserQueryParams {
+  page?: number;
+  limit?: number;
+  sort_by?: 'created_at' | 'email' | 'first_name' | 'last_name';
+  sort_order?: 'asc' | 'desc';
+  search?: string;
+  email?: string;
+  external_user_id?: string;
+}
+
+export interface PaginatedUsersResponse {
+  items: UserRead[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  has_next: boolean;
+  has_prev: boolean;
 }
 
 export interface UserUpdate {
@@ -385,4 +397,32 @@ export interface HealthDataParams {
   limit?: number;
   offset?: number;
   [key: string]: string | number | undefined;
+}
+
+export interface Developer {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  status: 'pending' | 'sent' | 'failed' | 'accepted' | 'expired' | 'revoked';
+}
+
+export interface InvitationCreate {
+  email: string;
+}
+
+export interface InvitationAccept {
+  token: string;
+  first_name: string;
+  last_name: string;
+  password: string;
 }

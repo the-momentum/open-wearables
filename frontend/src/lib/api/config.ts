@@ -51,4 +51,16 @@ export const API_ENDPOINTS = {
   automations: '/api/v1/automations',
   automationDetail: (id: string) => `/api/v1/automations/${id}`,
   testAutomation: (id: string) => `/api/v1/automations/${id}/test`,
+
+  // Developers endpoints
+  developers: '/api/v1/developers',
+  developerDetail: (id: string) => `/api/v1/developers/${id}`,
+
+  // Invitations endpoints (authenticated)
+  invitations: '/api/v1/invitations',
+  invitationDetail: (id: string) => `/api/v1/invitations/${id}`,
+  invitationResend: (id: string) => `/api/v1/invitations/${id}/resend`,
+
+  // Accept invitation (public - no auth)
+  acceptInvitation: '/api/v1/invitations/accept',
 } as const;

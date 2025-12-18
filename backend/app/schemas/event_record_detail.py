@@ -11,10 +11,9 @@ class EventRecordDetailBase(BaseModel):
     heart_rate_max: int | None = None
     heart_rate_avg: Decimal | None = None
 
-    steps_min: int | None = None
-    steps_max: int | None = None
-    steps_avg: Decimal | None = None
-    steps_total: int | None = None
+    steps_count: int | None = None
+    energy_burned: Decimal | None = None
+    distance: Decimal | None = None
 
     max_speed: Decimal | None = None
     max_watts: Decimal | None = None
@@ -36,6 +35,8 @@ class EventRecordDetailBase(BaseModel):
     sleep_rem_minutes: int | None = None
     sleep_light_minutes: int | None = None
     sleep_awake_minutes: int | None = None
+    is_nap: bool | None = None
+
     is_nap: bool | None = None
 
 

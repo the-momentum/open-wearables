@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.32.5",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
+    "resend>=2.0.0",
 ]
 
 [dependency-groups]
@@ -71,6 +72,7 @@ ignore = [
     "ANN204", # missing-return-type-special-method
     "ANN401", # any-type
     "RET503", # implicit-return
+    "COM812", # trailing-comma (conflicts with ruff format)
 ]
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation

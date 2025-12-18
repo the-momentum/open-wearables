@@ -1,9 +1,12 @@
 from .api_key import ApiKey
 from .data_point_series import DataPointSeries
 from .developer import Developer
+from .device import Device
+from .device_software import DeviceSoftware
 from .event_record import EventRecord
 from .event_record_detail import EventRecordDetail
 from .external_device_mapping import ExternalDeviceMapping
+from .invitation import Invitation
 from .personal_record import PersonalRecord
 from .provider_setting import ProviderSetting
 from .series_type_definition import SeriesTypeDefinition
@@ -15,6 +18,9 @@ from .workout_details import WorkoutDetails
 __all__ = [
     "ApiKey",
     "Developer",
+    "Device",
+    "DeviceSoftware",
+    "Invitation",
     "ProviderSetting",
     "User",
     "UserConnection",

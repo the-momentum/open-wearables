@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
     polar_default_scope: str = "accesslink.read_all"
 
+    # EMAIL SETTINGS (Resend)
+    resend_api_key: SecretStr | None = None
+    email_from_address: str | None = None
+    email_from_name: str = "Open Wearables"
+    frontend_url: str = "http://localhost:3000"
+    invitation_expire_days: int = 7
+    email_max_retries: int = 5
+
     # AWS SETTINGS
     aws_bucket_name: str | None = None
     aws_access_key_id: str | None = None

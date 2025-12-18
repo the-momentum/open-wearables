@@ -15,6 +15,9 @@ from .apple.healthkit.record_import import (
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
 )
+from .apple.healthkit.workout_import import (
+    WorkoutStatisticJSON as HKWorkoutStatisticJSON,
+)
 from .common import (
     RootJSON,
 )
@@ -65,6 +68,12 @@ from .garmin.activity_import import (
 )
 from .garmin.activity_import import (
     RootJSON as GarminRootJSON,
+)
+from .invitation import (
+    InvitationAccept,
+    InvitationCreate,
+    InvitationRead,
+    InvitationStatus,
 )
 from .oauth import (
     AuthenticationMethod,
@@ -158,6 +167,10 @@ __all__ = [
     "DeveloperCreateInternal",
     "DeveloperUpdateInternal",
     "DeveloperUpdate",
+    "InvitationCreate",
+    "InvitationRead",
+    "InvitationAccept",
+    "InvitationStatus",
     "ApiKeyCreate",
     "ApiKeyRead",
     "ApiKeyUpdate",
@@ -203,8 +216,9 @@ __all__ = [
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
-    "HKWorkoutJSON",
     "HKRecordJSON",
+    "HKWorkoutJSON",
+    "HKWorkoutStatisticJSON",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",

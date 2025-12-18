@@ -56,10 +56,12 @@ class TimeSeriesService(
             id=sample.id,
             recorded_at=sample.recorded_at,
             value=sample.value,
-            series_type=get_series_type_from_id(sample.series_type_id),
-            external_mapping_id=sample.external_mapping_id,
+            series_type=get_series_type_from_id(sample.series_type_definition_id),
+            external_id=sample.external_id,
+            external_device_mapping_id=sample.external_device_mapping_id,
             user_id=mapping.user_id,
-            provider_id=mapping.provider_id,
+            provider_name=mapping.provider_name,
+            device_id=mapping.device_id,
             **extra_fields,
         )
 

@@ -1,22 +1,10 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { useState, useMemo } from 'react';
-import {
-  Search,
-  Eye,
-  Trash2,
-  Plus,
-  Copy,
-  Check,
-  ChevronDown,
-  Users as UsersIcon,
-  Link as LinkIcon,
-} from 'lucide-react';
+import { createFileRoute } from '@tanstack/react-router';
+import { useState, useCallback } from 'react';
+import { Plus, Users as UsersIcon } from 'lucide-react';
 import { useUsers, useDeleteUser, useCreateUser } from '@/hooks/api/use-users';
-import { formatDistanceToNow } from 'date-fns';
-import { toast } from 'sonner';
-import type { UserCreate } from '@/lib/api/types';
-
-type SearchField = 'all' | 'id' | 'email' | 'name' | 'external_user_id';
+import type { UserCreate, UserQueryParams } from '@/lib/api/types';
+import { UsersTable } from '@/components/users/users-table';
+import { Button } from '@/components/ui/button';
 
 const initialFormState: UserCreate = {
   external_user_id: '',
@@ -25,70 +13,31 @@ const initialFormState: UserCreate = {
   email: '',
 };
 
+const DEFAULT_PAGE_SIZE = 9;
+
 export const Route = createFileRoute('/_authenticated/users/')({
   component: UsersPage,
 });
 
 function UsersPage() {
-  const [search, setSearch] = useState('');
-  const [searchField, setSearchField] = useState<SearchField>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [copiedPairLink, setCopiedPairLink] = useState<string | null>(null);
   const [formData, setFormData] = useState<UserCreate>(initialFormState);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [queryParams, setQueryParams] = useState<UserQueryParams>({
+    page: 1,
+    limit: DEFAULT_PAGE_SIZE,
+    sort_by: 'created_at',
+    sort_order: 'desc',
+  });
 
-  const { data: users, isLoading, error, refetch } = useUsers({ search });
+  const { data, isLoading, isFetching, error, refetch } = useUsers(queryParams);
   const deleteUser = useDeleteUser();
   const createUser = useCreateUser();
 
-  const filteredUsers = useMemo(() => {
-    if (!users) return [];
-    if (!search) return users;
-
-    const searchLower = search.toLowerCase();
-    return users.filter((user) => {
-      const fullName =
-        `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
-
-      switch (searchField) {
-        case 'id':
-          return user.id.toLowerCase().includes(searchLower);
-        case 'email':
-          return user.email?.toLowerCase().includes(searchLower);
-        case 'name':
-          return fullName.includes(searchLower);
-        case 'external_user_id':
-          return (
-            user.external_user_id?.toLowerCase().includes(searchLower) ?? false
-          );
-        case 'all':
-        default:
-          return (
-            user.id.toLowerCase().includes(searchLower) ||
-            user.email?.toLowerCase().includes(searchLower) ||
-            fullName.includes(searchLower) ||
-            user.external_user_id?.toLowerCase().includes(searchLower)
-          );
-      }
-    });
-  }, [users, search, searchField]);
-
-  const handleCopyId = async (id: string) => {
-    await navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    toast.success('User ID copied to clipboard');
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const handleCopyPairLink = async (userId: string) => {
-    const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    await navigator.clipboard.writeText(pairLink);
-    setCopiedPairLink(userId);
-    toast.success('Pairing link copied to clipboard');
-    setTimeout(() => setCopiedPairLink(null), 2000);
-  };
+  const handleQueryChange = useCallback((params: UserQueryParams) => {
+    setQueryParams(params);
+  }, []);
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
@@ -149,11 +98,6 @@ function UsersPage() {
     }
   };
 
-  const truncateId = (id: string) => {
-    if (id.length <= 12) return id;
-    return `${id.slice(0, 8)}...${id.slice(-4)}`;
-  };
-
   if (isLoading) {
     return (
       <div className="p-8">
@@ -184,20 +128,18 @@ function UsersPage() {
           <p className="text-zinc-400 mb-4">
             Failed to load users. Please try again.
           </p>
-          <button
-            onClick={() => refetch()}
-            className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-          >
-            Retry
-          </button>
+          <Button onClick={() => refetch()}>Retry</Button>
         </div>
       </div>
     );
   }
 
+  const users = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pageCount = data?.pages ?? 0;
+
   return (
     <div className="p-8">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-medium text-white">Users</h1>
@@ -214,173 +156,33 @@ function UsersPage() {
         </button>
       </div>
 
-      {/* Main Card */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        {/* Search Bar */}
-        <div className="p-4 border-b border-zinc-800">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-              <input
-                type="text"
-                placeholder={
-                  searchField === 'all'
-                    ? 'Search users...'
-                    : `Search by ${searchField.replace('_', ' ')}...`
-                }
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all"
-              />
-            </div>
-            <div className="relative">
-              <select
-                value={searchField}
-                onChange={(e) => setSearchField(e.target.value as SearchField)}
-                className="appearance-none bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 pr-8 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all cursor-pointer"
-              >
-                <option value="all">All fields</option>
-                <option value="id">User ID</option>
-                <option value="external_user_id">External User ID</option>
-                <option value="email">Email</option>
-                <option value="name">Name</option>
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 pointer-events-none" />
-            </div>
-          </div>
+      {total > 0 || queryParams.search ? (
+        <UsersTable
+          data={users}
+          total={total}
+          page={queryParams.page ?? 1}
+          pageSize={queryParams.limit ?? DEFAULT_PAGE_SIZE}
+          pageCount={pageCount}
+          isLoading={isFetching}
+          onDelete={setDeleteUserId}
+          isDeleting={deleteUser.isPending}
+          onQueryChange={handleQueryChange}
+        />
+      ) : (
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+          <UsersIcon className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
+          <p className="text-zinc-400 mb-2">No users found</p>
+          <Button
+            variant="outline"
+            onClick={() => setIsCreateDialogOpen(true)}
+            className="mt-4"
+          >
+            <Plus className="h-4 w-4" />
+            Create First User
+          </Button>
         </div>
+      )}
 
-        {/* Table */}
-        {filteredUsers.length === 0 ? (
-          <div className="p-12 text-center">
-            <UsersIcon className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-            <p className="text-zinc-400 mb-2">
-              {search
-                ? 'No users match your search criteria.'
-                : 'No users found'}
-            </p>
-            {!search && (
-              <button
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="mt-4 flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors mx-auto"
-              >
-                <Plus className="h-4 w-4" />
-                Create First User
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800 text-left">
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    User ID
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    External User ID
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/50">
-                {filteredUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
-                          {truncateId(user.id)}
-                        </code>
-                        <button
-                          onClick={() => handleCopyId(user.id)}
-                          className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                        >
-                          {copiedId === user.id ? (
-                            <Check className="h-3 w-3 text-emerald-500" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
-                        {user.external_user_id
-                          ? truncateId(user.external_user_id)
-                          : '—'}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-300">
-                      {user.first_name || user.last_name ? (
-                        <span>
-                          {[user.first_name, user.last_name]
-                            .filter(Boolean)
-                            .join(' ')}
-                        </span>
-                      ) : (
-                        <span className="text-zinc-600">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-zinc-400">
-                      {user.email || <span className="text-zinc-600">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">
-                      {formatDistanceToNow(new Date(user.created_at), {
-                        addSuffix: true,
-                      })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        <Link
-                          to="/users/$userId"
-                          params={{ userId: user.id }}
-                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                        <button
-                          onClick={() => handleCopyPairLink(user.id)}
-                          className="p-2 text-zinc-500 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-                          title="Copy pairing link"
-                        >
-                          {copiedPairLink === user.id ? (
-                            <Check className="h-4 w-4 text-emerald-500" />
-                          ) : (
-                            <LinkIcon className="h-4 w-4" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setDeleteUserId(user.id)}
-                          disabled={deleteUser.isPending}
-                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Create User Dialog */}
       {isCreateDialogOpen && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
@@ -481,25 +283,20 @@ function UsersPage() {
               </div>
             </div>
             <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <button
-                onClick={handleCloseCreateDialog}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
+              <Button variant="outline" onClick={handleCloseCreateDialog}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={handleCreateUser}
                 disabled={createUser.isPending}
-                className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
               >
                 {createUser.isPending ? 'Creating...' : 'Create User'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       {deleteUserId && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
@@ -524,19 +321,16 @@ function UsersPage() {
               </div>
             </div>
             <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteUserId(null)}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
+              <Button variant="outline" onClick={() => setDeleteUserId(null)}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="destructive"
                 onClick={handleDeleteUser}
                 disabled={deleteUser.isPending}
-                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
               >
                 {deleteUser.isPending ? 'Deleting...' : 'Delete User'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import type { HealthDataParams } from '../api/types';
+import type { HealthDataParams, UserQueryParams } from '../api/types';
 
 export const queryKeys = {
   auth: {
@@ -9,8 +9,8 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     lists: () => [...queryKeys.users.all, 'list'] as const,
-    list: (filters?: { search?: string; status?: string }) =>
-      [...queryKeys.users.lists(), filters] as const,
+    list: (params?: UserQueryParams) =>
+      [...queryKeys.users.lists(), params] as const,
     details: () => [...queryKeys.users.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.users.details(), id] as const,
   },
@@ -114,5 +114,19 @@ export const queryKeys = {
         'list',
         { cloudOnly, enabledOnly },
       ] as const,
+  },
+
+  developers: {
+    all: ['developers'] as const,
+    lists: () => [...queryKeys.developers.all, 'list'] as const,
+    list: () => [...queryKeys.developers.lists()] as const,
+    details: () => [...queryKeys.developers.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.developers.details(), id] as const,
+  },
+
+  invitations: {
+    all: ['invitations'] as const,
+    lists: () => [...queryKeys.invitations.all, 'list'] as const,
+    list: () => [...queryKeys.invitations.lists()] as const,
   },
 } as const;

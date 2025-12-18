@@ -6,7 +6,10 @@ from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.schemas import UserCreate, UserCreateInternal, UserUpdate, UserUpdateInternal
+from app.schemas.common import PaginatedResponse
+from app.schemas.user import UserQueryParams, UserRead
 from app.services.services import AppService
+from app.utils.exceptions import handle_exceptions
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
@@ -43,6 +46,34 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         update_data = updater.model_dump(exclude_unset=True)
         internal_updater = UserUpdateInternal(**update_data)
         return self.crud.update(db_session, user, internal_updater)
+
+    @handle_exceptions
+    def get_users_paginated(
+        self,
+        db_session: DbSession,
+        query_params: UserQueryParams,
+    ) -> PaginatedResponse[UserRead]:
+        """Get users with filtering, searching, and pagination.
+
+        Args:
+            db_session: The database session.
+            query_params: The query parameters.
+
+        Returns:
+            A paginated response containing the users and the total count of users.
+        """
+        self.logger.debug(f"Fetching users with pagination: page={query_params.page}, limit={query_params.limit}")
+
+        users, total_count = self.crud.get_users_with_filters(db_session, query_params)
+
+        self.logger.debug(f"Retrieved {len(users)} users out of {total_count} total")
+
+        return PaginatedResponse[UserRead](
+            items=[UserRead.model_validate(user) for user in users],
+            total=total_count,
+            page=query_params.page,
+            limit=query_params.limit,
+        )
 
 
 user_service = UserService(log=getLogger(__name__))

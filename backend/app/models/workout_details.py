@@ -16,10 +16,9 @@ class WorkoutDetails(EventRecordDetail):
     heart_rate_min: Mapped[int | None]
     heart_rate_max: Mapped[int | None]
     heart_rate_avg: Mapped[numeric_5_2 | None]
-    steps_min: Mapped[int | None]
-    steps_max: Mapped[int | None]
-    steps_avg: Mapped[numeric_10_3 | None]
-    steps_total: Mapped[int | None]
+    energy_burned: Mapped[numeric_10_3 | None]
+    distance: Mapped[numeric_10_3 | None]
+    steps_count: Mapped[int | None]
 
     max_speed: Mapped[numeric_5_2 | None]
     max_watts: Mapped[numeric_10_3 | None]

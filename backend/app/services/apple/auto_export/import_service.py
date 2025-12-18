@@ -54,17 +54,13 @@ class ImportService:
             "heart_rate_min": int(heart_rate_min) if heart_rate_min is not None else None,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
-            "steps_min": None,
-            "steps_max": None,
-            "steps_avg": None,
-            "steps_total": None,
+            "steps_count": None,
         }
 
     def _get_records(
         self,
         workout: AEWorkoutJSON,
         user_id: UUID,
-        provider_id: str | None,
     ) -> list[HeartRateSampleCreate]:
         samples: list[HeartRateSampleCreate] = []
 
@@ -80,8 +76,9 @@ class ImportService:
                 samples.append(
                     HeartRateSampleCreate(
                         id=uuid4(),
+                        external_id=None,
                         user_id=user_id,
-                        provider_id=provider_id,
+                        provider_name="Apple",
                         device_id=source_name,
                         recorded_at=self._dt(entry.date),
                         value=self._dec(value) or 0,
@@ -113,7 +110,7 @@ class ImportService:
             duration_seconds = int((end_date - start_date).total_seconds())
 
             metrics = self._compute_metrics(wjson)
-            hr_samples = self._get_records(wjson, user_uuid, wjson.id)
+            hr_samples = self._get_records(wjson, user_uuid)
 
             workout_type = wjson.name or "Unknown Workout"
 
@@ -126,7 +123,8 @@ class ImportService:
                 start_datetime=start_date,
                 end_datetime=end_date,
                 id=workout_id,
-                provider_id=wjson.id,
+                external_id=wjson.id,
+                provider_name="Apple",
                 user_id=user_uuid,
             )
 
@@ -139,8 +137,9 @@ class ImportService:
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail, hr_samples in self._build_import_bundles(raw, user_id):
-            self.event_record_service.create(db_session, record)
-            self.event_record_service.create_detail(db_session, detail)
+            created_record = self.event_record_service.create(db_session, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            self.event_record_service.create_detail(db_session, detail_for_record)
 
             if hr_samples:
                 self.timeseries_service.bulk_create_samples(db_session, hr_samples)

@@ -106,16 +106,12 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         # Steps
         steps_count = int(raw_workout.stepCount) if raw_workout.stepCount is not None else None
-        steps_avg = Decimal(str(raw_workout.stepCount)) if raw_workout.stepCount is not None else None
 
         return {
             "heart_rate_min": heart_rate_min,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
-            "steps_min": steps_count,
-            "steps_max": steps_count,
-            "steps_avg": steps_avg,
-            "steps_total": steps_count,
+            "steps_count": steps_count,
             # Speed (convert from m/s to km/h for display)
             "max_speed": Decimal(str(raw_workout.maxSpeed * 3.6)) if raw_workout.maxSpeed else None,
             "average_speed": Decimal(str(raw_workout.avgSpeed * 3.6)) if raw_workout.avgSpeed else None,
@@ -164,7 +160,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            provider_id=str(raw_workout.workoutId),  # Workout ID for deduplication
+            external_id=str(raw_workout.workoutId),
             provider_name=self.provider_name,  # Provider name for mapping (e.g., "suunto")
             user_id=user_id,
         )
@@ -223,8 +219,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
 
         for record, details in self._build_bundles(workouts, user_id):
-            event_record_service.create(db, record)
-            event_record_service.create_detail(db, details)
+            created_record = event_record_service.create(db, record)
+            detail_for_record = details.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
 
         return True
 

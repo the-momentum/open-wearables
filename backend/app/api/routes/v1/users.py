@@ -1,17 +1,24 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
 from app.database import DbSession
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.common import PaginatedResponse
+from app.schemas.user import UserCreate, UserQueryParams, UserRead, UserUpdate
 from app.services import ApiKeyDep, DeveloperDep, user_service
 
 router = APIRouter()
 
 
-@router.get("/users", response_model=list[UserRead])
-async def list_users(db: DbSession, _api_key: ApiKeyDep):
-    return db.query(user_service.crud.model).all()
+@router.get("/users", response_model=PaginatedResponse[UserRead])
+async def list_users(
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    query_params: Annotated[UserQueryParams, Depends()],
+):
+    """List users with pagination, sorting, and search."""
+    return user_service.get_users_paginated(db, query_params)
 
 
 @router.get("/users/{user_id}", response_model=UserRead)

@@ -104,16 +104,13 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             else None
         )
 
-        steps_total = int(raw_workout.steps) if raw_workout.steps is not None else None
+        steps_count = int(raw_workout.steps) if raw_workout.steps is not None else None
 
         return {
             "heart_rate_min": int(heart_rate_avg) if heart_rate_avg is not None else None,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
-            "steps_min": None,
-            "steps_max": None,
-            "steps_avg": None,
-            "steps_total": steps_total,
+            "steps_count": steps_count,
         }
 
     def _normalize_workout(
@@ -143,7 +140,8 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            provider_id=raw_workout.activityId,
+            external_id=raw_workout.activityId,
+            provider_name="Garmin",
             user_id=user_id,
         )
 
@@ -174,8 +172,9 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         activities = [GarminActivityJSON(**activity) for activity in workouts]
 
         for record, detail in self._build_bundles(activities, user_id):
-            event_record_service.create(db, record)
-            event_record_service.create_detail(db, detail)
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
 
         return True
 

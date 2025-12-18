@@ -60,3 +60,4 @@ FKSeriesTypeDefinition = Annotated[
     int,
     mapped_column(ForeignKey("series_type_definition.id", ondelete="RESTRICT")),
 ]
+FKDevice = Annotated[UUID, mapped_column(ForeignKey("device.id", ondelete="CASCADE"))]

@@ -53,9 +53,9 @@ class Spo2Sample(BaseModel):
 
 class TimeSeriesSampleBase(BaseModel):
     user_id: UUID
-    provider_id: str | None = None
+    provider_name: str
     device_id: str | None = None
-    external_mapping_id: UUID | None = Field(
+    external_device_mapping_id: UUID | None = Field(
         None,
         description="Existing mapping identifier if already created upstream.",
     )
@@ -68,6 +68,7 @@ class TimeSeriesSampleCreate(TimeSeriesSampleBase):
     """Generic create payload for data point series."""
 
     id: UUID
+    external_id: str | None = None
 
 
 class TimeSeriesSampleUpdate(TimeSeriesSampleBase):
@@ -78,7 +79,7 @@ class TimeSeriesSampleResponse(TimeSeriesSampleBase):
     """Generic response payload for data point series."""
 
     id: UUID
-    external_mapping_id: UUID
+    external_device_mapping_id: UUID
 
 
 class HeartRateSampleCreate(TimeSeriesSampleCreate):
@@ -114,8 +115,8 @@ class TimeSeriesQueryParams(BaseModel):
         None,
         description="Device identifier filter; required to retrieve samples",
     )
-    provider_id: str | None = Field(None, description="Optional provider identifier filter")
-    external_mapping_id: UUID | None = Field(
+    provider_name: str | None = Field(None, description="Optional provider name filter")
+    external_device_mapping_id: UUID | None = Field(
         None,
         description="Direct mapping identifier filter (skips device lookup).",
     )

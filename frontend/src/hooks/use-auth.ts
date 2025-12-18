@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { authService } from '../lib/api';
@@ -9,6 +9,7 @@ import type {
   ForgotPasswordRequest,
   ResetPasswordRequest,
 } from '../lib/api/types';
+import { queryKeys } from '@/lib/query/keys';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -60,6 +61,12 @@ export function useAuth() {
     },
   });
 
+  const meQuery = useQuery({
+    queryKey: queryKeys.auth.session(),
+    queryFn: () => authService.me(),
+    enabled: isAuthenticated(),
+  });
+
   const forgotPasswordMutation = useMutation({
     mutationFn: (data: ForgotPasswordRequest) =>
       authService.forgotPassword(data),
@@ -102,5 +109,7 @@ export function useAuth() {
     isForgotPasswordPending: forgotPasswordMutation.isPending,
     isResetPasswordPending: resetPasswordMutation.isPending,
     isAuthenticated: isAuthenticated(),
+    me: meQuery.data,
+    isMeLoading: meQuery.isLoading,
   };
 }

@@ -4,11 +4,14 @@ from .api_keys import router as api_keys_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
+from .developers import router as developers_router
 from .events import router as events_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .heart_rate import router as heart_rate_router
-from .import_data import router as import_data_router
+from .import_xml import router as import_xml_router
+from .invitations import router as invitations_router
 from .oauth import router as oauth_router
+from .sdk_sync import router as sdk_sync_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
@@ -19,7 +22,9 @@ from .workouts import router as workouts_router
 
 v1_router = APIRouter()
 
-v1_router.include_router(auth_router, prefix="/auth", tags=["developer"])
+v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+v1_router.include_router(developers_router, prefix="/developers", tags=["developers"])
+v1_router.include_router(invitations_router, prefix="/invitations", tags=["invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
@@ -33,7 +38,8 @@ v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])
 v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
-v1_router.include_router(import_data_router, tags=["import-data"])
+v1_router.include_router(import_xml_router, tags=["xml-import"])
+v1_router.include_router(sdk_sync_router, tags=["sdk"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 
 # RFC Taxonomy Routes

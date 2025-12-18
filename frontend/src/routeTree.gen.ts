@@ -13,6 +13,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WidgetConnectRouteImport } from './routes/widget.connect'
@@ -22,6 +23,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as UsersUserIdPairRouteImport } from './routes/users/$userId/pair'
 import { Route as AuthenticatedUsersUserIdRouteImport } from './routes/_authenticated/users/$userId'
+import { Route as UsersUserIdPairIndexRouteImport } from './routes/users/$userId/pair.index'
 import { Route as UsersUserIdPairSuccessRouteImport } from './routes/users/$userId/pair.success'
 import { Route as UsersUserIdPairErrorRouteImport } from './routes/users/$userId/pair.error'
 
@@ -43,6 +45,11 @@ const LoginRoute = LoginRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptInviteRoute = AcceptInviteRouteImport.update({
+  id: '/accept-invite',
+  path: '/accept-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -90,6 +97,11 @@ const AuthenticatedUsersUserIdRoute =
     path: '/$userId',
     getParentRoute: () => AuthenticatedUsersRoute,
   } as any)
+const UsersUserIdPairIndexRoute = UsersUserIdPairIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => UsersUserIdPairRoute,
+} as any)
 const UsersUserIdPairSuccessRoute = UsersUserIdPairSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -103,6 +115,7 @@ const UsersUserIdPairErrorRoute = UsersUserIdPairErrorRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
@@ -116,9 +129,11 @@ export interface FileRoutesByFullPath {
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
+  '/users/$userId/pair/': typeof UsersUserIdPairIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/accept-invite': typeof AcceptInviteRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
@@ -127,15 +142,16 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/widget/connect': typeof WidgetConnectRoute
   '/users/$userId': typeof AuthenticatedUsersUserIdRoute
-  '/users/$userId/pair': typeof UsersUserIdPairRouteWithChildren
   '/users': typeof AuthenticatedUsersIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
+  '/users/$userId/pair': typeof UsersUserIdPairIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/accept-invite': typeof AcceptInviteRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
@@ -149,11 +165,13 @@ export interface FileRoutesById {
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
+  '/users/$userId/pair/': typeof UsersUserIdPairIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/accept-invite'
     | '/forgot-password'
     | '/login'
     | '/register'
@@ -167,9 +185,11 @@ export interface FileRouteTypes {
     | '/users/'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
+    | '/users/$userId/pair/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/accept-invite'
     | '/forgot-password'
     | '/login'
     | '/register'
@@ -178,14 +198,15 @@ export interface FileRouteTypes {
     | '/settings'
     | '/widget/connect'
     | '/users/$userId'
-    | '/users/$userId/pair'
     | '/users'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
+    | '/users/$userId/pair'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/accept-invite'
     | '/forgot-password'
     | '/login'
     | '/register'
@@ -199,11 +220,13 @@ export interface FileRouteTypes {
     | '/_authenticated/users/'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
+    | '/users/$userId/pair/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  AcceptInviteRoute: typeof AcceptInviteRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
@@ -240,6 +263,13 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accept-invite': {
+      id: '/accept-invite'
+      path: '/accept-invite'
+      fullPath: '/accept-invite'
+      preLoaderRoute: typeof AcceptInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -305,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsersUserIdRouteImport
       parentRoute: typeof AuthenticatedUsersRoute
     }
+    '/users/$userId/pair/': {
+      id: '/users/$userId/pair/'
+      path: '/'
+      fullPath: '/users/$userId/pair/'
+      preLoaderRoute: typeof UsersUserIdPairIndexRouteImport
+      parentRoute: typeof UsersUserIdPairRoute
+    }
     '/users/$userId/pair/success': {
       id: '/users/$userId/pair/success'
       path: '/success'
@@ -354,11 +391,13 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 interface UsersUserIdPairRouteChildren {
   UsersUserIdPairErrorRoute: typeof UsersUserIdPairErrorRoute
   UsersUserIdPairSuccessRoute: typeof UsersUserIdPairSuccessRoute
+  UsersUserIdPairIndexRoute: typeof UsersUserIdPairIndexRoute
 }
 
 const UsersUserIdPairRouteChildren: UsersUserIdPairRouteChildren = {
   UsersUserIdPairErrorRoute: UsersUserIdPairErrorRoute,
   UsersUserIdPairSuccessRoute: UsersUserIdPairSuccessRoute,
+  UsersUserIdPairIndexRoute: UsersUserIdPairIndexRoute,
 }
 
 const UsersUserIdPairRouteWithChildren = UsersUserIdPairRoute._addFileChildren(
@@ -368,6 +407,7 @@ const UsersUserIdPairRouteWithChildren = UsersUserIdPairRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  AcceptInviteRoute: AcceptInviteRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,

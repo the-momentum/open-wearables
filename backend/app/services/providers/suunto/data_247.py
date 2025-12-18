@@ -171,7 +171,9 @@ class Suunto247Data(Base247DataTemplate):
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
-            provider_id=str(normalized_sleep.get("suunto_sleep_id")),
+            external_id=str(normalized_sleep.get("suunto_sleep_id"))
+            if normalized_sleep.get("suunto_sleep_id")
+            else None,
             provider_name=self.provider_name,  # For external mapping
             user_id=user_id,
         )
