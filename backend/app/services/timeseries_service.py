@@ -7,17 +7,30 @@ from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
 from app.schemas import (
     HeartRateSampleCreate,
+<<<<<<< HEAD
     StepSampleCreate,
+=======
+    HrvSample,
+    Spo2Sample,
+    StepSampleCreate,
+    StepsSample,
+>>>>>>> 020fe7c (implemented: Timeseris endpoint)
     TimeSeriesQueryParams,
     TimeSeriesSample,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
 from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
+<<<<<<< HEAD
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+=======
+from app.schemas.series_types import SeriesType
+from app.services.services import AppService
+from app.utils.exceptions import handle_exceptions
+>>>>>>> 020fe7c (implemented: Timeseris endpoint)
 
 
 class TimeSeriesService(
@@ -121,11 +134,15 @@ class TimeSeriesService(
 
         return PaginatedResponse(
             data=data,
+<<<<<<< HEAD
             pagination=Pagination(
                 has_more=has_more,
                 next_cursor=next_cursor,
                 previous_cursor=previous_cursor,
             ),
+=======
+            pagination=Pagination(has_more=has_more, next_cursor=next_cursor),
+>>>>>>> 020fe7c (implemented: Timeseris endpoint)
             metadata=TimeseriesMetadata(
                 sample_count=len(data),
                 start_time=params.start_datetime,
