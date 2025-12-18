@@ -234,7 +234,7 @@ class EventRecordService(
                 source=self._map_source(mapping),
                 duration_seconds=record.duration_seconds or 0,
                 efficiency_percent=float(details.sleep_efficiency_score) if details and details.sleep_efficiency_score else None,
-                is_nap=details.is_nap if details else False,
+                is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 stages=SleepStagesSummary(
                     deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,
                     light_seconds=(details.sleep_light_minutes or 0) * 60 if details else 0,

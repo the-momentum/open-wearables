@@ -49,4 +49,10 @@ async def list_sleep_sessions(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    params = EventRecordQueryParams(
+        start_date=start_date,
+        end_date=end_date,
+        cursor=cursor,
+        limit=limit,
+    )
+    return await event_record_service.get_sleep_sessions(db, user_id, params)
