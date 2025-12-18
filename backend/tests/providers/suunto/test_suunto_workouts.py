@@ -126,8 +126,7 @@ class TestSuuntoWorkouts:
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
         assert metrics["heart_rate_min"] == 120
-        assert metrics["steps_total"] == 8500
-        assert metrics["steps_avg"] == Decimal("8500")
+        assert metrics["steps_count"] == 8500
 
     def test_build_metrics_with_missing_heart_rate(
         self,
@@ -166,10 +165,7 @@ class TestSuuntoWorkouts:
         metrics = suunto_workouts._build_metrics(workout)
 
         # Assert
-        assert metrics["steps_total"] is None
-        assert metrics["steps_avg"] is None
-        assert metrics["steps_min"] is None
-        assert metrics["steps_max"] is None
+        assert metrics["steps_count"] is None
 
     def test_normalize_workout_creates_event_record(
         self,
@@ -190,7 +186,7 @@ class TestSuuntoWorkouts:
         assert record.source_name == "Suunto 9 Peak"
         assert record.device_id == "SN123456"
         assert record.duration_seconds == 3600
-        assert record.provider_id == "123456789"
+        assert record.external_id == "123456789"
         assert record.user_id == user_id
 
     def test_normalize_workout_without_device(
@@ -232,7 +228,7 @@ class TestSuuntoWorkouts:
         assert detail.record_id == record.id
         assert detail.heart_rate_avg == Decimal("145")
         assert detail.heart_rate_max == 175
-        assert detail.steps_total == 8500
+        assert detail.steps_count == 8500
 
     def test_get_suunto_headers_with_subscription_key(self, suunto_workouts: SuuntoWorkouts) -> None:
         """Should include subscription key in headers when available."""

@@ -48,20 +48,14 @@ class TestEventRecordServiceCreateDetail:
         event_record = EventRecordFactory(category="workout")
         detail_payload = EventRecordDetailCreate(
             record_id=event_record.id,
-            steps_min=50,
-            steps_max=200,
-            steps_avg=Decimal("125.3"),
-            steps_total=5000,
+            steps_count=5000,
         )
 
         # Act
         detail = event_record_service.create_detail(db, detail_payload)
 
         # Assert (using getattr for polymorphic attributes)
-        assert getattr(detail, "steps_min") == 50
-        assert getattr(detail, "steps_max") == 200
-        assert getattr(detail, "steps_avg") == Decimal("125.3")
-        assert getattr(detail, "steps_total") == 5000
+        assert getattr(detail, "steps_count") == 5000
 
     def test_create_detail_with_workout_metrics(self, db: Session) -> None:
         """Should create event record detail with workout metrics."""
@@ -104,7 +98,7 @@ class TestEventRecordServiceCreateDetail:
         assert detail.record_id == event_record.id
         # All optional fields should be None
         assert getattr(detail, "heart_rate_min", None) is None
-        assert getattr(detail, "steps_total", None) is None
+        assert getattr(detail, "steps_count", None) is None
 
 
 class TestEventRecordServiceGetRecordsResponse:
@@ -115,7 +109,7 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should return formatted event records."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple")
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
         record = EventRecordFactory(
             mapping=mapping,
             category="workout",
@@ -132,7 +126,7 @@ class TestEventRecordServiceGetRecordsResponse:
         matching_record = next((r for r in records if r.id == record.id), None)
         assert matching_record is not None
         assert matching_record.user_id == user.id
-        assert matching_record.provider_id == "apple"
+        assert matching_record.provider_name == "apple"
         assert matching_record.category == "workout"
         assert matching_record.type == "running"
 
@@ -199,16 +193,16 @@ class TestEventRecordServiceGetRecordsResponse:
 
     @pytest.mark.asyncio
     async def test_get_records_response_filters_by_provider(self, db: Session) -> None:
-        """Should filter records by provider_id."""
+        """Should filter records by provider_name."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_id="garmin")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
 
         apple_record = EventRecordFactory(mapping=apple_mapping)
         garmin_record = EventRecordFactory(mapping=garmin_mapping)
 
-        query_params = EventRecordQueryParams(category="workout", provider_id="apple")
+        query_params = EventRecordQueryParams(category="workout", provider_name="apple")
 
         # Act
         records = await event_record_service.get_records_response(db, query_params, str(user.id))

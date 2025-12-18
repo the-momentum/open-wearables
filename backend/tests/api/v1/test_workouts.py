@@ -284,8 +284,8 @@ class TestWorkoutsEndpoints:
         """Test filtering workouts by provider."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_id="garmin")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
         apple_workout = EventRecordFactory(mapping=apple_mapping, category="workout")
         EventRecordFactory(mapping=garmin_mapping, category="workout")
         api_key = ApiKeyFactory()
@@ -295,7 +295,7 @@ class TestWorkoutsEndpoints:
         response = client.get(
             f"/api/v1/users/{user.id}/workouts",
             headers=headers,
-            params={"provider_id": "apple"},
+            params={"provider_name": "apple"},
         )
 
         # Assert

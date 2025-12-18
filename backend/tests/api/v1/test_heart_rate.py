@@ -235,8 +235,8 @@ class TestHeartRateEndpoints:
         """Test filtering heart rate data by provider."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple", device_id="apple_device")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_id="garmin", device_id="garmin_device")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="apple_device")
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin", device_id="garmin_device")
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         apple_hr = DataPointSeriesFactory(mapping=apple_mapping, series_type=series_type, value=70.0)
         DataPointSeriesFactory(mapping=garmin_mapping, series_type=series_type, value=75.0)
@@ -247,7 +247,7 @@ class TestHeartRateEndpoints:
         response = client.get(
             f"/api/v1/users/{user.id}/heart-rate",
             headers=headers,
-            params={"provider_id": "apple", "device_id": "apple_device"},
+            params={"provider_name": "apple", "device_id": "apple_device"},
         )
 
         # Assert

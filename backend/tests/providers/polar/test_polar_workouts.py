@@ -204,8 +204,7 @@ class TestPolarWorkoutsMetricsBuilding:
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
         assert metrics["heart_rate_min"] == 145
-        assert metrics["steps_total"] is None
-        assert metrics["steps_avg"] is None
+        assert metrics["steps_count"] is None
 
     def test_build_metrics_without_heart_rate_data(self, db: Session) -> None:
         """Test building metrics when heart rate data is missing."""
@@ -293,7 +292,7 @@ class TestPolarWorkoutsNormalization:
         assert record.source_name == "Polar Vantage V2"
         assert record.device_id == "Polar Vantage V2"
         assert record.duration_seconds == 3600
-        assert record.provider_id == "ABC123"
+        assert record.external_id == "ABC123"
         assert record.user_id == user.id
         assert detail.heart_rate_avg == Decimal("145")
         assert detail.heart_rate_max == 175

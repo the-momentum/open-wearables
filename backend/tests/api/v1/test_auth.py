@@ -2,13 +2,13 @@
 Tests for authentication endpoints.
 
 Tests cover:
-- POST /api/v1/login - authentication
-- POST /api/v1/logout - session termination
-- GET /api/v1/me - current developer info
-- PATCH /api/v1/me - update current developer
-- GET /api/v1/{developer_id} - get developer by ID
-- PATCH /api/v1/{developer_id} - update developer by ID
-- DELETE /api/v1/{developer_id} - delete developer
+- POST /api/v1/auth/login - authentication
+- POST /api/v1/auth/logout - session termination
+- GET /api/v1/auth/me - current developer info
+- PATCH /api/v1/auth/me - update current developer
+- GET /api/v1/developers/{developer_id} - get developer by ID
+- PATCH /api/v1/developers/{developer_id} - update developer by ID
+- DELETE /api/v1/developers/{developer_id} - delete developer
 """
 
 import pytest
@@ -299,7 +299,7 @@ class TestUpdateCurrentDeveloper:
 
 
 class TestGetDeveloperById:
-    """Tests for GET /api/v1/{developer_id}."""
+    """Tests for GET /api/v1/developers/{developer_id}."""
 
     def test_get_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer by ID with valid authentication."""
@@ -309,7 +309,7 @@ class TestGetDeveloperById:
         headers = developer_auth_headers(auth_developer.id)
 
         # Act
-        response = client.get(f"{api_v1_prefix}/auth/{target_developer.id}", headers=headers)
+        response = client.get(f"{api_v1_prefix}/developers/{target_developer.id}", headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -328,7 +328,7 @@ class TestGetDeveloperById:
 
         # Act & Assert
         with pytest.raises(ResourceNotFoundError):
-            client.get(f"{api_v1_prefix}/auth/{fake_id}", headers=headers)
+            client.get(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
 
     def test_get_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer with invalid UUID format."""
@@ -337,7 +337,7 @@ class TestGetDeveloperById:
         headers = developer_auth_headers(developer.id)
 
         # Act
-        response = client.get(f"{api_v1_prefix}/auth/not-a-uuid", headers=headers)
+        response = client.get(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
         assert response.status_code in [400, 422]
@@ -348,14 +348,14 @@ class TestGetDeveloperById:
         developer = DeveloperFactory(email="test@example.com", password="test123")
 
         # Act
-        response = client.get(f"{api_v1_prefix}/auth/{developer.id}")
+        response = client.get(f"{api_v1_prefix}/developers/{developer.id}")
 
         # Assert
         assert response.status_code == 401
 
 
 class TestUpdateDeveloperById:
-    """Tests for PATCH /api/v1/{developer_id}."""
+    """Tests for PATCH /api/v1/developers/{developer_id}."""
 
     def test_update_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID."""
@@ -367,7 +367,7 @@ class TestUpdateDeveloperById:
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/auth/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{target_developer.id}",
             json=payload,
             headers=headers,
         )
@@ -393,7 +393,7 @@ class TestUpdateDeveloperById:
 
         # Act & Assert
         with pytest.raises(ResourceNotFoundError):
-            client.patch(f"{api_v1_prefix}/auth/{fake_id}", json=payload, headers=headers)
+            client.patch(f"{api_v1_prefix}/developers/{fake_id}", json=payload, headers=headers)
 
     def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID fails without authentication."""
@@ -402,7 +402,7 @@ class TestUpdateDeveloperById:
         payload = {"email": "updated@example.com"}
 
         # Act
-        response = client.patch(f"{api_v1_prefix}/auth/{developer.id}", json=payload)
+        response = client.patch(f"{api_v1_prefix}/developers/{developer.id}", json=payload)
 
         # Assert
         assert response.status_code == 401
@@ -417,7 +417,7 @@ class TestUpdateDeveloperById:
 
         # Act
         response = client.patch(
-            f"{api_v1_prefix}/auth/{target_developer.id}",
+            f"{api_v1_prefix}/developers/{target_developer.id}",
             json=payload,
             headers=headers,
         )
@@ -427,7 +427,7 @@ class TestUpdateDeveloperById:
 
 
 class TestDeleteDeveloperById:
-    """Tests for DELETE /api/v1/{developer_id}."""
+    """Tests for DELETE /api/v1/developers/{developer_id}."""
 
     def test_delete_developer_by_id_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer by ID."""
@@ -438,7 +438,7 @@ class TestDeleteDeveloperById:
         target_id = target_developer.id
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/auth/{target_id}", headers=headers)
+        response = client.delete(f"{api_v1_prefix}/developers/{target_id}", headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -463,7 +463,7 @@ class TestDeleteDeveloperById:
 
         # Act & Assert
         with pytest.raises(ResourceNotFoundError):
-            client.delete(f"{api_v1_prefix}/auth/{fake_id}", headers=headers)
+            client.delete(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
 
     def test_delete_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer fails without authentication."""
@@ -471,7 +471,7 @@ class TestDeleteDeveloperById:
         developer = DeveloperFactory(email="test@example.com", password="test123")
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/auth/{developer.id}")
+        response = client.delete(f"{api_v1_prefix}/developers/{developer.id}")
 
         # Assert
         assert response.status_code == 401
@@ -483,7 +483,7 @@ class TestDeleteDeveloperById:
         headers = developer_auth_headers(developer.id)
 
         # Act
-        response = client.delete(f"{api_v1_prefix}/auth/not-a-uuid", headers=headers)
+        response = client.delete(f"{api_v1_prefix}/developers/not-a-uuid", headers=headers)
 
         # Assert
         assert response.status_code in [400, 422]

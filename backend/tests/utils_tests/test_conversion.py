@@ -203,7 +203,7 @@ class TestBaseToDictEventRecord:
         # Assert
         assert isinstance(result, dict)
         assert result["id"] == event.id
-        assert result["external_mapping_id"] == mapping.id
+        assert result["external_device_mapping_id"] == mapping.id
         assert result["category"] == "workout"
         assert result["type"] == "running"
         assert result["source_name"] == "Apple Watch"
@@ -247,7 +247,7 @@ class TestBaseToDictExternalDeviceMapping:
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(
             user=user,
-            provider_id="apple",
+            provider_name="apple",
             device_id="device-123",
         )
 
@@ -258,7 +258,7 @@ class TestBaseToDictExternalDeviceMapping:
         assert isinstance(result, dict)
         assert result["id"] == mapping.id
         assert result["user_id"] == user.id
-        assert result["provider_id"] == "apple"
+        assert result["provider_name"] == "apple"
         assert result["device_id"] == "device-123"
 
 
@@ -282,9 +282,9 @@ class TestBaseToDictDataPointSeries:
         # Assert
         assert isinstance(result, dict)
         assert result["id"] == data_point.id
-        assert result["external_mapping_id"] == mapping.id
-        # DataPointSeries doesn't have category field, it has series_type_id
-        assert "series_type_id" in result
+        assert result["external_device_mapping_id"] == mapping.id
+        # DataPointSeries doesn't have category field, it has series_type_definition_id
+        assert "series_type_definition_id" in result
 
     def test_base_to_dict_data_point_series_timestamp(self, db: Session) -> None:
         """Test DataPointSeries timestamp serialization."""
@@ -419,7 +419,7 @@ class TestBaseToDictIntegration:
         # Assert - All conversions should work
         assert user_dict["id"] == user.id
         assert mapping_dict["user_id"] == user.id
-        assert event_dict["external_mapping_id"] == mapping.id
+        assert event_dict["external_device_mapping_id"] == mapping.id
 
     def test_convert_models_with_same_user(self, db: Session) -> None:
         """Test converting multiple models referencing same user."""

@@ -83,7 +83,7 @@ class TestEventRecordDetailCreateValidation:
             heart_rate_min=120,
             heart_rate_max=175,
             heart_rate_avg=Decimal("145.5"),
-            steps_total=8500,
+            steps_count=8500,
         )
 
         # Assert
@@ -91,7 +91,7 @@ class TestEventRecordDetailCreateValidation:
         assert detail.heart_rate_min == 120
         assert detail.heart_rate_max == 175
         assert detail.heart_rate_avg == Decimal("145.5")
-        assert detail.steps_total == 8500
+        assert detail.steps_count == 8500
 
     def test_missing_required_field_record_id(self) -> None:
         """Should raise ValidationError when record_id is missing."""

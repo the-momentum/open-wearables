@@ -39,7 +39,7 @@ class TestEventRecordDetailRepository:
             heart_rate_avg=Decimal("145.5"),
             heart_rate_max=175,
             heart_rate_min=95,
-            steps_total=8500,
+            steps_count=8500,
         )
 
         # Act
@@ -51,7 +51,7 @@ class TestEventRecordDetailRepository:
         assert result.heart_rate_avg == Decimal("145.5")
         assert result.heart_rate_max == 175
         assert result.heart_rate_min == 95
-        assert result.steps_total == 8500
+        assert result.steps_count == 8500
         assert result.detail_type == "workout"
 
     def test_create_sleep_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
@@ -93,7 +93,7 @@ class TestEventRecordDetailRepository:
         assert isinstance(result, WorkoutDetails)
         assert result.record_id == event_record.id
         assert result.heart_rate_avg is None
-        assert result.steps_total is None
+        assert result.steps_count is None
 
     def test_create_with_invalid_detail_type(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test creating detail with invalid detail_type raises ValueError."""
@@ -187,22 +187,22 @@ class TestEventRecordDetailRepository:
     def test_update_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating workout details."""
         # Arrange
-        workout_details = WorkoutDetailsFactory(heart_rate_avg=Decimal("140.0"), steps_total=5000)
-        update_data = EventRecordDetailUpdate(heart_rate_avg=Decimal("155.0"), steps_total=10000)
+        workout_details = WorkoutDetailsFactory(heart_rate_avg=Decimal("140.0"), steps_count=5000)
+        update_data = EventRecordDetailUpdate(heart_rate_avg=Decimal("155.0"), steps_count=10000)
 
         # Act
         result = detail_repo.update(db, workout_details, update_data)
 
         # Assert (using getattr for polymorphic attributes)
         assert getattr(result, "heart_rate_avg") == Decimal("155.0")
-        assert getattr(result, "steps_total") == 10000
+        assert getattr(result, "steps_count") == 10000
 
         # Verify in database
         db.expire_all()
         updated = detail_repo.get_by_record_id(db, workout_details.record_id)
         assert updated is not None
         assert getattr(updated, "heart_rate_avg") == Decimal("155.0")
-        assert getattr(updated, "steps_total") == 10000
+        assert getattr(updated, "steps_count") == 10000
 
     def test_update_partial_fields(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test updating only some fields."""
@@ -210,7 +210,7 @@ class TestEventRecordDetailRepository:
         workout_details = WorkoutDetailsFactory(
             heart_rate_avg=Decimal("140.0"),
             heart_rate_max=180,
-            steps_total=5000,
+            steps_count=5000,
         )
         update_data = EventRecordDetailUpdate(heart_rate_avg=Decimal("150.0"))
 
@@ -220,7 +220,7 @@ class TestEventRecordDetailRepository:
         # Assert (using getattr for polymorphic attributes)
         assert getattr(result, "heart_rate_avg") == Decimal("150.0")
         assert getattr(result, "heart_rate_max") == 180  # Unchanged
-        assert getattr(result, "steps_total") == 5000  # Unchanged
+        assert getattr(result, "steps_count") == 5000  # Unchanged
 
     def test_delete_workout_details(self, db: Session, detail_repo: EventRecordDetailRepository) -> None:
         """Test deleting workout details."""

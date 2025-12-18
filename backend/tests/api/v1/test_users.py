@@ -9,7 +9,6 @@ Tests cover:
 - DELETE /api/v1/users/{user_id} - delete user
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -35,12 +34,17 @@ class TestListUsers:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
-        assert len(data) >= 2
+        # Response is paginated format with 'items' list
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) >= 2
+        assert "total" in data
+        assert "page" in data
+        assert "limit" in data
 
         # Find our test users
         user_ids = [str(user1.id), str(user2.id)]
-        found_users = [u for u in data if u["id"] in user_ids]
+        found_users = [u for u in data["items"] if u["id"] in user_ids]
         assert len(found_users) == 2
 
     def test_list_users_empty(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
@@ -56,7 +60,9 @@ class TestListUsers:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
+        # Response is paginated format with 'items' list
+        assert "items" in data
+        assert isinstance(data["items"], list)
 
     def test_list_users_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test listing users fails without API key."""
@@ -103,6 +109,7 @@ class TestGetUser:
 
     def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
+        import pytest
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
@@ -339,6 +346,7 @@ class TestUpdateUser:
 
     def test_update_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent user raises ResourceNotFoundError."""
+        import pytest
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
@@ -421,6 +429,7 @@ class TestDeleteUser:
 
     def test_delete_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent user raises ResourceNotFoundError."""
+        import pytest
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange

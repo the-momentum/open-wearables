@@ -141,7 +141,7 @@ class ExternalDeviceMappingFactory(BaseFactory):
         model = ExternalDeviceMapping
 
     id = LazyFunction(uuid4)
-    provider_id = "apple"
+    provider_name = "apple"
     device_id = LazyFunction(lambda: f"device_{uuid4().hex[:8]}")
 
     @classmethod
@@ -212,11 +212,11 @@ class EventRecordFactory(BaseFactory):
     def _create(cls, model_class: type[EventRecord], *args: Any, **kwargs: Any) -> EventRecord:
         """Override create to handle mapping relationship and type_ alias."""
         mapping = kwargs.pop("mapping", None)
-        # Remove any stale external_mapping_id that might have been set
-        kwargs.pop("external_mapping_id", None)
+        # Remove any stale external_device_mapping_id that might have been set
+        kwargs.pop("external_device_mapping_id", None)
         if mapping is None:
             mapping = ExternalDeviceMappingFactory()
-        kwargs["external_mapping_id"] = mapping.id
+        kwargs["external_device_mapping_id"] = mapping.id
 
         # Handle type_ alias
         if "type_" in kwargs:
@@ -272,17 +272,17 @@ class DataPointSeriesFactory(BaseFactory):
             # Use the pre-seeded heart_rate series type
             series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
-        kwargs["external_mapping_id"] = mapping.id
-        kwargs["series_type_id"] = series_type.id
+        kwargs["external_device_mapping_id"] = mapping.id
+        kwargs["series_type_definition_id"] = series_type.id
 
         # Remove LazyAttribute placeholders that may have been set
-        if "external_mapping_id" in kwargs and kwargs["external_mapping_id"] is None:
-            kwargs.pop("external_mapping_id", None)
-        if "series_type_id" in kwargs and kwargs["series_type_id"] is None:
-            kwargs.pop("series_type_id", None)
+        if "external_device_mapping_id" in kwargs and kwargs["external_device_mapping_id"] is None:
+            kwargs.pop("external_device_mapping_id", None)
+        if "series_type_definition_id" in kwargs and kwargs["series_type_definition_id"] is None:
+            kwargs.pop("series_type_definition_id", None)
 
-        kwargs["external_mapping_id"] = mapping.id
-        kwargs["series_type_id"] = series_type.id
+        kwargs["external_device_mapping_id"] = mapping.id
+        kwargs["series_type_definition_id"] = series_type.id
 
         # Convert value to Decimal if needed
         if "value" in kwargs and not isinstance(kwargs["value"], Decimal):
@@ -310,7 +310,7 @@ class WorkoutDetailsFactory(BaseFactory):
     heart_rate_avg = LazyFunction(lambda: Decimal("145.5"))
     heart_rate_max = 175
     heart_rate_min = 95
-    steps_total = 8500
+    steps_count = 8500
 
     @classmethod
     def _create(cls, model_class: type[WorkoutDetails], *args: Any, **kwargs: Any) -> WorkoutDetails:

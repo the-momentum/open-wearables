@@ -124,7 +124,7 @@ class TestGarminWorkouts:
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
         assert metrics["heart_rate_min"] == 145
-        assert metrics["steps_total"] == 8500
+        assert metrics["steps_count"] == 8500
 
     def test_build_metrics_with_missing_values(self, garmin_workouts: GarminWorkouts) -> None:
         """Test building metrics with missing values."""
@@ -145,7 +145,7 @@ class TestGarminWorkouts:
         metrics = garmin_workouts._build_metrics(activity)
 
         # Should handle zero values
-        assert metrics["steps_total"] == 0
+        assert metrics["steps_count"] == 0
 
     def test_normalize_workout(self, garmin_workouts: GarminWorkouts, sample_activity: dict[str, Any]) -> None:
         """Test normalizing Garmin activity to event record."""
@@ -161,7 +161,7 @@ class TestGarminWorkouts:
         assert record.source_name == "Garmin Forerunner 945"
         assert record.device_id == "Garmin Forerunner 945"
         assert record.duration_seconds == 3600
-        assert record.provider_id == "12345678901"
+        assert record.external_id == "12345678901"
         assert record.user_id == user_id
 
     def test_normalize_workout_with_different_types(self, garmin_workouts: GarminWorkouts) -> None:

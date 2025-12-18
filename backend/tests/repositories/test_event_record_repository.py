@@ -33,15 +33,15 @@ class TestEventRecordRepository:
         """Test creating an event record with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple", device_id="watch123")
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
         now = datetime.now(timezone.utc)
 
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_id="apple",
+            provider_name="apple",
             device_id="watch123",
-            external_mapping_id=mapping.id,
+            external_device_mapping_id=mapping.id,
             category="workout",
             type="running",
             source_name="Apple Watch",
@@ -55,7 +55,7 @@ class TestEventRecordRepository:
 
         # Assert
         assert result.id == event_data.id
-        assert result.external_mapping_id == mapping.id
+        assert result.external_device_mapping_id == mapping.id
         assert result.category == "workout"
         assert result.type == "running"
         assert result.duration_seconds == 3600
@@ -64,7 +64,7 @@ class TestEventRecordRepository:
         db.expire_all()
         db_event = event_repo.get(db, event_data.id)
         assert db_event is not None
-        assert db_event.external_mapping_id == mapping.id
+        assert db_event.external_device_mapping_id == mapping.id
 
     def test_create_auto_creates_mapping(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test that create automatically creates a mapping if it doesn't exist."""
@@ -77,7 +77,7 @@ class TestEventRecordRepository:
             user_id=user.id,
             provider_name="garmin",  # Use provider_name for external mapping
             device_id="device456",
-            external_mapping_id=None,
+            external_device_mapping_id=None,
             category="workout",
             type="cycling",
             source_name="Garmin Edge",
@@ -90,16 +90,16 @@ class TestEventRecordRepository:
         result = event_repo.create(db, event_data)
 
         # Assert
-        assert result.external_mapping_id is not None
+        assert result.external_device_mapping_id is not None
         # Verify mapping was created
         from app.models import ExternalDeviceMapping
         from app.repositories.external_mapping_repository import ExternalMappingRepository
 
         mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
-        mapping = mapping_repo.get(db, result.external_mapping_id)
+        mapping = mapping_repo.get(db, result.external_device_mapping_id)
         assert mapping is not None
         assert mapping.user_id == user.id
-        assert mapping.provider_id == "garmin"
+        assert mapping.provider_name == "garmin"
         assert mapping.device_id == "device456"
 
     def test_get(self, db: Session, event_repo: EventRecordRepository) -> None:
@@ -197,15 +197,15 @@ class TestEventRecordRepository:
         """Test filtering event records by provider ID."""
         # Arrange
         user = UserFactory()
-        mapping_apple = ExternalDeviceMappingFactory(user=user, provider_id="apple")
-        mapping_garmin = ExternalDeviceMappingFactory(user=user, provider_id="garmin")
+        mapping_apple = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        mapping_garmin = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
 
         EventRecordFactory(mapping=mapping_apple, category="workout")
         EventRecordFactory(mapping=mapping_garmin, category="workout")
 
         query_params = EventRecordQueryParams(
             category="workout",
-            provider_id="apple",
+            provider_name="apple",
             limit=10,
             offset=0,
         )
@@ -216,7 +216,7 @@ class TestEventRecordRepository:
         # Assert
         assert total_count == 1
         _, mapping = results[0]
-        assert mapping.provider_id == "apple"
+        assert mapping.provider_name == "apple"
 
     def test_get_records_with_filters_by_date_range(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by date range."""
@@ -477,7 +477,7 @@ class TestEventRecordRepository:
         """Test combining multiple filters."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple", device_id="watch1")
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch1")
 
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
@@ -502,7 +502,7 @@ class TestEventRecordRepository:
             category="workout",
             record_type="running",
             device_id="watch1",
-            provider_id="apple",
+            provider_name="apple",
             source_name="Apple",
             min_duration=3000,
             limit=10,

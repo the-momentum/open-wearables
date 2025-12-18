@@ -40,13 +40,14 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create heart rate samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, device_id="device_1")
+        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_1")
 
         now = datetime.now(timezone.utc)
         samples = [
             HeartRateSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
+                provider_name="apple",
                 device_id="device_1",
                 recorded_at=now - timedelta(minutes=i),
                 value=70 + i,
@@ -68,13 +69,14 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create step samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, device_id="device_2")
+        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_2")
 
         now = datetime.now(timezone.utc)
         samples = [
             StepSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
+                provider_name="apple",
                 device_id="device_2",
                 recorded_at=now - timedelta(hours=i),
                 value=1000 + i * 100,
@@ -95,13 +97,14 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create samples of different series types."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, device_id="device_3")
+        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_3")
 
         now = datetime.now(timezone.utc)
         samples = [
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
+                provider_name="apple",
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=1),
                 value=72,
@@ -110,6 +113,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
+                provider_name="apple",
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=2),
                 value=5000,
@@ -250,7 +254,7 @@ class TestTimeSeriesServiceGetUserHeartRateSeries:
 
     @pytest.mark.asyncio
     async def test_get_user_heart_rate_series_requires_device_id(self, db: Session) -> None:
-        """Should return empty list without device_id or external_mapping_id."""
+        """Should return empty list without device_id or external_device_mapping_id."""
         # Arrange
         user = UserFactory()
         query_params = TimeSeriesQueryParams()  # No device_id or mapping_id
@@ -410,8 +414,8 @@ class TestTimeSeriesServiceGetCountByProvider:
         """Should group and count data points by provider."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_id="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_id="garmin")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
 
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
