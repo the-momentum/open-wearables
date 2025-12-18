@@ -91,6 +91,8 @@ class EventRecordQueryParams(BaseQueryParams):
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
+    start_datetime: datetime | None = Field(None, description="Start datetime for filtering records")
+    end_datetime: datetime | None = Field(None, description="End datetime for filtering records")
     record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
     device_id: str | None = Field(None, description="Filter by originating device id")
     source_name: str | None = Field(None, description="Filter by source/app name")

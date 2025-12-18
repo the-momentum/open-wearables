@@ -17,7 +17,7 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import DataSource, Pagination
+from app.schemas.common_types import DataSource, Pagination, PaginatedResponse, TimeseriesMetadata
 from app.schemas.events import (
     SleepSession,
     Workout,
@@ -107,7 +107,7 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-    ) -> dict[str, list[Workout] | Pagination]:
+    ) -> PaginatedResponse[Workout]:
         params.category = "workout"
         records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
 
@@ -136,20 +136,25 @@ class EventRecordService(
                 calories_kcal=None,  # Need to check where this is stored,
                 # likely in details but not in WorkoutDetails definition I saw earlier?
                 distance_meters=None,
-                avg_heart_rate_bpm=details.heart_rate_avg if details else None,
+                avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
-                elevation_gain_meters=details.total_elevation_gain if details else None,
+                elevation_gain_meters=float(details.total_elevation_gain) if details and details.total_elevation_gain else None,
             )
             data.append(workout)
 
-        return {
-            "data": data,
-            "pagination": Pagination(
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
                 next_cursor=next_cursor,
                 has_more=has_more,
             ),
-        }
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
 
     @handle_exceptions
     async def get_workout_detailed(
@@ -191,10 +196,10 @@ class EventRecordService(
             source=self._map_source(mapping),
             calories_kcal=None,
             distance_meters=None,
-            avg_heart_rate_bpm=details.heart_rate_avg if details else None,
+            avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
             max_heart_rate_bpm=details.heart_rate_max if details else None,
             avg_pace_sec_per_km=None,
-            elevation_gain_meters=details.total_elevation_gain if details else None,
+            elevation_gain_meters=float(details.total_elevation_gain) if details and details.total_elevation_gain else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 
@@ -204,7 +209,7 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-    ) -> dict[str, list[SleepSession] | Pagination]:
+    ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
         records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
 
@@ -228,7 +233,7 @@ class EventRecordService(
                 end_time=record.end_datetime,
                 source=self._map_source(mapping),
                 duration_seconds=record.duration_seconds or 0,
-                efficiency_percent=details.sleep_efficiency_score if details else None,
+                efficiency_percent=float(details.sleep_efficiency_score) if details and details.sleep_efficiency_score else None,
                 is_nap=details.is_nap if details else False,
                 stages=SleepStagesSummary(
                     deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,
@@ -241,13 +246,18 @@ class EventRecordService(
             )
             data.append(session)
 
-        return {
-            "data": data,
-            "pagination": Pagination(
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
                 next_cursor=next_cursor,
                 has_more=has_more,
             ),
-        }
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
 
 
 event_record_service = EventRecordService(log=getLogger(__name__))
