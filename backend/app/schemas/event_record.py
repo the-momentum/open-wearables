@@ -87,6 +87,8 @@ class EventRecordResponse(EventRecordBase):
 class EventRecordQueryParams(BaseQueryParams):
     """Filtering and sorting parameters for event records."""
 
+    cursor: str | None = Field(None, description="Pagination cursor")
+    limit: int = Field(50, ge=1, le=1000, description="Maximum number of records to return")
     category: str | None = Field(
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",

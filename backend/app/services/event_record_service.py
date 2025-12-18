@@ -17,7 +17,7 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import DataSource, Pagination, PaginatedResponse, TimeseriesMetadata
+from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.events import (
     SleepSession,
     Workout,
@@ -139,7 +139,9 @@ class EventRecordService(
                 avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
-                elevation_gain_meters=float(details.total_elevation_gain) if details and details.total_elevation_gain else None,
+                elevation_gain_meters=float(details.total_elevation_gain)
+                if details and details.total_elevation_gain
+                else None,
             )
             data.append(workout)
 
@@ -199,7 +201,9 @@ class EventRecordService(
             avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
             max_heart_rate_bpm=details.heart_rate_max if details else None,
             avg_pace_sec_per_km=None,
-            elevation_gain_meters=float(details.total_elevation_gain) if details and details.total_elevation_gain else None,
+            elevation_gain_meters=float(details.total_elevation_gain)
+            if details and details.total_elevation_gain
+            else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 
@@ -233,7 +237,9 @@ class EventRecordService(
                 end_time=record.end_datetime,
                 source=self._map_source(mapping),
                 duration_seconds=record.duration_seconds or 0,
-                efficiency_percent=float(details.sleep_efficiency_score) if details and details.sleep_efficiency_score else None,
+                efficiency_percent=float(details.sleep_efficiency_score)
+                if details and details.sleep_efficiency_score
+                else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 stages=SleepStagesSummary(
                     deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,

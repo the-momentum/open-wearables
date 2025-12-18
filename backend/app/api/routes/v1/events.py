@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.database import DbSession
 from app.schemas.common_types import PaginatedResponse
@@ -23,7 +23,7 @@ async def list_workouts(
     end_date: str,
     db: DbSession,
     _api_key: ApiKeyDep,
-    type: str | None = None,
+    record_type: str | None = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[Workout]:
@@ -31,9 +31,9 @@ async def list_workouts(
     params = EventRecordQueryParams(
         start_date=start_date,
         end_date=end_date,
-        type=type,
         cursor=cursor,
         limit=limit,
+        record_type=record_type,
     )
     return await event_record_service.get_workouts(db, user_id, params)
 
