@@ -15,4 +15,4 @@ class Device(BaseDbModel):
     provider_name: Mapped[str_10]
     name: Mapped[str_100]
 
-    versions: Mapped[OneToMany["Version"]]
+    versions: Mapped[OneToMany["DeviceSoftware"]]
