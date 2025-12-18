@@ -218,7 +218,7 @@ def generate_time_series_samples(
     """Generate time series samples for a workout period with realistic frequencies."""
     samples = []
     current_time = workout_start
-    
+
     if not SERIES_TYPE_PERCENTAGES or not SERIES_VALUES_RANGES:
         logger.warning("No series type configuration found. Skipping time series samples.")
         return samples
@@ -227,7 +227,7 @@ def generate_time_series_samples(
     while current_time <= workout_end:
         for series_type, percentage in SERIES_TYPE_PERCENTAGES.items():
             min_value, max_value = SERIES_VALUES_RANGES[series_type]
-            
+
             if fake_instance.boolean(chance_of_getting_true=percentage):
                 # Generate value based on whether the range has fractional values
                 if min_value != int(min_value) or max_value != int(max_value):
@@ -236,7 +236,7 @@ def generate_time_series_samples(
                 else:
                     # Integer range
                     value = fake_instance.random_int(min=int(min_value), max=int(max_value))
-                
+
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
