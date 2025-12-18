@@ -109,7 +109,17 @@ class EventRecordService(
         params: EventRecordQueryParams,
     ) -> dict[str, list[Workout] | Pagination]:
         params.category = "workout"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+        next_cursor = None
+
+        if has_more:
+            # Get the last item of the current page to form the cursor for the next page
+            last_record, _ = records[limit - 1]
+            next_cursor = f"{last_record.start_datetime.isoformat()}|{last_record.id}"
+            records = records[:limit]
 
         data = []
         for record, mapping in records:
@@ -136,8 +146,8 @@ class EventRecordService(
         return {
             "data": data,
             "pagination": Pagination(
-                next_cursor=None,  # TODO: Implement cursor pagination
-                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
+                next_cursor=next_cursor,
+                has_more=has_more,
             ),
         }
 
@@ -196,7 +206,17 @@ class EventRecordService(
         params: EventRecordQueryParams,
     ) -> dict[str, list[SleepSession] | Pagination]:
         params.category = "sleep"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+        next_cursor = None
+
+        if has_more:
+            # Get the last item of the current page to form the cursor for the next page
+            last_record, _ = records[limit - 1]
+            next_cursor = f"{last_record.start_datetime.isoformat()}|{last_record.id}"
+            records = records[:limit]
 
         data = []
         for record, mapping in records:
@@ -224,7 +244,8 @@ class EventRecordService(
         return {
             "data": data,
             "pagination": Pagination(
-                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
+                next_cursor=next_cursor,
+                has_more=has_more,
             ),
         }
 
