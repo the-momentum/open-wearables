@@ -2,6 +2,7 @@
 """Seed activity data: create 10 users with comprehensive health data using Faker."""
 
 import csv
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -22,6 +23,7 @@ from app.schemas.user import UserCreate
 from app.schemas.workout_types import WorkoutType
 from app.services import event_record_service, timeseries_service, user_service
 
+logger = logging.getLogger(__name__)
 fake = Faker()
 
 # Workout types and sources for variety
@@ -63,14 +65,18 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
                 values_ranges[series_type] = (min_val, max_val)
                 series_type_percentages[series_type] = percentage
             except (ValueError, KeyError) as e:
-                print(f"Warning: Skipping invalid row in config: {row}. Error: {e}")
+                logger.warning("Skipping invalid row in config: %s. Error: %s", row, e)
                 continue
 
     return values_ranges, series_type_percentages
 
 
-# Load configuration at module level
-SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
+try:
+    SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
+except FileNotFoundError:
+    logger.error("series_type_config.csv file not found. Using default configuration.")
+    SERIES_VALUES_RANGES = {}
+    SERIES_TYPE_PERCENTAGES = {}
 
 
 def generate_workout(
@@ -212,21 +218,25 @@ def generate_time_series_samples(
     """Generate time series samples for a workout period with realistic frequencies."""
     samples = []
     current_time = workout_start
+    
+    if not SERIES_TYPE_PERCENTAGES or not SERIES_VALUES_RANGES:
+        logger.warning("No series type configuration found. Skipping time series samples.")
+        return samples
 
-    # Generate samples every 30 seconds during the workout
+    # Generate samples every 20-60 seconds during the workout
     while current_time <= workout_end:
         for series_type, percentage in SERIES_TYPE_PERCENTAGES.items():
             min_value, max_value = SERIES_VALUES_RANGES[series_type]
-
-            # Generate value based on whether the range has fractional values
-            if min_value != int(min_value) or max_value != int(max_value):
-                # Float range - use uniform distribution
-                value = fake_instance.random.uniform(min_value, max_value)
-            else:
-                # Integer range
-                value = fake_instance.random_int(min=int(min_value), max=int(max_value))
-
+            
             if fake_instance.boolean(chance_of_getting_true=percentage):
+                # Generate value based on whether the range has fractional values
+                if min_value != int(min_value) or max_value != int(max_value):
+                    # Float range - use uniform distribution
+                    value = fake_instance.random.uniform(min_value, max_value)
+                else:
+                    # Integer range
+                    value = fake_instance.random_int(min=int(min_value), max=int(max_value))
+                
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
@@ -239,7 +249,7 @@ def generate_time_series_samples(
                     )
                 )
 
-        current_time += timedelta(seconds=fake_instance.random_int(min=10, max=60))
+        current_time += timedelta(seconds=fake_instance.random_int(min=20, max=60))
 
     return samples
 
