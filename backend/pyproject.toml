@@ -36,6 +36,9 @@ dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
+    "pytest-freezegun>=0.4.2",
+    "setuptools>=75.0.0",
+    "factory-boy>=3.3.0",
     "faker>=33.1.0",
     "psycopg-binary>=3.3.2",
     "ruff>=0.14.7",
@@ -75,10 +78,10 @@ ignore = [
 "app/schemas/suunto/*.py" = ["N815"]  # mixedCase from external API
 
 [tool.ty.src]
-exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
+exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
 
 [tool.pytest.ini_options]
-testpaths = ["app/tests"]
+testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]
 python_classes = ["Test*"]
