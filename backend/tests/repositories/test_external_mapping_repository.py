@@ -54,28 +54,6 @@ class TestExternalMappingRepository:
         assert db_mapping is not None
         assert db_mapping.provider_name == "apple"
 
-    @pytest.mark.skip(reason="provider_name is now required (not nullable) in the schema")
-    def test_create_with_none_provider_and_device(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
-        """Test creating a mapping with None provider_name and device_id."""
-        # Arrange
-        user = UserFactory()
-        mapping_id = uuid4()
-        mapping_data = ExternalMappingCreate(
-            id=mapping_id,
-            user_id=user.id,
-            provider_name=None,
-            device_id=None,
-        )
-
-        # Act
-        result = mapping_repo.create(db, mapping_data)
-
-        # Assert
-        assert result.id == mapping_id
-        assert result.user_id == user.id
-        assert result.provider_name is None
-        assert result.device_id is None
-
     def test_get(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a mapping by ID."""
         # Arrange
@@ -117,31 +95,6 @@ class TestExternalMappingRepository:
         assert result.user_id == user.id
         assert result.provider_name == "apple"
         assert result.device_id == "watch456"
-
-    @pytest.mark.skip(reason="provider_name is now required (not nullable) in the schema")
-    def test_get_by_identity_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
-        """Test retrieving a mapping with None provider_name and device_id.
-
-        Note: SQL NULL comparisons (column == NULL) return NULL, not TRUE.
-        This test documents that get_by_identity doesn't support NULL lookups directly.
-        Use get_by_id or ensure_mapping instead for NULL-valued fields.
-        """
-        # Arrange
-        user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(
-            user=user,
-            provider_name=None,
-            device_id=None,
-        )
-
-        # Act
-        result = mapping_repo.get_by_identity(db, user.id, None, None)
-
-        # Assert - Repository handles NULL values using IS NULL
-        assert result is not None
-        assert result.id == mapping.id
-        assert result.provider_name is None
-        assert result.device_id is None
 
     def test_get_by_identity_not_found(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test get_by_identity returns None when no matching mapping exists."""
@@ -425,37 +378,6 @@ class TestExternalMappingRepository:
 
         # Assert
         assert result is None
-
-    @pytest.mark.skip(reason="provider_name is now required (not nullable) in the schema")
-    def test_ensure_mapping_with_none_values(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
-        """Test ensure_mapping with None provider_name and device_id."""
-        # Arrange
-        user = UserFactory()
-
-        # Act
-        result = mapping_repo.ensure_mapping(
-            db,
-            user_id=user.id,
-            provider_name=None,
-            device_id=None,
-            mapping_id=None,
-        )
-
-        # Assert
-        assert result is not None
-        assert result.user_id == user.id
-        assert result.provider_name is None
-        assert result.device_id is None
-
-        # Verify calling again returns same mapping
-        result2 = mapping_repo.ensure_mapping(
-            db,
-            user_id=user.id,
-            provider_name=None,
-            device_id=None,
-            mapping_id=None,
-        )
-        assert result2.id == result.id
 
     def test_build_identity_filter(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test that the identity filter correctly uses AND logic."""

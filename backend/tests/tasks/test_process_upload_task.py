@@ -214,43 +214,6 @@ class TestProcessUploadTask:
         # Assert
         assert result["user_id"] == user_id
 
-    @pytest.mark.skip(reason="SessionLocal context manager handles commit internally, no explicit commit call")
-    @patch("app.integrations.celery.tasks.process_upload_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.process_upload_task.s3_client")
-    @patch("app.integrations.celery.tasks.process_upload_task._import_xml_data")
-    @patch("app.integrations.celery.tasks.process_upload_task.user_service")
-    def test_process_uploaded_file_commits_on_success(
-        self,
-        mock_user_service: MagicMock,
-        mock_import_xml_data: MagicMock,
-        mock_s3_client: MagicMock,
-        mock_session_local: MagicMock,
-        db: Session,
-        mock_celery_app: MagicMock,
-    ) -> None:
-        """Test that database transaction is committed on success."""
-        # Arrange
-        user = UserFactory()
-        bucket_name = "test-bucket"
-        object_key = f"uploads/{user.id}/apple-health/export.xml"
-
-        mock_db = MagicMock(spec=Session)
-        mock_session_local.return_value.__enter__ = MagicMock(return_value=mock_db)
-        mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
-        mock_user_service.get.return_value = user
-
-        def mock_download(bucket: str, key: str, local_path: str) -> None:
-            with open(local_path, "w") as f:
-                f.write("<HealthData></HealthData>")
-
-        mock_s3_client.download_file.side_effect = mock_download
-
-        # Act
-        process_uploaded_file(bucket_name, object_key)
-
-        # Assert
-        mock_db.commit.assert_called_once()
-
 
 class TestImportXmlData:
     """Test suite for _import_xml_data helper function."""

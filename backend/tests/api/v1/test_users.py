@@ -110,6 +110,7 @@ class TestGetUser:
     def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
         import pytest
+
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
@@ -347,6 +348,7 @@ class TestUpdateUser:
     def test_update_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent user raises ResourceNotFoundError."""
         import pytest
+
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
@@ -430,6 +432,7 @@ class TestDeleteUser:
     def test_delete_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent user raises ResourceNotFoundError."""
         import pytest
+
         from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange

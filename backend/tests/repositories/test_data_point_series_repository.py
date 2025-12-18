@@ -183,7 +183,9 @@ class TestDataPointSeriesRepository:
         for _, mapping in results:
             assert mapping.device_id == "device1"
 
-    def test_get_samples_by_external_device_mapping_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+    def test_get_samples_by_external_device_mapping_id(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
         """Test getting samples filtered by external mapping ID."""
         # Arrange
         user = UserFactory()
