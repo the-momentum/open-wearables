@@ -28,7 +28,7 @@ export const Route = createRootRoute({
       },
       {
         name: 'description',
-        content: 'Unified API for health data aggregation and automation',
+        content: 'Unified API for wearable device data and AI-powered health insights',
       },
     ],
     links: [
