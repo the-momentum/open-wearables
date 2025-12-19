@@ -1,7 +1,6 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import type {
-  WorkoutStatisticResponse,
   WorkoutResponse,
   UserConnection,
   HeartRateSampleResponse,
@@ -50,8 +49,8 @@ export const healthService = {
   /**
    * Get heart rate data for a user
    */
-  async getHeartRate(userId: string): Promise<WorkoutStatisticResponse[]> {
-    return apiClient.get<WorkoutStatisticResponse[]>(
+  async getHeartRate(userId: string): Promise<HeartRateSampleResponse[]> {
+    return apiClient.get<HeartRateSampleResponse[]>(
       API_ENDPOINTS.userHeartRate(userId)
     );
   },

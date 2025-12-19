@@ -1,5 +1,3 @@
-import type { WorkoutStatisticResponse } from '@/lib/api/types';
-
 export interface HeartRateStats {
   values: number[];
   min: number | null;
@@ -11,9 +9,13 @@ export interface HeartRateStats {
 /**
  * Calculate heart rate statistics from workout statistics data.
  * Filters for heart rate type statistics and computes min, max, avg.
+ * 
+ * @deprecated This function is no longer used. The heart-rate endpoint returns HeartRateSampleResponse[],
+ * not WorkoutStatisticResponse[]. This function was based on an incorrect type assumption.
  */
 export function calculateHeartRateStats(
-  data: WorkoutStatisticResponse[] | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any[] | undefined
 ): HeartRateStats {
   const defaultStats: HeartRateStats = {
     values: [],
@@ -62,7 +64,7 @@ export function calculateHeartRateStats(
   const avg =
     stats.values.length > 0
       ? Math.round(
-          stats.values.reduce((a, b) => a + b, 0) / stats.values.length
+          stats.values.reduce((a: number, b: number) => a + b, 0) / stats.values.length
         )
       : null;
 
