@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Seed activity data: create 10 users with comprehensive health data using Faker."""
 
-import csv
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import yaml
 from faker import Faker
 
 from app.database import SessionLocal
@@ -42,30 +42,31 @@ SOURCE_NAMES = [
 GENDERS = ["female", "male", "nonbinary", "other"]
 
 
-# Load series type configuration from CSV
+# Load series type configuration from YAML
 def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], dict[SeriesType, int]]:
-    """Load series type configuration from CSV file.
+    """Load series type configuration from YAML file.
 
     Returns:
         Tuple of (values_ranges, series_type_percentages) dictionaries
     """
-    config_path = Path(__file__).parent / "series_type_config.csv"
+    config_path = Path(__file__).parent / "series_type_config.yaml"
     values_ranges = {}
     series_type_percentages = {}
 
-    with open(config_path, encoding="utf-8", newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
+    with open(config_path, encoding="utf-8") as yamlfile:
+        config = yaml.safe_load(yamlfile)
+        
+        for series_name, values in config.get("series_types", {}).items():
             try:
-                series_type = SeriesType(row["series_type"])
-                min_val = float(row["min_value"])
-                max_val = float(row["max_value"])
-                percentage = int(row["percentage"])
+                series_type = SeriesType(series_name)
+                min_val = float(values["min_value"])
+                max_val = float(values["max_value"])
+                percentage = int(values["percentage"])
 
                 values_ranges[series_type] = (min_val, max_val)
                 series_type_percentages[series_type] = percentage
             except (ValueError, KeyError) as e:
-                logger.warning("Skipping invalid row in config: %s. Error: %s", row, e)
+                logger.warning("Skipping invalid series type '%s': %s", series_name, e)
                 continue
 
     return values_ranges, series_type_percentages
@@ -74,7 +75,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
 try:
     SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
 except FileNotFoundError:
-    logger.error("series_type_config.csv file not found. Using default configuration.")
+    logger.error("series_type_config.yaml file not found. Using default configuration.")
     SERIES_VALUES_RANGES = {}
     SERIES_TYPE_PERCENTAGES = {}
 
