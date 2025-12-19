@@ -89,28 +89,28 @@ class EventRecordQueryParams(BaseModel):
     cursor: str | None = Field(None, description="Pagination cursor")
     limit: int = Field(50, ge=1, le=1000, description="Maximum number of records to return")
     offset: int = Field(0, ge=0, description="Number of results to skip (for non-cursor pagination)")
-    
+
     # Date filtering
     start_datetime: datetime | None = Field(None, description="Start datetime for filtering records")
     end_datetime: datetime | None = Field(None, description="End datetime for filtering records")
-    
+
     # Category and type filtering
     category: str | None = Field(
         "workout",
         description="Record category (workout, sleep, etc). Defaults to workout.",
     )
     record_type: str | None = Field(None, description="Subtype filter (e.g. HKWorkoutActivityTypeRunning)")
-    
+
     # Source filtering
     device_id: str | None = Field(None, description="Filter by originating device id")
     source_name: str | None = Field(None, description="Filter by source/app name")
     provider_name: str | None = Field(None, description="Filter by provider name")
     external_device_mapping_id: UUID | None = Field(None, description="Filter by device mapping identifier")
-    
+
     # Duration filtering
     min_duration: int | None = Field(None, description="Minimum duration in seconds")
     max_duration: int | None = Field(None, description="Maximum duration in seconds")
-    
+
     # Sorting
     sort_by: Literal[
         "start_datetime",
