@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.common_types import DataSource
 from app.schemas.summaries import SleepStagesSummary
-from app.schemas.timeseries import HeartRateSample
+from app.schemas.timeseries import TimeSeriesSample
 
 
 class WorkoutType(RootModel[str]):
@@ -32,7 +32,7 @@ class Workout(BaseModel):
 
 
 class WorkoutDetailed(Workout):
-    heart_rate_samples: list[HeartRateSample] | None = None
+    heart_rate_samples: list[TimeSeriesSample] | None = None
 
 
 class Macros(BaseModel):

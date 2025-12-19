@@ -6,21 +6,18 @@ from app.database import DbSession
 from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
 from app.schemas import (
-    BloodGlucoseSample,
-    HeartRateSample,
     HeartRateSampleCreate,
-    HrvSample,
-    Spo2Sample,
     StepSampleCreate,
-    StepsSample,
     TimeSeriesQueryParams,
+    TimeSeriesSample,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
 from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
-from app.schemas.series_types import SeriesType
+from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
+from app.utils.pagination import encode_cursor
 
 
 class TimeSeriesService(
@@ -69,44 +66,66 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         user_id: UUID,
-        type: SeriesType,
+        types: list[SeriesType],
         params: TimeSeriesQueryParams,
-    ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample | StepsSample]:
-        samples = self.crud.get_samples(db_session, params, type, user_id)
+    ) -> PaginatedResponse[TimeSeriesSample]:
+        samples = self.crud.get_samples(db_session, params, types, user_id)
 
         limit = params.limit or 50
         has_more = len(samples) > limit
-        next_cursor = None
 
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
         if has_more:
-            # Get the last item of the current page to form the cursor for the next page
-            last_item_in_page = samples[limit - 1][0]
-            next_cursor = f"{last_item_in_page.recorded_at.isoformat()}|{last_item_in_page.id}"
-            samples = samples[:limit]
+            samples = samples[-limit:] if is_backward else samples[:limit]
 
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if samples:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_sample = samples[-1][0]
+                next_cursor = encode_cursor(last_sample.recorded_at, last_sample.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_sample = samples[0][0]
+                        previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
+                else:
+                    first_sample = samples[0][0]
+                    previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
+
+        # Map to response format
         data = []
         for sample, mapping in samples:
-            if type == SeriesType.heart_rate:
-                item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value))
-            elif type == SeriesType.heart_rate_variability_sdnn:
-                item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value))
-            elif type == SeriesType.oxygen_saturation:
-                item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
-            elif type == SeriesType.blood_glucose:
-                item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
-            elif type == SeriesType.steps:
-                item = StepsSample(
-                    timestamp=sample.recorded_at,
-                    count=int(sample.value),
-                    duration_seconds=None,
-                )
-            else:
-                continue
+            series_type = get_series_type_from_id(sample.series_type_definition_id)
+            unit = get_series_type_unit(series_type)
+
+            item = TimeSeriesSample(
+                timestamp=sample.recorded_at,
+                type=series_type,
+                value=float(sample.value),
+                unit=unit,
+            )
             data.append(item)
 
         return PaginatedResponse(
             data=data,
-            pagination=Pagination(has_more=has_more, next_cursor=next_cursor),
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),
                 start_time=params.start_datetime,

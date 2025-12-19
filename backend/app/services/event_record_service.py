@@ -63,7 +63,7 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
         detail_type: str = "workout",
     ) -> EventRecordDetail:
-        return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
+        return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
 
     @handle_exceptions
     async def _get_records_with_filters(
