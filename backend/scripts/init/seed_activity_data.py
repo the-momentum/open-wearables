@@ -55,7 +55,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
 
     with open(config_path, encoding="utf-8") as yamlfile:
         config = yaml.safe_load(yamlfile)
-        
+
         for series_name, values in config.get("series_types", {}).items():
             try:
                 series_type = SeriesType(series_name)
