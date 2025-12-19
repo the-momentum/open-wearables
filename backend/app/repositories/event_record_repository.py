@@ -1,7 +1,5 @@
-from datetime import datetime, time, timezone
 from uuid import UUID
 
-import isodate
 from sqlalchemy import and_, asc, desc, func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
@@ -93,24 +91,11 @@ class EventRecordRepository(
         if getattr(query_params, "external_device_mapping_id", None):
             filters.append(EventRecord.external_device_mapping_id == query_params.external_device_mapping_id)
 
-        if query_params.start_date:
-            # Handle both date (YYYY-MM-DD) and datetime (YYYY-MM-DDTHH:MM:SS) formats
-            try:
-                start_dt = isodate.parse_datetime(query_params.start_date)
-            except isodate.ISO8601Error:
-                # If it's just a date, parse it and set time to start of day
-                start_dt = isodate.parse_date(query_params.start_date)
-            filters.append(EventRecord.start_datetime >= start_dt)
+        if query_params.start_datetime:
+            filters.append(EventRecord.start_datetime >= query_params.start_datetime)
 
-        if query_params.end_date:
-            # Handle both date (YYYY-MM-DD) and datetime (YYYY-MM-DDTHH:MM:SS) formats
-            try:
-                end_dt = isodate.parse_datetime(query_params.end_date)
-            except isodate.ISO8601Error:
-                # If it's just a date, parse it and set time to end of day
-                date_only = isodate.parse_date(query_params.end_date)
-                end_dt = datetime.combine(date_only, time.max, tzinfo=timezone.utc)
-            filters.append(EventRecord.end_datetime <= end_dt)
+        if query_params.end_datetime:
+            filters.append(EventRecord.end_datetime <= query_params.end_datetime)
 
         if query_params.min_duration is not None:
             filters.append(EventRecord.duration_seconds >= query_params.min_duration)
