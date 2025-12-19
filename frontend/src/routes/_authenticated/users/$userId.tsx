@@ -11,10 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  useUserConnections,
-  useWorkouts,
-} from '@/hooks/api/use-health';
+import { useUserConnections, useWorkouts } from '@/hooks/api/use-health';
 import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

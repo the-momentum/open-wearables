@@ -25,7 +25,7 @@ export const Route = createFileRoute('/')({
 
 function IndexRedirect() {
   const navigate = useNavigate();
-  
+
   // Handle client-side redirect after hydration
   useEffect(() => {
     if (isAuthenticated()) {

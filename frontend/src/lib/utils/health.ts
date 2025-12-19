@@ -9,7 +9,7 @@ export interface HeartRateStats {
 /**
  * Calculate heart rate statistics from workout statistics data.
  * Filters for heart rate type statistics and computes min, max, avg.
- * 
+ *
  * @deprecated This function is no longer used. The heart-rate endpoint returns HeartRateSampleResponse[],
  * not WorkoutStatisticResponse[]. This function was based on an incorrect type assumption.
  */
@@ -35,7 +35,7 @@ export function calculateHeartRateStats(
       if (!stat.type || typeof stat.type !== 'string') {
         return acc;
       }
-      
+
       const isHeartRate =
         stat.type.toLowerCase() === 'heartrate' ||
         stat.type.toLowerCase() === 'heart_rate';
@@ -45,10 +45,18 @@ export function calculateHeartRateStats(
       if (stat.avg !== null && stat.avg !== undefined) {
         acc.values.push(stat.avg);
       }
-      if (stat.min !== null && stat.min !== undefined && (acc.min === null || stat.min < acc.min)) {
+      if (
+        stat.min !== null &&
+        stat.min !== undefined &&
+        (acc.min === null || stat.min < acc.min)
+      ) {
         acc.min = stat.min;
       }
-      if (stat.max !== null && stat.max !== undefined && (acc.max === null || stat.max > acc.max)) {
+      if (
+        stat.max !== null &&
+        stat.max !== undefined &&
+        (acc.max === null || stat.max > acc.max)
+      ) {
         acc.max = stat.max;
       }
 
@@ -64,7 +72,8 @@ export function calculateHeartRateStats(
   const avg =
     stats.values.length > 0
       ? Math.round(
-          stats.values.reduce((a: number, b: number) => a + b, 0) / stats.values.length
+          stats.values.reduce((a: number, b: number) => a + b, 0) /
+            stats.values.length
         )
       : null;
 
