@@ -17,7 +17,6 @@ from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
-from .workouts import router as workouts_router
 
 v1_router = APIRouter()
 
@@ -35,7 +34,6 @@ v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data
 v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])
-v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_xml_router, tags=["xml-import"])
 v1_router.include_router(sdk_sync_router, tags=["sdk"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
