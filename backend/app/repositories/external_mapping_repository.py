@@ -74,4 +74,4 @@ class ExternalMappingRepository(
             provider_name=provider_name,
             device_id=device_id,
         )
-        return self.create(db_session, create_payload)
+        return self.create(db_session, create_payload)  # type: ignore[return-value]

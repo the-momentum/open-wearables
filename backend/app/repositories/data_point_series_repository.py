@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Date, cast, desc, func
+from sqlalchemy import Date, asc, cast, func, tuple_
 
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
@@ -13,6 +13,7 @@ from app.schemas import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.series_types import SeriesType, get_series_type_id
+from app.utils.pagination import decode_cursor
 
 
 class DataPointSeriesRepository(
@@ -49,22 +50,24 @@ class DataPointSeriesRepository(
         self,
         db_session: DbSession,
         params: TimeSeriesQueryParams,
-        series_type: SeriesType,
+        types: list[SeriesType],
         user_id: UUID,
     ) -> list[tuple[DataPointSeries, ExternalDeviceMapping]]:
+        """Get data points with filtering and keyset pagination."""
         query = (
             db_session.query(self.model, ExternalDeviceMapping)
             .join(
                 ExternalDeviceMapping,
                 self.model.external_device_mapping_id == ExternalDeviceMapping.id,
             )
-            .filter(self.model.series_type_definition_id == get_series_type_id(series_type))
             .filter(ExternalDeviceMapping.user_id == user_id)
         )
 
-        if params.external_device_mapping_id:
-            query = query.filter(self.model.external_device_mapping_id == params.external_device_mapping_id)
-        elif params.device_id:
+        if types:
+            type_ids = [get_series_type_id(t) for t in types]
+            query = query.filter(self.model.series_type_definition_id.in_(type_ids))
+
+        if params.device_id:
             query = query.filter(ExternalDeviceMapping.device_id == params.device_id)
 
         if getattr(params, "provider_name", None):
@@ -76,7 +79,32 @@ class DataPointSeriesRepository(
         if params.end_datetime:
             query = query.filter(self.model.recorded_at <= params.end_datetime)
 
-        return query.order_by(desc(self.model.recorded_at)).limit(1000).all()
+        # Cursor pagination (keyset)
+        if params.cursor:
+            cursor_ts, cursor_id, direction = decode_cursor(params.cursor)
+
+            if direction == "prev":
+                # Backward pagination: get items BEFORE cursor
+                query = query.filter(
+                    tuple_(self.model.recorded_at, self.model.id) < (cursor_ts, cursor_id),
+                )
+                query = query.order_by(self.model.recorded_at.desc(), self.model.id.desc())
+                # Limit + 1 to check for previous page
+                limit = params.limit or 50
+                results = query.limit(limit + 1).all()
+                # Reverse to get correct order
+                return list(reversed(results))
+            # Forward pagination: get items AFTER cursor
+            query = query.filter(
+                tuple_(self.model.recorded_at, self.model.id) > (cursor_ts, cursor_id),
+            )
+
+        # Normal ascending order for forward pagination
+        query = query.order_by(asc(self.model.recorded_at), asc(self.model.id))
+
+        # Limit + 1 to check for next page
+        limit = params.limit or 50
+        return query.limit(limit + 1).all()
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

@@ -1,31 +1,23 @@
 from datetime import datetime
 from logging import Logger, getLogger
-from typing import TypeVar
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataPointSeries, ExternalDeviceMapping
+from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
 from app.schemas import (
-    BloodGlucoseSample,
-    HeartRateSample,
     HeartRateSampleCreate,
-    HeartRateSampleResponse,
-    HrvSample,
-    Spo2Sample,
     StepSampleCreate,
-    StepSampleResponse,
-    StepsSample,
     TimeSeriesQueryParams,
+    TimeSeriesSample,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
 from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
-from app.schemas.series_types import SeriesType, get_series_type_from_id
+from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
-
-ResponseModel = TypeVar("ResponseModel", HeartRateSampleResponse, StepSampleResponse)
+from app.utils.pagination import encode_cursor
 
 
 class TimeSeriesService(
@@ -33,37 +25,8 @@ class TimeSeriesService(
 ):
     """Coordinated access to unified device time series samples."""
 
-    HEART_RATE_TYPE = SeriesType.heart_rate
-    STEP_TYPE = SeriesType.steps
-
     def __init__(self, log: Logger):
         super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
-
-    def _build_response(
-        self,
-        sample: DataPointSeries,
-        mapping: ExternalDeviceMapping,
-        response_model: type[ResponseModel],
-    ) -> ResponseModel:
-        # Handle new fields if they exist in the model and response schema
-        extra_fields = {}
-        if hasattr(sample, "context") and hasattr(response_model, "context"):
-            extra_fields["context"] = sample.context
-        if hasattr(sample, "metadata_") and hasattr(response_model, "metadata"):
-            extra_fields["metadata"] = sample.metadata_
-
-        return response_model(
-            id=sample.id,
-            recorded_at=sample.recorded_at,
-            value=sample.value,
-            series_type=get_series_type_from_id(sample.series_type_definition_id),
-            external_id=sample.external_id,
-            external_device_mapping_id=sample.external_device_mapping_id,
-            user_id=mapping.user_id,
-            provider_name=mapping.provider_name,
-            device_id=mapping.device_id,
-            **extra_fields,
-        )
 
     def bulk_create_samples(
         self,
@@ -72,26 +35,6 @@ class TimeSeriesService(
     ) -> None:
         for sample in samples:
             self.crud.create(db_session, sample)
-
-    @handle_exceptions
-    async def get_user_heart_rate_series(
-        self,
-        db_session: DbSession,
-        user_id: str,
-        params: TimeSeriesQueryParams,
-    ) -> list[HeartRateSampleResponse]:
-        samples = self.crud.get_samples(db_session, params, self.HEART_RATE_TYPE, UUID(user_id))
-        return [self._build_response(sample, mapping, HeartRateSampleResponse) for sample, mapping in samples]
-
-    @handle_exceptions
-    async def get_user_step_series(
-        self,
-        db_session: DbSession,
-        user_id: str,
-        params: TimeSeriesQueryParams,
-    ) -> list[StepSampleResponse]:
-        samples = self.crud.get_samples(db_session, params, self.STEP_TYPE, UUID(user_id))
-        return [self._build_response(sample, mapping, StepSampleResponse) for sample, mapping in samples]
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
@@ -123,35 +66,71 @@ class TimeSeriesService(
         self,
         db_session: DbSession,
         user_id: UUID,
-        type: SeriesType,
+        types: list[SeriesType],
         params: TimeSeriesQueryParams,
-    ) -> PaginatedResponse[HeartRateSample | HrvSample | Spo2Sample | BloodGlucoseSample | StepsSample]:
-        samples = self.crud.get_samples(db_session, params, type, user_id)
+    ) -> PaginatedResponse[TimeSeriesSample]:
+        samples = self.crud.get_samples(db_session, params, types, user_id)
 
+        limit = params.limit or 50
+        has_more = len(samples) > limit
+
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
+        if has_more:
+            samples = samples[-limit:] if is_backward else samples[:limit]
+
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if samples:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_sample = samples[-1][0]
+                next_cursor = encode_cursor(last_sample.recorded_at, last_sample.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_sample = samples[0][0]
+                        previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
+                else:
+                    first_sample = samples[0][0]
+                    previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
+
+        # Map to response format
         data = []
         for sample, mapping in samples:
-            if type == SeriesType.heart_rate:
-                item = HeartRateSample(timestamp=sample.recorded_at, bpm=int(sample.value))
-            elif type == SeriesType.heart_rate_variability_sdnn:
-                item = HrvSample(timestamp=sample.recorded_at, sdnn_ms=float(sample.value))
-            elif type == SeriesType.oxygen_saturation:
-                item = Spo2Sample(timestamp=sample.recorded_at, percent=float(sample.value))
-            elif type == SeriesType.blood_glucose:
-                item = BloodGlucoseSample(timestamp=sample.recorded_at, value_mg_dl=float(sample.value))
-            elif type == SeriesType.steps:
-                item = StepsSample(
-                    timestamp=sample.recorded_at,
-                    count=int(sample.value),
-                    duration_seconds=None,
-                )
-            else:
-                continue
+            series_type = get_series_type_from_id(sample.series_type_definition_id)
+            unit = get_series_type_unit(series_type)
+
+            item = TimeSeriesSample(
+                timestamp=sample.recorded_at,
+                type=series_type,
+                value=float(sample.value),
+                unit=unit,
+            )
             data.append(item)
 
         return PaginatedResponse(
             data=data,
-            pagination=Pagination(has_more=False),
-            metadata=TimeseriesMetadata(),
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
         )
 
 

@@ -8,7 +8,6 @@ from .dashboard import router as dashboard_router
 from .developers import router as developers_router
 from .events import router as events_router
 from .garmin_webhooks import router as garmin_webhooks_router
-from .heart_rate import router as heart_rate_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
@@ -38,7 +37,6 @@ v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data
 v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])
-v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_xml_router, tags=["xml-import"])
 v1_router.include_router(sdk_sync_router, tags=["sdk"])
