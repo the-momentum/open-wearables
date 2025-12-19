@@ -3,8 +3,6 @@ Tests for TimeSeriesService.
 
 Tests cover:
 - Bulk creating time series samples
-- Getting user heart rate series
-- Getting user step series
 - Getting daily histogram of data points
 - Counting data points by series type
 - Counting data points by provider
@@ -13,14 +11,12 @@ Tests cover:
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.series_types import SeriesType
 from app.schemas.timeseries import (
     HeartRateSampleCreate,
     StepSampleCreate,
-    TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
 )
 from app.services.timeseries_service import timeseries_service
@@ -35,13 +31,13 @@ from tests.factories import (
 class TestTimeSeriesServiceBulkCreateSamples:
     """Test bulk creation of time series samples."""
 
-    @pytest.mark.asyncio
-    async def test_bulk_create_heart_rate_samples(self, db: Session) -> None:
+    def test_bulk_create_heart_rate_samples(self, db: Session) -> None:
         """Should bulk create heart rate samples."""
         # Arrange
         user = UserFactory()
         ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_1")
 
+        initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
         samples = [
             HeartRateSampleCreate(
@@ -60,17 +56,16 @@ class TestTimeSeriesServiceBulkCreateSamples:
         timeseries_service.bulk_create_samples(db, samples)
 
         # Assert - verify samples were created
-        query_params = TimeSeriesQueryParams(device_id="device_1")
-        retrieved_samples = await timeseries_service.get_user_heart_rate_series(db, str(user.id), query_params)
-        assert len(retrieved_samples) == 5
+        final_count = timeseries_service.get_total_count(db)
+        assert final_count == initial_count + 5
 
-    @pytest.mark.asyncio
-    async def test_bulk_create_step_samples(self, db: Session) -> None:
+    def test_bulk_create_step_samples(self, db: Session) -> None:
         """Should bulk create step samples."""
         # Arrange
         user = UserFactory()
         ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_2")
 
+        initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
         samples = [
             StepSampleCreate(
@@ -89,9 +84,8 @@ class TestTimeSeriesServiceBulkCreateSamples:
         timeseries_service.bulk_create_samples(db, samples)
 
         # Assert
-        query_params = TimeSeriesQueryParams(device_id="device_2")
-        retrieved_samples = await timeseries_service.get_user_step_series(db, str(user.id), query_params)
-        assert len(retrieved_samples) == 3
+        final_count = timeseries_service.get_total_count(db)
+        assert final_count == initial_count + 3
 
     def test_bulk_create_mixed_series_types(self, db: Session) -> None:
         """Should bulk create samples of different series types."""
@@ -99,6 +93,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         user = UserFactory()
         ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_3")
 
+        initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
         samples = [
             TimeSeriesSampleCreate(
@@ -126,170 +121,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
 
         # Assert
         total_count = timeseries_service.get_total_count(db)
-        assert total_count >= 2
-
-
-class TestTimeSeriesServiceGetUserHeartRateSeries:
-    """Test retrieving user heart rate series."""
-
-    @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_basic(self, db: Session) -> None:
-        """Should retrieve heart rate samples for user."""
-        # Arrange
-        user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="watch_1")
-        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-
-        # Create heart rate samples
-        now = datetime.now(timezone.utc)
-        hr1 = DataPointSeriesFactory(
-            mapping=mapping,
-            series_type=series_type,
-            value=72.0,
-            recorded_at=now - timedelta(minutes=5),
-        )
-        hr2 = DataPointSeriesFactory(
-            mapping=mapping,
-            series_type=series_type,
-            value=75.0,
-            recorded_at=now - timedelta(minutes=3),
-        )
-
-        query_params = TimeSeriesQueryParams(device_id="watch_1")
-
-        # Act
-        samples = await timeseries_service.get_user_heart_rate_series(db, str(user.id), query_params)
-
-        # Assert
-        assert len(samples) >= 2
-        sample_ids = [s.id for s in samples]
-        assert hr1.id in sample_ids
-        assert hr2.id in sample_ids
-
-    @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_filters_by_device(self, db: Session) -> None:
-        """Should filter heart rate samples by device_id."""
-        # Arrange
-        user = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user, device_id="watch_1")
-        mapping2 = ExternalDeviceMappingFactory(user=user, device_id="watch_2")
-        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-
-        hr1 = DataPointSeriesFactory(mapping=mapping1, series_type=series_type, value=72.0)
-        hr2 = DataPointSeriesFactory(mapping=mapping2, series_type=series_type, value=75.0)
-
-        query_params = TimeSeriesQueryParams(device_id="watch_1")
-
-        # Act
-        samples = await timeseries_service.get_user_heart_rate_series(db, str(user.id), query_params)
-
-        # Assert
-        sample_ids = [s.id for s in samples]
-        assert hr1.id in sample_ids
-        assert hr2.id not in sample_ids
-
-    @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_filters_by_date_range(self, db: Session) -> None:
-        """Should filter heart rate samples by date range."""
-        # Arrange
-        user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="watch_1")
-        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-
-        now = datetime.now(timezone.utc)
-        start = now - timedelta(days=7)
-        end = now - timedelta(days=1)
-
-        hr_old = DataPointSeriesFactory(
-            mapping=mapping,
-            series_type=series_type,
-            recorded_at=now - timedelta(days=10),
-        )
-        hr_in_range = DataPointSeriesFactory(
-            mapping=mapping,
-            series_type=series_type,
-            recorded_at=now - timedelta(days=5),
-        )
-        hr_recent = DataPointSeriesFactory(mapping=mapping, series_type=series_type, recorded_at=now)
-
-        query_params = TimeSeriesQueryParams(
-            device_id="watch_1",
-            start_datetime=start,
-            end_datetime=end,
-        )
-
-        # Act
-        samples = await timeseries_service.get_user_heart_rate_series(db, str(user.id), query_params)
-
-        # Assert
-        sample_ids = [s.id for s in samples]
-        assert hr_in_range.id in sample_ids
-        assert hr_old.id not in sample_ids
-        assert hr_recent.id not in sample_ids
-
-    @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_user_isolation(self, db: Session) -> None:
-        """Should only return samples for specified user."""
-        # Arrange
-        user1 = UserFactory(email="user1@example.com")
-        user2 = UserFactory(email="user2@example.com")
-
-        mapping1 = ExternalDeviceMappingFactory(user=user1, device_id="watch_1")
-        mapping2 = ExternalDeviceMappingFactory(user=user2, device_id="watch_2")
-
-        series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-
-        hr1 = DataPointSeriesFactory(mapping=mapping1, series_type=series_type)
-        hr2 = DataPointSeriesFactory(mapping=mapping2, series_type=series_type)
-
-        query_params = TimeSeriesQueryParams(device_id="watch_1")
-
-        # Act
-        samples = await timeseries_service.get_user_heart_rate_series(db, str(user1.id), query_params)
-
-        # Assert
-        sample_ids = [s.id for s in samples]
-        assert hr1.id in sample_ids
-        assert hr2.id not in sample_ids
-
-    @pytest.mark.asyncio
-    async def test_get_user_heart_rate_series_requires_device_id(self, db: Session) -> None:
-        """Should return empty list without device_id or external_device_mapping_id."""
-        # Arrange
-        user = UserFactory()
-        query_params = TimeSeriesQueryParams()  # No device_id or mapping_id
-
-        # Act
-        samples = await timeseries_service.get_user_heart_rate_series(db, str(user.id), query_params)
-
-        # Assert
-        assert samples == []
-
-
-class TestTimeSeriesServiceGetUserStepSeries:
-    """Test retrieving user step series."""
-
-    @pytest.mark.asyncio
-    async def test_get_user_step_series_basic(self, db: Session) -> None:
-        """Should retrieve step samples for user."""
-        # Arrange
-        user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="tracker_1")
-        series_type = SeriesTypeDefinitionFactory.get_or_create_steps()
-
-        step1 = DataPointSeriesFactory(mapping=mapping, series_type=series_type, value=5000.0)
-        step2 = DataPointSeriesFactory(mapping=mapping, series_type=series_type, value=7500.0)
-
-        query_params = TimeSeriesQueryParams(device_id="tracker_1")
-
-        # Act
-        samples = await timeseries_service.get_user_step_series(db, str(user.id), query_params)
-
-        # Assert
-        assert len(samples) >= 2
-        sample_ids = [s.id for s in samples]
-        assert step1.id in sample_ids
-        assert step2.id in sample_ids
+        assert total_count >= initial_count + 2
 
 
 class TestTimeSeriesServiceGetDailyHistogram:
