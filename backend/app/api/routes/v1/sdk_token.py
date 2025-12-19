@@ -8,7 +8,7 @@ from app.services import application_service, create_sdk_user_token
 router = APIRouter()
 
 
-@router.post("/users/{external_user_id}/token", response_model=Token)
+@router.post("/users/{external_user_id}/token")
 async def create_user_token(
     external_user_id: str,
     payload: SDKTokenRequest,
@@ -33,9 +33,7 @@ async def create_user_token(
         401: If app credentials are invalid
     """
     # Validate app credentials
-    application = application_service.validate_credentials(
-        db, payload.app_id, payload.app_secret
-    )
+    application = application_service.validate_credentials(db, payload.app_id, payload.app_secret)
 
     # Generate user-scoped SDK token
     access_token = create_sdk_user_token(

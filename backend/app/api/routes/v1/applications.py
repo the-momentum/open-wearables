@@ -11,15 +11,23 @@ from app.services import DeveloperDep, application_service
 router = APIRouter()
 
 
-@router.get("/applications", response_model=list[ApplicationRead])
+@router.get("/applications")
 async def list_applications(db: DbSession, developer: DeveloperDep) -> list[ApplicationRead]:
     """List all applications for current developer."""
-    return application_service.list_applications(db, developer.id)
+    applications = application_service.list_applications(db, developer.id)
+    return [
+        ApplicationRead(
+            id=app.id,
+            app_id=app.app_id,
+            name=app.name,
+            created_at=app.created_at,
+        )
+        for app in applications
+    ]
 
 
 @router.post(
     "/applications",
-    response_model=ApplicationReadWithSecret,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_application(
@@ -31,9 +39,7 @@ async def create_application(
 
     Returns app_secret only once - store it securely as it cannot be retrieved again.
     """
-    application, plain_secret = application_service.create_application(
-        db, developer.id, payload.name
-    )
+    application, plain_secret = application_service.create_application(db, developer.id, payload.name)
     return ApplicationReadWithSecret(
         id=application.id,
         app_id=application.app_id,
@@ -55,7 +61,6 @@ async def delete_application(
 
 @router.post(
     "/applications/{app_id}/rotate-secret",
-    response_model=ApplicationReadWithSecret,
 )
 async def rotate_application_secret(
     app_id: str,
