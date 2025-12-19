@@ -13,12 +13,7 @@ from app.schemas import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.series_types import SeriesType, get_series_type_id
-<<<<<<< HEAD
 from app.utils.pagination import decode_cursor
-=======
-from app.utils.dates import parse_query_datetime
-from app.utils.exceptions import InvalidCursorError
->>>>>>> 020fe7c (implemented: Timeseris endpoint)
 
 
 class DataPointSeriesRepository(
