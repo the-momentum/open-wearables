@@ -148,9 +148,6 @@ class ApplicationFactory(BaseFactory):
     created_at = LazyFunction(lambda: datetime.now(timezone.utc))
     updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
 
-    class Params:
-        app_secret = "test_app_secret"
-
     @classmethod
     def _create(cls, model_class: type[Application], *args: Any, **kwargs: Any) -> Application:
         """Override create to handle developer relationship and password hashing."""
@@ -163,6 +160,7 @@ class ApplicationFactory(BaseFactory):
         kwargs["developer_id"] = developer.id
 
         # Handle app_secret -> app_secret_hash conversion with real bcrypt
+        # Default to "test_app_secret" if not provided
         app_secret = kwargs.pop("app_secret", "test_app_secret")
         if "app_secret_hash" not in kwargs:
             kwargs["app_secret_hash"] = get_password_hash(app_secret)
