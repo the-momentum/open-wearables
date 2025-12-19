@@ -2,7 +2,7 @@ from datetime import datetime, time, timezone
 from uuid import UUID
 
 import isodate
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_, asc, desc, func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
@@ -11,7 +11,8 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
-from app.utils.exceptions import handle_exceptions
+from app.utils.exceptions import InvalidCursorError, handle_exceptions
+from app.utils.dates import parse_query_datetime
 
 
 class EventRecordRepository(
@@ -120,14 +121,47 @@ class EventRecordRepository(
         if filters:
             query = query.filter(and_(*filters))
 
+        # Determine sort column and direction (used for both cursor and ordering)
+        sort_by = query_params.sort_by or "start_datetime"
+        sort_column = getattr(EventRecord, sort_by)
+        is_asc = query_params.sort_order == "asc"
+
+        # Cursor pagination (keyset) - replaces offset-based pagination
+        if query_params.cursor:
+            # Expected cursor format: "timestamp_iso|id"
+            try:
+                cursor_ts_str, cursor_id_str = query_params.cursor.split("|")
+                cursor_ts = parse_query_datetime(cursor_ts_str)
+                cursor_id = UUID(cursor_id_str)
+            except (ValueError, TypeError, isodate.ISO8601Error):
+                raise InvalidCursorError(cursor=query_params.cursor)
+
+            if sort_by == "start_datetime":
+                # WHERE (start_datetime, id) > (cursor_ts, cursor_id) for ASC, < for DESC
+                comparison = (
+                    tuple_(EventRecord.start_datetime, EventRecord.id) > (cursor_ts, cursor_id)
+                    if is_asc
+                    else tuple_(EventRecord.start_datetime, EventRecord.id) < (cursor_ts, cursor_id)
+                )
+                query = query.filter(comparison)
+            else:
+                # For other sort columns, fall back to simple ID-based cursor
+                query = query.filter(EventRecord.id > cursor_id if is_asc else EventRecord.id < cursor_id)
+
         total_count = query.count()
 
-        sort_column = getattr(EventRecord, query_params.sort_by or "start_datetime")
-        order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
+        # Apply ordering (ID as secondary sort for deterministic pagination)
+        sort_order = asc if is_asc else desc
+        query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
 
-        paged_query = query.order_by(order_column).offset(query_params.offset).limit(query_params.limit)
-
-        return paged_query.all(), total_count
+        # Limit + 1 to check for next page (cursor pagination)
+        limit = query_params.limit or 20
+        
+        # When using cursor, we don't use offset (keyset pagination)
+        if not query_params.cursor and query_params.offset:
+            query = query.offset(query_params.offset)
+        
+        return query.limit(limit + 1).all(), total_count
 
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type.
