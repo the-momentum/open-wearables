@@ -1,4 +1,5 @@
 from .api_key import ApiKey
+from .application import Application
 from .data_point_series import DataPointSeries
 from .developer import Developer
 from .device import Device
@@ -17,6 +18,7 @@ from .workout_details import WorkoutDetails
 
 __all__ = [
     "ApiKey",
+    "Application",
     "Developer",
     "Device",
     "DeviceSoftware",

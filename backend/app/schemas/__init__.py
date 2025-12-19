@@ -18,6 +18,13 @@ from .apple.healthkit.workout_import import (
 from .apple.healthkit.workout_import import (
     WorkoutStatisticJSON as HKWorkoutStatisticJSON,
 )
+from .application import (
+    ApplicationCreate,
+    ApplicationCreateInternal,
+    ApplicationRead,
+    ApplicationReadWithSecret,
+    ApplicationUpdate,
+)
 from .common import (
     RootJSON,
 )
@@ -102,6 +109,7 @@ from .provider_setting import (
     ProviderSettingUpdate,
 )
 from .response import UploadDataResponse
+from .sdk import SDKAuthContext, SDKTokenRequest
 from .series_types import SeriesType
 from .summaries import (
     ActivitySummary,
@@ -174,6 +182,13 @@ __all__ = [
     "ApiKeyCreate",
     "ApiKeyRead",
     "ApiKeyUpdate",
+    "ApplicationCreate",
+    "ApplicationCreateInternal",
+    "ApplicationRead",
+    "ApplicationReadWithSecret",
+    "ApplicationUpdate",
+    "SDKAuthContext",
+    "SDKTokenRequest",
     "ErrorCode",
     "UploadDataResponse",
     # OAuth schemas

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
+from .applications import router as applications_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
@@ -12,6 +13,7 @@ from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .sdk_sync import router as sdk_sync_router
+from .sdk_token import router as sdk_token_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
@@ -40,6 +42,8 @@ v1_router.include_router(heart_rate_router, tags=["data"])
 v1_router.include_router(workouts_router, tags=["data"])
 v1_router.include_router(import_xml_router, tags=["xml-import"])
 v1_router.include_router(sdk_sync_router, tags=["sdk"])
+v1_router.include_router(sdk_token_router, tags=["sdk"])
+v1_router.include_router(applications_router, tags=["applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 
 # RFC Taxonomy Routes

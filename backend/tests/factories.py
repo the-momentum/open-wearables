@@ -19,6 +19,7 @@ from factory import LazyAttribute, LazyFunction, Sequence
 
 from app.models import (
     ApiKey,
+    Application,
     DataPointSeries,
     Developer,
     EventRecord,
@@ -131,6 +132,37 @@ class ApiKeyFactory(BaseFactory):
             # Create a developer if not provided
             developer = DeveloperFactory()
         kwargs["created_by"] = developer.id
+        return super()._create(model_class, *args, **kwargs)
+
+
+class ApplicationFactory(BaseFactory):
+    """Factory for Application model (SDK apps)."""
+
+    class Meta:
+        model = Application
+
+    id = LazyFunction(uuid4)
+    app_id = LazyFunction(lambda: f"app_{uuid4().hex[:32]}")
+    app_secret_hash = LazyAttribute(
+        lambda o: f"hashed_{o.app_secret}" if hasattr(o, "app_secret") else "hashed_test_app_secret",
+    )
+    name = Sequence(lambda n: f"Test Application {n}")
+    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
+    updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
+
+    class Params:
+        app_secret = "test_app_secret"
+
+    @classmethod
+    def _create(cls, model_class: type[Application], *args: Any, **kwargs: Any) -> Application:
+        """Override create to handle developer relationship."""
+        developer = kwargs.pop("developer", None)
+        # Remove any stale developer_id that might have been set
+        kwargs.pop("developer_id", None)
+        if developer is None:
+            # Create a developer if not provided
+            developer = DeveloperFactory()
+        kwargs["developer_id"] = developer.id
         return super()._create(model_class, *args, **kwargs)
 
 
@@ -359,6 +391,7 @@ __all__ = [
     "UserFactory",
     "DeveloperFactory",
     "ApiKeyFactory",
+    "ApplicationFactory",
     "ExternalDeviceMappingFactory",
     "UserConnectionFactory",
     "EventRecordFactory",

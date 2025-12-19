@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, stat
 
 from app.database import DbSession
 from app.schemas import UploadDataResponse
-from app.services import ApiKeyDep, ae_import_service, hk_import_service
+from app.services import SDKAuthDep, ae_import_service, hk_import_service
 
 router = APIRouter()
 
@@ -34,10 +34,13 @@ async def sync_data_auto_health_export(
     user_id: str,
     request: Request,
     db: DbSession,
-    _api_key: ApiKeyDep,
+    auth: SDKAuthDep,
     content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
-    """Import health data from file upload or JSON."""
+    """Import health data from file upload or JSON.
+
+    Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
+    """
     content_str, content_type = content[0], content[1]
     return await ae_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
@@ -47,9 +50,12 @@ async def sync_data_healthion(
     user_id: str,
     request: Request,
     db: DbSession,
-    _api_key: ApiKeyDep,
+    auth: SDKAuthDep,
     content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
-    """Import health data from file upload or JSON."""
+    """Import health data from file upload or JSON.
+
+    Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
+    """
     content_str, content_type = content[0], content[1]
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
