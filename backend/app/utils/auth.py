@@ -60,19 +60,34 @@ async def get_current_developer_optional(
     db: DbSession,
     token: Annotated[str | None, Depends(oauth2_scheme)] = None,
 ) -> Developer | None:
-    """Get current authenticated developer from JWT token, or None if not authenticated."""
+    """Get current authenticated developer from JWT token, or None if not authenticated.
+
+    SDK-scoped tokens return None - they are not developer tokens.
+    """
     if not token:
         return None
 
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+        # SDK tokens are not developer tokens - return None to allow fallback to API key
+        if payload.get("scope") == "sdk":
+            return None
+
         developer_id: str = payload.get("sub")
         if developer_id is None:
             return None
+
+        # Validate that developer_id is a valid UUID
+        try:
+            developer_uuid = UUID(developer_id)
+        except ValueError:
+            return None
+
     except JWTError:
         return None
 
-    return developer_repository.get(db, UUID(developer_id))
+    return developer_repository.get(db, developer_uuid)
 
 
 DeveloperDep = Annotated[Developer, Depends(get_current_developer)]
