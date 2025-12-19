@@ -11,8 +11,8 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
-from app.utils.exceptions import InvalidCursorError, handle_exceptions
 from app.utils.dates import parse_query_datetime
+from app.utils.exceptions import InvalidCursorError, handle_exceptions
 
 
 class EventRecordRepository(
@@ -156,11 +156,11 @@ class EventRecordRepository(
 
         # Limit + 1 to check for next page (cursor pagination)
         limit = query_params.limit or 20
-        
+
         # When using cursor, we don't use offset (keyset pagination)
         if not query_params.cursor and query_params.offset:
             query = query.offset(query_params.offset)
-        
+
         return query.limit(limit + 1).all(), total_count
 
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
