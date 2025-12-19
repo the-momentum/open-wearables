@@ -390,6 +390,13 @@ export interface HeartRateSampleResponse {
   series_type: 'heart_rate';
 }
 
+export interface WorkoutStatisticResponse {
+  type: string;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
 export interface HealthDataParams {
   start_datetime?: string;
   end_datetime?: string;

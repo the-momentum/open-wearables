@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Link as LinkIcon,
   Activity,
-  Heart,
   Dumbbell,
   Trash2,
   Check,
@@ -13,7 +12,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  useHeartRate,
   useUserConnections,
   useWorkouts,
 } from '@/hooks/api/use-health';
@@ -21,7 +19,6 @@ import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
-import { calculateHeartRateStats } from '@/lib/utils/health';
 import { ConnectionCard } from '@/components/user/connection-card';
 import {
   AlertDialog,
@@ -43,8 +40,6 @@ function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
   const { data: user, isLoading: userLoading } = useUser(userId);
-  const { data: heartRateData, isLoading: heartRateLoading } =
-    useHeartRate(userId);
   const { data: workouts, isLoading: workoutsLoading } = useWorkouts(userId, {
     limit: 10,
     sort_order: 'desc',
@@ -53,7 +48,6 @@ function UserDetailPage() {
     useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
-  const heartRateStats = calculateHeartRateStats(heartRateData);
   const [copied, setCopied] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -317,43 +311,7 @@ function UserDetailPage() {
       </div>
 
       {/* Health Stats */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Heart Rate */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white">Heart Rate</h3>
-            <Heart className="h-4 w-4 text-zinc-500" />
-          </div>
-          <div className="p-6">
-            {heartRateLoading ? (
-              <div className="space-y-3">
-                <div className="h-8 w-24 bg-zinc-800 rounded animate-pulse" />
-                <div className="h-4 w-32 bg-zinc-800/50 rounded animate-pulse" />
-              </div>
-            ) : heartRateData && heartRateData.length > 0 ? (
-              <>
-                <div className="text-3xl font-medium text-white">
-                  {heartRateStats.avg ?? '—'}{' '}
-                  <span className="text-lg text-zinc-500">bpm</span>
-                </div>
-                <p className="text-xs text-zinc-500 mt-2">
-                  Range: {heartRateStats.min ?? '—'} -{' '}
-                  {heartRateStats.max ?? '—'} bpm
-                </p>
-                <div className="mt-4 pt-4 border-t border-zinc-800">
-                  <p className="text-xs text-zinc-500">
-                    {heartRateStats.count} readings
-                  </p>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-zinc-500">
-                No heart rate data available
-              </p>
-            )}
-          </div>
-        </div>
-
+      <div className="grid gap-6">
         {/* Activity / Workouts */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">

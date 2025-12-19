@@ -29,20 +29,24 @@ export function calculateHeartRateStats(
 
   const stats = data.reduce(
     (acc, stat) => {
-      // Check for heart rate type (case-insensitive)
+      // Check if stat has a type property and if it's a heart rate type (case-insensitive)
+      if (!stat.type || typeof stat.type !== 'string') {
+        return acc;
+      }
+      
       const isHeartRate =
         stat.type.toLowerCase() === 'heartrate' ||
         stat.type.toLowerCase() === 'heart_rate';
 
       if (!isHeartRate) return acc;
 
-      if (stat.avg !== null) {
+      if (stat.avg !== null && stat.avg !== undefined) {
         acc.values.push(stat.avg);
       }
-      if (stat.min !== null && (acc.min === null || stat.min < acc.min)) {
+      if (stat.min !== null && stat.min !== undefined && (acc.min === null || stat.min < acc.min)) {
         acc.min = stat.min;
       }
-      if (stat.max !== null && (acc.max === null || stat.max > acc.max)) {
+      if (stat.max !== null && stat.max !== undefined && (acc.max === null || stat.max > acc.max)) {
         acc.max = stat.max;
       }
 

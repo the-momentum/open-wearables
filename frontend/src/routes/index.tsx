@@ -1,6 +1,7 @@
-import { createFileRoute, redirect, Navigate } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { isAuthenticated } from '@/lib/auth/session';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { useEffect } from 'react';
 
 export const Route = createFileRoute('/')({
   beforeLoad: async () => {
@@ -23,19 +24,18 @@ export const Route = createFileRoute('/')({
 });
 
 function IndexRedirect() {
-  // This component handles the client-side redirect after SSR hydration
-  // The beforeLoad will handle the actual redirect, but we need a component
-  // for SSR to render something. After hydration, beforeLoad kicks in.
-  if (typeof window !== 'undefined') {
-    // Client-side: beforeLoad should have already redirected
-    // If we get here, fall back to Navigate
+  const navigate = useNavigate();
+  
+  // Handle client-side redirect after hydration
+  useEffect(() => {
     if (isAuthenticated()) {
-      return <Navigate to="/users" />;
+      navigate({ to: '/users' });
+    } else {
+      navigate({ to: '/login' });
     }
-    return <Navigate to="/login" />;
-  }
+  }, [navigate]);
 
-  // During SSR, render a minimal loading state
+  // Always render the same content on both server and client to avoid hydration mismatch
   return (
     <div className="min-h-screen flex items-center justify-center bg-black">
       <LoadingSpinner size="lg" />
