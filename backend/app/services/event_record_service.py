@@ -26,6 +26,7 @@ from app.schemas.events import (
 from app.schemas.summaries import SleepStagesSummary
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
+from app.utils.pagination import encode_cursor
 
 
 class EventRecordService(
@@ -113,13 +114,37 @@ class EventRecordService(
 
         limit = params.limit or 20
         has_more = len(records) > limit
-        next_cursor = None
 
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
         if has_more:
-            # Get the last item of the current page to form the cursor for the next page
-            last_record, _ = records[limit - 1]
-            next_cursor = f"{last_record.start_datetime.isoformat()}|{last_record.id}"
-            records = records[:limit]
+            records = records[-limit:] if is_backward else records[:limit]
+
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
         for record, mapping in records:
@@ -148,8 +173,9 @@ class EventRecordService(
         return PaginatedResponse(
             data=data,
             pagination=Pagination(
-                next_cursor=next_cursor,
                 has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
             ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),
@@ -219,13 +245,37 @@ class EventRecordService(
 
         limit = params.limit or 20
         has_more = len(records) > limit
-        next_cursor = None
 
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
         if has_more:
-            # Get the last item of the current page to form the cursor for the next page
-            last_record, _ = records[limit - 1]
-            next_cursor = f"{last_record.start_datetime.isoformat()}|{last_record.id}"
-            records = records[:limit]
+            records = records[-limit:] if is_backward else records[:limit]
+
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
         for record, mapping in records:
@@ -255,8 +305,9 @@ class EventRecordService(
         return PaginatedResponse(
             data=data,
             pagination=Pagination(
-                next_cursor=next_cursor,
                 has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
             ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),

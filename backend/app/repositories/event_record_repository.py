@@ -11,8 +11,8 @@ from app.models import EventRecord, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
-from app.utils.dates import parse_query_datetime
-from app.utils.exceptions import InvalidCursorError, handle_exceptions
+from app.utils.exceptions import handle_exceptions
+from app.utils.pagination import decode_cursor
 
 
 class EventRecordRepository(
@@ -121,23 +121,39 @@ class EventRecordRepository(
         if filters:
             query = query.filter(and_(*filters))
 
-        # Determine sort column and direction (used for both cursor and ordering)
+        # Determine sort column and direction
         sort_by = query_params.sort_by or "start_datetime"
         sort_column = getattr(EventRecord, sort_by)
         is_asc = query_params.sort_order == "asc"
 
-        # Cursor pagination (keyset) - replaces offset-based pagination
+        # Cursor pagination (keyset)
         if query_params.cursor:
-            # Expected cursor format: "timestamp_iso|id"
-            try:
-                cursor_ts_str, cursor_id_str = query_params.cursor.split("|")
-                cursor_ts = parse_query_datetime(cursor_ts_str)
-                cursor_id = UUID(cursor_id_str)
-            except (ValueError, TypeError, isodate.ISO8601Error):
-                raise InvalidCursorError(cursor=query_params.cursor)
+            cursor_ts, cursor_id, direction = decode_cursor(query_params.cursor)
 
+            if direction == "prev":
+                # Backward pagination: get items BEFORE cursor
+                if sort_by == "start_datetime":
+                    comparison = (
+                        tuple_(EventRecord.start_datetime, EventRecord.id) < (cursor_ts, cursor_id)
+                        if is_asc
+                        else tuple_(EventRecord.start_datetime, EventRecord.id) > (cursor_ts, cursor_id)
+                    )
+                    query = query.filter(comparison)
+                else:
+                    query = query.filter(EventRecord.id < cursor_id if is_asc else EventRecord.id > cursor_id)
+
+                # Reverse sort order for backward pagination
+                sort_order = desc if is_asc else asc
+                query = query.order_by(sort_order(sort_column), sort_order(EventRecord.id))
+
+                # Limit + 1 to check for previous page
+                limit = query_params.limit or 20
+                results = query.limit(limit + 1).all()
+                # Reverse to get correct order
+                return list(reversed(results)), query.count()
+
+            # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
-                # WHERE (start_datetime, id) > (cursor_ts, cursor_id) for ASC, < for DESC
                 comparison = (
                     tuple_(EventRecord.start_datetime, EventRecord.id) > (cursor_ts, cursor_id)
                     if is_asc
@@ -145,7 +161,6 @@ class EventRecordRepository(
                 )
                 query = query.filter(comparison)
             else:
-                # For other sort columns, fall back to simple ID-based cursor
                 query = query.filter(EventRecord.id > cursor_id if is_asc else EventRecord.id < cursor_id)
 
         total_count = query.count()
