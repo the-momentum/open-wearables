@@ -19,48 +19,6 @@ export function useUserConnections(userId: string) {
   });
 }
 
-// Get heart rate data
-export function useHeartRateData(
-  userId: string,
-  deviceId: string,
-  days: number = 7
-) {
-  return useQuery({
-    queryKey: queryKeys.health.heartRate(userId, deviceId, days),
-    queryFn: () => healthService.getHeartRateData(userId, deviceId, days),
-    enabled: !!userId && !!deviceId,
-  });
-}
-
-export function useUserHeartRate(
-  userId: string,
-  deviceId: string,
-  params?: Omit<HealthDataParams, 'device_id'>
-) {
-  const queryParams: HealthDataParams = {
-    ...params,
-    device_id: deviceId,
-  };
-
-  return useQuery({
-    queryKey: queryKeys.health.heartRateList(userId, queryParams),
-    queryFn: () => healthService.getHeartRateList(userId, queryParams),
-    enabled: !!userId && !!deviceId,
-  });
-}
-
-/**
- * Get heart rate data for a user
- * Uses GET /api/v1/users/{user_id}/heart-rate
- */
-export function useHeartRate(userId: string) {
-  return useQuery({
-    queryKey: queryKeys.health.heartRate(userId),
-    queryFn: () => healthService.getHeartRate(userId),
-    enabled: !!userId,
-  });
-}
-
 /**
  * Get workouts for a user
  * Uses GET /api/v1/users/{user_id}/workouts

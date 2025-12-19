@@ -3,7 +3,6 @@ import { API_ENDPOINTS } from '../config';
 import type {
   WorkoutResponse,
   UserConnection,
-  HeartRateSampleResponse,
   EventRecordResponse,
   HealthDataParams,
 } from '../types';
@@ -47,44 +46,18 @@ export const healthService = {
   },
 
   /**
-   * Get heart rate data for a user
-   */
-  async getHeartRate(userId: string): Promise<HeartRateSampleResponse[]> {
-    return apiClient.get<HeartRateSampleResponse[]>(
-      API_ENDPOINTS.userHeartRate(userId)
-    );
-  },
-
-  /**
    * Get workouts for a user
    */
   async getWorkouts(
     userId: string,
-    deviceId: string,
-    days: number = 7
-  ): Promise<HeartRateData[]> {
-    const end = new Date();
-    const start = new Date(end);
-    start.setDate(end.getDate() - days);
-
-    const samples = await apiClient.get<HeartRateSampleResponse[]>(
-      `/v1/users/${userId}/heart-rate`,
+    params?: HealthDataParams
+  ): Promise<EventRecordResponse[]> {
+    return apiClient.get<EventRecordResponse[]>(
+      API_ENDPOINTS.userWorkouts(userId),
       {
-        params: {
-          start_datetime: start.toISOString(),
-          end_datetime: end.toISOString(),
-          device_id: deviceId,
-        },
+        params,
       }
     );
-
-    return samples.map((sample) => ({
-      id: sample.id,
-      userId,
-      timestamp: sample.recorded_at,
-      value: Number(sample.value),
-      source: sample.device_id ?? 'unknown',
-    }));
   },
 
   async getSleepData(userId: string, days: number = 7): Promise<SleepData[]> {
@@ -120,28 +93,6 @@ export const healthService = {
     return apiClient.post<{ message: string; jobId: string }>(
       `/v1/users/${userId}/sync`,
       {}
-    );
-  },
-
-  async getHeartRateList(
-    userId: string,
-    params?: HealthDataParams
-  ): Promise<HeartRateSampleResponse[]> {
-    return apiClient.get<HeartRateSampleResponse[]>(
-      `/v1/users/${userId}/heart-rate`,
-      { params }
-    );
-  },
-
-  async getWorkouts(
-    userId: string,
-    params?: HealthDataParams
-  ): Promise<EventRecordResponse[]> {
-    return apiClient.get<EventRecordResponse[]>(
-      API_ENDPOINTS.userWorkouts(userId),
-      {
-        params,
-      }
     );
   },
 };

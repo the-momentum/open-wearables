@@ -20,7 +20,7 @@ export const WEARABLE_PROVIDERS: WearableProvider[] = [
     logoPath: '/garmin.svg',
     brandColor: '#007DC3',
     isAvailable: true,
-    features: ['Heart Rate', 'Activity', 'Sleep', 'Workouts'],
+    features: ['Activity', 'Sleep', 'Workouts'],
   },
   {
     id: 'polar',
@@ -29,7 +29,7 @@ export const WEARABLE_PROVIDERS: WearableProvider[] = [
     logoPath: '/polar.svg',
     brandColor: '#D40029',
     isAvailable: true,
-    features: ['Heart Rate', 'Training', 'Recovery'],
+    features: ['Training', 'Recovery'],
   },
   {
     id: 'suunto',
@@ -38,7 +38,7 @@ export const WEARABLE_PROVIDERS: WearableProvider[] = [
     logoPath: '/suunto.svg',
     brandColor: '#E41F1C',
     isAvailable: true,
-    features: ['GPS', 'Heart Rate', 'Activity'],
+    features: ['GPS', 'Activity'],
   },
 ] as const;
 

@@ -310,7 +310,7 @@ function UsersPage() {
             <div className="p-6">
               <ul className="list-disc list-inside text-sm text-zinc-500 space-y-1">
                 <li>All wearable device connections</li>
-                <li>All health data (heart rate, sleep, activity)</li>
+                <li>All health data (sleep, activity)</li>
                 <li>All automation triggers for this user</li>
               </ul>
               <div className="mt-4 p-3 bg-zinc-800 rounded-md">

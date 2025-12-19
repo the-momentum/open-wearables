@@ -147,14 +147,6 @@ export interface UserConnection {
   updated_at: string;
 }
 
-export interface HeartRateData {
-  id: string;
-  userId: string;
-  timestamp: string;
-  value: number;
-  source: string;
-}
-
 export interface SleepData {
   id: string;
   userId: string;
@@ -186,12 +178,6 @@ export interface ActivityData {
 export interface HealthDataSummary {
   userId: string;
   period: string;
-  heartRate: {
-    average: number;
-    min: number;
-    max: number;
-    data: HeartRateData[];
-  };
   sleep: {
     averageMinutes: number;
     averageEfficiency: number;
@@ -203,11 +189,6 @@ export interface HealthDataSummary {
     data: ActivityData[];
   };
   lastUpdated: string;
-}
-
-export interface HeartRatePoint {
-  timestamp: string;
-  bpm: number;
 }
 
 export interface SleepSession {
@@ -343,11 +324,6 @@ export interface ChatRequest {
   userId?: string;
 }
 
-export interface HeartRateValue {
-  value: number;
-  unit: string;
-}
-
 export interface EventRecordResponse {
   id: string;
   user_id: string;
@@ -380,14 +356,6 @@ export interface EventRecordResponse {
   sleep_rem_minutes: number | string | null;
   sleep_light_minutes: number | string | null;
   sleep_awake_minutes: number | string | null;
-}
-
-export interface HeartRateSampleResponse {
-  id: string;
-  device_id: string | null;
-  recorded_at: string;
-  value: number | string;
-  series_type: 'heart_rate';
 }
 
 export interface HealthDataParams {

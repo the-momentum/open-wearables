@@ -56,8 +56,6 @@ export const queryKeys = {
 
   healthData: {
     all: (userId: string) => ['healthData', userId] as const,
-    heartRate: (userId: string, dateRange?: { start: string; end: string }) =>
-      [...queryKeys.healthData.all(userId), 'heartRate', dateRange] as const,
     sleep: (userId: string, dateRange?: { start: string; end: string }) =>
       [...queryKeys.healthData.all(userId), 'sleep', dateRange] as const,
     activity: (userId: string, dateRange?: { start: string; end: string }) =>
@@ -69,16 +67,12 @@ export const queryKeys = {
     providers: () => [...queryKeys.health.all, 'providers'] as const,
     connections: (userId: string) =>
       [...queryKeys.health.all, 'connections', userId] as const,
-    heartRate: (userId: string, deviceId: string, days: number) =>
-      [...queryKeys.health.all, 'heartRate', userId, deviceId, days] as const,
     sleep: (userId: string, days: number) =>
       [...queryKeys.health.all, 'sleep', userId, days] as const,
     activity: (userId: string, days: number) =>
       [...queryKeys.health.all, 'activity', userId, days] as const,
     summary: (userId: string, period?: string) =>
       [...queryKeys.health.all, 'summary', userId, period] as const,
-    heartRateList: (userId: string, params?: HealthDataParams) =>
-      [...queryKeys.health.all, 'heartRateList', userId, params] as const,
     workouts: (userId: string, params?: HealthDataParams) =>
       [...queryKeys.health.all, 'workouts', userId, params] as const,
   },
