@@ -125,7 +125,7 @@ export function UsersTable({
       setCopiedId(id);
       toast.success('User ID copied to clipboard');
       setTimeout(() => setCopiedId(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy user ID to clipboard');
     }
   };
@@ -141,7 +141,7 @@ export function UsersTable({
       setCopiedPairLink(userId);
       toast.success('Pairing link copied to clipboard');
       setTimeout(() => setCopiedPairLink(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy pairing link to clipboard');
     }
   };
