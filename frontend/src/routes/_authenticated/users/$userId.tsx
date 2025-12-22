@@ -14,14 +14,21 @@ import {
   Flame,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUserConnections, useWorkouts, useTimeSeries } from '@/hooks/api/use-health';
+import {
+  useUserConnections,
+  useWorkouts,
+  useTimeSeries,
+} from '@/hooks/api/use-health';
 import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
-import { DateRangeSelector, type DateRangeValue } from '@/components/ui/date-range-selector';
+import {
+  DateRangeSelector,
+  type DateRangeValue,
+} from '@/components/ui/date-range-selector';
 import { DataSummaryCard } from '@/components/dashboard/data-summary-card';
 import {
   AlertDialog,
@@ -45,10 +52,11 @@ function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
   const { data: user, isLoading: userLoading } = useUser(userId);
-  
+
   const [dateRange, setDateRange] = useState<DateRangeValue>(30);
-  const [dataPointsDateRange, setDataPointsDateRange] = useState<DateRangeValue>(30);
-  
+  const [dataPointsDateRange, setDataPointsDateRange] =
+    useState<DateRangeValue>(30);
+
   // Calculate dates for workouts
   const { workoutStartDate, workoutEndDate } = useMemo(() => {
     const end = new Date();
@@ -72,18 +80,21 @@ function UserDetailPage() {
     return { tsStartDate: start, tsEndDate: end };
   }, [dataPointsDateRange]);
 
-  const { data: timeSeries, isLoading: timeSeriesLoading } = useTimeSeries(userId, {
-    start_time: tsStartDate.toISOString(),
-    end_time: tsEndDate.toISOString(),
-    types: TIME_SERIES_TYPES,
-    limit: 100,
-  });
+  const { data: timeSeries, isLoading: timeSeriesLoading } = useTimeSeries(
+    userId,
+    {
+      start_time: tsStartDate.toISOString(),
+      end_time: tsEndDate.toISOString(),
+      types: TIME_SERIES_TYPES,
+      limit: 100,
+    }
+  );
 
   // Process time series data for display
   const processedTimeSeries = {
-    energy: timeSeries?.data.filter(d => d.type === 'energy') || [],
-    steps: timeSeries?.data.filter(d => d.type === 'steps') || [],
-    heartRate: timeSeries?.data.filter(d => d.type === 'heart_rate') || [],
+    energy: timeSeries?.data.filter((d) => d.type === 'energy') || [],
+    steps: timeSeries?.data.filter((d) => d.type === 'steps') || [],
+    heartRate: timeSeries?.data.filter((d) => d.type === 'heart_rate') || [],
   };
 
   const { data: connections, isLoading: connectionsLoading } =
@@ -376,17 +387,24 @@ function UserDetailPage() {
                   <DataSummaryCard
                     count={workouts.data.length}
                     label="Total workouts"
-                    mostRecentDate={workouts.data[0].start_time || workouts.data[0].start_datetime}
+                    mostRecentDate={
+                      workouts.data[0].start_time ||
+                      workouts.data[0].start_datetime
+                    }
                   />
                 </div>
 
                 {/* Recent Workouts Grid */}
                 <div className="flex-1">
-                  <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">Recent Activity</h4>
+                  <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">
+                    Recent Activity
+                  </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                     {workouts.data.slice(0, 8).map((workout) => {
-                      const style = getWorkoutStyle(workout.type || workout.category || '');
-                      
+                      const style = getWorkoutStyle(
+                        workout.type || workout.category || ''
+                      );
+
                       return (
                         <div
                           key={workout.id}
@@ -394,11 +412,17 @@ function UserDetailPage() {
                         >
                           <div className="text-xl">{style.icon}</div>
                           <div>
-                            <p className={`text-xs font-medium ${style.color.split(' ').pop()}`}>
+                            <p
+                              className={`text-xs font-medium ${style.color.split(' ').pop()}`}
+                            >
                               {style.label}
                             </p>
                             <p className="text-[10px] text-zinc-500 mt-0.5">
-                              {new Date(workout.start_time || workout.start_datetime || '').toLocaleDateString()}
+                              {new Date(
+                                workout.start_time ||
+                                  workout.start_datetime ||
+                                  ''
+                              ).toLocaleDateString()}
                             </p>
                           </div>
                         </div>
@@ -419,7 +443,10 @@ function UserDetailPage() {
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h3 className="text-sm font-medium text-white">Data Points</h3>
-            <DateRangeSelector value={dataPointsDateRange} onChange={setDataPointsDateRange} />
+            <DateRangeSelector
+              value={dataPointsDateRange}
+              onChange={setDataPointsDateRange}
+            />
           </div>
           <Activity className="h-4 w-4 text-zinc-500" />
         </div>
@@ -444,7 +471,9 @@ function UserDetailPage() {
                 </div>
                 <div className="mt-2">
                   <p className="text-2xl font-semibold text-white">
-                    {processedTimeSeries.energy.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                    {processedTimeSeries.energy
+                      .reduce((acc, curr) => acc + curr.value, 0)
+                      .toLocaleString()}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">kcal</p>
                 </div>
@@ -463,7 +492,9 @@ function UserDetailPage() {
                 </div>
                 <div className="mt-2">
                   <p className="text-2xl font-semibold text-white">
-                    {processedTimeSeries.steps.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                    {processedTimeSeries.steps
+                      .reduce((acc, curr) => acc + curr.value, 0)
+                      .toLocaleString()}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">steps</p>
                 </div>
@@ -476,7 +507,9 @@ function UserDetailPage() {
                     <Heart className="h-5 w-5 text-rose-500" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-zinc-300">Heart Rate</p>
+                    <p className="text-sm font-medium text-zinc-300">
+                      Heart Rate
+                    </p>
                     <p className="text-xs text-zinc-500">Average BPM</p>
                   </div>
                 </div>
@@ -484,8 +517,10 @@ function UserDetailPage() {
                   <p className="text-2xl font-semibold text-white">
                     {processedTimeSeries.heartRate.length > 0
                       ? Math.round(
-                          processedTimeSeries.heartRate.reduce((acc, curr) => acc + curr.value, 0) /
-                            processedTimeSeries.heartRate.length
+                          processedTimeSeries.heartRate.reduce(
+                            (acc, curr) => acc + curr.value,
+                            0
+                          ) / processedTimeSeries.heartRate.length
                         )
                       : '-'}
                   </p>
@@ -494,11 +529,12 @@ function UserDetailPage() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-zinc-500 text-center">No data points available yet</p>
+            <p className="text-sm text-zinc-500 text-center">
+              No data points available yet
+            </p>
           )}
         </div>
       </div>
-
 
       {/* Edit User Dialog */}
       {isEditDialogOpen && (

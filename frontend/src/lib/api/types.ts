@@ -368,7 +368,7 @@ export interface EventRecordResponse {
   };
   calories_kcal?: number | null;
   distance_meters?: number | null;
-  
+
   // Legacy fields (keeping for compatibility if needed, but marked optional)
   user_id?: string;
   provider_id?: string | null;

@@ -1,7 +1,7 @@
 import inspect
 from collections.abc import Awaitable, Callable
 from functools import singledispatch, wraps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 from uuid import UUID
 
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -65,6 +65,18 @@ def _(exc: RequestValidationError, _: str) -> HTTPException:
     error = ctx.get("error", "") if ctx else ""
     detail = f"{msg} - {error}" if error else msg
     return HTTPException(status_code=400, detail=detail)
+
+
+@overload
+def handle_exceptions[**P, T, Service: AppService](
+    func: Callable[P, Awaitable[T]],
+) -> Callable[P, Awaitable[T]]: ...
+
+
+@overload
+def handle_exceptions[**P, T, Service: AppService](
+    func: Callable[P, T],
+) -> Callable[P, T]: ...
 
 
 def handle_exceptions[**P, T, Service: AppService](
