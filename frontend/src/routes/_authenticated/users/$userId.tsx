@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Link as LinkIcon,
@@ -9,14 +9,20 @@ import {
   Check,
   Pencil,
   X,
+  Heart,
+  Footprints,
+  Flame,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUserConnections, useWorkouts } from '@/hooks/api/use-health';
+import { useUserConnections, useWorkouts, useTimeSeries } from '@/hooks/api/use-health';
 import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
+import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
+import { DateRangeSelector, type DateRangeValue } from '@/components/ui/date-range-selector';
+import { DataSummaryCard } from '@/components/dashboard/data-summary-card';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +35,8 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
+const TIME_SERIES_TYPES = ['energy', 'steps', 'heart_rate'];
+
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
 });
@@ -37,10 +45,47 @@ function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
   const { data: user, isLoading: userLoading } = useUser(userId);
+  
+  const [dateRange, setDateRange] = useState<DateRangeValue>(30);
+  const [dataPointsDateRange, setDataPointsDateRange] = useState<DateRangeValue>(30);
+  
+  // Calculate dates for workouts
+  const { workoutStartDate, workoutEndDate } = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - dateRange);
+    return { workoutStartDate: start, workoutEndDate: end };
+  }, [dateRange]);
+
   const { data: workouts, isLoading: workoutsLoading } = useWorkouts(userId, {
-    limit: 10,
+    start_date: Math.floor(workoutStartDate.getTime() / 1000).toString(),
+    end_date: Math.floor(workoutEndDate.getTime() / 1000).toString(),
+    limit: 100,
     sort_order: 'desc',
   });
+
+  // Calculate dates for time series
+  const { tsStartDate, tsEndDate } = useMemo(() => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - dataPointsDateRange);
+    return { tsStartDate: start, tsEndDate: end };
+  }, [dataPointsDateRange]);
+
+  const { data: timeSeries, isLoading: timeSeriesLoading } = useTimeSeries(userId, {
+    start_time: tsStartDate.toISOString(),
+    end_time: tsEndDate.toISOString(),
+    types: TIME_SERIES_TYPES,
+    limit: 100,
+  });
+
+  // Process time series data for display
+  const processedTimeSeries = {
+    energy: timeSeries?.data.filter(d => d.type === 'energy') || [],
+    steps: timeSeries?.data.filter(d => d.type === 'steps') || [],
+    heartRate: timeSeries?.data.filter(d => d.type === 'heart_rate') || [],
+  };
+
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
@@ -312,7 +357,10 @@ function UserDetailPage() {
         {/* Activity / Workouts */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-white">Workouts</h3>
+            <div className="flex items-center gap-4">
+              <h3 className="text-sm font-medium text-white">Workouts</h3>
+              <DateRangeSelector value={dateRange} onChange={setDateRange} />
+            </div>
             <Activity className="h-4 w-4 text-zinc-500" />
           </div>
           <div className="p-6">
@@ -321,19 +369,44 @@ function UserDetailPage() {
                 <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
                 <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
               </div>
-            ) : workouts && workouts.length > 0 ? (
-              <>
-                <div className="text-3xl font-medium text-white">
-                  {workouts.length}
+            ) : workouts?.data && workouts.data.length > 0 ? (
+              <div className="flex flex-col lg:flex-row gap-8">
+                {/* Summary Section */}
+                <div className="lg:w-64 flex-shrink-0">
+                  <DataSummaryCard
+                    count={workouts.data.length}
+                    label="Total workouts"
+                    mostRecentDate={workouts.data[0].start_time || workouts.data[0].start_datetime}
+                  />
                 </div>
-                <p className="text-xs text-zinc-500 mt-2">Total workouts</p>
-                <div className="mt-4 pt-4 border-t border-zinc-800">
-                  <p className="text-xs text-zinc-500">
-                    Most recent:{' '}
-                    {new Date(workouts[0].start_datetime).toLocaleDateString()}
-                  </p>
+
+                {/* Recent Workouts Grid */}
+                <div className="flex-1">
+                  <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">Recent Activity</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {workouts.data.slice(0, 8).map((workout) => {
+                      const style = getWorkoutStyle(workout.type || workout.category || '');
+                      
+                      return (
+                        <div
+                          key={workout.id}
+                          className={`p-3 border rounded-lg flex flex-col items-center justify-center text-center gap-2 transition-colors ${style.color.replace('text-', 'border-').split(' ')[1]} ${style.color.split(' ')[0]}`}
+                        >
+                          <div className="text-xl">{style.icon}</div>
+                          <div>
+                            <p className={`text-xs font-medium ${style.color.split(' ').pop()}`}>
+                              {style.label}
+                            </p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">
+                              {new Date(workout.start_time || workout.start_datetime || '').toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </>
+              </div>
             ) : (
               <p className="text-sm text-zinc-500">No workout data available</p>
             )}
@@ -341,75 +414,91 @@ function UserDetailPage() {
         </div>
       </div>
 
-      {/* Recent Workouts */}
+      {/* Data Points Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-medium text-white">Recent Workouts</h2>
-            <p className="text-xs text-zinc-500 mt-1">
-              Latest workout activities
-            </p>
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-medium text-white">Data Points</h3>
+            <DateRangeSelector value={dataPointsDateRange} onChange={setDataPointsDateRange} />
           </div>
-          <Dumbbell className="h-4 w-4 text-zinc-500" />
+          <Activity className="h-4 w-4 text-zinc-500" />
         </div>
         <div className="p-6">
-          {workoutsLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="p-4 border border-zinc-800 rounded-lg space-y-2"
-                >
-                  <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse" />
-                  <div className="h-4 w-48 bg-zinc-800/50 rounded animate-pulse" />
-                </div>
-              ))}
-            </div>
-          ) : workouts && workouts.length > 0 ? (
+          {timeSeriesLoading ? (
             <div className="space-y-3">
-              {workouts.map((workout) => (
-                <div
-                  key={workout.id}
-                  className="p-4 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors"
-                >
+              <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
+              <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
+            </div>
+          ) : timeSeries?.data && timeSeries.data.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Energy Card */}
+              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-orange-500/10 rounded-lg">
+                    <Flame className="h-5 w-5 text-orange-500" />
+                  </div>
                   <div>
-                    <h4 className="font-medium text-white">
-                      {workout.type || 'Workout'}
-                    </h4>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      {formatDate(workout.start_datetime)} •{' '}
-                      {workout.duration_seconds
-                        ? formatDuration(workout.duration_seconds)
-                        : '—'}{' '}
-                      • {workout.source_name}
-                    </p>
+                    <p className="text-sm font-medium text-zinc-300">Energy</p>
+                    <p className="text-xs text-zinc-500">Total Calories</p>
                   </div>
                 </div>
-              ))}
+                <div className="mt-2">
+                  <p className="text-2xl font-semibold text-white">
+                    {processedTimeSeries.energy.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">kcal</p>
+                </div>
+              </div>
+
+              {/* Steps Card */}
+              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-emerald-500/10 rounded-lg">
+                    <Footprints className="h-5 w-5 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-300">Steps</p>
+                    <p className="text-xs text-zinc-500">Total Steps</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-2xl font-semibold text-white">
+                    {processedTimeSeries.steps.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">steps</p>
+                </div>
+              </div>
+
+              {/* Heart Rate Card */}
+              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-rose-500/10 rounded-lg">
+                    <Heart className="h-5 w-5 text-rose-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-300">Heart Rate</p>
+                    <p className="text-xs text-zinc-500">Average BPM</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-2xl font-semibold text-white">
+                    {processedTimeSeries.heartRate.length > 0
+                      ? Math.round(
+                          processedTimeSeries.heartRate.reduce((acc, curr) => acc + curr.value, 0) /
+                            processedTimeSeries.heartRate.length
+                        )
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">bpm</p>
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="text-center py-8">
-              <p className="text-zinc-500 mb-4">No workouts recorded yet</p>
-              <button
-                onClick={handleCopyPairLink}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    Link Copied!
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="h-4 w-4" />
-                    Copy Pairing Link
-                  </>
-                )}
-              </button>
-            </div>
+            <p className="text-sm text-zinc-500 text-center">No data points available yet</p>
           )}
         </div>
       </div>
+
 
       {/* Edit User Dialog */}
       {isEditDialogOpen && (

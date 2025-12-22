@@ -18,7 +18,7 @@ export const API_ENDPOINTS = {
   users: '/api/v1/users',
   userDetail: (id: string) => `/api/v1/users/${id}`,
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
-  userWorkouts: (userId: string) => `/api/v1/users/${userId}/workouts`,
+  userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
 
   // OAuth endpoints
   oauthAuthorize: (provider: string) => `/api/v1/oauth/${provider}/authorize`,

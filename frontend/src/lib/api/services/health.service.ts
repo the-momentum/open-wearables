@@ -4,6 +4,9 @@ import type {
   UserConnection,
   EventRecordResponse,
   HealthDataParams,
+  PaginatedResponse,
+  TimeSeriesParams,
+  TimeSeriesSample,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -50,8 +53,8 @@ export const healthService = {
   async getWorkouts(
     userId: string,
     params?: HealthDataParams
-  ): Promise<EventRecordResponse[]> {
-    return apiClient.get<EventRecordResponse[]>(
+  ): Promise<PaginatedResponse<EventRecordResponse>> {
+    return apiClient.get<PaginatedResponse<EventRecordResponse>>(
       API_ENDPOINTS.userWorkouts(userId),
       {
         params,
@@ -92,6 +95,18 @@ export const healthService = {
     return apiClient.post<{ message: string; jobId: string }>(
       `/v1/users/${userId}/sync`,
       {}
+    );
+  },
+
+  async getTimeSeries(
+    userId: string,
+    params: TimeSeriesParams
+  ): Promise<PaginatedResponse<TimeSeriesSample>> {
+    return apiClient.get<PaginatedResponse<TimeSeriesSample>>(
+      `/api/v1/users/${userId}/timeseries`,
+      {
+        params,
+      }
     );
   },
 };

@@ -46,6 +46,21 @@ export interface PaginatedUsersResponse {
   has_prev: boolean;
 }
 
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    next_cursor: string | null;
+    previous_cursor: string | null;
+    has_more: boolean;
+  };
+  metadata: {
+    resolution: string | null;
+    sample_count: number | null;
+    start_time: string | null;
+    end_time: string | null;
+  };
+}
+
 export interface UserUpdate {
   first_name?: string | null;
   last_name?: string | null;
@@ -82,6 +97,22 @@ export interface RegisterResponse {
 
 export interface ForgotPasswordRequest {
   email: string;
+}
+
+export interface TimeSeriesSample {
+  timestamp: string;
+  type: string;
+  value: number;
+  unit: string;
+}
+
+export interface TimeSeriesParams {
+  start_time: string;
+  end_time: string;
+  types?: string[];
+  resolution?: 'raw' | '1min' | '5min' | '15min' | '1hour';
+  cursor?: string;
+  limit?: number;
 }
 
 export interface ResetPasswordRequest {
@@ -326,23 +357,34 @@ export interface ChatRequest {
 
 export interface EventRecordResponse {
   id: string;
-  user_id: string;
-  provider_id: string | null;
-  category: string;
-  type: string | null;
-  source_name: string;
-  device_id: string | null;
-  duration_seconds: string | null;
-  start_datetime: string;
-  end_datetime: string;
-  heart_rate_min: number | string | null;
-  heart_rate_max: number | string | null;
-  heart_rate_avg: number | string | null;
-  steps_min: number | string | null;
-  steps_max: number | string | null;
-  steps_avg: number | string | null;
-  max_speed: number | string | null;
-  max_watts: number | string | null;
+  type: string;
+  name?: string | null;
+  start_time: string;
+  end_time: string;
+  duration_seconds?: number | null;
+  source?: {
+    provider: string;
+    device?: string | null;
+  };
+  calories_kcal?: number | null;
+  distance_meters?: number | null;
+  
+  // Legacy fields (keeping for compatibility if needed, but marked optional)
+  user_id?: string;
+  provider_id?: string | null;
+  category?: string;
+  source_name?: string;
+  device_id?: string | null;
+  start_datetime?: string;
+  end_datetime?: string;
+  heart_rate_min?: number | string | null;
+  heart_rate_max?: number | string | null;
+  heart_rate_avg?: number | string | null;
+  steps_min?: number | string | null;
+  steps_max?: number | string | null;
+  steps_avg?: number | string | null;
+  max_speed?: number | string | null;
+  max_watts?: number | string | null;
   moving_time_seconds: number | string | null;
   total_elevation_gain: number | string | null;
   average_speed: number | string | null;

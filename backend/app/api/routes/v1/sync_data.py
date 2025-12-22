@@ -112,12 +112,21 @@ async def sync_user_data(
             if since:
                 start_dt = datetime.fromtimestamp(since)
 
-            results["data_247"] = strategy.data_247.load_all_247_data(
-                db,
-                user_id,
-                start_time=start_dt,
-                end_time=end_dt,
-            )
+            # Use load_and_save_all if available (Suunto), otherwise fallback to load_all_247_data
+            if hasattr(strategy.data_247, "load_and_save_all"):
+                results["data_247"] = strategy.data_247.load_and_save_all(
+                    db,
+                    user_id,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
+            else:
+                results["data_247"] = strategy.data_247.load_all_247_data(
+                    db,
+                    user_id,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
         elif data_type == SyncDataType.DATA_247:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
