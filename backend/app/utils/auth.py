@@ -115,9 +115,10 @@ async def get_sdk_auth(
         try:
             payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
             if payload.get("scope") == "sdk":
+                sub = payload.get("sub")
                 return SDKAuthContext(
                     auth_type="sdk_token",
-                    external_user_id=payload.get("sub"),
+                    user_id=UUID(sub) if sub else None,
                     app_id=payload.get("app_id"),
                 )
         except JWTError:

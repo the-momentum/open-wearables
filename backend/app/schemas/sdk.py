@@ -1,4 +1,5 @@
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -14,6 +15,6 @@ class SDKAuthContext(BaseModel):
     """Context returned by SDK authentication dependency."""
 
     auth_type: Literal["sdk_token", "api_key"]
-    external_user_id: str | None = None  # From SDK token
+    user_id: UUID | None = None  # From SDK token (sub claim)
     app_id: str | None = None  # From SDK token
     api_key_id: str | None = None  # From API key

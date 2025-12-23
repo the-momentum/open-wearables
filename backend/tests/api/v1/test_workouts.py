@@ -41,7 +41,7 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -58,7 +58,7 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -77,7 +77,7 @@ class TestWorkoutsEndpoints:
 
         # Act
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
             params={"category": "workout"},
         )
@@ -101,7 +101,7 @@ class TestWorkoutsEndpoints:
 
         # Act - note: API uses 'record_type' parameter (not 'type') and does ILIKE substring matching
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
             params={"record_type": "running"},
         )
@@ -137,9 +137,9 @@ class TestWorkoutsEndpoints:
         # Act - filter for last 5 days (note: API uses 'start_date' parameter, not 'start_datetime')
         start_date = (now - timedelta(days=5)).isoformat()
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"start_date": start_date},
+            params={"start_date": start_date, "end_date": now.isoformat()},
         )
 
         # Assert
@@ -160,7 +160,7 @@ class TestWorkoutsEndpoints:
 
         # Act - get page 2 with 2 items per page
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
             params={"skip": 2, "limit": 2},
         )
@@ -196,7 +196,7 @@ class TestWorkoutsEndpoints:
 
         # Act - sort by start_datetime ascending
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
             params={"sort_by": "start_datetime", "sort_order": "asc"},
         )
@@ -222,7 +222,7 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act - get user1's workouts
-        response = client.get(f"/api/v1/users/{user1.id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{user1.id}/events/workouts", headers=headers)
 
         # Assert
         assert response.status_code == 200
@@ -236,7 +236,7 @@ class TestWorkoutsEndpoints:
         user = UserFactory()
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/workouts")
+        response = client.get(f"/api/v1/users/{user.id}/events/workouts")
 
         # Assert
         assert response.status_code == 401
@@ -248,7 +248,7 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers("invalid-api-key")
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
 
         # Assert
         assert response.status_code == 401
@@ -261,7 +261,7 @@ class TestWorkoutsEndpoints:
 
         # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
         with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
-            client.get("/api/v1/users/not-a-uuid/workouts", headers=headers)
+            client.get("/api/v1/users/not-a-uuid/events/workouts", headers=headers)
 
     def test_get_workouts_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving workouts for a user that doesn't exist."""
@@ -273,7 +273,7 @@ class TestWorkoutsEndpoints:
         nonexistent_user_id = uuid4()
 
         # Act
-        response = client.get(f"/api/v1/users/{nonexistent_user_id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{nonexistent_user_id}/events/workouts", headers=headers)
 
         # Assert - should return empty list, not 404
         assert response.status_code == 200
@@ -293,7 +293,7 @@ class TestWorkoutsEndpoints:
 
         # Act
         response = client.get(
-            f"/api/v1/users/{user.id}/workouts",
+            f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
             params={"provider_name": "apple"},
         )
@@ -319,7 +319,7 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/workouts", headers=headers)
+        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
 
         # Assert
         assert response.status_code == 200

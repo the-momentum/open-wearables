@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, stat
 
 from app.database import DbSession
 from app.schemas import UploadDataResponse
-from app.services import SDKAuthDep, ae_import_service, hk_import_service
+from app.services import ae_import_service, hk_import_service
+from app.utils.auth import SDKAuthDep
 
 router = APIRouter()
 
@@ -41,6 +42,12 @@ async def sync_data_auto_health_export(
 
     Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
     """
+    if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token does not match user_id",
+        )
+
     content_str, content_type = content[0], content[1]
     return await ae_import_service.import_data_from_request(db, content_str, content_type, user_id)
 
@@ -57,5 +64,11 @@ async def sync_data_healthion(
 
     Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
     """
+    if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token does not match user_id",
+        )
+
     content_str, content_type = content[0], content[1]
     return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
