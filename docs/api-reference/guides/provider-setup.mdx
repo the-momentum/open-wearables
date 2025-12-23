@@ -1,0 +1,169 @@
+---
+title: 'Provider Setup'
+description: 'Provider-specific configuration, requirements, and sync parameters'
+---
+
+## Overview
+
+Each wearable provider has different requirements and parameters for syncing data. This guide covers the specifics for each supported provider.
+
+<Warning>
+  Provider names in API paths must be **lowercase**: `garmin`, `polar`, `suunto`, `apple`
+</Warning>
+
+## Garmin
+
+Garmin uses a backfill API that accepts time range parameters to specify what data to sync.
+
+### Sync Parameters
+
+| Parameter | Required | Format | Description |
+|-----------|----------|--------|-------------|
+| `summary_start_time` | Recommended | ISO 8601 or Unix timestamp | Start of sync range |
+| `summary_end_time` | Recommended | ISO 8601 or Unix timestamp | End of sync range |
+
+<Note>
+  While time parameters are optional, providing them ensures you get data for a specific date range. Without them, the sync behavior depends on Garmin's default response.
+</Note>
+
+### Example
+
+```bash
+# Using ISO 8601 dates
+curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/{user_id}/sync?data_type=all&summary_start_time=2025-01-01T00:00:00Z&summary_end_time=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# Using Unix timestamps
+curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/{user_id}/sync?data_type=all&summary_start_time=1735689600&summary_end_time=1738368000" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+---
+
+## Polar
+
+Polar uses the AccessLink API with simpler sync requirements.
+
+### Sync Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `samples` | `false` | Include detailed sample data (HR samples, etc.) |
+| `zones` | `false` | Include heart rate zone information |
+| `route` | `false` | Include GPS route data |
+
+### Example
+
+```bash
+# Basic sync
+curl -X POST "http://localhost:8000/api/v1/providers/polar/users/{user_id}/sync" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# With additional data
+curl -X POST "http://localhost:8000/api/v1/providers/polar/users/{user_id}/sync?samples=true&zones=true&route=true" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+<Note>
+  Enabling `samples`, `zones`, and `route` increases sync time but provides more detailed workout data.
+</Note>
+
+---
+
+## Suunto
+
+Suunto supports both workouts and 24/7 data (sleep, recovery, activity samples).
+
+### Sync Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `since` | `0` | Unix timestamp to sync from (0 = all available) |
+| `limit` | `50` | Items per request (max: 100) |
+| `offset` | `0` | Pagination offset |
+| `filter_by_modification_time` | `true` | Filter by modification vs creation time |
+
+### Data Types
+
+| Value | Description |
+|-------|-------------|
+| `workouts` | Workout/exercise sessions |
+| `247` | 24/7 data: sleep, recovery, activity samples |
+| `all` | Both workouts and 24/7 data |
+
+### Example
+
+```bash
+# Sync all data from last 30 days
+THIRTY_DAYS_AGO=$(date -v-30d +%s)
+curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=all&since=${THIRTY_DAYS_AGO}&limit=100" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# Sync only workouts
+curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=workouts" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+---
+
+## Apple Health
+
+Apple Health data is imported via the mobile SDK rather than cloud API sync.
+
+<Note>
+  Apple Health requires the Open Wearables mobile SDK. Cloud sync is not available for Apple Health.
+</Note>
+
+---
+
+## Checking Connection Status
+
+Before syncing, verify the user has an active connection:
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "user_id": "user-uuid",
+    "provider": "garmin",
+    "status": "active",
+    "last_synced_at": "2025-01-15T12:00:00Z",
+    "created_at": "2025-01-15T10:00:00Z",
+    "updated_at": "2025-01-15T12:00:00Z"
+  }
+]
+```
+
+Connection status can be: `active`, `revoked`, or `expired`.
+
+If no connection exists for a provider, the user needs to complete OAuth first.
+
+---
+
+## Available Providers
+
+Check which providers are enabled in your instance:
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/oauth/providers?enabled_only=true" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+**Response:**
+```json
+[
+  {
+    "provider": "garmin",
+    "name": "Garmin",
+    "has_cloud_api": true,
+    "is_enabled": true,
+    "icon_url": "/static/provider-icons/garmin.svg"
+  }
+]
+```

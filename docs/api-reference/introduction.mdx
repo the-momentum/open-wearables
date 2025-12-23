@@ -3,17 +3,32 @@ title: 'API Reference'
 description: 'Complete API documentation for Open Wearables'
 ---
 
+## Interactive API Documentation
+
+<Warning>
+  **The most accurate and complete API reference is available via Swagger UI.** The Swagger UI is auto-generated from code and always up-to-date.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card
+    title="Swagger UI"
+    icon="terminal"
+    href="http://localhost:8000/docs"
+  >
+    Interactive API explorer with try-it-out functionality
+  </Card>
+  <Card
+    title="OpenAPI JSON"
+    icon="file-code"
+    href="http://localhost:8000/openapi.json"
+  >
+    Machine-readable OpenAPI 3.1 specification
+  </Card>
+</CardGroup>
+
 ## Overview
 
 The Open Wearables API provides a unified REST interface to access health data from multiple wearable devices and fitness platforms. All endpoints are versioned under `/api/v1` and follow RESTful conventions.
-
-<Card
-  title="Interactive API Docs"
-  icon="terminal"
-  href="http://localhost:8000/docs"
->
-  Explore the interactive Swagger UI when running locally
-</Card>
 
 ## Base URL
 
@@ -24,39 +39,78 @@ http://localhost:8000/api/v1
 
 For production deployments, replace with your server URL.
 
+## Quick Reference
+
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List users | GET | `/api/v1/users` |
+| Create user | POST | `/api/v1/users` |
+| Get user | GET | `/api/v1/users/{user_id}` |
+| Get connections | GET | `/api/v1/users/{user_id}/connections` |
+| Get timeseries | GET | `/api/v1/users/{user_id}/timeseries` |
+| Get workouts | GET | `/api/v1/users/{user_id}/events/workouts` |
+| Get sleep sessions | GET | `/api/v1/users/{user_id}/events/sleep` |
+| OAuth authorize | GET | `/api/v1/oauth/{provider}/authorize?user_id={user_id}` |
+| List providers | GET | `/api/v1/oauth/providers` |
+| Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
+
 ## Authentication
 
-All API endpoints require authentication using API keys. Include your API key in the `Authorization` header as a Bearer token:
+All API endpoints require authentication using API keys. Include your API key in the `X-Open-Wearables-API-Key` header:
 
 ```http
-Authorization: Bearer YOUR_API_KEY
+X-Open-Wearables-API-Key: YOUR_API_KEY
 ```
+
+<Warning>
+  **Do not use Bearer token format.** The API uses a custom header, not the standard Authorization header.
+</Warning>
 
 ### Getting an API Key
 
-1. Access the admin panel at `http://localhost:8000/admin`
-2. Create a developer account or log in
-3. Navigate to the API Keys section
+1. Access the Open Wearables Platform at `http://localhost:3000`
+2. Log in
+3. Navigate to the API Keys section in the Settings tab
 4. Generate a new API key
-5. Copy and securely store the key (it won't be shown again)
+5. Copy and securely store the key
 
 <Warning>
   Keep your API keys secure. Never commit them to version control or expose them in client-side code.
 </Warning>
 
-## Response Format
+## Response Formats
 
-All API responses follow a consistent format:
+The API uses different response formats depending on the endpoint type:
 
-### Success Response
+### Resource Lists (Users)
 
 ```json
 {
-  "data": { ... },
-  "meta": {
-    "page": 1,
-    "limit": 100,
-    "total": 50
+  "items": [...],
+  "total": 50,
+  "page": 1,
+  "limit": 20,
+  "pages": 3,
+  "has_next": true,
+  "has_prev": false
+}
+```
+
+### Data Endpoints (Timeseries, Workouts, Sleep)
+
+```json
+{
+  "data": [...],
+  "pagination": {
+    "next_cursor": "abc123...",
+    "previous_cursor": null,
+    "has_more": true
+  },
+  "metadata": {
+    "resolution": null,
+    "sample_count": 100,
+    "start_time": "2025-01-01T00:00:00Z",
+    "end_time": "2025-01-31T00:00:00Z"
   }
 }
 ```
@@ -65,11 +119,7 @@ All API responses follow a consistent format:
 
 ```json
 {
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable error message",
-    "details": { ... }
-  }
+  "detail": "Error message describing what went wrong"
 }
 ```
 
@@ -80,51 +130,47 @@ All API responses follow a consistent format:
 - `204 No Content` - Request succeeded, no content to return
 - `400 Bad Request` - Invalid request parameters
 - `401 Unauthorized` - Authentication required or invalid
-- `403 Forbidden` - Insufficient permissions
 - `404 Not Found` - Resource not found
-- `422 Unprocessable Entity` - Validation error
 - `500 Internal Server Error` - Server error
-
-## Rate Limiting
-
-Rate limiting is applied to prevent abuse. When rate limits are exceeded, you'll receive a `429 Too Many Requests` response with headers indicating when you can retry:
-
-```
-X-RateLimit-Limit: 1000
-X-RateLimit-Remaining: 999
-X-RateLimit-Reset: 1640995200
-```
 
 ## Pagination
 
-List endpoints support pagination using query parameters:
+The API uses two pagination styles depending on the endpoint:
 
-- `page` - Page number (default: 1)
-- `limit` - Items per page (default: 100, max: 100)
+### Offset Pagination (Users)
 
-Example:
 ```http
 GET /api/v1/users?page=2&limit=50
 ```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `limit` | 20 | Items per page (max: 100) |
+
+### Cursor Pagination (Timeseries, Workouts, Sleep)
+
+```http
+GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `cursor` | null | Cursor from previous response |
+| `limit` | 50 | Items per page (max: 100) |
+
+Use the `next_cursor` from the response to fetch the next page.
 
 ## Filtering & Sorting
 
 Many endpoints support filtering and sorting. Check individual endpoint documentation for available options.
 
-## Webhooks
-
-Configure webhooks to receive real-time notifications when health insights are triggered. Webhook endpoints are configured through the developer portal.
-
 ## OpenAPI Specification
 
 The complete OpenAPI specification is available at:
-- Swagger UI: `http://localhost:8000/docs`
-- OpenAPI JSON: `http://localhost:8000/openapi.json`
+- **Swagger UI:** `http://localhost:8000/docs`
+- **OpenAPI JSON:** `http://localhost:8000/openapi.json`
 
-<Card
-  title="View OpenAPI Spec"
-  icon="file-code"
-  href="/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+<Tip>
+  The OpenAPI specification is auto-generated from the API code and is always the most accurate reference.
+</Tip>

@@ -1,0 +1,186 @@
+---
+title: 'Quick Integration'
+description: 'End-to-end guide to integrate Open Wearables with your application'
+---
+
+## Overview
+
+This guide walks you through the complete flow of integrating Open Wearables with your application, from creating a user to fetching their health data.
+
+```
+1. Create a user in Open Wearables
+2. Connect user to a wearable provider (Garmin, Polar, Suunto)
+3. Sync data from the provider
+4. Fetch timeseries, workouts, or sleep data
+```
+
+## Step 1: Create a User
+
+First, create a user in Open Wearables to represent your application's user.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/users" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "external_user_id": "your-app-user-123"
+  }'
+```
+
+<Tip>
+  Use `external_user_id` to map Open Wearables users to your application's user IDs for easy lookup later.
+</Tip>
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2025-12-19T10:30:00Z",
+  "first_name": null,
+  "last_name": null,
+  "email": "user@example.com",
+  "external_user_id": "your-app-user-123"
+}
+```
+
+Save the `id` - you'll need it for all subsequent API calls.
+
+<Warning>
+  Open Wearables allows duplicate email addresses. If you need uniqueness, check for existing users first using `GET /api/v1/users?search=user@example.com` which returns a paginated list.
+</Warning>
+
+## Step 2: Connect to a Provider
+
+Initiate OAuth to connect the user to their wearable provider.
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=550e8400-e29b-41d4-a716-446655440000&redirect_uri=https://yourapp.com/connected" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+**Response:**
+```json
+{
+  "authorization_url": "https://connect.garmin.com/oauthConfirm?oauth_token=...",
+  "state": "abc123..."
+}
+```
+
+Redirect the user to `authorization_url`. After they authorize, they'll be redirected back to your `redirect_uri`.
+
+<Warning>
+  Provider names must be **lowercase**: `garmin`, `polar`, `suunto`, `apple`
+</Warning>
+
+### Frontend Example
+
+```javascript
+// Get OAuth URL
+const response = await fetch(
+  `${API_URL}/api/v1/oauth/garmin/authorize?user_id=${userId}&redirect_uri=${encodeURIComponent(callbackUrl)}`,
+  { headers: { 'X-Open-Wearables-API-Key': API_KEY } }
+);
+const { authorization_url } = await response.json();
+
+// Redirect user to provider
+window.location.href = authorization_url;
+```
+
+## Step 3: Sync Data
+
+After OAuth completes, an initial sync is triggered automatically. For subsequent syncs or to fetch historical data:
+
+```bash
+# Garmin - with time range (recommended)
+curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/550e8400-e29b-41d4-a716-446655440000/sync?summary_start_time=2025-01-01T00:00:00Z&summary_end_time=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# Suunto/Polar - no time range required
+curl -X POST "http://localhost:8000/api/v1/providers/polar/users/550e8400-e29b-41d4-a716-446655440000/sync" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+<Note>
+  For Garmin, including `summary_start_time` and `summary_end_time` is recommended to specify the date range for data retrieval.
+</Note>
+
+## Step 4: Fetch Data
+
+Now you can fetch the user's health data.
+
+### Timeseries Data (Heart Rate, Steps, etc.)
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/timeseries?start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T00:00:00Z&types=heart_rate&types=steps" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Workouts
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/events/workouts?start_date=2025-01-01T00:00:00Z&end_date=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Sleep Sessions
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/events/sleep?start_date=2025-01-01T00:00:00Z&end_date=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+## Complete JavaScript Example
+
+```javascript
+const API_URL = 'http://localhost:8000';
+const API_KEY = 'your-api-key';
+
+async function integrateUser(email, externalId) {
+  // 1. Create user
+  const userRes = await fetch(`${API_URL}/api/v1/users`, {
+    method: 'POST',
+    headers: {
+      'X-Open-Wearables-API-Key': API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email, external_user_id: externalId })
+  });
+  const user = await userRes.json();
+
+  // 2. Get OAuth URL for Garmin
+  const authRes = await fetch(
+    `${API_URL}/api/v1/oauth/garmin/authorize?user_id=${user.id}&redirect_uri=${encodeURIComponent(window.location.origin + '/connected')}`,
+    { headers: { 'X-Open-Wearables-API-Key': API_KEY } }
+  );
+  const { authorization_url } = await authRes.json();
+
+  // 3. Redirect user to provider
+  window.location.href = authorization_url;
+}
+
+async function fetchUserData(userId) {
+  // After OAuth callback, fetch data
+  const now = new Date().toISOString();
+  const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const response = await fetch(
+    `${API_URL}/api/v1/users/${userId}/timeseries?start_time=${monthAgo}&end_time=${now}&types=heart_rate`,
+    { headers: { 'X-Open-Wearables-API-Key': API_KEY } }
+  );
+  return response.json();
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Provider Setup" icon="plug" href="/api-reference/guides/provider-setup">
+    Provider-specific configuration and requirements
+  </Card>
+  <Card title="Data Types" icon="database" href="/api-reference/guides/data-types">
+    Available metrics, workout types, and data formats
+  </Card>
+</CardGroup>
+
+
