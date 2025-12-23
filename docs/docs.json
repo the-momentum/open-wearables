@@ -37,6 +37,7 @@
           {
             "group": "Developer Guides",
             "pages": [
+              "dev-guides/backend-e2e-integration",
               "dev-guides/how-to-add-new-provider"
             ]
           },

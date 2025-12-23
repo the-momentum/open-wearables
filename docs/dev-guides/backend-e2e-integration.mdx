@@ -1,0 +1,767 @@
+---
+title: "Backend E2E Integration Guide"
+description: "Complete walkthrough for integrating Open Wearables with your backend application"
+---
+
+This guide walks you through the complete integration flow for connecting your backend application to Open Wearables. You'll learn how to create users, connect wearable providers via OAuth, sync data, and retrieve health metrics.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Open Wearables instance running (self-hosted or cloud)
+- API Key generated from the settings tab in Open Wearables Developer portal
+- Your backend framework ready (examples use Python/FastAPI, but concepts apply to any language)
+
+### Environment Variables
+
+Add these to your application's environment:
+
+```bash
+OPEN_WEARABLES_API_URL=http://localhost:8000
+OPEN_WEARABLES_API_KEY=sk-your-api-key-here
+```
+
+### Authentication
+
+<Warning>
+All API requests require the `X-Open-Wearables-API-Key` header. This is **not** a Bearer token.
+</Warning>
+
+```bash
+curl http://localhost:8000/api/v1/users \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+<Tip>
+Common mistake: Using `Authorization: Bearer YOUR_API_KEY` won't work. Always use the `X-Open-Wearables-API-Key` header.
+</Tip>
+
+---
+
+## Integration Flow Overview
+
+```mermaid
+sequenceDiagram
+    participant App as Your App
+    participant OW as Open Wearables
+    participant Provider as Wearable Provider
+
+    App->>OW: 1. Create user
+    OW-->>App: User ID
+    App->>OW: 2. Get OAuth URL
+    OW-->>App: Authorization URL
+    App->>Provider: 3. Redirect user
+    Provider-->>OW: 4. OAuth callback
+    OW-->>App: 5. Redirect to your app
+    App->>OW: 6. Sync provider data
+    App->>OW: 7. Fetch health data
+    OW-->>App: Workouts, sleep, timeseries
+```
+
+---
+
+## Step 1: User Registration
+
+When a user registers in your application, create a corresponding user in Open Wearables.
+
+### Create User
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/api/v1/users \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "external_user_id": "your-internal-user-id"
+  }'
+```
+
+```python Python
+import httpx
+
+async def create_user(email: str, external_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/users",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            json={
+                "email": email,
+                "external_user_id": external_id  # e.g., Auth0 ID, your DB user ID
+            }
+        )
+        return response.json()
+```
+
+```typescript TypeScript
+async function createUser(email: string, externalId: string): Promise<User> {
+  const response = await fetch(`${OPEN_WEARABLES_API_URL}/api/v1/users`, {
+    method: 'POST',
+    headers: {
+      'X-Open-Wearables-API-Key': API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: email,
+      external_user_id: externalId,
+    }),
+  });
+  return response.json();
+}
+```
+
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "id": "176be8de-8452-4eb7-a7ea-147fec925d9d",
+  "email": "user@example.com",
+  "external_user_id": "your-internal-user-id",
+  "created_at": "2025-01-15T10:30:00Z",
+  "first_name": null,
+  "last_name": null
+}
+```
+
+<Warning>
+**Store the Open Wearables User ID!** You'll need this ID for all subsequent API calls.
+</Warning>
+
+### Update Your User Model
+
+Add a field to store the Open Wearables user ID:
+
+<CodeGroup>
+
+```python SQLAlchemy
+class User(Base):
+    id = Column(UUID, primary_key=True)
+    email = Column(String)
+    open_wearables_user_id = Column(UUID, nullable=True)  # Add this!
+```
+
+```typescript Prisma
+model User {
+  id                   String  @id @default(uuid())
+  email                String
+  openWearablesUserId  String? // Add this!
+}
+```
+
+</CodeGroup>
+
+### Handling Duplicate Users
+
+Open Wearables allows multiple users with the same email. To prevent duplicates in concurrent requests (common in SPAs), implement a check-then-create pattern:
+
+```python
+async def get_or_create_user(email: str, external_id: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        # Check if user exists by external_user_id
+        response = await client.get(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/users",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            params={"external_user_id": external_id, "limit": 1}
+        )
+        
+        users = response.json().get("items", [])
+        if users:
+            return users[0]
+        
+        # Create new user
+        response = await client.post(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/users",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            json={"email": email, "external_user_id": external_id}
+        )
+        return response.json()
+```
+
+---
+
+## Step 2: Connect Wearable Provider
+
+Connect users to their wearable devices via OAuth.
+
+### Supported Providers
+
+| Provider | OAuth Support | Data Types |
+|----------|--------------|------------|
+| **Garmin** | ✅ | Workouts, activities |
+| **Polar** | ✅ | Exercises |
+| **Suunto** | ✅ | Workouts, 24/7 data (sleep, recovery) |
+| **Apple Health** | SDK only | All health data |
+
+### Get Authorization URL
+
+<Warning>
+Provider names must be **lowercase**: `garmin`, `polar`, `suunto`
+</Warning>
+
+<CodeGroup>
+
+```bash cURL
+curl "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=176be8de-8452-4eb7-a7ea-147fec925d9d" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+```python Python
+async def get_auth_url(provider: str, user_id: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/oauth/{provider.lower()}/authorize",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            params={"user_id": user_id}
+        )
+        return response.json()["authorization_url"]
+```
+
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "authorization_url": "https://connect.garmin.com/oauthConfirm?oauth_token=...",
+  "state": "abc123..."
+}
+```
+
+### Frontend Integration Flow
+
+<Steps>
+  <Step title="User clicks 'Connect Garmin'">
+    Your frontend initiates the connection flow.
+  </Step>
+  <Step title="Your backend calls the authorize endpoint">
+    Request the authorization URL from Open Wearables.
+  </Step>
+  <Step title="Redirect user to authorization_url">
+    The user authenticates with their wearable provider.
+  </Step>
+  <Step title="Provider redirects to Open Wearables callback">
+    Open Wearables handles the OAuth callback automatically.
+  </Step>
+  <Step title="Open Wearables redirects to your app">
+    Configure a `redirect_uri` parameter to return users to your app.
+  </Step>
+</Steps>
+
+### Custom Redirect URI
+
+To redirect users back to your app after OAuth:
+
+```bash
+curl "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=USER_ID&redirect_uri=https://yourapp.com/oauth/callback" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Check Connection Status
+
+Verify a user's connected providers:
+
+```bash
+curl "http://localhost:8000/api/v1/users/176be8de-8452-4eb7-a7ea-147fec925d9d/connections" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Response
+
+```json
+[
+  {
+    "id": "a1b2c3d4-...",
+    "user_id": "176be8de-8452-4eb7-a7ea-147fec925d9d",
+    "provider": "garmin",
+    "status": "active",
+    "provider_user_id": "12345678",
+    "created_at": "2025-01-15T10:30:00Z",
+    "updated_at": "2025-01-15T10:30:00Z",
+    "last_synced_at": null
+  }
+]
+```
+
+---
+
+## Step 3: Sync Data from Provider
+
+After OAuth connection, sync the user's health data.
+
+<Warning>
+**Each provider has different sync requirements!** This is the most common source of integration errors.
+</Warning>
+
+### Provider-Specific Parameters
+
+| Provider | Required Params | Constraints |
+|----------|-----------------|-------------|
+| **Garmin** | `summary_start_time`, `summary_end_time` | Max 24 hours range |
+| **Suunto** | `since` (Unix timestamp) | Max 28 days from `since` |
+| **Polar** | None | Uses pull token internally |
+
+### Garmin Sync
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/USER_ID/sync?data_type=all&summary_start_time=2025-01-15T00:00:00&summary_end_time=2025-01-15T23:59:59" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Suunto Sync
+
+```bash
+# 'since' = Unix timestamp (7 days ago = 1736899200)
+curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/USER_ID/sync?data_type=all&since=1736899200" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Polar Sync
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/providers/polar/users/USER_ID/sync?data_type=all" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Python Helper Function
+
+```python
+from datetime import datetime, timedelta
+
+async def sync_provider(provider: str, user_id: str) -> dict:
+    """Sync data with provider-specific parameters."""
+    params = {"data_type": "all"}
+    now = datetime.utcnow()
+    
+    if provider == "garmin":
+        # Garmin requires time range (max 24 hours)
+        start = now - timedelta(hours=24)
+        params["summary_start_time"] = start.isoformat()
+        params["summary_end_time"] = now.isoformat()
+    elif provider == "suunto":
+        # Suunto requires Unix timestamp
+        params["since"] = int((now - timedelta(days=7)).timestamp())
+    # Polar requires no additional params
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/providers/{provider}/users/{user_id}/sync",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            params=params,
+            timeout=60.0  # Sync can take time
+        )
+        return response.json()
+```
+
+### Common Sync Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `"User not connected to {provider}"` | OAuth not completed | Complete OAuth flow first |
+| `"Missing time range parameters"` | Garmin missing times | Add `summary_start_time` and `summary_end_time` |
+| `422 Unprocessable Entity` | Suunto missing `since` | Add `since` Unix timestamp parameter |
+| `"InvalidPullTokenException"` | Token expired | User must reconnect via OAuth |
+| `"duplicate key value"` | Data already synced | Safe to ignore |
+
+---
+
+## Step 4: Retrieve Health Data
+
+After syncing, fetch the normalized health data.
+
+### Workouts
+
+```bash
+curl "http://localhost:8000/api/v1/users/USER_ID/events/workouts?start_date=2025-01-01&end_date=2025-01-31" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "abc123...",
+      "type": "running",
+      "name": "Morning Run",
+      "start_time": "2025-01-15T07:30:00Z",
+      "end_time": "2025-01-15T08:15:00Z",
+      "duration_seconds": 2700,
+      "calories_kcal": 450.5,
+      "distance_meters": 5200.0,
+      "avg_heart_rate_bpm": 155,
+      "max_heart_rate_bpm": 178,
+      "source": {
+        "provider": "garmin",
+        "device": "Garmin Forerunner 255"
+      }
+    }
+  ],
+  "pagination": {
+    "cursor": null,
+    "has_more": false
+  }
+}
+```
+
+### Sleep Sessions
+
+```bash
+curl "http://localhost:8000/api/v1/users/USER_ID/events/sleep?start_date=2025-01-01&end_date=2025-01-31" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "def456...",
+      "start_time": "2025-01-15T22:30:00Z",
+      "end_time": "2025-01-16T06:45:00Z",
+      "duration_seconds": 29700,
+      "efficiency_percent": 92.5,
+      "is_nap": false,
+      "stages": {
+        "awake_seconds": 1200,
+        "light_seconds": 10800,
+        "deep_seconds": 7200,
+        "rem_seconds": 10500
+      },
+      "source": {
+        "provider": "suunto"
+      }
+    }
+  ],
+  "pagination": {
+    "cursor": null,
+    "has_more": false
+  }
+}
+```
+
+### Timeseries Data
+
+<Warning>
+All three parameters are **required**: `start_time`, `end_time`, and `types`
+</Warning>
+
+```bash
+curl "http://localhost:8000/api/v1/users/USER_ID/timeseries?start_time=2025-01-15T00:00:00Z&end_time=2025-01-15T23:59:59Z&types=heart_rate&types=steps" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+### Available Timeseries Types
+
+<Tabs>
+  <Tab title="Biometrics">
+    | Type | Unit |
+    |------|------|
+    | `heart_rate` | bpm |
+    | `resting_heart_rate` | bpm |
+    | `heart_rate_variability_sdnn` | ms |
+    | `oxygen_saturation` | percent |
+    | `blood_glucose` | mg/dL |
+    | `respiratory_rate` | breaths/min |
+    | `body_temperature` | celsius |
+  </Tab>
+  <Tab title="Activity">
+    | Type | Unit |
+    |------|------|
+    | `steps` | count |
+    | `energy` | kcal |
+    | `distance_walking_running` | meters |
+    | `flights_climbed` | count |
+    | `exercise_time` | minutes |
+  </Tab>
+  <Tab title="Body">
+    | Type | Unit |
+    |------|------|
+    | `weight` | kg |
+    | `height` | cm |
+    | `body_fat_percentage` | percent |
+    | `body_mass_index` | kg/m² |
+  </Tab>
+</Tabs>
+
+---
+
+## Complete Integration Example
+
+Here's a complete Python client class for Open Wearables integration:
+
+```python
+import httpx
+from datetime import datetime, timedelta
+from typing import Literal
+
+class OpenWearablesClient:
+    def __init__(self, base_url: str, api_key: str):
+        self.base_url = base_url
+        self.headers = {"X-Open-Wearables-API-Key": api_key}
+    
+    async def get_or_create_user(self, email: str, external_id: str) -> dict:
+        """Create user or return existing."""
+        async with httpx.AsyncClient() as client:
+            # Check if exists
+            resp = await client.get(
+                f"{self.base_url}/api/v1/users",
+                headers=self.headers,
+                params={"external_user_id": external_id, "limit": 1}
+            )
+            users = resp.json().get("items", [])
+            if users:
+                return users[0]
+            
+            # Create new
+            resp = await client.post(
+                f"{self.base_url}/api/v1/users",
+                headers=self.headers,
+                json={"email": email, "external_user_id": external_id}
+            )
+            return resp.json()
+    
+    async def get_auth_url(
+        self, 
+        provider: Literal["garmin", "polar", "suunto"], 
+        user_id: str,
+        redirect_uri: str | None = None
+    ) -> str:
+        """Get OAuth authorization URL."""
+        params = {"user_id": user_id}
+        if redirect_uri:
+            params["redirect_uri"] = redirect_uri
+            
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/oauth/{provider}/authorize",
+                headers=self.headers,
+                params=params
+            )
+            return resp.json()["authorization_url"]
+    
+    async def get_connections(self, user_id: str) -> list[dict]:
+        """Get user's connected providers."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/users/{user_id}/connections",
+                headers=self.headers
+            )
+            return resp.json()
+    
+    async def sync_provider(
+        self, 
+        provider: Literal["garmin", "polar", "suunto"], 
+        user_id: str
+    ) -> dict:
+        """Sync data with provider-specific params."""
+        params = {"data_type": "all"}
+        now = datetime.utcnow()
+        
+        if provider == "garmin":
+            start = now - timedelta(hours=24)
+            params["summary_start_time"] = start.isoformat()
+            params["summary_end_time"] = now.isoformat()
+        elif provider == "suunto":
+            params["since"] = int((now - timedelta(days=7)).timestamp())
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self.base_url}/api/v1/providers/{provider}/users/{user_id}/sync",
+                headers=self.headers,
+                params=params,
+                timeout=60.0
+            )
+            return resp.json()
+    
+    async def get_workouts(
+        self, 
+        user_id: str, 
+        start_date: str, 
+        end_date: str
+    ) -> list[dict]:
+        """Get workouts in date range."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/users/{user_id}/events/workouts",
+                headers=self.headers,
+                params={"start_date": start_date, "end_date": end_date}
+            )
+            return resp.json().get("data", [])
+    
+    async def get_sleep(
+        self, 
+        user_id: str, 
+        start_date: str, 
+        end_date: str
+    ) -> list[dict]:
+        """Get sleep sessions in date range."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/users/{user_id}/events/sleep",
+                headers=self.headers,
+                params={"start_date": start_date, "end_date": end_date}
+            )
+            return resp.json().get("data", [])
+    
+    async def get_timeseries(
+        self, 
+        user_id: str, 
+        start_time: str, 
+        end_time: str,
+        types: list[str]
+    ) -> list[dict]:
+        """Get timeseries data."""
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self.base_url}/api/v1/users/{user_id}/timeseries",
+                headers=self.headers,
+                params={
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "types": types
+                }
+            )
+            return resp.json().get("data", [])
+
+
+# Usage example
+async def main():
+    client = OpenWearablesClient(
+        base_url="http://localhost:8000",
+        api_key="sk-your-api-key"
+    )
+    
+    # 1. Create or get user
+    user = await client.get_or_create_user(
+        email="user@example.com",
+        external_id="auth0|123456"
+    )
+    user_id = user["id"]
+    
+    # 2. Get OAuth URL for Garmin
+    auth_url = await client.get_auth_url(
+        provider="garmin",
+        user_id=user_id,
+        redirect_uri="https://myapp.com/callback"
+    )
+    print(f"Redirect user to: {auth_url}")
+    
+    # 3. After OAuth callback, check connections
+    connections = await client.get_connections(user_id)
+    garmin_connected = any(
+        c["provider"] == "garmin" and c["status"] == "active" 
+        for c in connections
+    )
+    
+    if garmin_connected:
+        # 4. Sync data
+        await client.sync_provider("garmin", user_id)
+        
+        # 5. Fetch workouts
+        workouts = await client.get_workouts(
+            user_id,
+            start_date="2025-01-01",
+            end_date="2025-01-31"
+        )
+        print(f"Found {len(workouts)} workouts")
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Docker container can't reach Open Wearables on localhost">
+    If your app runs in Docker and Open Wearables runs on the host machine:
+    
+    ```yaml docker-compose.yml
+    services:
+      app:
+        extra_hosts:
+          - "host.docker.internal:host-gateway"
+        environment:
+          - OPEN_WEARABLES_API_URL=http://host.docker.internal:8000
+    ```
+  </Accordion>
+  
+  <Accordion title="401 Unauthorized even with correct API key">
+    Ensure you're using the correct header format:
+    
+    ```bash
+    # ✅ Correct
+    -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    
+    # ❌ Wrong
+    -H "Authorization: Bearer YOUR_API_KEY"
+    ```
+  </Accordion>
+  
+  <Accordion title="Multiple users created for the same email">
+    Open Wearables allows duplicate emails by design. Use `external_user_id` to identify users uniquely:
+    
+    ```python
+    # Always check by external_user_id before creating
+    existing = await client.get(
+        "/api/v1/users",
+        params={"external_user_id": your_user_id}
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Sync returns 400/422 but no clear error">
+    Check provider-specific requirements:
+    
+    | Provider | Fix |
+    |----------|-----|
+    | Garmin | Add `summary_start_time` and `summary_end_time` |
+    | Suunto | Add `since` parameter (Unix timestamp) |
+    | Polar | Usually works without extra params |
+  </Accordion>
+  
+  <Accordion title="Timeseries endpoint returns empty data">
+    Ensure all required parameters are provided:
+    
+    ```bash
+    # All three are REQUIRED
+    ?start_time=2025-01-15T00:00:00Z
+    &end_time=2025-01-15T23:59:59Z
+    &types=heart_rate
+    ```
+    
+    Also verify data exists for the requested time range.
+  </Accordion>
+  
+  <Accordion title="OAuth callback not redirecting to my app">
+    Pass the `redirect_uri` parameter when getting the authorization URL:
+    
+    ```bash
+    /api/v1/oauth/garmin/authorize?user_id=...&redirect_uri=https://myapp.com/callback
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Complete API documentation with all endpoints.
+  </Card>
+  <Card title="Provider Setup" icon="plug" href="/provider-setup/index">
+    Configure OAuth credentials for each provider.
+  </Card>
+  <Card title="Data Model" icon="database" href="/architecture/unified-data-model">
+    Understand the unified health data model.
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/the-momentum/open-wearables">
+    View source code and contribute.
+  </Card>
+</CardGroup>
+
