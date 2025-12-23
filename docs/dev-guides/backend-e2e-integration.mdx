@@ -37,6 +37,108 @@ curl http://localhost:8000/api/v1/users \
 Common mistake: Using `Authorization: Bearer YOUR_API_KEY` won't work. Always use the `X-Open-Wearables-API-Key` header.
 </Tip>
 
+### SDK Authentication (Mobile Apps)
+
+If you're building a mobile app that pushes health data (e.g., Apple Health from iOS), use **SDK tokens** instead of API keys. SDK tokens are user-scoped JWT tokens that only authorize data push endpoints.
+
+<Tabs>
+  <Tab title="When to Use">
+    | Authentication | Use Case |
+    |----------------|----------|
+    | **API Key** | Backend-to-backend integration, fetching data, OAuth flows |
+    | **SDK Token** | Mobile apps pushing health data to Open Wearables |
+  </Tab>
+  <Tab title="How It Works">
+    ```mermaid
+    sequenceDiagram
+        participant App as Mobile App
+        participant Backend as Your Backend
+        participant OW as Open Wearables
+
+        App->>Backend: User logs in
+        Backend->>OW: Exchange app credentials for token
+        OW-->>Backend: JWT token (60 min)
+        Backend-->>App: Return token
+        App->>OW: Push health data with Bearer token
+    ```
+  </Tab>
+</Tabs>
+
+#### Step 1: Create an Application
+
+First, register an application to get `app_id` and `app_secret`:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/applications \
+  -H "Authorization: Bearer YOUR_DEVELOPER_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My iOS App"}'
+```
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "app_id": "app_abc123",
+  "name": "My iOS App",
+  "created_at": "2025-01-15T10:30:00Z",
+  "app_secret": "secret_xyz789..."  // Store securely! Only shown once.
+}
+```
+
+<Warning>
+Store `app_secret` securely in your backend. It's only returned once and cannot be retrieved again.
+</Warning>
+
+#### Step 2: Exchange Credentials for User Token
+
+When a user logs into your mobile app, your backend exchanges the app credentials for a user-scoped token:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/users/{user_id}/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_id": "app_abc123",
+    "app_secret": "secret_xyz789..."
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "token_type": "bearer"
+}
+```
+
+#### Step 3: Use Token in Mobile App
+
+The mobile app uses this token to push health data to the SDK sync endpoints:
+
+<CodeGroup>
+
+```bash Auto Health Export
+curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/apple/auto-health-export \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{ ... health data ... }'
+```
+
+```bash Healthion
+curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/apple/healthion \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{ ... health data ... }'
+```
+
+</CodeGroup>
+
+<Note>
+SDK tokens are **only valid for `/sdk/` endpoints**. All other API endpoints will return 401 for SDK tokens. Use API keys for those endpoints. The `user_id` in the URL must match the user the token was issued for.
+</Note>
+
 ---
 
 ## Integration Flow Overview
