@@ -15,12 +15,13 @@ class TestGetSDKAuth:
     @pytest.mark.asyncio
     async def test_sdk_token_returns_context(self, db: Session) -> None:
         """Valid SDK token should return SDKAuthContext."""
-        token = create_sdk_user_token("app_123", "user_456")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
+        token = create_sdk_user_token("app_123", user_id)
 
         result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=None)
 
         assert result.auth_type == "sdk_token"
-        assert result.external_user_id == "user_456"
+        assert str(result.user_id) == user_id
         assert result.app_id == "app_123"
 
     @pytest.mark.asyncio

@@ -13,10 +13,11 @@ class TestSDKSyncWithSDKToken:
 
     def test_healthion_endpoint_accepts_sdk_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be accepted for healthion sync."""
-        token = create_sdk_user_token("app_123", "user_456")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
+        token = create_sdk_user_token("app_123", user_id)
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple/healthion",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/healthion",
             headers={"Authorization": f"Bearer {token}"},
             json={"data": {"workouts": [], "records": []}},
         )
@@ -27,10 +28,11 @@ class TestSDKSyncWithSDKToken:
 
     def test_auto_health_export_accepts_sdk_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """SDK token should be accepted for auto-health-export sync."""
-        token = create_sdk_user_token("app_123", "user_456")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
+        token = create_sdk_user_token("app_123", user_id)
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple/auto-health-export",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/auto-health-export",
             headers={"Authorization": f"Bearer {token}"},
             json={"data": {"workouts": []}},
         )
@@ -41,9 +43,10 @@ class TestSDKSyncWithSDKToken:
     def test_healthion_still_accepts_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """API key should still work (backwards compatibility)."""
         api_key = ApiKeyFactory()
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple/healthion",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/healthion",
             headers={"X-Open-Wearables-API-Key": api_key.id},
             json={"data": {"workouts": [], "records": []}},
         )

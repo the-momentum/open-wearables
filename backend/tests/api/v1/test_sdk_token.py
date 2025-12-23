@@ -16,9 +16,10 @@ class TestCreateUserToken:
         developer = DeveloperFactory()
         # Create application with known secret (factory uses "hashed_test_app_secret" as hash)
         application = ApplicationFactory(developer=developer, app_secret="test_app_secret")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/users/user123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_id": application.app_id, "app_secret": "test_app_secret"},
         )
 
@@ -29,8 +30,9 @@ class TestCreateUserToken:
 
     def test_create_token_invalid_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Non-existent app_id should return 401."""
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
         response = client.post(
-            f"{api_v1_prefix}/users/user123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_id": "nonexistent", "app_secret": "secret"},
         )
         assert response.status_code == 401
@@ -39,20 +41,22 @@ class TestCreateUserToken:
         """Wrong app_secret should return 401."""
         developer = DeveloperFactory()
         application = ApplicationFactory(developer=developer, app_secret="real_secret")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/users/user123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_id": application.app_id, "app_secret": "wrong_secret"},
         )
         assert response.status_code == 401
 
     def test_token_contains_correct_claims(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Token should contain scope=sdk, sub=external_user_id, app_id."""
+        """Token should contain scope=sdk, sub=user_id, app_id."""
         developer = DeveloperFactory()
         application = ApplicationFactory(developer=developer, app_secret="test_secret")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/users/my_user_123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_id": application.app_id, "app_secret": "test_secret"},
         )
 
@@ -60,15 +64,16 @@ class TestCreateUserToken:
         token = response.json()["access_token"]
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
 
-        assert payload["sub"] == "my_user_123"
+        assert payload["sub"] == user_id
         assert payload["scope"] == "sdk"
         assert payload["app_id"] == application.app_id
         assert "exp" in payload
 
     def test_create_token_missing_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Missing app_id should return validation error."""
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
         response = client.post(
-            f"{api_v1_prefix}/users/user123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_secret": "secret"},
         )
         # FastAPI returns 422 for validation errors, but some configs return 400
@@ -76,8 +81,9 @@ class TestCreateUserToken:
 
     def test_create_token_missing_app_secret(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Missing app_secret should return validation error."""
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
         response = client.post(
-            f"{api_v1_prefix}/users/user123/token",
+            f"{api_v1_prefix}/users/{user_id}/token",
             json={"app_id": "app_123"},
         )
         assert response.status_code in [400, 422]

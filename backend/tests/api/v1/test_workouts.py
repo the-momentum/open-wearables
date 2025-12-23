@@ -41,7 +41,16 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
+        # Provide required start_date and end_date
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert
         assert response.status_code == 200
@@ -58,7 +67,15 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert
         assert response.status_code == 200
@@ -76,10 +93,14 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"category": "workout"},
+            params={"category": "workout", "start_date": start_date, "end_date": end_date},
         )
 
         # Assert
@@ -100,10 +121,14 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act - note: API uses 'record_type' parameter (not 'type') and does ILIKE substring matching
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"record_type": "running"},
+            params={"record_type": "running", "start_date": start_date, "end_date": end_date},
         )
 
         # Assert
@@ -159,10 +184,14 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act - get page 2 with 2 items per page
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"skip": 2, "limit": 2},
+            params={"skip": 2, "limit": 2, "start_date": start_date, "end_date": end_date},
         )
 
         # Assert
@@ -195,10 +224,14 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act - sort by start_datetime ascending
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"sort_by": "start_datetime", "sort_order": "asc"},
+            params={"sort_by": "start_datetime", "sort_order": "asc", "start_date": start_date, "end_date": end_date},
         )
 
         # Assert
@@ -222,7 +255,15 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act - get user1's workouts
-        response = client.get(f"/api/v1/users/{user1.id}/events/workouts", headers=headers)
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user1.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert
         assert response.status_code == 200
@@ -236,7 +277,13 @@ class TestWorkoutsEndpoints:
         user = UserFactory()
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/events/workouts")
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts", params={"start_date": start_date, "end_date": end_date}
+        )
 
         # Assert
         assert response.status_code == 401
@@ -248,7 +295,15 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers("invalid-api-key")
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert
         assert response.status_code == 401
@@ -260,8 +315,16 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
-            client.get("/api/v1/users/not-a-uuid/events/workouts", headers=headers)
+            client.get(
+                "/api/v1/users/not-a-uuid/events/workouts",
+                headers=headers,
+                params={"start_date": start_date, "end_date": end_date},
+            )
 
     def test_get_workouts_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving workouts for a user that doesn't exist."""
@@ -273,7 +336,15 @@ class TestWorkoutsEndpoints:
         nonexistent_user_id = uuid4()
 
         # Act
-        response = client.get(f"/api/v1/users/{nonexistent_user_id}/events/workouts", headers=headers)
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{nonexistent_user_id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert - should return empty list, not 404
         assert response.status_code == 200
@@ -292,10 +363,14 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
         response = client.get(
             f"/api/v1/users/{user.id}/events/workouts",
             headers=headers,
-            params={"provider_name": "apple"},
+            params={"provider_name": "apple", "start_date": start_date, "end_date": end_date},
         )
 
         # Assert
@@ -319,7 +394,15 @@ class TestWorkoutsEndpoints:
         headers = api_key_headers(api_key.id)
 
         # Act
-        response = client.get(f"/api/v1/users/{user.id}/events/workouts", headers=headers)
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
 
         # Assert
         assert response.status_code == 200
