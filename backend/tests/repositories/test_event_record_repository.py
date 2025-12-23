@@ -325,7 +325,8 @@ class TestEventRecordRepository:
         # Note: total_count might be higher if other tests created records for this user
         # or if the factory created extra records. We check >= 5.
         assert total_count >= 5
-        assert len(page1) == 2
+        # Repository returns limit + 1 to check for next page
+        assert len(page1) == 3
         # page2 might have fewer than 2 items if total_count is exactly 3 (which was the failure case)
         # but we expect at least 1 item if total_count >= 3
         assert len(page2) >= 1

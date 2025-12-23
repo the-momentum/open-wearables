@@ -54,12 +54,13 @@ class TestGetSDKAuth:
     async def test_sdk_token_preferred_over_api_key(self, db: Session) -> None:
         """SDK token should be used even if API key is also provided."""
         api_key = ApiKeyFactory()
-        token = create_sdk_user_token("app_123", "user_456")
+        user_id = "123e4567-e89b-12d3-a456-426614174001"
+        token = create_sdk_user_token("app_123", user_id)
 
         result = await get_sdk_auth(db=db, token=token, x_open_wearables_api_key=api_key.id)
 
         assert result.auth_type == "sdk_token"
-        assert result.external_user_id == "user_456"
+        assert str(result.user_id) == user_id
 
 
 class TestSDKTokenBlockedFromDeveloperEndpoints:
@@ -70,7 +71,8 @@ class TestSDKTokenBlockedFromDeveloperEndpoints:
         """SDK tokens should be rejected by get_current_developer."""
         # Create a real developer for the DB (but token is SDK-scoped)
         DeveloperFactory()
-        sdk_token = create_sdk_user_token("app_123", "user_456")
+        user_id = "123e4567-e89b-12d3-a456-426614174001"
+        sdk_token = create_sdk_user_token("app_123", user_id)
 
         with pytest.raises(HTTPException) as exc_info:
             await get_current_developer(db=db, token=sdk_token)

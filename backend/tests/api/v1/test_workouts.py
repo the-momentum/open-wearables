@@ -54,7 +54,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 2
         assert any(w["id"] == str(workout1.id) for w in data)
         assert any(w["id"] == str(workout2.id) for w in data)
@@ -79,7 +79,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 0
 
     def test_get_workouts_filters_by_category(self, client: TestClient, db: Session) -> None:
@@ -105,7 +105,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["id"] == str(workout.id)
         assert data[0]["category"] == "workout"
@@ -133,7 +133,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["id"] == str(running.id)
         assert data[0]["type"] == "running"
@@ -169,7 +169,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["id"] == str(recent_workout.id)
 
@@ -196,7 +196,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 2
 
     def test_get_workouts_sorting(self, client: TestClient, db: Session) -> None:
@@ -236,7 +236,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 3
         assert data[0]["id"] == str(workout1.id)
         assert data[1]["id"] == str(workout2.id)
@@ -267,7 +267,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["id"] == str(workout1.id)
 
@@ -348,7 +348,7 @@ class TestWorkoutsEndpoints:
 
         # Assert - should return empty list, not 404
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 0
 
     def test_get_workouts_filters_by_provider(self, client: TestClient, db: Session) -> None:
@@ -375,7 +375,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         assert data[0]["id"] == str(apple_workout.id)
 
@@ -406,7 +406,7 @@ class TestWorkoutsEndpoints:
 
         # Assert
         assert response.status_code == 200
-        data = response.json()
+        data = response.json()["data"]
         assert len(data) == 1
         workout_data = data[0]
 
