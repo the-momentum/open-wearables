@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
@@ -9,6 +9,7 @@ from app.database import DbSession
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.templates.base_247_data import Base247DataTemplate
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -105,19 +106,30 @@ async def sync_user_data(
 
     # Sync 247 data if requested (Suunto-specific)
     if data_type in (SyncDataType.DATA_247, SyncDataType.ALL):
-        if hasattr(strategy, "data_247") and strategy.data_247:
+        if strategy.data_247:
+            data_provider = cast(Base247DataTemplate, strategy.data_247)
             start_dt = datetime.now() - timedelta(days=30)
             end_dt = datetime.now()
 
             if since:
                 start_dt = datetime.fromtimestamp(since)
 
-            results["data_247"] = strategy.data_247.load_all_247_data(
-                db,
-                user_id,
-                start_time=start_dt,
-                end_time=end_dt,
-            )
+            # Use load_and_save_all if available (Suunto), otherwise fallback to load_all_247_data
+            provider_any = cast(Any, data_provider)
+            if hasattr(provider_any, "load_and_save_all"):
+                results["data_247"] = provider_any.load_and_save_all(
+                    db,
+                    user_id,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
+            else:
+                results["data_247"] = provider_any.load_all_247_data(
+                    db,
+                    user_id,
+                    start_time=start_dt,
+                    end_time=end_dt,
+                )
         elif data_type == SyncDataType.DATA_247:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,

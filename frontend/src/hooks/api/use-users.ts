@@ -33,6 +33,11 @@ export function useCreateUser() {
     onSuccess: () => {
       // Invalidate users list
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() });
+      // Invalidate dashboard stats - only refetches if dashboard is currently open
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.stats(),
+        refetchType: 'active',
+      });
       toast.success('User created successfully');
     },
     onError: (error: unknown) => {
@@ -110,6 +115,11 @@ export function useDeleteUser() {
     mutationFn: (id: string) => usersService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() });
+      // Invalidate dashboard stats - only refetches if dashboard is currently open
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.stats(),
+        refetchType: 'active',
+      });
       toast.success('User deleted successfully');
     },
     onError: (error: unknown) => {

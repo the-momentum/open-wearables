@@ -6,11 +6,13 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.models import EventRecord, ExternalDeviceMapping
+from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping
 from app.repositories import EventRecordRepository, UserConnectionRepository
+from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.external_mapping_repository import ExternalMappingRepository
-from app.schemas import EventRecordCreate
+from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.series_types import SeriesType
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -30,6 +32,7 @@ class Suunto247Data(Base247DataTemplate):
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
         self.connection_repo = UserConnectionRepository()
+        self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
 
     def _get_suunto_headers(self) -> dict[str, str]:
         """Get Suunto-specific headers including subscription key."""
@@ -70,6 +73,40 @@ class Suunto247Data(Base247DataTemplate):
         """Convert datetime to epoch milliseconds."""
         return int(dt.timestamp() * 1000)
 
+    def _fetch_in_chunks(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        start_time: datetime,
+        end_time: datetime,
+        chunk_days: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Fetch data in chunks to avoid 28-day limit."""
+        all_data = []
+        current_start = start_time
+
+        while current_start < end_time:
+            current_end = min(current_start + timedelta(days=chunk_days), end_time)
+
+            params = {
+                "from": self._epoch_ms(current_start),
+                "to": self._epoch_ms(current_end),
+            }
+
+            try:
+                response = self._make_api_request(db, user_id, endpoint, params=params)
+                if isinstance(response, list):
+                    all_data.extend(response)
+            except Exception as e:
+                # Log error but continue with other chunks if possible
+                # In a real scenario, we might want to re-raise or handle differently
+                print(f"Error fetching chunk {current_start} to {current_end}: {e}")
+
+            current_start = current_end
+
+        return all_data
+
     # -------------------------------------------------------------------------
     # Sleep Data - Suunto /247samples/sleep
     # -------------------------------------------------------------------------
@@ -82,13 +119,7 @@ class Suunto247Data(Base247DataTemplate):
         end_time: datetime,
     ) -> list[dict[str, Any]]:
         """Fetch sleep data from Suunto API."""
-        params = {
-            "from": self._epoch_ms(start_time),
-            "to": self._epoch_ms(end_time),
-        }
-        response = self._make_api_request(db, user_id, "/247samples/sleep", params=params)
-        # Response is array of SleepEntry objects
-        return response if isinstance(response, list) else []
+        return self._fetch_in_chunks(db, user_id, "/247samples/sleep", start_time, end_time)
 
     def normalize_sleep(
         self,
@@ -193,8 +224,21 @@ class Suunto247Data(Base247DataTemplate):
             is_nap=normalized_sleep.get("is_nap", False),
         )
 
-        event_record_service.create(db, record)
-        event_record_service.create_detail(db, detail, detail_type="sleep")
+        try:
+            # Create record first
+            created_record = event_record_service.create(db, record)
+
+            # Ensure we use the ID of the actually created/retrieved record
+            # This handles the case where an existing record was returned
+            detail.record_id = created_record.id
+
+            # Create detail
+            event_record_service.create_detail(db, detail, detail_type="sleep")
+        except Exception as e:
+            self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            # Rollback is handled by the service/repository or session manager
+            # But we should ensure we don't break the entire sync loop
+            pass
 
     # -------------------------------------------------------------------------
     # Recovery Data - Suunto /247samples/recovery
@@ -208,12 +252,7 @@ class Suunto247Data(Base247DataTemplate):
         end_time: datetime,
     ) -> list[dict[str, Any]]:
         """Fetch recovery data from Suunto API."""
-        params = {
-            "from": self._epoch_ms(start_time),
-            "to": self._epoch_ms(end_time),
-        }
-        response = self._make_api_request(db, user_id, "/247samples/recovery", params=params)
-        return response if isinstance(response, list) else []
+        return self._fetch_in_chunks(db, user_id, "/247samples/recovery", start_time, end_time)
 
     def normalize_recovery(
         self,
@@ -246,12 +285,7 @@ class Suunto247Data(Base247DataTemplate):
         end_time: datetime,
     ) -> list[dict[str, Any]]:
         """Fetch activity samples (HR, steps, SpO2) from Suunto API."""
-        params = {
-            "from": self._epoch_ms(start_time),
-            "to": self._epoch_ms(end_time),
-        }
-        response = self._make_api_request(db, user_id, "/247samples/activity", params=params)
-        return response if isinstance(response, list) else []
+        return self._fetch_in_chunks(db, user_id, "/247samples/activity", start_time, end_time)
 
     def normalize_activity_samples(
         self,
@@ -347,14 +381,30 @@ class Suunto247Data(Base247DataTemplate):
         end_date: datetime,
     ) -> list[dict[str, Any]]:
         """Fetch aggregated daily activity statistics from Suunto API."""
-        # Suunto uses ISO 8601 format for this endpoint
-        params = {
-            "startdate": start_date.strftime("%Y-%m-%dT%H:%M:%S"),
-            "enddate": end_date.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        # Note: This endpoint is under /247 not /247samples
-        response = self._make_api_request(db, user_id, "/247/daily-activity-statistics", params=params)
-        return response if isinstance(response, list) else []
+        all_data = []
+        current_start = start_date
+        chunk_days = 14  # Reduced to 14 days to be safe (limit is 28 days)
+
+        while current_start < end_date:
+            current_end = min(current_start + timedelta(days=chunk_days), end_date)
+
+            # Suunto uses ISO 8601 format for this endpoint
+            params = {
+                "startdate": current_start.strftime("%Y-%m-%dT%H:%M:%S"),
+                "enddate": current_end.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+
+            try:
+                # Note: This endpoint is under /247 not /247samples
+                response = self._make_api_request(db, user_id, "/247/daily-activity-statistics", params=params)
+                if isinstance(response, list):
+                    all_data.extend(response)
+            except Exception as e:
+                print(f"Error fetching daily activity chunk {current_start} to {current_end}: {e}")
+
+            current_start = current_end
+
+        return all_data
 
     def normalize_daily_activity(
         self,
@@ -392,6 +442,126 @@ class Suunto247Data(Base247DataTemplate):
             "daily_values": daily_values,
             "raw": raw_stats,
         }
+
+    def save_activity_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_samples: dict[str, list[dict[str, Any]]],
+    ) -> int:
+        """Save normalized activity samples to database."""
+        count = 0
+
+        # Map internal keys to SeriesType
+        type_mapping = {
+            "heart_rate": SeriesType.heart_rate,
+            "steps": SeriesType.steps,
+            "spo2": SeriesType.oxygen_saturation,
+            "energy": SeriesType.energy,
+            "hrv": SeriesType.heart_rate_variability_sdnn,  # Using SDNN as placeholder for HRV
+        }
+
+        for key, samples in normalized_samples.items():
+            series_type = type_mapping.get(key)
+            if not series_type:
+                continue
+
+            for sample in samples:
+                timestamp_str = sample.get("timestamp")
+                if not timestamp_str:
+                    continue
+
+                try:
+                    recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+
+                # Extract value based on key
+                value = None
+                if key == "heart_rate":
+                    value = sample.get("bpm")
+                elif key == "steps":
+                    value = sample.get("count")
+                elif key == "spo2":
+                    value = sample.get("percent")
+                elif key == "energy":
+                    value = sample.get("kcal")
+                elif key == "hrv":
+                    value = sample.get("rmssd_ms")
+
+                if value is None:
+                    continue
+
+                try:
+                    sample_create = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                        external_id=None,  # Suunto doesn't provide ID for individual samples
+                    )
+                    self.data_point_repo.create(db, sample_create)
+                    count += 1
+                except Exception:
+                    # Log error but continue
+                    pass
+
+        return count
+
+    def save_daily_activity_statistics(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_stats: list[dict[str, Any]],
+    ) -> int:
+        """Save normalized daily activity statistics to database."""
+        count = 0
+
+        for stat in normalized_stats:
+            stat_type = stat.get("type")
+            daily_values = stat.get("daily_values", [])
+
+            series_type = None
+            if stat_type == "stepcount":
+                series_type = SeriesType.steps
+            elif stat_type == "energyconsumption":
+                series_type = SeriesType.energy
+
+            if not series_type:
+                continue
+
+            for item in daily_values:
+                date_str = item.get("date")
+                value = item.get("value")
+
+                if not date_str or value is None:
+                    continue
+
+                try:
+                    recorded_at = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+
+                    # Convert energy to kcal if needed
+                    final_value = Decimal(str(value))
+                    if series_type == SeriesType.energy:
+                        final_value = final_value / Decimal("4184")
+
+                    sample_create = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=final_value,
+                        series_type=series_type,
+                        external_id=None,
+                    )
+                    self.data_point_repo.create(db, sample_create)
+                    count += 1
+                except Exception:
+                    pass
+
+        return count
 
     # -------------------------------------------------------------------------
     # Load and Save All Data
@@ -459,6 +629,22 @@ class Suunto247Data(Base247DataTemplate):
             results["sleep_sessions"] = self.load_and_save_sleep(db, user_id, start_dt, end_dt)
         except Exception as e:
             self.logger.error(f"Failed to load sleep data: {e}")
+
+        # Activity Samples
+        try:
+            raw_activity = self.get_activity_samples(db, user_id, start_dt, end_dt)
+            normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
+            results["activity_samples"] = self.save_activity_samples(db, user_id, normalized_activity)
+        except Exception as e:
+            self.logger.error(f"Failed to load activity samples: {e}")
+
+        # Daily Activity Statistics
+        try:
+            raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
+            normalized_daily = [self.normalize_daily_activity(item, user_id) for item in raw_daily]
+            results["daily_activity"] = self.save_daily_activity_statistics(db, user_id, normalized_daily)
+        except Exception as e:
+            self.logger.error(f"Failed to load daily activity statistics: {e}")
 
         # Recovery and activity samples would need their own save methods
         # For now, they can be fetched via raw endpoints for debugging

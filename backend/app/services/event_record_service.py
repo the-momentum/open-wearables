@@ -17,7 +17,7 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import DataSource, Pagination
+from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.events import (
     SleepSession,
     Workout,
@@ -26,6 +26,7 @@ from app.schemas.events import (
 from app.schemas.summaries import SleepStagesSummary
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
+from app.utils.pagination import encode_cursor
 
 
 class EventRecordService(
@@ -107,9 +108,43 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-    ) -> dict[str, list[Workout] | Pagination]:
+    ) -> PaginatedResponse[Workout]:
         params.category = "workout"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
+        if has_more:
+            records = records[-limit:] if is_backward else records[:limit]
+
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
         for record, mapping in records:
@@ -126,20 +161,28 @@ class EventRecordService(
                 calories_kcal=None,  # Need to check where this is stored,
                 # likely in details but not in WorkoutDetails definition I saw earlier?
                 distance_meters=None,
-                avg_heart_rate_bpm=details.heart_rate_avg if details else None,
+                avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
-                elevation_gain_meters=details.total_elevation_gain if details else None,
+                elevation_gain_meters=float(details.total_elevation_gain)
+                if details and details.total_elevation_gain
+                else None,
             )
             data.append(workout)
 
-        return {
-            "data": data,
-            "pagination": Pagination(
-                next_cursor=None,  # TODO: Implement cursor pagination
-                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
             ),
-        }
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
 
     @handle_exceptions
     async def get_workout_detailed(
@@ -181,10 +224,12 @@ class EventRecordService(
             source=self._map_source(mapping),
             calories_kcal=None,
             distance_meters=None,
-            avg_heart_rate_bpm=details.heart_rate_avg if details else None,
+            avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
             max_heart_rate_bpm=details.heart_rate_max if details else None,
             avg_pace_sec_per_km=None,
-            elevation_gain_meters=details.total_elevation_gain if details else None,
+            elevation_gain_meters=float(details.total_elevation_gain)
+            if details and details.total_elevation_gain
+            else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 
@@ -194,9 +239,43 @@ class EventRecordService(
         db_session: DbSession,
         user_id: UUID,
         params: EventRecordQueryParams,
-    ) -> dict[str, list[SleepSession] | Pagination]:
+    ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
-        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+
+        limit = params.limit or 20
+        has_more = len(records) > limit
+
+        # Check if this is backward pagination
+        is_backward = params.cursor and params.cursor.startswith("prev_")
+
+        # Trim to limit
+        if has_more:
+            records = records[-limit:] if is_backward else records[:limit]
+
+        # Generate cursors
+        next_cursor = None
+        previous_cursor = None
+
+        if records:
+            # Always generate next_cursor if has_more
+            if has_more:
+                last_record, _ = records[-1]
+                next_cursor = encode_cursor(last_record.start_datetime, last_record.id, "next")
+
+            # Generate previous_cursor only if:
+            # 1. We used a cursor to get here (not the first page)
+            # 2. There are more items before (for backward) OR we're doing forward navigation
+            if params.cursor:
+                # For backward navigation: only set previous_cursor if has_more
+                # For forward navigation: always set previous_cursor
+                if is_backward:
+                    if has_more:
+                        first_record, _ = records[0]
+                        previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
+                else:
+                    first_record, _ = records[0]
+                    previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
         for record, mapping in records:
@@ -208,8 +287,10 @@ class EventRecordService(
                 end_time=record.end_datetime,
                 source=self._map_source(mapping),
                 duration_seconds=record.duration_seconds or 0,
-                efficiency_percent=details.sleep_efficiency_score if details else None,
-                is_nap=details.is_nap if details else False,
+                efficiency_percent=float(details.sleep_efficiency_score)
+                if details and details.sleep_efficiency_score
+                else None,
+                is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 stages=SleepStagesSummary(
                     deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,
                     light_seconds=(details.sleep_light_minutes or 0) * 60 if details else 0,
@@ -221,12 +302,19 @@ class EventRecordService(
             )
             data.append(session)
 
-        return {
-            "data": data,
-            "pagination": Pagination(
-                has_more=total_count > ((params.offset or 0) + (params.limit or 20)),
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
             ),
-        }
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=params.start_datetime,
+                end_time=params.end_datetime,
+            ),
+        )
 
 
 event_record_service = EventRecordService(log=getLogger(__name__))

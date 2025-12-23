@@ -3,7 +3,7 @@ title: "Unified data model"
 description: "Database schema and entity relationships"
 ---
 
-The Open Wereables project aims to unifies health monitoring data - to do that, a stable, optimised data architecture is paramount. This problem is not trivial, as we face raw data served in heterogeneous formats, with potential erroneous observations, noise interfering with the recorded values and other such issues. On top of that, the potential volume of data is a problem on its own, and without proper structure optimization will be unacceptably memory taxing, calculation intensive, if not both.
+The Open Wearables project aims to unify health monitoring data - to do that, a stable, optimised data architecture is paramount. This problem is not trivial, as we face raw data served in heterogeneous formats, with potential erroneous observations, noise interfering with the recorded values and other such issues. On top of that, the potential volume of data is a problem on its own, and without proper structure optimization will be unacceptably memory taxing, calculation intensive, if not both.
 
 ## Technical overview
 
@@ -17,7 +17,7 @@ This data model structure is still under active development and is subject to ch
 
 ## Design goals
 
-The design goals behind outlined structure were as follow:
+The design goals behind outlined structure were as follows:
 - **Uniformity** - the structures must be as consistent as possible, handling similar datatypes in similar ways. This serves two purposes
 - **Ease of work** - Any developer interacting with the data needs to see a clear structure, that can be modified without excessive documentation hunting
 - **Straightforward analytics** - Any service - be it internal, or working as a datasink, needs to interact with consistent data structures, that can be easily connected, offering the freedom of a full multivariate data model
@@ -53,7 +53,7 @@ This data is designed to be served via multiple channels, accessible through ded
 ![Data roadmap](../images/data-roadmap.png)
 
 The presented unified data model is a first iteration of the underlying Open Wearables data structure - we fully intend to expand upon it, and introduce new features. Some of the planned stages of development are as follows:
-1. **Base model architecture (starting point)** - The base data model discussed above, provided with the first release of the Open Wearables platform'
+1. **Base model architecture (starting point)** - The base data model discussed above, provided with the first release of the Open Wearables platform
 2. **Wide data support** - consists of extending the existing data structures with wide support for both events and series existing in the wider wearables ecosystem
 3. **Complex metrics calculation** - assumes extension of the currently existing base types of time series with complex metrics, covering both multivariate datapoints and derivative values, calculated from other datapoints. Here, reaching a compromise between incoming, registered data (come of the complex types are widely supported and will be received as raw data), and our internal calculation - the goal will be to validate and use the most trusted ones, according to either user defined priority configuration, or calculated trust scores.
 4. **Data model expansion for time series** - at this stage, we assume that the time series shared model will need to be revisited. As stated in the initial description, the current approach is a stopgap, potentially sacrificing the storage optimisation - as our stated goal is to avoid unnecessary memory bloat, this will need to be resolved, using insight from the earlier stages and potential feedback. The presented structure is one of the possibilities, splitting the series according to data types, representing a compromise between classic data warehousing and relational databases. Here we can also think about separating the time series data describing the user body states into separate, snapshot-like records.

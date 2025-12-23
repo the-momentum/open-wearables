@@ -63,7 +63,7 @@ export function TeamTab() {
       setCopiedId(id);
       toast.success('ID copied to clipboard');
       setTimeout(() => setCopiedId(null), 2000);
-    } catch (error) {
+    } catch {
       toast.error('Failed to copy ID to clipboard');
     }
   };
