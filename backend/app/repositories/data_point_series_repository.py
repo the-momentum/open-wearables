@@ -52,8 +52,12 @@ class DataPointSeriesRepository(
         params: TimeSeriesQueryParams,
         types: list[SeriesType],
         user_id: UUID,
-    ) -> list[tuple[DataPointSeries, ExternalDeviceMapping]]:
-        """Get data points with filtering and keyset pagination."""
+    ) -> tuple[list[tuple[DataPointSeries, ExternalDeviceMapping]], int]:
+        """Get data points with filtering and keyset pagination.
+
+        Returns a tuple of (samples, total_count) where total_count is calculated
+        BEFORE applying cursor pagination, giving the total number of matching records.
+        """
         query = (
             db_session.query(self.model, ExternalDeviceMapping)
             .join(
@@ -79,6 +83,10 @@ class DataPointSeriesRepository(
         if params.end_datetime:
             query = query.filter(self.model.recorded_at <= params.end_datetime)
 
+        # Calculate total count BEFORE applying cursor pagination
+        # This gives us the total matching records (after all other filters)
+        total_count = query.count()
+
         # Cursor pagination (keyset)
         if params.cursor:
             cursor_ts, cursor_id, direction = decode_cursor(params.cursor)
@@ -93,7 +101,7 @@ class DataPointSeriesRepository(
                 limit = params.limit or 50
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results))
+                return list(reversed(results)), total_count
             # Forward pagination: get items AFTER cursor
             query = query.filter(
                 tuple_(self.model.recorded_at, self.model.id) > (cursor_ts, cursor_id),
@@ -104,7 +112,7 @@ class DataPointSeriesRepository(
 
         # Limit + 1 to check for next page
         limit = params.limit or 50
-        return query.limit(limit + 1).all()
+        return query.limit(limit + 1).all(), total_count
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

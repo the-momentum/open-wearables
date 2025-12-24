@@ -24,6 +24,11 @@ class Pagination(BaseModel):
     )
     previous_cursor: str | None = Field(None, description="Cursor to fetch previous page")
     has_more: bool = Field(..., description="Whether more data is available")
+    total_count: int | None = Field(
+        None,
+        description="Total number of records matching the query",
+        example=150,
+    )
 
 
 class ErrorDetails(BaseModel):
