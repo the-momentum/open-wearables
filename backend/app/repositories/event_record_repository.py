@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import Date, String, UUID as SQL_UUID, and_, asc, cast, desc, func, tuple_
+from sqlalchemy import UUID as SQL_UUID
+from sqlalchemy import Date, String, and_, asc, cast, desc, func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
@@ -240,15 +241,11 @@ class EventRecordRepository(
 
             if direction == "prev":
                 # Backward pagination: get items BEFORE cursor
-                query = query.filter(
-                    tuple_(subquery.c.sleep_date, record_id_col) < (cursor_date, cursor_id)
-                )
+                query = query.filter(tuple_(subquery.c.sleep_date, record_id_col) < (cursor_date, cursor_id))
                 query = query.order_by(desc(subquery.c.sleep_date), desc(record_id_col))
             else:
                 # Forward pagination: get items AFTER cursor
-                query = query.filter(
-                    tuple_(subquery.c.sleep_date, record_id_col) > (cursor_date, cursor_id)
-                )
+                query = query.filter(tuple_(subquery.c.sleep_date, record_id_col) > (cursor_date, cursor_id))
                 query = query.order_by(asc(subquery.c.sleep_date), asc(record_id_col))
         else:
             # No cursor: default ordering

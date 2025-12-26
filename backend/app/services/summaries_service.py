@@ -1,6 +1,6 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -34,9 +34,7 @@ class SummariesService:
         self.logger.debug(f"Fetching sleep summaries for user {user_id} from {start_date} to {end_date}")
 
         # Get aggregated data from repository
-        results = self.event_record_repo.get_sleep_summaries(
-            db_session, user_id, start_date, end_date, cursor, limit
-        )
+        results = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, cursor, limit)
 
         # Check if there's more data
         has_more = len(results) > limit
@@ -88,4 +86,3 @@ class SummariesService:
 
 
 summaries_service = SummariesService(log=getLogger(__name__))
-
