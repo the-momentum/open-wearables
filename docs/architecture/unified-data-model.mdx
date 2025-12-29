@@ -37,7 +37,181 @@ Those goals led us to employ a structure, consisting of three core components:
 - **Descriptors** (*PersonalRecord*) - stores static user biometric information that changes slowly, if ever. Currently includes birth date (used for age calculation), sex, and gender. This structure is designed to be extended with additional static or slow-changing user attributes as needed.
   - The time series data will be stored in the initial release along other series - eventually, BodyState table that backreferences a user that it is tied to, and holds all the supported and potentially possible descriptors will be introduced - here null values and redundant fields are a lesser evil, as the records will be sparse, and avoiding structure bloat is a bigger gain
 - **ID mapping** (*ExternalDeviceMapping*) - mapping internal reference id to a combination of user/device/provider, ensuring clear identification of the source, while preventing structure clutter with excessive IDs in other tables and reducing datapoint width, especially important for time series data
-**Series descriptors** (*SeriesTypeDefinition*)  - meant to store series related details, applicable for the entire series type (i.e. unit type in which values are stored). This way we avoid redundant fields in the time series table, eventually ending up with minimal implementation of the datapoints.
+- **Series descriptors** (*SeriesTypeDefinition*)  - meant to store series related details, applicable for the entire series type (i.e. unit type in which values are stored). This way we avoid redundant fields in the time series table, eventually ending up with minimal implementation of the datapoints.
+
+### Entity Relationship Diagram
+
+The following diagram illustrates the current database schema and relationships between all entities:
+
+```mermaid
+erDiagram
+    User ||--o| PersonalRecord : "has"
+    User ||--o{ UserConnection : "has"
+    User ||--o{ ExternalDeviceMapping : "has"
+    
+    ExternalDeviceMapping ||--o{ EventRecord : "produces"
+    ExternalDeviceMapping ||--o{ DataPointSeries : "produces"
+    
+    EventRecord ||--o| EventRecordDetail : "has"
+    EventRecordDetail ||--o| SleepDetails : "polymorphic"
+    EventRecordDetail ||--o| WorkoutDetails : "polymorphic"
+    
+    DataPointSeries }o--|| SeriesTypeDefinition : "references"
+    
+    Developer ||--o{ Application : "owns"
+    Developer ||--o{ ApiKey : "creates"
+    Developer ||--o{ Invitation : "sends"
+    
+    Device ||--o{ DeviceSoftware : "has"
+    
+    User {
+        uuid id PK
+        timestamp created_at
+        string first_name
+        string last_name
+        string email
+        string external_user_id
+    }
+    
+    PersonalRecord {
+        uuid id PK
+        uuid user_id FK
+        date birth_date
+        bool sex
+        string gender
+    }
+    
+    UserConnection {
+        uuid id PK
+        uuid user_id FK
+        string provider
+        string provider_user_id
+        string access_token
+        string refresh_token
+        timestamp token_expires_at
+        string status
+    }
+    
+    ExternalDeviceMapping {
+        uuid id PK
+        uuid user_id FK
+        string provider_name
+        string device_id
+    }
+    
+    EventRecord {
+        uuid id PK
+        uuid external_device_mapping_id FK
+        string external_id
+        string category
+        string type
+        string source_name
+        int duration_seconds
+        timestamp start_datetime
+        timestamp end_datetime
+    }
+    
+    EventRecordDetail {
+        uuid record_id PK
+        string detail_type
+    }
+    
+    SleepDetails {
+        uuid record_id PK
+        int sleep_total_duration_minutes
+        int sleep_time_in_bed_minutes
+        decimal sleep_efficiency_score
+        int sleep_deep_minutes
+        int sleep_rem_minutes
+        int sleep_light_minutes
+        int sleep_awake_minutes
+        bool is_nap
+    }
+    
+    WorkoutDetails {
+        uuid record_id PK
+        int heart_rate_min
+        int heart_rate_max
+        decimal heart_rate_avg
+        decimal energy_burned
+        decimal distance
+        int steps_count
+        decimal max_speed
+        decimal max_watts
+        int moving_time_seconds
+        decimal total_elevation_gain
+    }
+    
+    DataPointSeries {
+        uuid id PK
+        uuid external_device_mapping_id FK
+        int series_type_definition_id FK
+        string external_id
+        timestamp recorded_at
+        decimal value
+    }
+    
+    SeriesTypeDefinition {
+        int id PK
+        string code
+        string unit
+    }
+    
+    Developer {
+        uuid id PK
+        timestamp created_at
+        timestamp updated_at
+        string first_name
+        string last_name
+        string email
+        string hashed_password
+    }
+    
+    Application {
+        uuid id PK
+        uuid developer_id FK
+        string app_id
+        string app_secret_hash
+        string name
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ApiKey {
+        string id PK
+        uuid created_by FK
+        string name
+        timestamp created_at
+    }
+    
+    Invitation {
+        uuid id PK
+        uuid invited_by_id FK
+        string email
+        string token
+        string status
+        timestamp expires_at
+        timestamp created_at
+    }
+    
+    Device {
+        uuid id PK
+        string serial_number
+        string provider_name
+        string name
+    }
+    
+    DeviceSoftware {
+        uuid id PK
+        uuid device_id FK
+        string version
+    }
+    
+    ProviderSetting {
+        string provider PK
+        bool is_enabled
+    }
+```
 
 ## Technical backbone
 
