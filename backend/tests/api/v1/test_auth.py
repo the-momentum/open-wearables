@@ -11,7 +11,6 @@ Tests cover:
 - DELETE /api/v1/developers/{developer_id} - delete developer
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -319,16 +318,17 @@ class TestGetDeveloperById:
 
     def test_get_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent developer raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.get(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
+        # Act
+        response = client.get(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_get_developer_by_id_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting developer with invalid UUID format."""
@@ -383,7 +383,6 @@ class TestUpdateDeveloperById:
 
     def test_update_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent developer raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -391,9 +390,11 @@ class TestUpdateDeveloperById:
         fake_id = "00000000-0000-0000-0000-000000000000"
         payload = {"email": "updated@example.com"}
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.patch(f"{api_v1_prefix}/developers/{fake_id}", json=payload, headers=headers)
+        # Act
+        response = client.patch(f"{api_v1_prefix}/developers/{fake_id}", json=payload, headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_update_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating developer by ID fails without authentication."""
@@ -454,16 +455,17 @@ class TestDeleteDeveloperById:
 
     def test_delete_developer_by_id_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent developer raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.delete(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
+        # Act
+        response = client.delete(f"{api_v1_prefix}/developers/{fake_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_delete_developer_by_id_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting developer fails without authentication."""

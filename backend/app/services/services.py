@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
 from app.schemas import FilterParams
-from app.utils.exceptions import ResourceNotFoundError
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
 type OptRequest = Request | None
 
@@ -37,6 +37,7 @@ class AppService[
         self.logger.debug(f"Created {self.name} with ID: {creation.id}.")  # type: ignore[union-attr]
         return creation  # type: ignore[return-value]
 
+    @handle_exceptions
     def get(
         self,
         db_session: DbSession,
@@ -63,6 +64,7 @@ class AppService[
 
         return fetched
 
+    @handle_exceptions
     def get_all(
         self,
         db_session: DbSession,

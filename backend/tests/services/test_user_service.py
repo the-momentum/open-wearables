@@ -136,16 +136,18 @@ class TestUserServiceUpdate:
         assert result is None
 
     def test_update_user_with_raise_404(self, db: Session) -> None:
-        """Should raise ResourceNotFoundError when updating non-existent user with raise_404=True."""
+        """Should raise HTTPException(404) when updating non-existent user with raise_404=True."""
         # Arrange
-        from app.utils.exceptions import ResourceNotFoundError
+        from fastapi import HTTPException
 
         fake_id = uuid4()
         update_payload = UserUpdate(email="new@example.com")
 
         # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
+        with pytest.raises(HTTPException) as exc_info:
             user_service.update(db, fake_id, update_payload, raise_404=True)
+
+        assert exc_info.value.status_code == 404
 
 
 class TestUserServiceGet:
