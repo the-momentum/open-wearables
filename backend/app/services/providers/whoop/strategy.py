@@ -7,7 +7,7 @@ class WhoopStrategy(BaseProviderStrategy):
 
     def __init__(self):
         super().__init__()
-        
+
         # Initialize OAuth component
         self.oauth = WhoopOAuth(
             user_repo=self.user_repo,
@@ -15,7 +15,7 @@ class WhoopStrategy(BaseProviderStrategy):
             provider_name=self.name,
             api_base_url=self.api_base_url,
         )
-        
+
         # Workouts handler will be added in PR #2
         self.workouts = None
 

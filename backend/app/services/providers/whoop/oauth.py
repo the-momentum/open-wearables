@@ -1,4 +1,5 @@
 import httpx
+
 from app.config import settings
 from app.schemas import (
     AuthenticationMethod,
