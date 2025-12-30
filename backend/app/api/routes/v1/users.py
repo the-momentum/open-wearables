@@ -28,9 +28,7 @@ async def list_users(
         401: {
             "description": "Authentication required",
             "content": {
-                "application/json": {
-                    "example": {"detail": "Authentication required: provide JWT token or API key"}
-                }
+                "application/json": {"example": {"detail": "Authentication required: provide JWT token or API key"}}
             },
         },
         404: {
