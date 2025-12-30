@@ -46,10 +46,10 @@ class WhoopOAuth(BaseOAuthTemplate):
             )
             user_info_response.raise_for_status()
             user_data = user_info_response.json()
-            # Adjust based on actual Whoop API response structure
-            provider_user_id = user_data.get("user_id") or user_data.get("id")
-            username = user_data.get("username") or user_data.get("email")
-            return {"user_id": str(provider_user_id) if provider_user_id else None, "username": username}
+            # Whoop API returns: user_id, email, first_name, last_name
+            provider_user_id = user_data.get("user_id")
+            provider_user_id = str(provider_user_id) if provider_user_id is not None else None
+            return {"user_id": provider_user_id, "username": None}
         except Exception:
             # If user info fetch fails, connection can still be saved without provider_user_id
             return {"user_id": None, "username": None}
