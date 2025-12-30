@@ -45,9 +45,7 @@ async def get_sleep_summary(
     """Returns daily sleep metrics."""
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
-    return await summaries_service.get_sleep_summaries(
-        db, user_id, start_datetime, end_datetime, cursor, limit
-    )
+    return await summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/recovery")
