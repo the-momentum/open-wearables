@@ -23,7 +23,7 @@ class TestSleepSummaryEndpoint:
             category="sleep",
             start_datetime=sleep_start,
             end_datetime=sleep_end,
-            duration_seconds=sleep_end.timestamp() - sleep_start.timestamp()
+            duration_seconds=sleep_end.timestamp() - sleep_start.timestamp(),
         )
         api_key = ApiKeyFactory()
         response = client.get(
