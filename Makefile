@@ -18,7 +18,7 @@ up:	## Runs the non-detached environment
 	$(DOCKER_COMMAND) up --force-recreate
 
 watch:	## Runs the environment with hot-reload
-	$(DOCKER_COMMAND) --watch
+	$(DOCKER_COMMAND) watch
 
 stop:	## Stops running instance
 	$(DOCKER_COMMAND) stop

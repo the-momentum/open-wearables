@@ -9,7 +9,6 @@ Tests cover:
 - POST /api/v1/developer/api-keys/{key_id}/rotate - rotate API key
 """
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -243,16 +242,17 @@ class TestDeleteApiKey:
 
     def test_delete_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent API key raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
         fake_key_id = "sk-nonexistent1234567890"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.delete(f"{api_v1_prefix}/developer/api-keys/{fake_key_id}", headers=headers)
+        # Act
+        response = client.delete(f"{api_v1_prefix}/developer/api-keys/{fake_key_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_delete_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting API key fails without authentication."""
@@ -332,7 +332,6 @@ class TestUpdateApiKey:
 
     def test_update_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent API key raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -340,13 +339,15 @@ class TestUpdateApiKey:
         fake_key_id = "sk-nonexistent1234567890"
         payload = {"name": "New Name"}
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.patch(
-                f"{api_v1_prefix}/developer/api-keys/{fake_key_id}",
-                json=payload,
-                headers=headers,
-            )
+        # Act
+        response = client.patch(
+            f"{api_v1_prefix}/developer/api-keys/{fake_key_id}",
+            json=payload,
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 404
 
     def test_update_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating API key fails without authentication."""
@@ -403,19 +404,20 @@ class TestRotateApiKey:
 
     def test_rotate_api_key_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating non-existent API key raises ResourceNotFoundError."""
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
         fake_key_id = "sk-nonexistent1234567890"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.post(
-                f"{api_v1_prefix}/developer/api-keys/{fake_key_id}/rotate",
-                headers=headers,
-            )
+        # Act
+        response = client.post(
+            f"{api_v1_prefix}/developer/api-keys/{fake_key_id}/rotate",
+            headers=headers,
+        )
+
+        # Assert
+        assert response.status_code == 404
 
     def test_rotate_api_key_unauthorized(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test rotating API key fails without authentication."""

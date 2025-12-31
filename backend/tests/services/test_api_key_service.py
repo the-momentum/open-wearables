@@ -208,16 +208,18 @@ class TestApiKeyServiceRotateApiKey:
         assert new_key.created_by is None
 
     def test_rotate_nonexistent_key_raises_404(self, db: Session) -> None:
-        """Should raise ResourceNotFoundError when rotating non-existent key."""
+        """Should raise HTTPException(404) when rotating non-existent key."""
         # Arrange
-        from app.utils.exceptions import ResourceNotFoundError
+        from fastapi import HTTPException
 
         fake_key = "sk-nonexistent"
         developer = DeveloperFactory()
 
         # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
+        with pytest.raises(HTTPException) as exc_info:
             api_key_service.rotate_api_key(db, fake_key, developer.id)
+
+        assert exc_info.value.status_code == 404
 
 
 class TestApiKeyServiceValidateApiKey:

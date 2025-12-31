@@ -181,16 +181,18 @@ class TestDeveloperServiceUpdateDeveloperInfo:
         assert result is None
 
     def test_update_developer_with_raise_404(self, db: Session) -> None:
-        """Should raise ResourceNotFoundError when updating non-existent developer with raise_404=True."""
+        """Should raise HTTPException(404) when updating non-existent developer with raise_404=True."""
         # Arrange
-        from app.utils.exceptions import ResourceNotFoundError
+        from fastapi import HTTPException
 
         fake_id = uuid4()
         update_payload = DeveloperUpdate(email="new@example.com")
 
         # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
+        with pytest.raises(HTTPException) as exc_info:
             developer_service.update_developer_info(db, fake_id, update_payload, raise_404=True)
+
+        assert exc_info.value.status_code == 404
 
     def test_update_developer_empty_update(self, db: Session) -> None:
         """Should handle empty update gracefully."""

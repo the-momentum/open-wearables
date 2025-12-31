@@ -69,7 +69,7 @@ class TimeSeriesService(
         types: list[SeriesType],
         params: TimeSeriesQueryParams,
     ) -> PaginatedResponse[TimeSeriesSample]:
-        samples = self.crud.get_samples(db_session, params, types, user_id)
+        samples, total_count = self.crud.get_samples(db_session, params, types, user_id)
 
         limit = params.limit or 50
         has_more = len(samples) > limit
@@ -125,6 +125,7 @@ class TimeSeriesService(
                 has_more=has_more,
                 next_cursor=next_cursor,
                 previous_cursor=previous_cursor,
+                total_count=total_count,
             ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),

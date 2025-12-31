@@ -109,9 +109,6 @@ class TestGetUser:
 
     def test_get_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting non-existent user raises ResourceNotFoundError."""
-        import pytest
-
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -119,9 +116,11 @@ class TestGetUser:
         headers = api_key_headers(api_key.id)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.get(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
+        # Act
+        response = client.get(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_get_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test getting user with invalid UUID format."""
@@ -347,9 +346,6 @@ class TestUpdateUser:
 
     def test_update_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating non-existent user raises ResourceNotFoundError."""
-        import pytest
-
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
@@ -357,9 +353,11 @@ class TestUpdateUser:
         fake_id = "00000000-0000-0000-0000-000000000000"
         payload = {"email": "new@example.com"}
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.patch(f"{api_v1_prefix}/users/{fake_id}", json=payload, headers=headers)
+        # Act
+        response = client.patch(f"{api_v1_prefix}/users/{fake_id}", json=payload, headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_update_user_invalid_email(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test updating user with invalid email."""
@@ -431,18 +429,17 @@ class TestDeleteUser:
 
     def test_delete_user_not_found(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting non-existent user raises ResourceNotFoundError."""
-        import pytest
-
-        from app.utils.exceptions import ResourceNotFoundError
 
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         headers = developer_auth_headers(developer.id)
         fake_id = "00000000-0000-0000-0000-000000000000"
 
-        # Act & Assert
-        with pytest.raises(ResourceNotFoundError):
-            client.delete(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
+        # Act
+        response = client.delete(f"{api_v1_prefix}/users/{fake_id}", headers=headers)
+
+        # Assert
+        assert response.status_code == 404
 
     def test_delete_user_invalid_uuid(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Test deleting user with invalid UUID format."""

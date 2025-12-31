@@ -113,6 +113,10 @@ class EventRecordRepository(
         sort_column = getattr(EventRecord, sort_by)
         is_asc = query_params.sort_order == "asc"
 
+        # Calculate total count BEFORE applying cursor filters
+        # This gives us the total matching records (after all other filters)
+        total_count = query.count()
+
         # Cursor pagination (keyset)
         if query_params.cursor:
             cursor_ts, cursor_id, direction = decode_cursor(query_params.cursor)
@@ -137,7 +141,7 @@ class EventRecordRepository(
                 limit = query_params.limit or 20
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), query.count()
+                return list(reversed(results)), total_count
 
             # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
@@ -149,8 +153,6 @@ class EventRecordRepository(
                 query = query.filter(comparison)
             else:
                 query = query.filter(EventRecord.id > cursor_id if is_asc else EventRecord.id < cursor_id)
-
-        total_count = query.count()
 
         # Apply ordering (ID as secondary sort for deterministic pagination)
         sort_order = asc if is_asc else desc

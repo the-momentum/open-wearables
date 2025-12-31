@@ -132,10 +132,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams()
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert results == []  # Returns empty list when no device filter provided
+        assert total_count == 0
 
     def test_get_samples_by_device_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test getting samples filtered by device ID."""
@@ -176,10 +177,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) == 3
+        assert total_count == 3
         for _, mapping in results:
             assert mapping.device_id == "device1"
 
@@ -211,10 +213,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(external_device_mapping_id=mapping.id)
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) == 3
+        assert total_count == 3
         for sample, _ in results:
             assert sample.external_device_mapping_id == mapping.id
 
@@ -255,10 +258,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) == 2
+        assert total_count == 2
         from app.schemas.series_types import get_series_type_id
 
         expected_type_id = get_series_type_id(SeriesType.heart_rate)
@@ -296,10 +300,11 @@ class TestDataPointSeriesRepository:
         )
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) == 2
+        assert total_count == 2
         for sample, _ in results:
             assert sample.recorded_at >= yesterday
             assert sample.recorded_at <= now
@@ -341,10 +346,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1", provider_name="apple")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) == 1
+        assert total_count == 1
         _, mapping = results[0]
         assert mapping.provider_name == "apple"
 
@@ -373,10 +379,11 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) >= 3
+        assert total_count >= 3
         # Should be ordered oldest first (ascending)
         for i in range(len(results) - 1):
             assert results[i][0].recorded_at <= results[i + 1][0].recorded_at
@@ -392,7 +399,7 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
         # Assert
         assert len(results) <= 1000
@@ -629,9 +636,10 @@ class TestDataPointSeriesRepository:
         query_params = TimeSeriesQueryParams(device_id="device1")
 
         # Act
-        results = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user1.id)
+        results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user1.id)
 
         # Assert
         assert len(results) == 2
+        assert total_count == 2
         for _, mapping in results:
             assert mapping.user_id == user1.id

@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
     polar_default_scope: str = "accesslink.read_all"
 
+    # WHOOP OAUTH SETTINGS
+    whoop_client_id: str | None = None
+    whoop_client_secret: SecretStr | None = None
+    whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
+    whoop_default_scope: str = "read:cycles read:sleep read:recovery"
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None

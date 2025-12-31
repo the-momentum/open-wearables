@@ -110,7 +110,9 @@ class EventRecordService(
         params: EventRecordQueryParams,
     ) -> PaginatedResponse[Workout]:
         params.category = "workout"
-        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        # Ensure total_count is always an int (not None)
+        total_count = total_count if total_count is not None else 0
 
         limit = params.limit or 20
         has_more = len(records) > limit
@@ -176,6 +178,7 @@ class EventRecordService(
                 has_more=has_more,
                 next_cursor=next_cursor,
                 previous_cursor=previous_cursor,
+                total_count=total_count,
             ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),
@@ -241,7 +244,9 @@ class EventRecordService(
         params: EventRecordQueryParams,
     ) -> PaginatedResponse[SleepSession]:
         params.category = "sleep"
-        records, _ = await self._get_records_with_filters(db_session, params, str(user_id))
+        records, total_count = await self._get_records_with_filters(db_session, params, str(user_id))
+        # Ensure total_count is always an int (not None)
+        total_count = total_count if total_count is not None else 0
 
         limit = params.limit or 20
         has_more = len(records) > limit
@@ -308,6 +313,7 @@ class EventRecordService(
                 has_more=has_more,
                 next_cursor=next_cursor,
                 previous_cursor=previous_cursor,
+                total_count=total_count,
             ),
             metadata=TimeseriesMetadata(
                 sample_count=len(data),

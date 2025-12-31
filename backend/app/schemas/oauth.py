@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     GARMIN = "garmin"
     POLAR = "polar"
     SUUNTO = "suunto"
+    WHOOP = "whoop"
 
 
 class ConnectionStatus(str, Enum):
