@@ -12,6 +12,8 @@ from app.schemas.summaries import (
     SleepSummary,
 )
 from app.services import ApiKeyDep
+from app.services.summaries_service import summaries_service
+from app.utils.dates import parse_query_datetime
 
 router = APIRouter()
 
@@ -41,7 +43,9 @@ async def get_sleep_summary(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return await summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/recovery")
