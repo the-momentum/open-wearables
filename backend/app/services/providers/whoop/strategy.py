@@ -1,6 +1,7 @@
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.oauth import WhoopOAuth
+from app.services.providers.whoop.workouts import WhoopWorkouts
 
 
 class WhoopStrategy(BaseProviderStrategy):
@@ -17,7 +18,14 @@ class WhoopStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
         )
 
-        self.workouts = None
+        # Initialize workouts component
+        self.workouts = WhoopWorkouts(
+            workout_repo=self.workout_repo,
+            connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
 
         # 247 data handler for sleep, recovery, activity samples
         self.data_247 = Whoop247Data(
