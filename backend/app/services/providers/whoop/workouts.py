@@ -49,7 +49,10 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 response = self._make_api_request(db, user_id, "/v2/activity/workout", params=params)
 
                 # Parse response
-                collection = WhoopWorkoutCollectionJSON(**response) if isinstance(response, dict) else WhoopWorkoutCollectionJSON(records=[])
+                if isinstance(response, dict):
+                    collection = WhoopWorkoutCollectionJSON(**response)
+                else:
+                    collection = WhoopWorkoutCollectionJSON(records=[])
 
                 all_workouts.extend(collection.records)
 
@@ -94,8 +97,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         if next_token:
             params["nextToken"] = next_token
 
-        response = self._make_api_request(db, user_id, "/v2/activity/workout", params=params)
-        return response
+        return self._make_api_request(db, user_id, "/v2/activity/workout", params=params)
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         """Get detailed workout data from Whoop API."""
@@ -241,7 +243,10 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 response = self.get_workouts_from_api(db, user_id, **params)
 
                 # Parse response
-                collection = WhoopWorkoutCollectionJSON(**response) if isinstance(response, dict) else WhoopWorkoutCollectionJSON(records=[])
+                if isinstance(response, dict):
+                    collection = WhoopWorkoutCollectionJSON(**response)
+                else:
+                    collection = WhoopWorkoutCollectionJSON(records=[])
 
                 # collection.records is already a list of WhoopWorkoutJSON objects (parsed by Pydantic)
                 all_workouts.extend(collection.records)

@@ -37,4 +37,3 @@ class WhoopWorkoutCollectionJSON(BaseModel):
 
     records: list[WhoopWorkoutJSON]
     next_token: str | None = None
-

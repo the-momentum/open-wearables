@@ -147,4 +147,3 @@ def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int |
 
     normalized = whoop_sport_name.lower().strip()
     return WHOOP_TO_UNIFIED.get(normalized, WorkoutType.OTHER)
-
