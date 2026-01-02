@@ -1,4 +1,5 @@
 from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.oauth import WhoopOAuth
 
 
@@ -16,8 +17,14 @@ class WhoopStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
         )
 
-        # Workouts handler will be added in PR #2
         self.workouts = None
+
+        # 247 data handler for sleep, recovery, activity samples
+        self.data_247 = Whoop247Data(
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
 
     @property
     def name(self) -> str:
