@@ -52,7 +52,7 @@ class EventRecordRepository(
                 .filter(
                     self.model.external_device_mapping_id == mapping.id,
                     self.model.start_datetime == creation.start_datetime,
-                    self.model.category == creation.category,
+                    self.model.end_datetime == creation.end_datetime,
                 )
                 .one_or_none()
             )
