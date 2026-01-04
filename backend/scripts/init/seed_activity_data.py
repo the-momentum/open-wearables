@@ -150,10 +150,14 @@ def generate_sleep(
     )
 
     # Sleep stages (should sum to approximately sleep_duration_minutes)
-    deep_minutes = fake_instance.random_int(min=60, max=180)
-    rem_minutes = fake_instance.random_int(min=60, max=150)
-    light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - fake_instance.random_int(min=10, max=30)
-    awake_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - light_minutes
+    # Calculate stages ensuring all values are non-negative
+    deep_minutes = fake_instance.random_int(min=60, max=min(180, sleep_duration_minutes // 3))
+    rem_minutes = fake_instance.random_int(min=60, max=min(150, sleep_duration_minutes // 3))
+    awake_minutes = fake_instance.random_int(min=10, max=min(30, sleep_duration_minutes // 10))
+
+    # Light sleep is the remainder, ensuring it's non-negative
+    remaining_for_light = sleep_duration_minutes - deep_minutes - rem_minutes - awake_minutes
+    light_minutes = max(0, remaining_for_light)
 
     is_nap = fake_instance.boolean(chance_of_getting_true=20)
 
