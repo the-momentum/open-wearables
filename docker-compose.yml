@@ -50,6 +50,30 @@ services:
           path: ./backend/uv.lock
     restart: on-failure
 
+  mcp-server:
+    container_name: mcp-server__open-wearables
+    image: open-wearables-platform:latest
+    command: scripts/start/mcp.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend/mcp_server
+          target: /root_project/mcp_server
+        - action: sync
+          path: ./backend/scripts
+          target: /root_project/scripts
+    restart: on-failure
+
   celery-worker:
     container_name: celery-worker__open-wearables
     image: open-wearables-platform:latest
