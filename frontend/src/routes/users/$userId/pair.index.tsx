@@ -1,9 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight, Check, AlertCircle, X, Lock } from 'lucide-react';
+import {
+  ChevronRight,
+  Check,
+  AlertCircle,
+  X,
+  Lock,
+  Loader2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { WEARABLE_PROVIDERS } from '@/lib/constants/providers';
 import { useOAuthConnect } from '@/hooks/use-oauth-connect';
+import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
+import { useMemo } from 'react';
+import { API_CONFIG } from '@/lib/api/config';
 
 export const Route = createFileRoute('/users/$userId/pair/')({
   component: PairWearablePage,
@@ -22,8 +31,25 @@ function PairWearablePage() {
   const { connectionState, connectingProvider, error, connect, reset } =
     useOAuthConnect({ userId, redirectUrl });
 
+  const { data: apiProviders, isLoading } = useOAuthProviders(true, true);
+
+  const displayProviders = useMemo(() => {
+    if (!apiProviders) return [];
+    return apiProviders.map((apiProvider) => {
+      return {
+        id: apiProvider.provider,
+        name: apiProvider.name,
+        description: 'Connect your device',
+        logoPath: apiProvider.icon_url
+          ? `${API_CONFIG.baseUrl}${apiProvider.icon_url}`
+          : '',
+        isAvailable: apiProvider.is_enabled,
+      };
+    });
+  }, [apiProviders]);
+
   const connectingProviderData = connectingProvider
-    ? WEARABLE_PROVIDERS.find((p) => p.id === connectingProvider)
+    ? displayProviders.find((p) => p.id === connectingProvider)
     : null;
 
   const handleConnect = (providerId: string) => {
@@ -82,40 +108,46 @@ function PairWearablePage() {
             exit={{ opacity: 0, y: -10 }}
             className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl"
           >
-            {WEARABLE_PROVIDERS.filter((p) => p.isAvailable).map(
-              (provider, index) => (
-                <motion.button
-                  key={provider.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05, duration: 0.3 }}
-                  onClick={() => handleConnect(provider.id)}
-                  className="group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border border-white/5 hover:bg-zinc-900/80 hover:border-white/10 transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20"
-                >
-                  {/* Brand Logo */}
-                  <div className="mb-8 flex items-center justify-center h-20 w-20 bg-white rounded-2xl shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
-                    <img
-                      src={provider.logoPath}
-                      alt={`${provider.name} logo`}
-                      className="w-14 h-14 object-contain"
-                    />
-                  </div>
+            {isLoading ? (
+              <div className="col-span-2 flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+              </div>
+            ) : (
+              displayProviders
+                .filter((p) => p.isAvailable)
+                .map((provider, index) => (
+                  <motion.button
+                    key={provider.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05, duration: 0.3 }}
+                    onClick={() => handleConnect(provider.id)}
+                    className="group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border border-white/5 hover:bg-zinc-900/80 hover:border-white/10 transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20"
+                  >
+                    {/* Brand Logo */}
+                    <div className="mb-8 flex items-center justify-center h-20 w-20 bg-white rounded-2xl shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
+                      <img
+                        src={provider.logoPath}
+                        alt={`${provider.name} logo`}
+                        className="w-14 h-14 object-contain"
+                      />
+                    </div>
 
-                  {/* Text */}
-                  <h3 className="text-xl font-medium text-white mb-3">
-                    {provider.name}
-                  </h3>
-                  <p className="text-base text-zinc-500 max-w-xs leading-relaxed">
-                    {provider.description}
-                  </p>
+                    {/* Text */}
+                    <h3 className="text-xl font-medium text-white mb-3">
+                      {provider.name}
+                    </h3>
+                    <p className="text-base text-zinc-500 max-w-xs leading-relaxed">
+                      {provider.description}
+                    </p>
 
-                  {/* Connect indicator */}
-                  <div className="mt-8 flex items-center gap-1.5 text-base font-medium text-zinc-200 group-hover:text-white transition-colors">
-                    <span>Connect</span>
-                    <ChevronRight className="w-4 h-4 stroke-[1.5]" />
-                  </div>
-                </motion.button>
-              )
+                    {/* Connect indicator */}
+                    <div className="mt-8 flex items-center gap-1.5 text-base font-medium text-zinc-200 group-hover:text-white transition-colors">
+                      <span>Connect</span>
+                      <ChevronRight className="w-4 h-4 stroke-[1.5]" />
+                    </div>
+                  </motion.button>
+                ))
             )}
           </motion.div>
         )}

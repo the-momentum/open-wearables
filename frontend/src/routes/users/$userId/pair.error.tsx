@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { X, RefreshCw, ExternalLink } from 'lucide-react';
-import { WEARABLE_PROVIDERS } from '@/lib/constants/providers';
+import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
+import { API_CONFIG } from '@/lib/api/config';
 
 export const Route = createFileRoute('/users/$userId/pair/error')({
   component: PairErrorPage,
@@ -20,8 +21,9 @@ function PairErrorPage() {
     redirect_url: redirectUrl,
   } = Route.useSearch();
 
+  const { data: providers } = useOAuthProviders(true, true);
   const provider = providerId
-    ? WEARABLE_PROVIDERS.find((p) => p.id === providerId)
+    ? providers?.find((p) => p.provider === providerId)
     : null;
 
   const errorMessage =
@@ -73,7 +75,11 @@ function PairErrorPage() {
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center h-12 w-12 bg-white rounded-xl shadow-lg shadow-black/20">
                 <img
-                  src={provider.logoPath}
+                  src={
+                    provider.icon_url
+                      ? `${API_CONFIG.baseUrl}${provider.icon_url}`
+                      : ''
+                  }
                   alt={`${provider.name} logo`}
                   className="w-8 h-8 object-contain"
                 />
