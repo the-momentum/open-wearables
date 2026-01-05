@@ -29,7 +29,7 @@ import {
   DateRangeSelector,
   type DateRangeValue,
 } from '@/components/ui/date-range-selector';
-import { DataSummaryCard } from '@/components/dashboard/data-summary-card';
+import { DataSummaryCard } from '@/components/pages/dashboard';
 import {
   AlertDialog,
   AlertDialogAction,

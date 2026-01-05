@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-interface DataSummaryCardProps {
+export interface DataSummaryCardProps {
   count: number;
   label: string;
   mostRecentDate?: string | null;
