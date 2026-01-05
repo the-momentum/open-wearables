@@ -245,34 +245,34 @@ function DashboardPage() {
               </div>
             ) : users && users.items.length > 0 ? (
               users.items.map((user) => {
-                  const userName =
-                    user.first_name || user.last_name
-                      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
-                      : user.email || 'Unknown User';
-                  const date = new Date(user.created_at);
-                  const formattedDate = isNaN(date.getTime())
-                    ? 'Invalid date'
-                    : format(date, 'MMM d, yyyy');
-                  return (
-                    <div
-                      key={user.id}
-                      className="flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-zinc-300">
-                          {userName}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {user.email || user.external_user_id || 'No email'}
-                        </p>
-                        <p className="text-xs text-zinc-600 mt-0.5">
-                          Created on {formattedDate}
-                        </p>
-                      </div>
-                      <span className="text-xs text-emerald-400">Active</span>
+                const userName =
+                  user.first_name || user.last_name
+                    ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                    : user.email || 'Unknown User';
+                const date = new Date(user.created_at);
+                const formattedDate = isNaN(date.getTime())
+                  ? 'Invalid date'
+                  : format(date, 'MMM d, yyyy');
+                return (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-zinc-300">
+                        {userName}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {user.email || user.external_user_id || 'No email'}
+                      </p>
+                      <p className="text-xs text-zinc-600 mt-0.5">
+                        Created on {formattedDate}
+                      </p>
                     </div>
-                  );
-                })
+                    <span className="text-xs text-emerald-400">Active</span>
+                  </div>
+                );
+              })
             ) : (
               <div className="flex items-center justify-center h-[200px] text-zinc-600">
                 <p className="text-sm">No users found</p>
