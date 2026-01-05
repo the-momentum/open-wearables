@@ -10,6 +10,7 @@ from .event_record_service import event_record_service
 from .invitation_service import invitation_service
 from .sdk_token_service import create_sdk_user_token
 from .services import AppService
+from .summaries_service import summaries_service
 from .system_info_service import system_info_service
 from .timeseries_service import timeseries_service
 from .user_service import user_service
@@ -28,6 +29,7 @@ __all__ = [
     "ae_import_service",
     "hk_import_service",
     "event_record_service",
+    "summaries_service",
     "timeseries_service",
     "pre_url_service",
     "system_info_service",

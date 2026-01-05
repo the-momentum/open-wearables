@@ -1,6 +1,8 @@
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import and_, asc, desc, func, tuple_
+from sqlalchemy import UUID as SQL_UUID
+from sqlalchemy import Date, String, and_, asc, cast, desc, func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query
 
@@ -52,7 +54,7 @@ class EventRecordRepository(
                 .filter(
                     self.model.external_device_mapping_id == mapping.id,
                     self.model.start_datetime == creation.start_datetime,
-                    self.model.category == creation.category,
+                    self.model.end_datetime == creation.end_datetime,
                 )
                 .one_or_none()
             )
@@ -180,3 +182,90 @@ class EventRecordRepository(
             .all()
         )
         return [(workout_type, count) for workout_type, count in results]
+
+    def get_sleep_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> list[tuple[date, datetime, datetime, int, str, str | None, UUID]]:
+        """Get daily sleep summaries aggregated by date, provider, and device.
+
+        Returns list of tuples:
+        (sleep_date, min_start_time, max_end_time, total_duration, provider_name, device_id, record_id)
+        """
+        # Build base aggregated query as subquery
+        # Cast UUID to text for min() since PostgreSQL doesn't support min() on UUID directly
+        # Then cast back to UUID
+        subquery = (
+            db_session.query(
+                cast(EventRecord.start_datetime, Date).label("sleep_date"),
+                func.min(EventRecord.start_datetime).label("min_start_time"),
+                func.max(EventRecord.end_datetime).label("max_end_time"),
+                func.sum(EventRecord.duration_seconds).label("total_duration"),
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+                func.min(cast(EventRecord.id, String)).label("record_id_text"),
+            )
+            .join(ExternalDeviceMapping, EventRecord.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.start_datetime >= start_date,
+                cast(EventRecord.start_datetime, Date) <= cast(end_date, Date),
+            )
+            .group_by(
+                cast(EventRecord.start_datetime, Date),
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+            )
+        ).subquery()
+
+        # Build main query from subquery, casting record_id back to UUID
+        record_id_col = cast(subquery.c.record_id_text, SQL_UUID).label("record_id")
+        query = db_session.query(
+            subquery.c.sleep_date,
+            subquery.c.min_start_time,
+            subquery.c.max_end_time,
+            subquery.c.total_duration,
+            subquery.c.provider_name,
+            subquery.c.device_id,
+            record_id_col,
+        )
+
+        # Handle cursor pagination
+        if cursor:
+            cursor_ts, cursor_id, direction = decode_cursor(cursor)
+            cursor_date = cursor_ts.date()
+
+            if direction == "prev":
+                # Backward pagination: get items BEFORE cursor
+                query = query.filter(tuple_(subquery.c.sleep_date, record_id_col) < (cursor_date, cursor_id))
+                query = query.order_by(desc(subquery.c.sleep_date), desc(record_id_col))
+            else:
+                # Forward pagination: get items AFTER cursor
+                query = query.filter(tuple_(subquery.c.sleep_date, record_id_col) > (cursor_date, cursor_id))
+                query = query.order_by(asc(subquery.c.sleep_date), asc(record_id_col))
+        else:
+            # No cursor: default ordering
+            query = query.order_by(asc(subquery.c.sleep_date), asc(record_id_col))
+
+        # Limit + 1 to check for has_more
+        results = query.limit(limit + 1).all()
+
+        # Transform results to expected tuple format
+        return [
+            (
+                row.sleep_date,
+                row.min_start_time,
+                row.max_end_time,
+                int(row.total_duration or 0),
+                row.provider_name,
+                row.device_id,
+                row.record_id,
+            )
+            for row in results
+        ]

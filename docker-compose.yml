@@ -46,6 +46,9 @@ services:
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts
+        - action: sync
+          path: ./backend/tests
+          target: /root_project/tests
         - action: rebuild
           path: ./backend/uv.lock
     restart: on-failure

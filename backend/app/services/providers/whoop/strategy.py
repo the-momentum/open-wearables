@@ -34,6 +34,13 @@ class WhoopStrategy(BaseProviderStrategy):
             oauth=self.oauth,
         )
 
+        # 247 data handler for sleep, recovery, activity samples
+        self.data_247 = Whoop247Data(
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
+
     @property
     def name(self) -> str:
         """Unique identifier for the provider (lowercase)."""

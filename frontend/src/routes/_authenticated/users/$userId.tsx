@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Link as LinkIcon,
   Activity,
-  Dumbbell,
   Trash2,
   Check,
   Pencil,
@@ -22,14 +21,14 @@ import {
 import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { formatDate, formatDuration, truncateId } from '@/lib/utils/format';
+import { formatDate, truncateId } from '@/lib/utils/format';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
 import {
   DateRangeSelector,
   type DateRangeValue,
 } from '@/components/ui/date-range-selector';
-import { DataSummaryCard } from '@/components/dashboard/data-summary-card';
+import { DataSummaryCard } from '@/components/pages/dashboard';
 import {
   AlertDialog,
   AlertDialogAction,
