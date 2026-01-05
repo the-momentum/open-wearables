@@ -75,7 +75,7 @@ export const queryKeys = {
       [...queryKeys.health.all, 'summary', userId, period] as const,
     workouts: (userId: string, params?: HealthDataParams) =>
       [...queryKeys.health.all, 'workouts', userId, params] as const,
-    timeseries: (userId: string, params?: any) =>
+    timeseries: (userId: string, params?: unknown) =>
       [...queryKeys.health.all, 'timeseries', userId, params] as const,
   },
 

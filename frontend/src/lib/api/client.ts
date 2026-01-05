@@ -86,7 +86,7 @@ export const apiClient = {
     }
 
     // Remove params from options passed to fetch
-    const { params, ...fetchOptions } = options;
+    const { params: _params, ...fetchOptions } = options;
 
     try {
       const response = await fetchWithRetry(url, {
