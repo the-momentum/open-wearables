@@ -34,7 +34,7 @@ class TestSleepSummaryEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) == 1
-        assert data["data"][0]["date"] == "2025-12-25"
+        assert data["data"][0]["date"] == "2025-12-26"
         assert data["data"][0]["start_time"] == "2025-12-25T22:00:00Z"
         assert data["data"][0]["end_time"] == "2025-12-26T05:00:00Z"
         assert data["data"][0]["duration_seconds"] == 25200

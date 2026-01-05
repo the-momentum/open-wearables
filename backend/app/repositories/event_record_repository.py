@@ -202,7 +202,7 @@ class EventRecordRepository(
         # Then cast back to UUID
         subquery = (
             db_session.query(
-                cast(EventRecord.start_datetime, Date).label("sleep_date"),
+                cast(EventRecord.end_datetime, Date).label("sleep_date"),
                 func.min(EventRecord.start_datetime).label("min_start_time"),
                 func.max(EventRecord.end_datetime).label("max_end_time"),
                 func.sum(EventRecord.duration_seconds).label("total_duration"),
@@ -214,11 +214,11 @@ class EventRecordRepository(
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 EventRecord.category == "sleep",
-                EventRecord.start_datetime >= start_date,
-                cast(EventRecord.start_datetime, Date) <= cast(end_date, Date),
+                EventRecord.end_datetime >= start_date,
+                cast(EventRecord.end_datetime, Date) <= cast(end_date, Date),
             )
             .group_by(
-                cast(EventRecord.start_datetime, Date),
+                cast(EventRecord.end_datetime, Date),
                 ExternalDeviceMapping.provider_name,
                 ExternalDeviceMapping.device_id,
             )
