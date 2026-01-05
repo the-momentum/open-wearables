@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { format } from 'date-fns';
 import {
   Users,
   Activity,
@@ -16,7 +17,11 @@ export const Route = createFileRoute('/_authenticated/dashboard')({
 
 function DashboardPage() {
   const { data: stats, isLoading, error, refetch } = useDashboardStats();
-  const { data: users, isLoading: isLoadingUsers } = useUsers();
+  const { data: users, isLoading: isLoadingUsers } = useUsers({
+    sort_by: 'created_at',
+    sort_order: 'desc',
+    limit: 5,
+  });
 
   if (isLoading) {
     return (
@@ -238,28 +243,16 @@ function DashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : users && users.length > 0 ? (
-              users
-                .sort(
-                  (a, b) =>
-                    new Date(b.created_at).getTime() -
-                    new Date(a.created_at).getTime()
-                )
-                .slice(0, 5)
-                .map((user) => {
+            ) : users && users.items.length > 0 ? (
+              users.items.map((user) => {
                   const userName =
                     user.first_name || user.last_name
                       ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
                       : user.email || 'Unknown User';
-                  const createdDate = new Date(user.created_at);
-                  const formattedDate = createdDate.toLocaleDateString(
-                    'en-US',
-                    {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    }
-                  );
+                  const date = new Date(user.created_at);
+                  const formattedDate = isNaN(date.getTime())
+                    ? 'Invalid date'
+                    : format(date, 'MMM d, yyyy');
                   return (
                     <div
                       key={user.id}
