@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta
-
 from app.config import settings
 from celery import Celery
 from celery import current_app as current_celery_app
@@ -26,7 +24,6 @@ def create_celery() -> Celery:
         "sync-all-users-hourly": {
             "task": "app.integrations.celery.tasks.periodic_sync_task.sync_all_users",
             "schedule": 3600.0,
-            "args": (datetime.now() - timedelta(hours=1), None),
         },
     }
 

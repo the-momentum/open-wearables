@@ -201,7 +201,3 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
         params["until"] = end_timestamp
 
     return params
-    if end_timestamp:
-        params["until"] = end_timestamp
-
-    return params
