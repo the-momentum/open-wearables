@@ -98,6 +98,9 @@ addopts = "-v --tb=short"
 requires = ["uv_build"]
 build-backend = "uv_build"
 
+[tool.uv]
+default-groups = ["dev", "code-quality"]
+
 [tool.uv.build-backend]
 module-root = ""
 module-name = "app"
