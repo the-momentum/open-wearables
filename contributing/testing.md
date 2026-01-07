@@ -2,6 +2,38 @@
 
 This guide covers how to run tests and write new tests for Open Wearables.
 
+## Prerequisites
+
+Before running tests, you need a PostgreSQL database running:
+
+### Option 1: Use Docker (Recommended)
+
+```bash
+# Start only the PostgreSQL container
+docker compose up db -d
+
+# Wait for it to be ready
+docker compose logs -f db  # Look for "database system is ready"
+
+# Create the test database
+docker compose exec db createdb -U open-wearables open_wearables_test
+```
+
+### Option 2: Local PostgreSQL
+
+If you have PostgreSQL installed locally:
+
+```bash
+createdb -U open-wearables open_wearables_test
+```
+
+**Test Database Configuration:**
+- Host: `localhost`
+- Port: `5432`
+- Database: `open_wearables_test`
+- User: `open-wearables`
+- Password: `open-wearables`
+
 ## Running Tests
 
 ### Backend Tests
@@ -83,6 +115,8 @@ Test files should be colocated with components using `.test.tsx` or `.test.ts` s
 - Bug fixes should include a test that would have caught the bug
 - Tests must pass before a PR can be merged
 - Aim for meaningful test coverage, not just high percentages
+
+**Note:** Tests use transaction rollback for isolation - each test runs in its own transaction that is rolled back after the test completes. This ensures tests don't interfere with each other.
 
 ## Testing Patterns
 

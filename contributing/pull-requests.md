@@ -91,9 +91,7 @@ The PR template includes these requirements:
 - [ ] All tests pass locally
 
 ### Backend Changes
-- [ ] `uv run ruff check` passes
-- [ ] `uv run ruff format --check` passes
-- [ ] `uv run ty check` passes
+- [ ] `uv run pre-commit run --all-files` passes (runs ruff, ty, and formatting checks)
 
 ### Frontend Changes
 - [ ] `pnpm run lint` passes

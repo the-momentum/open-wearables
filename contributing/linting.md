@@ -35,12 +35,19 @@ uv run ty check
 
 ### Before Submitting a PR
 
-Run all checks:
+The project uses pre-commit hooks. Run all checks with:
 
 ```bash
-cd backend
-uv run ruff check . --fix && uv run ruff format .
+# Run all checks (from project root)
+uv run pre-commit run --all-files
 ```
+
+This runs:
+- Ruff linter with auto-fix
+- Ruff formatter
+- ty type checker
+- Trailing whitespace removal
+- End-of-file fixer
 
 ## Frontend (TypeScript/React)
 
@@ -106,7 +113,19 @@ Recommended extensions:
 
 ### Pre-commit Hooks
 
-If you want to run checks automatically before each commit, the project includes pre-commit configuration. See `.pre-commit-config.yaml` for details.
+The project uses pre-commit hooks to run checks automatically before each commit:
+
+```bash
+# Install pre-commit hooks (first time only)
+cd backend
+uv sync --group code-quality
+pre-commit install
+
+# Run all checks manually
+uv run pre-commit run --all-files
+```
+
+See `.pre-commit-config.yaml` for the full hook configuration.
 
 ## More Information
 

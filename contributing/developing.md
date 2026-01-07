@@ -5,10 +5,11 @@ This guide covers setting up your local development environment for Open Wearabl
 ## Prerequisites
 
 - **Docker** (recommended) - [Install Docker](https://docs.docker.com/get-docker/)
-- **Node.js 20+** - For frontend development
-- **Python 3.13+** - For backend development
-- **uv** - Python package manager ([Install uv](https://docs.astral.sh/uv/getting-started/installation/))
+- **uv** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically
 - **pnpm** - Node.js package manager ([Install pnpm](https://pnpm.io/installation))
+
+For local development without Docker, you'll also need:
+- **Node.js 22+** - For frontend development
 
 ## Quick Start with Docker (Recommended)
 
@@ -16,11 +17,11 @@ The easiest way to get started is using Docker Compose:
 
 ```bash
 # Clone the repository
-git clone https://github.com/open-wearables/open-wearables.git
+git clone https://github.com/the-momentum/open-wearables.git
 cd open-wearables
 
-# Start all services
-docker compose up -d
+# Start all services with hot-reload (recommended for development)
+make watch
 
 # Seed sample data (creates admin@admin.com / secret123)
 make init
@@ -44,6 +45,7 @@ Once running, you can access:
 | `make build` | Build Docker images |
 | `make run` | Start in detached mode |
 | `make up` | Start in foreground |
+| `make watch` | Start with hot-reload (recommended for development) |
 | `make stop` | Stop containers |
 | `make down` | Remove containers |
 | `make test` | Run backend tests |
@@ -67,8 +69,8 @@ cp config/.env.example config/.env
 # Run database migrations
 uv run alembic upgrade head
 
-# Start the backend server
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+# Start the backend server (with auto-reload)
+uv run fastapi dev app/main.py --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Setup
