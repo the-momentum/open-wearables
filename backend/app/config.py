@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
     whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
-    whoop_default_scope: str = "read:cycles read:sleep read:recovery"
+    whoop_default_scope: str = "offline read:cycles read:sleep read:recovery"
 
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
