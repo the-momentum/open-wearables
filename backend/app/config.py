@@ -59,12 +59,15 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
+    # SYNC SETTINGS
+    sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
     suunto_client_secret: SecretStr | None = None
     suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
     suunto_subscription_key: SecretStr | None = None
-    suunto_default_scope: str = "workout"
+    suunto_default_scope: str = ""
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None

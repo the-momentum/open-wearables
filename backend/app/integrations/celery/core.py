@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta
-
 from app.config import settings
 from celery import Celery
 from celery import current_app as current_celery_app
@@ -23,10 +21,10 @@ def create_celery() -> Celery:
     celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])
 
     celery_app.conf.beat_schedule = {
-        "sync-all-users-hourly": {
+        "sync-all-users-periodic": {
             "task": "app.integrations.celery.tasks.periodic_sync_task.sync_all_users",
-            "schedule": 3600.0,
-            "args": (datetime.now() - timedelta(hours=1), None),
+            "schedule": float(settings.sync_interval_seconds),
+            "args": (),  # No args - task calculates date range dynamically
         },
     }
 

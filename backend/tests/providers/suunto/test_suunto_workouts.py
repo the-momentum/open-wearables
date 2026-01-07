@@ -323,8 +323,10 @@ class TestSuuntoWorkouts:
     @patch.object(SuuntoWorkouts, "_make_api_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.repositories.device_repository.DeviceRepository.ensure_device")
     def test_load_data_creates_records(
         self,
+        mock_ensure_device: MagicMock,
         mock_create_detail: MagicMock,
         mock_create: MagicMock,
         mock_request: MagicMock,
@@ -346,3 +348,5 @@ class TestSuuntoWorkouts:
         assert result is True
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
+        # Verify device creation was attempted
+        mock_ensure_device.assert_called_once()

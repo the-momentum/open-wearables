@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.suunto import get_unified_workout_type
 from app.database import DbSession
+from app.repositories.device_repository import DeviceRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -218,6 +219,19 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         workouts_data = response.get("payload", [])
         workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
 
+        device_repo = DeviceRepository()
+
+        for workout in workouts:
+            # Save device info if available
+            if workout.gear and workout.gear.serialNumber:
+                device_repo.ensure_device(
+                    db,
+                    provider_name="suunto",
+                    serial_number=workout.gear.serialNumber,
+                    name=workout.gear.displayName or workout.gear.name,
+                    sw_version=workout.gear.swVersion,
+                )
+
         for record, details in self._build_bundles(workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = details.model_copy(update={"record_id": created_record.id})
@@ -234,3 +248,24 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Suunto API."""
         headers = self._get_suunto_headers()
         return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", headers=headers)
+
+    def _process_single_workout(self, db: DbSession, user_id: UUID, raw_workout: Any) -> None:
+        """Internal method to normalize and save a single workout.
+        Overridden to save device info first and ensure Pydantic model conversion.
+        """
+        # Convert dict to Pydantic model if needed
+        if isinstance(raw_workout, dict):
+            raw_workout = SuuntoWorkoutJSON(**raw_workout)
+
+        # Save device info if available
+        if raw_workout.gear and raw_workout.gear.serialNumber:
+            device_repo = DeviceRepository()
+            device_repo.ensure_device(
+                db,
+                provider_name="suunto",
+                serial_number=raw_workout.gear.serialNumber,
+                name=raw_workout.gear.displayName or raw_workout.gear.name,
+                sw_version=raw_workout.gear.swVersion,
+            )
+
+        super()._process_single_workout(db, user_id, raw_workout)

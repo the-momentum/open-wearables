@@ -43,6 +43,9 @@ services:
         - action: sync+restart
           path: ./backend/migrations
           target: /root_project/migrations
+        - action: sync+restart
+          path: ./backend/config/.env
+          target: /root_project/config/.env
         - action: sync
           path: ./backend/scripts
           target: /root_project/scripts

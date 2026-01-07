@@ -1,7 +1,7 @@
 from contextlib import suppress
 from datetime import datetime, timedelta
 from logging import getLogger
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from app.database import SessionLocal
@@ -86,7 +86,7 @@ def sync_vendor_data(
                             logger.warning(f"[sync_vendor_data] Workouts sync failed for {provider_name}: {e}")
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
 
-                    # Sync 247 data (sleep, recovery, activity)
+                    # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
                         # Parse dates
                         start_dt = datetime.now() - timedelta(days=30)
@@ -100,13 +100,25 @@ def sync_vendor_data(
                                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
                         try:
-                            results_247 = strategy.data_247.load_all_247_data(
-                                db,
-                                user_uuid,
-                                start_time=start_dt,
-                                end_time=end_dt,
-                            )
-                            provider_result.params["data_247"] = {"success": True, **results_247}
+                            # Use load_and_save_all if available (saves data to DB)
+                            # Otherwise fallback to load_all_247_data (just returns data)
+                            provider_any = cast(Any, strategy.data_247)
+                            if hasattr(provider_any, "load_and_save_all"):
+                                results_247 = provider_any.load_and_save_all(
+                                    db,
+                                    user_uuid,
+                                    start_time=start_dt,
+                                    end_time=end_dt,
+                                )
+                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
+                            else:
+                                results_247 = strategy.data_247.load_all_247_data(
+                                    db,
+                                    user_uuid,
+                                    start_time=start_dt,
+                                    end_time=end_dt,
+                                )
+                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
                             logger.info(f"[sync_vendor_data] 247 data synced for {provider_name}: {results_247}")
                         except Exception as e:
                             logger.warning(f"[sync_vendor_data] 247 data sync failed for {provider_name}: {e}")
@@ -197,10 +209,6 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
     # Add generic parameters for providers that might use them
     if start_timestamp:
         params["since"] = start_timestamp
-    if end_timestamp:
-        params["until"] = end_timestamp
-
-    return params
     if end_timestamp:
         params["until"] = end_timestamp
 
