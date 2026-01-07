@@ -16,7 +16,7 @@ from celery import shared_task
 
 
 @shared_task
-def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
+def process_aws_upload(bucket_name: str, object_key: str) -> dict[str, str]:
     """
     Process XML file uploaded to S3 and import to Postgres database.
 

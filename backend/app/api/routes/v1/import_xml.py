@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi import UploadFile
 
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
+from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas import PresignedURLRequest, PresignedURLResponse
 from app.services import ApiKeyDep, pre_url_service
 
@@ -28,4 +29,13 @@ async def import_xml_file(
     _api_key: ApiKeyDep,
 ) -> dict[str, str]:
     """Import XML file into the database."""
-    return process_xml_upload_task.delay(request, user_id)
+    file_contents = await request.read()
+    filename = request.filename or "upload.xml"
+    
+    task = process_xml_upload.delay(file_contents, filename, user_id)
+    
+    return {
+        "status": "processing",
+        "task_id": task.id,
+        "user_id": user_id,
+    }
