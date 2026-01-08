@@ -31,7 +31,7 @@ dependencies = [
 code-quality = [
     "pre-commit>=4.3.0",
     "ruff>=0.14.3",
-    "ty>=0.0.1a25",
+    "ty>=0.0.10",
 ]
 dev = [
     "pytest>=8.4.1",
@@ -97,9 +97,6 @@ addopts = "-v --tb=short"
 [build-system]
 requires = ["uv_build"]
 build-backend = "uv_build"
-
-[tool.uv]
-default-groups = ["dev", "code-quality"]
 
 [tool.uv.build-backend]
 module-root = ""
