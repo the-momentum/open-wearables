@@ -36,7 +36,7 @@
 
 - [ ] `uv run ruff check` passes
 - [ ] `uv run ruff format --check` passes
-- [ ] `uv run ty check` passes
+- [ ] `uv run --group code-quality ty check` passes
 
 ### Frontend Changes
 

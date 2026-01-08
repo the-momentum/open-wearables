@@ -31,7 +31,7 @@ dependencies = [
 code-quality = [
     "pre-commit>=4.3.0",
     "ruff>=0.14.3",
-    "ty>=0.0.10",
+    "ty>=0.0.1a25",
 ]
 dev = [
     "pytest>=8.4.1",
