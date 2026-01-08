@@ -297,10 +297,10 @@ class EventRecordService(
                 else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 stages=SleepStagesSummary(
-                    deep_seconds=(details.sleep_deep_minutes or 0) * 60 if details else 0,
-                    light_seconds=(details.sleep_light_minutes or 0) * 60 if details else 0,
-                    rem_seconds=(details.sleep_rem_minutes or 0) * 60 if details else 0,
-                    awake_seconds=(details.sleep_awake_minutes or 0) * 60 if details else 0,
+                    deep_minutes=details.sleep_deep_minutes or 0 if details else 0,
+                    light_minutes=details.sleep_light_minutes or 0 if details else 0,
+                    rem_minutes=details.sleep_rem_minutes or 0 if details else 0,
+                    awake_minutes=details.sleep_awake_minutes or 0 if details else 0,
                 )
                 if details
                 else None,

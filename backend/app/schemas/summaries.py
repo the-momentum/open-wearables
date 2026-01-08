@@ -25,10 +25,10 @@ class ActivitySummary(BaseModel):
 
 
 class SleepStagesSummary(BaseModel):
-    awake_seconds: int | None = None
-    light_seconds: int | None = None
-    deep_seconds: int | None = None
-    rem_seconds: int | None = None
+    awake_minutes: int | None = None
+    light_minutes: int | None = None
+    deep_minutes: int | None = None
+    rem_minutes: int | None = None
 
 
 class SleepSummary(BaseModel):
@@ -36,11 +36,13 @@ class SleepSummary(BaseModel):
     source: DataSource
     start_time: datetime | None = None
     end_time: datetime | None = None
-    duration_seconds: int | None = Field(None, example=27000)
-    time_in_bed_seconds: int | None = Field(None, example=28800)
+    duration_minutes: int | None = Field(None, description="Total sleep duration excluding naps", example=450)
+    time_in_bed_minutes: int | None = Field(None, description="Total time in bed excluding naps", example=480)
     efficiency_percent: float | None = Field(None, ge=0, le=100, example=89.5)
     stages: SleepStagesSummary | None = None
     interruptions_count: int | None = None
+    nap_count: int | None = Field(None, description="Number of naps taken", example=1)
+    nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
     avg_heart_rate_bpm: int | None = None
     avg_hrv_rmssd_ms: float | None = None
     avg_respiratory_rate: float | None = None
