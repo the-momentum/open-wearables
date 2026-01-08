@@ -175,8 +175,10 @@ class TestSuuntoImport:
     @patch("app.services.providers.suunto.workouts.SuuntoWorkouts._make_api_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
+    @patch("app.repositories.device_repository.DeviceRepository.ensure_device")
     def test_load_data_creates_event_records(
         self,
+        mock_ensure_device: MagicMock,
         mock_create_detail: MagicMock,
         mock_create: MagicMock,
         mock_request: MagicMock,
@@ -198,6 +200,8 @@ class TestSuuntoImport:
         assert result is True
         assert mock_create.call_count == 2  # Two workouts
         assert mock_create_detail.call_count == 2  # Two workout details
+        # Verify device creation was attempted
+        assert mock_ensure_device.call_count == 2  # Two devices
 
     def test_workout_type_mapping(self, suunto_strategy: SuuntoStrategy) -> None:
         """Should correctly map Suunto activity IDs to unified workout types."""
