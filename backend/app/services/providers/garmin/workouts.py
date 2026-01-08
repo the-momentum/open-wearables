@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -50,11 +50,17 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         start_ts = self._parse_timestamp(summary_start_time)
         end_ts = self._parse_timestamp(summary_end_time)
 
-        params = {}
-        if start_ts:
-            params["uploadStartTimeInSeconds"] = start_ts
-        if end_ts:
-            params["uploadEndTimeInSeconds"] = end_ts
+        # Default to last 24 hours if no time range provided
+        # Garmin API requires these parameters and has a max range of 86400 seconds (24 hours)
+        if not start_ts:
+            start_ts = int((datetime.now() - timedelta(hours=24)).timestamp())
+        if not end_ts:
+            end_ts = int(datetime.now().timestamp())
+
+        params = {
+            "uploadStartTimeInSeconds": start_ts,
+            "uploadEndTimeInSeconds": end_ts,
+        }
 
         return self._make_api_request(
             db,
