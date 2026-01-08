@@ -35,7 +35,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 - A public website
 - A public privacy policy page
 
-## Walkthrough
+## Application walkthrough
 
 <Steps>
   <Step title="Apply for Garmin developer access">
@@ -61,8 +61,6 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
   <Step title="Get access to Garmin Developer Portal and add your team">
     After approval, Garmin will invite you to the Developer Portal and share a “set password” link.
-
-    In the portal, add any team members who need access to “classified” materials (specs, internal tools, app credentials, source code, etc.).
 
     <Note>
     **Common Garmin restrictions**:
@@ -104,7 +102,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     <Warning>
     **Backfill requirement**: backfill only works once the relevant endpoints are enabled on the Endpoints page.
     
-    Once backfill is enabled and data is ready, Garmin will deliver notifications (push/ping) and Open Wearables can ingest the backfilled data.
+    Once backfill is enabled and data is ready, Garmin will deliver notifications (for now we support only push option) and Open Wearables can ingest the backfilled data.
     </Warning>
 
     <Note>
@@ -112,6 +110,8 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     - Backfill typically returns **~last month** of data.
     - Each data type can usually be **backfilled only once**.
     - Don’t retry backfill over and over—if you need more history, check the Garmin docs for the supported process and limits.
+    - You can query just one day in the same time at maximum — you can’t fetch an entire month in a single request.
+    - In the user authorization (consent) screen, the **backfill scope is always turned off by default**, so users must manually enable it each time.
     </Note>
 
     **(Optional) Modify data types and OAuth scopes**
@@ -153,6 +153,10 @@ GARMIN_REDIRECT_URI=https://yourdomain.com/api/v1/oauth/garmin/callback
     </Warning>
   </Step>
 </Steps>
+
+# Managin your team
+In the developer portal you can add team members who need access to specifications, internal tools, app credentials, source code, etc. You can manage your team at https://developerportal.garmin.com/teams, or use the Switch company menu (available on most developer portal pages) and select "Manage Company".
+
 
 ## Next Steps
 
