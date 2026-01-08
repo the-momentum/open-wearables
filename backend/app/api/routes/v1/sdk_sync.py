@@ -2,9 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 
-from app.database import DbSession
+from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
 from app.schemas import UploadDataResponse
-from app.services import ae_import_service, hk_import_service
 from app.utils.auth import SDKAuthDep
 
 router = APIRouter()
@@ -34,11 +33,10 @@ async def get_content_type(request: Request) -> tuple[str, str]:
 async def sync_data_auto_health_export(
     user_id: str,
     request: Request,
-    db: DbSession,
     auth: SDKAuthDep,
     content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
-    """Import health data from file upload or JSON.
+    """Import health data from file upload or JSON asynchronously via Celery.
 
     Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
     """
@@ -49,18 +47,24 @@ async def sync_data_auto_health_export(
         )
 
     content_str, content_type = content[0], content[1]
-    return await ae_import_service.import_data_from_request(db, content_str, content_type, user_id)
+    
+    # Queue the import task in Celery with auto-health-export source
+    process_apple_upload.delay(content_str, content_type, user_id, "auto-health-export")
+    
+    return UploadDataResponse(
+        status_code=202,
+        response="Import task queued successfully"
+    )
 
 
 @router.post("/sdk/users/{user_id}/sync/apple/healthion")
 async def sync_data_healthion(
     user_id: str,
     request: Request,
-    db: DbSession,
     auth: SDKAuthDep,
     content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
-    """Import health data from file upload or JSON.
+    """Import health data from file upload or JSON asynchronously via Celery.
 
     Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
     """
@@ -71,4 +75,11 @@ async def sync_data_healthion(
         )
 
     content_str, content_type = content[0], content[1]
-    return await hk_import_service.import_data_from_request(db, content_str, content_type, user_id)
+    
+    # Queue the import task in Celery with healthion source
+    process_apple_upload.delay(content_str, content_type, user_id, "healthion")
+    
+    return UploadDataResponse(
+        status_code=202,
+        response="Import task queued successfully"
+    )
