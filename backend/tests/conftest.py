@@ -160,7 +160,6 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
     with (
         patch("celery.current_app") as mock_celery,
         patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
-        patch("app.api.routes.v1.import_data.poll_sqs_task", mock_task),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
     ):
         mock_celery.conf = {
