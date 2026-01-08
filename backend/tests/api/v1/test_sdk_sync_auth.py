@@ -1,11 +1,22 @@
 """Tests for SDK sync endpoints authentication."""
 
+from unittest.mock import patch
+
+import pytest
 from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import ApiKeyFactory, DeveloperFactory
 from tests.utils import developer_auth_headers
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_tasks():
+    """Mock Celery tasks to prevent actual task execution during tests."""
+    with patch("app.api.routes.v1.sdk_sync.process_apple_upload") as mock:
+        mock.delay.return_value = None
+        yield mock
 
 
 class TestSDKSyncWithSDKToken:
