@@ -1,7 +1,166 @@
 ---
 title: "Garmin"
-description: "Setup guide for Garmin integration"
+description: "Setup guide for Garmin Connect integration"
 ---
 
-TODO
+## Overview
 
+Garmin Connect provides access to comprehensive fitness and health data from Garmin devices through their Wellness API. The integration supports activities, daily summaries, sleep data, body composition, and more.
+Through the Garmin Connect platform, you can access data from:
+
+- Health API
+- Activity API
+- Women’s Health API
+- Training API
+- Courses API
+
+Once you get access to the Developer Portal, you’ll find the full docs, including the [FAQ page](https://developerportal.garmin.com/developer-programs/faqs) and [specification documents](https://developerportal.garmin.com/developer-programs/programs-docs).
+
+<Warning>
+**Enterprise only**: Garmin Connect Developer Program does not support personal use. You must apply as a legal entity (company, university, hospital, research institution, etc.). Personal-use applications are rejected.
+</Warning>
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret
+- **API Tools configured**:
+  - Endpoints enabled
+  - Data types + OAuth scopes selected
+- **Partner verification passed** (to request production access later)
+- **Production credentials** (only after Garmin approves your evaluation app for production use)
+
+## Prerequisites
+
+- A registered legal entity (company / institution)
+- A public website
+- A public privacy policy page
+
+## Walkthrough
+
+<Steps>
+  <Step title="Apply for Garmin developer access">
+    Garmin access is approval-based. To apply, submit the official form:
+
+    - [Garmin Connect Developer Program Access Request Form](https://www.garmin.com/en-US/forms/GarminConnectDeveloperAccess/)
+
+    <Note>
+    **Tips to avoid rejection:**
+    - Apply **as a company/institution**, not as an individual.
+    - Use a **company-domain email**.
+    - Clearly explain the enterprise/commercial product or institutional use case.
+    - Provide a public link to your app/website privacy policy.
+    </Note>
+
+    <Note>
+    Make sure your mail server allows messages from:
+    - `garmin.com`
+    - `health.garmin.com`
+    - `developer.garmin.com`
+    </Note>
+  </Step>
+
+  <Step title="Get access to Garmin Developer Portal and add your team">
+    After approval, Garmin will invite you to the Developer Portal and share a “set password” link.
+
+    In the portal, add any team members who need access to “classified” materials (specs, internal tools, app credentials, source code, etc.).
+
+    <Note>
+    **Common restrictions** (Garmin-enforced):
+    - No generic inboxes (`support@`, `info@`, `dev@`, etc.)
+    - No free mail (`gmail`, `outlook`, etc.)
+    - Third-party integrators may require an NDA (handled with Garmin via ticket/email)
+    </Note>
+  </Step>
+
+  <Step title="Create an Evaluation app (this gives you Client ID + Client Secret)">
+    You must create an app in the Developer Portal first. Start with an evaluation app:
+
+    - Go to your team apps page (example): `https://developerportal.garmin.com/teams/{your_team_name}/apps`
+    - Create an app and set the type to **Connect Developer - Evaluation**
+    - Set the **OAuth redirect URL** (where the user is sent after Garmin login in the 3-legged OAuth flow)
+    - Provide legal company details and describe how you will use Garmin data (aggregated/anonymous vs linked to identifiable users)
+    - Select the APIs you intend to use (Health / Activity / Women’s Health / Training / Courses)
+
+    <Note>
+    One company account can manage multiple apps (e.g., if you run separate apps for different clients).
+    </Note>
+
+    This generates:
+    - **Client ID**
+    - **Client Secret**
+
+    <Warning>
+    Treat the Client Secret like a password. Store it in your secrets manager (and rotate if compromised).
+    </Warning>
+  </Step>
+
+  <Step title="Configure API Tools (endpoints + data types/scopes)">
+    Garmin’s API Tools are configured per app. To access them, log in with that app’s **Client ID** + **Client Secret**.
+
+    1) **Enable endpoints**
+    - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
+    - Enable the endpoints you need (activities, dailies, epochs, sleep, body composition, etc.)
+
+    <Warning>
+    **Backfill requirement**: backfill only works once the relevant endpoints are enabled on the Endpoints page.
+    
+    Once backfill is enabled and data is ready, Garmin will deliver notifications (push/ping) and Open Wearables can ingest the backfilled data.
+    </Warning>
+
+    2) **(Optional) Modify data types and OAuth scopes**
+    - If you need to adjust what your app can access, open [API Configuration](https://apis.garmin.com/tools/apiConfiguration)
+    - Pick which **data domains** your app is allowed to access
+    - Pick which **OAuth scopes** will be shown/required during user authorization
+
+    <Note>
+    Keep scopes minimal: only request what Open Wearables actually needs for your use case. If you add new data domains later, you’ll typically need to update this configuration and re-verify.
+    </Note>
+  </Step>
+
+  <Step title="Provide Garmin credentials to Open Wearables">
+    Once you have an app created, configure your Open Wearables backend with:
+
+```bash
+# Garmin OAuth Credentials
+GARMIN_CLIENT_ID=your_client_id_here
+GARMIN_CLIENT_SECRET=your_client_secret_here
+```
+
+    <Note>
+    If you later move from evaluation to production, you’ll update these credentials to the production ones.
+    </Note>
+  </Step> 
+  <Step title="Go to production (partner verification + production access)">
+    Evaluation apps are for internal development. To go production, Garmin requires partner verification:
+
+    - Open [Partner Verification](https://apis.garmin.com/tools/partnerVerification)
+    - Complete the checks/tests listed there
+    - After you pass, apply for a **production key / production access**
+
+    <Warning>
+    Evaluation apps used for commercial/production purposes may be disabled without prior notification.
+    </Warning>
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Architecture" icon="diagram" href="/architecture/system-overview">
+    Understand the overall system architecture.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Contact Garmin Developer Program support: [Developer Contact Us](https://www.garmin.com/en-US/forms/developercontactus/).
+- Check Garmin Developer Portal resources like [FAQ page](https://developerportal.garmin.com/developer-programs/faqs), [specification documents](https://developerportal.garmin.com/developer-programs/programs-docs).
+- Once your application is accepted, you can schedule an onboarding call with Garmin. They’ll walk you through the platform and answer any questions.
+</Note>
