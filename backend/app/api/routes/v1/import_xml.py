@@ -25,12 +25,12 @@ async def import_xml_presigned_url(
 @router.post("/users/{user_id}/import/apple/xml")
 async def import_xml_file(
     user_id: str,
-    request: UploadFile,
+    file: UploadFile,
     _api_key: ApiKeyDep,
 ) -> dict[str, str]:
     """Import XML file into the database."""
-    file_contents = await request.read()
-    filename = request.filename or "upload.xml"
+    file_contents = await file.read()
+    filename = file.filename or "upload.xml"
 
     task = process_xml_upload.delay(file_contents, filename, user_id)
 

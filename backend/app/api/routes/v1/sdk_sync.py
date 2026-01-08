@@ -10,6 +10,7 @@ router = APIRouter()
 
 
 async def get_content_type(request: Request) -> tuple[str, str]:
+    """Extract content as string and content type from request."""
     content_type = request.headers.get("content-type", "")
     if "multipart/form-data" in content_type:
         form = await request.form()

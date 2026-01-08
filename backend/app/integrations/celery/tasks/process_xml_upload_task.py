@@ -51,7 +51,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
 
 def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
     """
-    Parse XML file and import data to database using XMLExporter.
+    Parse XML file and import data to database using XMLService.
 
     Args:
         db: Database session
