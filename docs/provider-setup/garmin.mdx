@@ -65,7 +65,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     In the portal, add any team members who need access to “classified” materials (specs, internal tools, app credentials, source code, etc.).
 
     <Note>
-    **Common restrictions** (Garmin-enforced):
+    **Common Garmin restrictions**:
     - No generic inboxes (`support@`, `info@`, `dev@`, etc.)
     - No free mail (`gmail`, `outlook`, etc.)
     - Third-party integrators may require an NDA (handled with Garmin via ticket/email)
@@ -97,7 +97,7 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
   <Step title="Configure API Tools (endpoints + data types/scopes)">
     Garmin’s API Tools are configured per app. To access them, log in with that app’s **Client ID** + **Client Secret**.
 
-    1) **Enable endpoints**
+    **Enable endpoints**
     - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
     - Enable the endpoints you need (activities, dailies, epochs, sleep, body composition, etc.)
 
@@ -107,7 +107,14 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     Once backfill is enabled and data is ready, Garmin will deliver notifications (push/ping) and Open Wearables can ingest the backfilled data.
     </Warning>
 
-    2) **(Optional) Modify data types and OAuth scopes**
+    <Note>
+    **Backfill limits (practical gotchas):**
+    - Backfill typically returns **~last month** of data.
+    - Each data type can usually be **backfilled only once**.
+    - Don’t retry backfill over and over—if you need more history, check the Garmin docs for the supported process and limits.
+    </Note>
+
+    **(Optional) Modify data types and OAuth scopes**
     - If you need to adjust what your app can access, open [API Configuration](https://apis.garmin.com/tools/apiConfiguration)
     - Pick which **data domains** your app is allowed to access
     - Pick which **OAuth scopes** will be shown/required during user authorization
@@ -124,6 +131,10 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 # Garmin OAuth Credentials
 GARMIN_CLIENT_ID=your_client_id_here
 GARMIN_CLIENT_SECRET=your_client_secret_here
+# Optional: override only if your OAuth callback URL differs from the default.
+# This must match the Redirect URI configured for your app in the Garmin Developer Portal.
+# Default: http://localhost:8000/api/v1/oauth/garmin/callback
+GARMIN_REDIRECT_URI=https://yourdomain.com/api/v1/oauth/garmin/callback
 ```
 
     <Note>
