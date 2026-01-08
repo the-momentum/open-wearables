@@ -8,7 +8,7 @@ from app.services import ApiKeyDep, pre_url_service
 router = APIRouter()
 
 
-@router.post("/users/{user_id}/import/apple/xml/presigned-url")
+@router.post("/users/{user_id}/import/apple/xml/s3")
 async def import_xml_presigned_url(
     user_id: str,
     request: PresignedURLRequest,
@@ -22,7 +22,7 @@ async def import_xml_presigned_url(
     return presigned_response
 
 
-@router.post("/users/{user_id}/import/apple/xml")
+@router.post("/users/{user_id}/import/apple/xml/direct")
 async def import_xml_file(
     user_id: str,
     file: UploadFile,
