@@ -1,6 +1,7 @@
 """Tests for SDK sync endpoints authentication."""
 
-from unittest.mock import patch
+from collections.abc import Generator
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from tests.utils import developer_auth_headers
 
 
 @pytest.fixture(autouse=True)
-def mock_celery_tasks():
+def mock_celery_tasks() -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to prevent actual task execution during tests."""
     with patch("app.api.routes.v1.sdk_sync.process_apple_upload") as mock:
         mock.delay.return_value = None
