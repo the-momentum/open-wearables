@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.services import event_record_service
-from app.services.timeseries_service import timeseries_service
 from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.timeseries_service import timeseries_service
 from celery import shared_task
 
 
@@ -23,23 +23,23 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         user_id: User ID to associate with the data
     """
     temp_xml_file = None
-    
+
     with SessionLocal() as db:
         try:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
-            
-            with open(temp_xml_file, 'wb') as f:
+
+            with open(temp_xml_file, "wb") as f:
                 f.write(file_contents)
-            
+
             _import_xml_data(db, temp_xml_file, user_id)
-            
+
             return {
                 "user_id": user_id,
                 "status": "success",
                 "message": "Import completed successfully",
             }
-            
+
         except Exception as e:
             db.rollback()
             raise e

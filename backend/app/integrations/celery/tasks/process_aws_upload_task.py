@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.services import event_record_service
-from app.services.timeseries_service import timeseries_service
-from app.services.user_service import user_service
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.timeseries_service import timeseries_service
+from app.services.user_service import user_service
 from celery import shared_task
 
 

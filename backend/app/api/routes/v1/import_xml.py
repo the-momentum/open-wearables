@@ -1,5 +1,4 @@
-from fastapi import APIRouter
-from fastapi import UploadFile
+from fastapi import APIRouter, UploadFile
 
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
@@ -22,6 +21,7 @@ async def import_xml_presigned_url(
 
     return presigned_response
 
+
 @router.post("/users/{user_id}/import/apple/xml")
 async def import_xml_file(
     user_id: str,
@@ -31,9 +31,9 @@ async def import_xml_file(
     """Import XML file into the database."""
     file_contents = await request.read()
     filename = request.filename or "upload.xml"
-    
+
     task = process_xml_upload.delay(file_contents, filename, user_id)
-    
+
     return {
         "status": "processing",
         "task_id": task.id,

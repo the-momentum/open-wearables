@@ -1,5 +1,4 @@
 from app.database import SessionLocal
-from app.schemas import UploadDataResponse
 from app.services.apple.auto_export.import_service import import_service as ae_import_service
 from app.services.apple.healthkit.import_service import import_service as hk_import_service
 from celery import shared_task
@@ -24,5 +23,5 @@ def process_apple_upload(
     with SessionLocal() as db:
         # Select the appropriate import service based on source
         import_service = hk_import_service if source == "healthion" else ae_import_service
-        
+
         return import_service.import_data_from_request(db, content, content_type, user_id).model_dump()
