@@ -39,7 +39,7 @@
             "pages": [
               "dev-guides/backend-e2e-integration",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/s3-setup"
+              "dev-guides/aws-setup"
             ]
           },
           {
