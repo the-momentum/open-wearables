@@ -154,6 +154,11 @@ from .user import (
     UserUpdate,
     UserUpdateInternal,
 )
+from .whoop.workout_import import (
+    WhoopWorkoutCollectionJSON,
+    WhoopWorkoutJSON,
+    WhoopWorkoutScoreJSON,
+)
 
 __all__ = [
     # Common schemas
@@ -241,6 +246,10 @@ __all__ = [
     "GarminActivityJSON",
     # Polar schemas
     "PolarExerciseJSON",
+    # Whoop schemas
+    "WhoopWorkoutJSON",
+    "WhoopWorkoutCollectionJSON",
+    "WhoopWorkoutScoreJSON",
     # AWS schemas
     "PresignedURLRequest",
     "PresignedURLResponse",
