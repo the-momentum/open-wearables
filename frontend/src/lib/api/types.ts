@@ -234,12 +234,42 @@ export interface SleepSession {
   };
 }
 
+export interface DataSource {
+  provider: string;
+  device: string | null;
+}
+
+export interface HeartRateStats {
+  avg_bpm: number | null;
+  max_bpm: number | null;
+  min_bpm: number | null;
+}
+
+export interface IntensityMinutes {
+  light: number | null;
+  moderate: number | null;
+  vigorous: number | null;
+}
+
 export interface ActivitySummary {
   date: string;
-  steps: number;
-  calories: number;
-  distance: number; // meters
-  activeMinutes: number;
+  source: DataSource;
+  // Step and movement metrics
+  steps: number | null;
+  distance_meters: number | null;
+  // Elevation metrics
+  floors_climbed: number | null;
+  elevation_meters: number | null;
+  // Energy metrics
+  active_calories_kcal: number | null;
+  total_calories_kcal: number | null;
+  // Duration metrics
+  active_minutes: number | null;
+  sedentary_minutes: number | null;
+  // Intensity metrics (based on HR zones)
+  intensity_minutes: IntensityMinutes | null;
+  // Heart rate aggregates
+  heart_rate: HeartRateStats | null;
 }
 
 export interface ApiKey {
