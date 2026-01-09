@@ -8,7 +8,7 @@ class WhoopWorkoutScoreJSON(BaseModel):
     average_heart_rate: int | None = None
     max_heart_rate: int | None = None
     kilojoule: float | None = None
-    percent_recorded: int | None = None
+    percent_recorded: float | int | None = None
     distance_meter: float | None = None
     altitude_gain_meter: float | None = None
     altitude_change_meter: float | None = None
