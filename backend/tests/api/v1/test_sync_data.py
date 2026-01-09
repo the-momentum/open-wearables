@@ -29,13 +29,45 @@ class TestSyncDataEndpoint:
             yield mock_factory
 
     def test_sync_garmin_success(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
-        """Test successfully syncing Garmin data."""
+        """Test successfully syncing Garmin data (synchronous mode)."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
         UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
 
-        # Act
+        # Act - use async=false to test synchronous path
+        response = client.post(
+            f"/api/v1/providers/garmin/users/{user.id}/sync",
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+            params={"async": "false"},
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        mock_provider_factory.get_provider.assert_called_once_with("garmin")
+        mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
+
+    @patch("app.api.routes.v1.sync_data.sync_vendor_data")
+    def test_sync_garmin_async_mode(
+        self,
+        mock_celery_task: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """Test async sync dispatches to Celery task."""
+        # Arrange
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        UserConnectionFactory(user=user, provider="garmin", status=ConnectionStatus.ACTIVE)
+
+        # Configure mock task
+        mock_task = MagicMock()
+        mock_task.id = "test-task-id-123"
+        mock_celery_task.delay.return_value = mock_task
+
+        # Act - async=true is default
         response = client.post(
             f"/api/v1/providers/garmin/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
@@ -45,8 +77,14 @@ class TestSyncDataEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        mock_provider_factory.get_provider.assert_called_once_with("garmin")
-        mock_provider_factory.get_provider.return_value.workouts.load_data.assert_called_once()
+        assert data["async"] is True
+        assert data["task_id"] == "test-task-id-123"
+
+        # Verify Celery task was dispatched
+        mock_celery_task.delay.assert_called_once()
+        call_kwargs = mock_celery_task.delay.call_args[1]
+        assert call_kwargs["providers"] == ["garmin"]
+        assert str(user.id) in mock_celery_task.delay.call_args[0]
 
     def test_sync_garmin_unauthorized(self, client: TestClient, db: Session) -> None:
         """Test that missing API key returns 401."""
@@ -60,7 +98,7 @@ class TestSyncDataEndpoint:
         assert response.status_code == 401
 
     def test_sync_garmin_no_connection(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
-        """Test syncing when user has no connection to provider."""
+        """Test syncing when user has no connection to provider (synchronous mode)."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -74,26 +112,28 @@ class TestSyncDataEndpoint:
             detail="No active connection found for user",
         )
 
-        # Act
+        # Act - use async=false to test synchronous path
         response = client.post(
             f"/api/v1/providers/garmin/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
+            params={"async": "false"},
         )
 
         # Assert
         assert response.status_code == 404
 
     def test_sync_polar_success(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
-        """Test successfully syncing Polar data."""
+        """Test successfully syncing Polar data (synchronous mode)."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
         UserConnectionFactory(user=user, provider="polar", status=ConnectionStatus.ACTIVE)
 
-        # Act
+        # Act - use async=false to test synchronous path
         response = client.post(
             f"/api/v1/providers/polar/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
+            params={"async": "false"},
         )
 
         # Assert
@@ -103,17 +143,17 @@ class TestSyncDataEndpoint:
         mock_provider_factory.get_provider.assert_called_once_with("polar")
 
     def test_sync_suunto_with_params(self, client: TestClient, db: Session, mock_provider_factory: MagicMock) -> None:
-        """Test Suunto sync with since, limit, and offset parameters."""
+        """Test Suunto sync with since, limit, and offset parameters (synchronous mode)."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
         UserConnectionFactory(user=user, provider="suunto", status=ConnectionStatus.ACTIVE)
 
-        # Act
+        # Act - use async=false to test synchronous path with params
         response = client.post(
             f"/api/v1/providers/suunto/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            params={"since": 1609459200, "limit": 25, "offset": 10},
+            params={"since": 1609459200, "limit": 25, "offset": 10, "async": "false"},
         )
 
         # Assert
@@ -148,7 +188,7 @@ class TestSyncDataEndpoint:
         db: Session,
         mock_provider_factory: MagicMock,
     ) -> None:
-        """Test provider that doesn't support workouts returns 501."""
+        """Test provider that doesn't support workouts returns 501 (synchronous mode)."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -159,11 +199,11 @@ class TestSyncDataEndpoint:
         mock_strategy.workouts = None
         mock_provider_factory.get_provider.return_value = mock_strategy
 
-        # Act - explicitly request only workouts to trigger 501
+        # Act - explicitly request only workouts to trigger 501 (use async=false)
         response = client.post(
             f"/api/v1/providers/apple/users/{user.id}/sync",
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            params={"data_type": "workouts"},
+            params={"data_type": "workouts", "async": "false"},
         )
 
         # Assert

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
+from app.integrations.celery.tasks import sync_vendor_data
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
@@ -61,7 +62,15 @@ async def sync_user_data(
         str | None,
         Query(description="Activity end time as Unix timestamp or ISO 8601 date (Garmin only)"),
     ] = None,
-) -> dict[str, bool | dict]:
+    # Async mode - dispatch to Celery worker instead of blocking
+    run_async: Annotated[
+        bool,
+        Query(
+            alias="async",
+            description="Run sync asynchronously via Celery (default: true). Set false for sync.",
+        ),
+    ] = True,
+) -> dict[str, bool | dict | str]:
     """
     Synchronize data from fitness provider API for a specific user.
 
@@ -74,9 +83,39 @@ async def sync_user_data(
     - **Suunto**: Supports workouts and 247 data with pagination
     - **Polar**: Supports workouts (exercises) only
     - **Garmin**: Supports workouts (activities) only
+    - **Whoop**: Supports workouts and 247 data (sleep/recovery)
+
+    **Execution Mode:**
+    - `async=true` (default): Dispatches sync to background Celery worker. Returns immediately with task ID.
+    - `async=false`: Executes synchronously (may timeout for large data sets).
 
     Requires valid API key and active connection for the user.
     """
+    # Async mode: dispatch to Celery and return immediately
+    if run_async:
+        # Convert since timestamp to ISO date if provided
+        start_date_iso = None
+        if since > 0:
+            start_date_iso = datetime.fromtimestamp(since).isoformat()
+        elif summary_start_time:
+            start_date_iso = summary_start_time
+
+        end_date_iso = summary_end_time  # May be None
+
+        task = sync_vendor_data.delay(
+            str(user_id),
+            start_date=start_date_iso,
+            end_date=end_date_iso,
+            providers=[provider.value],
+        )
+        return {
+            "success": True,
+            "async": True,
+            "task_id": task.id,
+            "message": f"Sync task queued for {provider.value}. Check task status for results.",
+        }
+
+    # Synchronous mode (original behavior)
     strategy = factory.get_provider(provider.value)
 
     results: dict[str, Any] = {}

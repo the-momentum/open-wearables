@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -216,15 +216,36 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         next_token = None
         max_limit = 25  # Whoop API limit
 
-        # Get start/end dates from kwargs
-        start = kwargs.get("start")
-        end = kwargs.get("end")
+        # Get start/end dates from kwargs (support both 'start'/'end' and 'start_date'/'end_date')
+        start = kwargs.get("start") or kwargs.get("start_date")
+        end = kwargs.get("end") or kwargs.get("end_date")
 
-        # Convert start/end to ISO 8601 if they're datetime objects
-        if isinstance(start, datetime):
+        # Default to last 30 days if no dates provided
+        if not start:
+            start_dt = datetime.now(timezone.utc) - timedelta(days=30)
+            start = start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif isinstance(start, datetime):
             start = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        if isinstance(end, datetime):
+        elif isinstance(start, str) and "T" not in start:
+            # If it's just a date string, convert to ISO 8601
+            try:
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                start = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (ValueError, AttributeError):
+                pass
+
+        if not end:
+            end_dt = datetime.now(timezone.utc)
+            end = end_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif isinstance(end, datetime):
             end = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif isinstance(end, str) and "T" not in end:
+            # If it's just a date string, convert to ISO 8601
+            try:
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                end = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (ValueError, AttributeError):
+                pass
 
         # Fetch all pages
         while True:
