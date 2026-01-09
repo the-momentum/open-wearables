@@ -7,14 +7,16 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.services import event_record_service, timeseries_service, user_service
+from app.services import event_record_service
 from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.timeseries_service import timeseries_service
+from app.services.user_service import user_service
 from celery import shared_task
 
 
 @shared_task
-def process_uploaded_file(bucket_name: str, object_key: str) -> dict[str, str]:
+def process_aws_upload(bucket_name: str, object_key: str) -> dict[str, str]:
     """
     Process XML file uploaded to S3 and import to Postgres database.
 

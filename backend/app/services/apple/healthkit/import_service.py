@@ -162,7 +162,7 @@ class ImportService:
 
         return True
 
-    async def import_data_from_request(
+    def import_data_from_request(
         self,
         db_session: DbSession,
         request_content: str,

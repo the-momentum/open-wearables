@@ -1,0 +1,501 @@
+---
+title: "Apple Health XML Import"
+description: "API endpoints for importing Apple Health XML exports"
+---
+
+## Overview
+
+Import complete Apple Health data exports via XML files using one of two methods:
+
+1. **S3 Presigned URL** (Recommended) - For large files, uses direct S3 upload
+2. **Direct Upload** - For smaller files or testing, uploads directly to the API
+
+## Authentication
+
+All endpoints require authentication via Bearer token (user login) or API key.
+
+```bash
+# Login to get access token
+POST /api/v1/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=user@example.com&password=yourpassword
+
+# Response
+{
+  "access_token": "eyJ...",
+  "token_type": "bearer"
+}
+```
+
+Then use the token in subsequent requests:
+```
+Authorization: Bearer eyJ...
+```
+
+## Endpoints
+
+## Method 1: S3 Presigned URL (Recommended)
+
+Best for large files (10MB+). Uploads directly to S3, then processes asynchronously.
+
+### Step 1: Request Presigned URL
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.example.com/api/v1/users/{user_id}/import/apple/xml/s3" \
+  -H "accept: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filename": "export.xml",
+    "expiration_seconds": 300,
+    "max_file_size": 52428800
+  }'
+```
+
+```python Python
+import requests
+
+# Step 1: Login
+login_response = requests.post(
+    "https://api.example.com/api/v1/auth/login",
+    data={"username": "user@example.com", "password": "yourpassword"}
+)
+access_token = login_response.json()["access_token"]
+
+# Step 2: Get presigned URL
+response = requests.post(
+    f"https://api.example.com/api/v1/users/{user_id}/import/apple/xml/s3",
+    headers={
+        "accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+    },
+    json={
+        "filename": "export.xml",
+        "expiration_seconds": 300,
+        "max_file_size": 52428800  # 50MB
+    }
+)
+presigned_data = response.json()
+```
+
+```javascript JavaScript
+// Step 1: Login
+const loginResponse = await fetch(
+  'https://api.example.com/api/v1/auth/login',
+  {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'username=user@example.com&password=yourpassword'
+  }
+);
+const { access_token } = await loginResponse.json();
+
+// Step 2: Get presigned URL
+const response = await fetch(
+  `https://api.example.com/api/v1/users/${userId}/import/apple/xml/s3`,
+  {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'Authorization': `Bearer ${access_token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      filename: 'export.xml',
+      expiration_seconds: 300,
+      max_file_size: 52428800
+    })
+  }
+);
+const presignedData = await response.json();
+```
+</CodeGroup>
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user to import data for
+</ParamField>
+
+<ParamField body="filename" type="string" default="">
+  Custom filename (max 200 characters)
+</ParamField>
+
+<ParamField body="expiration_seconds" type="integer" default="300">
+  URL expiration time in seconds (60 - 3600)
+</ParamField>
+
+<ParamField body="max_file_size" type="integer" default="52428800">
+  Maximum file size in bytes (1KB - 500MB). Default is 50MB.
+</ParamField>
+
+<ResponseExample>
+```json 200 Success
+{
+  "upload_url": "https://s3.amazonaws.com/bucket/key",
+  "form_fields": {
+    "key": "apple-uploads/user-123/file-456.xml",
+    "AWSAccessKeyId": "AKIA...",
+    "policy": "eyJ...",
+    "signature": "abc123..."
+  },
+  "file_key": "apple-uploads/user-123/file-456.xml",
+  "expires_in": 300,
+  "max_file_size": 52428800,
+  "bucket": "my-bucket"
+}
+```
+
+```json 401 Unauthorized
+{
+  "detail": "Could not validate credentials"
+}
+```
+</ResponseExample>
+
+### Step 2: Upload File to S3
+
+Use the `upload_url` and `form_fields` from the previous response to upload your XML file:
+
+<CodeGroup>
+```python Python
+# Upload using form_fields
+with open('export.xml', 'rb') as f:
+    files = {'file': ('export.xml', f, 'application/xml')}
+    upload_response = requests.post(
+        presigned_data['upload_url'],
+        data=presigned_data['form_fields'],
+        files=files
+    )
+    upload_response.raise_for_status()
+
+print(f"✓ Uploaded successfully! File key: {presigned_data['file_key']}")
+```
+
+```javascript JavaScript  
+// Upload using FormData
+const formData = new FormData();
+
+// Add all form fields first
+Object.entries(presignedData.form_fields).forEach(([key, value]) => {
+  formData.append(key, value);
+});
+
+// Add file last
+formData.append('file', fileBlob, 'export.xml');
+
+const uploadResponse = await fetch(presignedData.upload_url, {
+  method: 'POST',
+  body: formData
+});
+
+if (!uploadResponse.ok) throw new Error('Upload failed');
+console.log('✓ Uploaded successfully!');
+```
+
+```bash cURL
+# Note: With cURL, you need to add form fields manually
+curl -X POST "https://s3.amazonaws.com/bucket/key" \
+  -F "key=apple-uploads/user-123/file-456.xml" \
+  -F "AWSAccessKeyId=AKIA..." \
+  -F "policy=eyJ..." \
+  -F "signature=abc123..." \
+  -F "file=@export.xml;type=application/xml"
+```
+</CodeGroup>
+
+<Note>
+  **Important:** When uploading to S3 with presigned POST, you must include all `form_fields` as form data, and the `file` field must be last.
+</Note>
+
+## Complete Example Workflow
+
+<Tabs>
+  <Tab title="S3 Presigned URL (Recommended)">
+    <Steps>
+      <Step title="Login to Get Access Token">
+        ```python
+        import requests
+        
+        API_URL = "https://api.example.com"
+        USERNAME = "user@example.com"
+        PASSWORD = "yourpassword"
+        USER_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        
+        # Login
+        login_response = requests.post(
+            f"{API_URL}/api/v1/auth/login",
+            data={"username": USERNAME, "password": PASSWORD}
+        )
+        login_response.raise_for_status()
+        access_token = login_response.json()["access_token"]
+        ```
+      </Step>
+
+      <Step title="Request Presigned URL">
+        ```python
+        # Get presigned URL
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/s3",
+            headers=headers,
+            json={
+                "filename": "export.xml",
+                "expiration_seconds": 300,
+                "max_file_size": 52428800  # 50MB
+            }
+        )
+        response.raise_for_status()
+        presigned_data = response.json()
+        
+        upload_url = presigned_data["upload_url"]
+        form_fields = presigned_data["form_fields"]
+        ```
+      </Step>
+
+      <Step title="Upload File to S3">
+        ```python
+        # Upload to S3 using presigned POST
+        with open("export.xml", "rb") as f:
+            files = {"file": ("export.xml", f, "application/xml")}
+            upload_response = requests.post(
+                upload_url,
+                data=form_fields,
+                files=files
+            )
+            upload_response.raise_for_status()
+        
+        print(f"✓ Uploaded! File key: {presigned_data['file_key']}")
+        ```
+      </Step>
+
+      <Step title="Processing Happens Automatically">
+        The system automatically:
+        - Detects the S3 upload via event notification → SQS
+        - Celery `poll_sqs_task` picks up the SQS message
+        - `process_aws_upload` task processes the XML file
+        - Imports workouts and time series data to database
+      </Step>
+    </Steps>
+
+    <Accordion title="View Complete Script (Copy & Run)">
+    ```python upload_xml_s3.py
+    #!/usr/bin/env python3
+    """
+    Upload Apple Health XML export to Open Wearables using S3.
+
+    Usage: python upload_xml_s3.py export.xml
+    """
+    import sys
+    from pathlib import Path
+    import requests
+
+    API_URL = "https://api.example.com"
+    USERNAME = "user@example.com"
+    PASSWORD = "yourpassword"
+    USER_ID = "your-user-id"
+
+    def main():
+        if len(sys.argv) < 2:
+            print("Usage: python upload_xml_s3.py <file_path>")
+            sys.exit(1)
+        
+        file_path = Path(sys.argv[1])
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            sys.exit(1)
+        
+        # Step 1: Login
+        print("Logging in...")
+        login_response = requests.post(
+            f"{API_URL}/api/v1/auth/login",
+            data={"username": USERNAME, "password": PASSWORD}
+        )
+        login_response.raise_for_status()
+        access_token = login_response.json()["access_token"]
+        print("✓ Logged in")
+        
+        # Step 2: Get presigned URL
+        print("Getting presigned URL...")
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        response = requests.post(
+            f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/s3",
+            headers=headers,
+            json={
+                "filename": file_path.name,
+                "expiration_seconds": 300,
+                "max_file_size": 52428800
+            }
+        )
+        response.raise_for_status()
+        presigned_data = response.json()
+        print("✓ Got presigned URL")
+        
+        # Step 3: Upload to S3
+        print(f"Uploading {file_path.name}...")
+        with open(file_path, "rb") as f:
+            files = {"file": (file_path.name, f, "application/xml")}
+            upload_response = requests.post(
+                presigned_data["upload_url"],
+                data=presigned_data["form_fields"],
+                files=files
+            )
+            upload_response.raise_for_status()
+        
+        print(f"✓ Upload complete! File key: {presigned_data['file_key']}")
+        print("Processing will happen in the background...")
+
+    if __name__ == "__main__":
+        main()
+    ```
+    </Accordion>
+  </Tab>
+
+  <Tab title="Direct Upload">
+    <Steps>
+      <Step title="Prepare API Key">
+        ```python
+        import requests
+        
+        API_URL = "https://api.example.com"
+        API_KEY = "your-api-key"
+        USER_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        ```
+      </Step>
+
+      <Step title="Upload File">
+        ```python
+        # Upload directly to API
+        with open("export.xml", "rb") as f:
+            response = requests.post(
+                f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/direct",
+                headers={"X-Open-Wearables-API-Key": API_KEY},
+                files={"file": f}
+            )
+            response.raise_for_status()
+        
+        result = response.json()
+        print(f"✓ Upload complete!")
+        print(f"Status: {result['status']}")
+        print(f"Task ID: {result['task_id']}")
+        ```
+      </Step>
+
+      <Step title="Processing Happens in Background">
+        The system:
+        - Receives the file contents
+        - Queues a `process_xml_upload` Celery task
+        - Returns immediately with task ID
+        - Celery worker processes the XML file
+        - Imports data to database
+      </Step>
+    </Steps>
+
+    <Accordion title="View Complete Script (Copy & Run)">
+    ```python upload_xml_direct.py
+    #!/usr/bin/env python3
+    """
+    Upload Apple Health XML export directly to Open Wearables API.
+
+    Usage: python upload_xml_direct.py export.xml
+    """
+    import sys
+    from pathlib import Path
+    import requests
+
+    API_URL = "https://api.example.com"
+    API_KEY = "your-api-key"
+    USER_ID = "your-user-id"
+
+    def main():
+        if len(sys.argv) < 2:
+            print("Usage: python upload_xml_direct.py <file_path>")
+            sys.exit(1)
+        
+        file_path = Path(sys.argv[1])
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            sys.exit(1)
+        
+        # Check file size
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > 10:
+            print(f"Warning: File is {file_size_mb:.1f}MB. Consider using S3 method for large files.")
+        
+        # Upload directly
+        print(f"Uploading {file_path.name}...")
+        with open(file_path, "rb") as f:
+            response = requests.post(
+                f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/direct",
+                headers={"X-Open-Wearables-API-Key": API_KEY},
+                files={"file": f}
+            )
+            response.raise_for_status()
+        
+        result = response.json()
+        print(f"✓ Upload complete!")
+        print(f"Status: {result['status']}")
+        print(f"Task ID: {result['task_id']}")
+        print("Processing will happen in the background...")
+
+    if __name__ == "__main__":
+        main()
+    ```
+    </Accordion>
+  </Tab>
+</Tabs>
+
+## Data Imported
+
+### Workouts
+- Activity type (running, cycling, swimming, etc.)
+- Duration and timestamps
+- Distance, calories, elevation
+- Heart rate statistics (min/max/avg)
+
+### Time Series Samples
+- Heart rate
+- Steps
+- Active energy
+- Distance
+- Blood oxygen
+- And 100+ other metrics
+
+See [Data Types Guide](/api-reference/guides/data-types) for complete list.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use S3 for Large Files" icon="cloud-arrow-up">
+    Files over 10MB should use the presigned URL method to avoid timeouts
+  </Card>
+  
+  <Card title="Handle Async Processing" icon="clock">
+    Import processing is asynchronous. Don't expect immediate data availability
+  </Card>
+  
+  <Card title="Monitor Task Status" icon="list-check">
+    Use Celery Flower or logs to monitor processing status
+  </Card>
+  
+  <Card title="Dedupe Handled Automatically" icon="clone">
+    Records with the same external_id won't be duplicated
+  </Card>
+</CardGroup>
+
+## Related
+
+- [Apple Health Setup Guide](/provider-setup/apple-health) - Complete guide with export instructions
+- [Quick Integration](/api-reference/guides/quick-integration) - Getting started
+- [Error Handling](/api-reference/guides/error-handling) - Common errors and solutions

@@ -30,7 +30,7 @@ class TestAppleXMLImport:
 
         # Act
         response = client.post(
-            f"/api/v1/users/{user.id}/import/apple/xml",
+            f"/api/v1/users/{user.id}/import/apple/xml/s3",
             headers=headers,
         )
 
@@ -58,7 +58,7 @@ class TestAppleXMLImport:
 
         # Act
         response = client.post(
-            f"/api/v1/users/{user.id}/import/apple/xml",
+            f"/api/v1/users/{user.id}/import/apple/xml/s3",
             headers=headers,
         )
 

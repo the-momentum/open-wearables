@@ -22,8 +22,8 @@ def mock_sqs() -> Generator[MagicMock, None, None]:
 
 @pytest.fixture
 def mock_process_upload() -> Generator[MagicMock, None, None]:
-    """Mock process_uploaded_file task."""
-    with patch("app.integrations.celery.tasks.poll_sqs_task.process_uploaded_file") as mock:
+    """Mock process_aws_upload task."""
+    with patch("app.integrations.celery.tasks.poll_sqs_task.process_aws_upload") as mock:
         yield mock
 
 

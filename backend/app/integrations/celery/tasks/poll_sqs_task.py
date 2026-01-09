@@ -5,7 +5,7 @@ from typing import Any
 import boto3
 
 from app.config import settings
-from app.integrations.celery.tasks.process_upload_task import process_uploaded_file
+from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
 from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
@@ -65,7 +65,7 @@ def poll_sqs_messages() -> dict[str, Any]:
                         object_key = record["s3"]["object"]["key"]
 
                         # Enqueue Celery task
-                        process_uploaded_file.delay(bucket_name, object_key)
+                        process_aws_upload.delay(bucket_name, object_key)
                         processed_count += 1
 
                 # Delete message from queue after processing
