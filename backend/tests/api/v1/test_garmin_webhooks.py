@@ -296,8 +296,14 @@ class TestGarminPushWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test successfully receiving Garmin push notification."""
+        """Test successfully receiving and saving Garmin push notification."""
         # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
             "activities": [
@@ -307,6 +313,7 @@ class TestGarminPushWebhook:
                     "activityId": 21047282990,
                     "activityName": "Morning Run",
                     "startTimeInSeconds": 1763597760,
+                    "durationInSeconds": 3600,
                     "startTimeOffsetInSeconds": 3600,
                     "activityType": "RUNNING",
                     "deviceName": "Forerunner 965",
@@ -326,9 +333,50 @@ class TestGarminPushWebhook:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "processed" in data
+        assert data["processed"] == 1
+        assert data["saved"] == 1
         assert "errors" in data
+        assert len(data["errors"]) == 0
         assert "activities" in data
+        assert data["activities"][0]["status"] == "saved"
+        assert "record_ids" in data["activities"][0]
+
+    def test_push_webhook_user_not_found(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test push webhook with unknown Garmin user."""
+        # Arrange - no user connection created
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "activities": [
+                {
+                    "userId": "unknown_garmin_user",
+                    "activityId": 12345,
+                    "activityName": "Test Activity",
+                    "activityType": "RUNNING",
+                    "startTimeInSeconds": 1763597760,
+                    "durationInSeconds": 3600,
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert data["processed"] == 0
+        assert data["saved"] == 0
+        assert len(data["errors"]) == 1
+        assert data["activities"][0]["status"] == "user_not_found"
 
     def test_push_webhook_missing_client_id(self, client: TestClient, db: Session) -> None:
         """Test that push webhook requires garmin-client-id header."""
@@ -339,6 +387,9 @@ class TestGarminPushWebhook:
                     "userId": "garmin_user_123",
                     "activityId": 12345,
                     "activityName": "Test Activity",
+                    "activityType": "RUNNING",
+                    "startTimeInSeconds": 1763597760,
+                    "durationInSeconds": 3600,
                 },
             ],
         }
@@ -358,8 +409,20 @@ class TestGarminPushWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test push webhook with multiple activities."""
+        """Test push webhook with multiple activities from different users."""
         # Arrange
+        user1 = UserFactory()
+        user2 = UserFactory()
+        UserConnectionFactory(
+            user=user1,
+            provider="garmin",
+            provider_user_id="garmin_user_1",
+        )
+        UserConnectionFactory(
+            user=user2,
+            provider="garmin",
+            provider_user_id="garmin_user_2",
+        )
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
             "activities": [
@@ -368,12 +431,16 @@ class TestGarminPushWebhook:
                     "activityId": 12345,
                     "activityName": "Morning Run",
                     "activityType": "RUNNING",
+                    "startTimeInSeconds": 1763597760,
+                    "durationInSeconds": 3600,
                 },
                 {
                     "userId": "garmin_user_2",
                     "activityId": 67890,
                     "activityName": "Evening Bike",
                     "activityType": "CYCLING",
+                    "startTimeInSeconds": 1763601360,
+                    "durationInSeconds": 7200,
                 },
             ],
         }
@@ -388,8 +455,8 @@ class TestGarminPushWebhook:
         # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "processed" in data
         assert data["processed"] == 2
+        assert data["saved"] == 2
         assert len(data["activities"]) == 2
 
     def test_push_webhook_different_activity_types(
@@ -400,6 +467,12 @@ class TestGarminPushWebhook:
     ) -> None:
         """Test push webhook with different activity types."""
         # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
         headers = {"garmin-client-id": "test-client-id"}
         activity_types = ["RUNNING", "CYCLING", "SWIMMING", "WALKING"]
         payload = {
@@ -409,6 +482,8 @@ class TestGarminPushWebhook:
                     "activityId": 12345 + i,
                     "activityName": f"Activity {i}",
                     "activityType": activity_type,
+                    "startTimeInSeconds": 1763597760 + (i * 3600),
+                    "durationInSeconds": 1800,
                 }
                 for i, activity_type in enumerate(activity_types)
             ],
@@ -425,6 +500,7 @@ class TestGarminPushWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["processed"] == len(activity_types)
+        assert data["saved"] == len(activity_types)
 
     def test_push_webhook_empty_activities(
         self,
@@ -448,6 +524,7 @@ class TestGarminPushWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["processed"] == 0
+        assert data["saved"] == 0
 
 
 class TestGarminWebhookHealth:
