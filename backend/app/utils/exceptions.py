@@ -26,6 +26,12 @@ class InvalidCursorError(Exception):
         self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
 
 
+class DatetimeParseError(ValueError):
+    def __init__(self, value: str):
+        self.detail = f"Invalid datetime format: '{value}'. Expected ISO 8601 format or Unix timestamp."
+        super().__init__(self.detail)
+
+
 @singledispatch
 def handle_exception(exc: Exception, _: str) -> HTTPException:
     raise exc
@@ -46,6 +52,11 @@ def _(exc: ResourceNotFoundError, _: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: InvalidCursorError, _: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.detail)
+
+
+@handle_exception.register
+def _(exc: DatetimeParseError, _: str) -> HTTPException:
     return HTTPException(status_code=400, detail=exc.detail)
 
 
