@@ -10,7 +10,7 @@ This guide provides a comprehensive overview of data type support across all int
 | Capability | Apple | Garmin | Polar | Suunto | Whoop |
 |------------|:-----:|:------:|:-----:|:------:|:-----:|
 | **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ |
-| **Workouts** | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Sleep** | 🔜 | 🔜 | ❌ | ✅ | ✅ |
 | **24/7 Data** | ✅ | 🔜 | ❌ | ✅ | ◐ |
 | **Timeseries** | ✅ | ◐ | ◐ | ✅ | ❌ |
@@ -173,31 +173,31 @@ All providers that support workouts provide these common fields:
 
 | Feature | Apple | Garmin | Polar | Suunto | Whoop |
 |---------|:-----:|:------:|:-----:|:------:|:-----:|
-| Workout sessions | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Duration | ✅ | ✅ | ✅ | ✅ | — |
-| Start/end time | ✅ | ✅ | ✅ | ✅ | — |
-| Workout type | ✅ | ✅ | ✅ | ✅ | — |
-| Device name | ✅ | ✅ | ✅ | ✅ | — |
+| Workout sessions | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Duration | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Start/end time | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Workout type | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Device name | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Heart Rate** | | | | | |
-| Avg heart rate | ◐ | ✅ | ✅ | ✅ | — |
-| Max heart rate | ◐ | ✅ | ✅ | ✅ | — |
-| Min heart rate | ◐ | 🔜 | ❌ | ✅ | — |
+| Avg heart rate | ◐ | ✅ | ✅ | ✅ | ✅ |
+| Max heart rate | ◐ | ✅ | ✅ | ✅ | ✅ |
+| Min heart rate | ◐ | 🔜 | ❌ | ✅ | ❌ |
 | **Activity Metrics** | | | | | |
-| Calories burned | ◐ | 🔜 | 🔜 | 🔜 | — |
-| Distance | ◐ | 🔜 | 🔜 | 🔜 | — |
-| Steps | ◐ | ✅ | ❌ | ✅ | — |
-| Moving time | 🔜 | 🔜 | 🔜 | ✅ | — |
+| Calories burned | ◐ | 🔜 | 🔜 | 🔜 | ✅ |
+| Distance | ◐ | 🔜 | 🔜 | 🔜 | ✅ |
+| Steps | ◐ | ✅ | ❌ | ✅ | ❌ |
+| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ |
 | **Speed & Power** | | | | | |
-| Average speed | 🔜 | 🔜 | 🔜 | ✅ | — |
-| Max speed | 🔜 | 🔜 | 🔜 | ✅ | — |
-| Average watts | 🔜 | 🔜 | 🔜 | ✅ | — |
-| Max watts | 🔜 | 🔜 | 🔜 | ✅ | — |
+| Average speed | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
+| Max speed | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
+| Average watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
+| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
 | **Elevation** | | | | | |
-| Total elevation gain | 🔜 | 🔜 | 🔜 | ✅ | — |
-| Elevation high | 🔜 | 🔜 | 🔜 | ✅ | — |
-| Elevation low | 🔜 | 🔜 | 🔜 | ✅ | — |
+| Total elevation gain | 🔜 | 🔜 | 🔜 | ✅ | ✅ |
+| Elevation high | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
+| Elevation low | 🔜 | 🔜 | 🔜 | ✅ | ❌ |
 | **Other** | | | | | |
-| GPS route | ❌ | 🔜 | 🔜 | 🔜 | — |
+| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ |
 
 <Accordion title="Apple Workout Data Note">
   Apple workout fields marked ◐ depend on import method:
@@ -232,7 +232,7 @@ Key differences and limitations to be aware of when working with each provider:
   
   - Webhooks push data for activities, sleep, dailies, and epochs
   - Sleep and daily summaries received via webhook but processing not yet implemented
-  - 80+ workout type mappings to unified taxonomy
+  - 135+ workout type mappings to unified taxonomy
   - Distance and calories available in API but not yet extracted from workouts
 </Accordion>
 
@@ -243,7 +243,7 @@ Key differences and limitations to be aware of when working with each provider:
   - "Sleep" in API is activity zone detection (lying down), **not** sleep stage analysis
   - RR interval (HRV) data requires Polar H6, H7, H9, or H10 chest strap sensors
   - Calories and distance available in exercise data but not yet extracted
-  - 50+ workout type mappings to unified taxonomy
+  - 75+ workout type mappings to unified taxonomy
 </Accordion>
 
 <Accordion title="Suunto">
@@ -259,9 +259,10 @@ Key differences and limitations to be aware of when working with each provider:
 <Accordion title="Whoop">
   **Integration Method:** OAuth 2.0
   
-  - Recovery-focused device — does **not** track workouts
-  - Continuous heart rate data is **not available** via API
-  - Does not track steps or distance (device limitation)
+  - Full workout support with 80+ workout type mappings to unified taxonomy
+  - Workout metrics include: avg/max heart rate, calories, distance, elevation gain, moving time
+  - Continuous heart rate data is **not available** via API (only during workouts)
+  - Does not track steps (device limitation)
   - Sleep data fully implemented with all stages and efficiency
   - Recovery data (HRV, resting HR, recovery score) available but not yet implemented
   - Strain scores available but not yet implemented
