@@ -6,10 +6,14 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
+from app.schemas import GarminActivityJSON
+from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -202,60 +206,110 @@ async def garmin_push_notification(
         logger.info(f"Received Garmin push notification: {payload}")
 
         processed_count = 0
+        saved_count = 0
         errors: list[str] = []
         processed_activities: list[dict] = []
+
+        # Get Garmin workouts service via factory
+        factory = ProviderFactory()
+        garmin_strategy = factory.get_provider("garmin")
+        garmin_workouts = garmin_strategy.workouts
 
         # Process activities
         if "activities" in payload:
             for activity_notification in payload["activities"]:
-                try:
-                    garmin_user_id = activity_notification.get("userId")
-                    activity_id = activity_notification.get("activityId")
-                    activity_name = activity_notification.get("activityName")
-                    activity_type = activity_notification.get("activityType")
+                garmin_user_id = activity_notification.get("userId")
+                activity_id = activity_notification.get("activityId")
+                activity_name = activity_notification.get("activityName")
+                activity_type = activity_notification.get("activityType")
 
+                try:
                     logger.info(
                         f"New Garmin activity: {activity_name} ({activity_type}) "
                         f"ID={activity_id} for user {garmin_user_id}",
                     )
 
-                    # TODO: Map garmin_user_id to internal user_id
-                    # from app.repositories import UserConnectionRepository
-                    # repo = UserConnectionRepository()
-                    # connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
-                    # if not connection:
-                    #     logger.warning(f"No connection found for Garmin user {garmin_user_id}")
-                    #     continue
-                    # internal_user_id = connection.user_id
+                    # Map garmin_user_id to internal user_id
+                    repo = UserConnectionRepository()
+                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    if not connection:
+                        logger.warning(f"No connection found for Garmin user {garmin_user_id}")
+                        errors.append(f"User {garmin_user_id} not connected")
+                        processed_activities.append(
+                            {
+                                "activity_id": activity_id,
+                                "name": activity_name,
+                                "type": activity_type,
+                                "garmin_user_id": garmin_user_id,
+                                "status": "user_not_found",
+                            },
+                        )
+                        continue
 
-                    # TODO: Fetch full activity details from Garmin API
-                    # from app.services.garmin_service import garmin_service
-                    # full_activity = garmin_service.get_activity_detail(
-                    #     db=db,
-                    #     user_id=internal_user_id,
-                    #     activity_id=str(activity_id),
-                    # )
+                    internal_user_id = connection.user_id
+                    logger.info(f"Mapped Garmin user {garmin_user_id} to internal user {internal_user_id}")
 
-                    # TODO: Save to database
-                    # Parse and store activity data...
+                    # Parse activity data using schema
+                    try:
+                        activity = GarminActivityJSON(**activity_notification)
+                    except ValidationError as e:
+                        logger.error(f"Failed to parse activity data: {e}")
+                        errors.append(f"Invalid activity data for {activity_id}: {str(e)}")
+                        processed_activities.append(
+                            {
+                                "activity_id": activity_id,
+                                "name": activity_name,
+                                "type": activity_type,
+                                "garmin_user_id": garmin_user_id,
+                                "status": "validation_error",
+                            },
+                        )
+                        continue
 
+                    # Save to database
+                    created_ids = garmin_workouts.process_push_activities(
+                        db=db,
+                        activities=[activity],
+                        user_id=internal_user_id,
+                    )
+
+                    saved_count += len(created_ids)
                     processed_activities.append(
                         {
                             "activity_id": activity_id,
                             "name": activity_name,
                             "type": activity_type,
                             "garmin_user_id": garmin_user_id,
-                            "status": "received",
+                            "internal_user_id": str(internal_user_id),
+                            "record_ids": [str(rid) for rid in created_ids],
+                            "status": "saved",
+                        },
+                    )
+                    processed_count += 1
+                    logger.info(f"Saved activity {activity_id} with record IDs: {created_ids}")
+
+                except IntegrityError:
+                    # Duplicate activity - already exists in database
+                    db.rollback()
+                    logger.info(f"Activity {activity_id} already exists, skipping")
+                    processed_activities.append(
+                        {
+                            "activity_id": activity_id,
+                            "name": activity_name,
+                            "type": activity_type,
+                            "garmin_user_id": garmin_user_id,
+                            "status": "duplicate",
                         },
                     )
                     processed_count += 1
 
                 except Exception as e:
                     logger.error(f"Error processing activity notification: {str(e)}")
-                    errors.append(str(e))
+                    errors.append(f"Error processing activity {activity_id}: {str(e)}")
 
         return {
             "processed": processed_count,
+            "saved": saved_count,
             "errors": errors,
             "activities": processed_activities,
         }

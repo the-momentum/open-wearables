@@ -137,16 +137,19 @@ class GarminWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
+        # Use device name if available, otherwise fallback to "Garmin"
+        device_name = raw_workout.deviceName or "Garmin"
+
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
-            source_name=raw_workout.deviceName,
-            device_id=raw_workout.deviceName,
+            source_name=device_name,
+            device_id=device_name,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
-            external_id=raw_workout.activityId,
+            external_id=str(raw_workout.activityId),  # Convert to str (push sends int)
             provider_name="Garmin",
             user_id=user_id,
         )
@@ -192,3 +195,29 @@ class GarminWorkouts(BaseWorkoutsTemplate):
     ) -> dict:
         """Get detailed activity data from Garmin API."""
         return self._make_api_request(db, user_id, f"/wellness-api/rest/activities/{activity_id}")
+
+    def process_push_activities(
+        self,
+        db: DbSession,
+        activities: list[GarminActivityJSON],
+        user_id: UUID,
+    ) -> list[UUID]:
+        """Process activities received from push notification and save to database.
+
+        Args:
+            db: Database session
+            activities: List of parsed activity data from push webhook
+            user_id: Internal user ID (already mapped from Garmin user ID)
+
+        Returns:
+            List of created event record IDs
+        """
+        created_ids: list[UUID] = []
+
+        for record, detail in self._build_bundles(activities, user_id):
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
+            created_ids.append(created_record.id)
+
+        return created_ids
