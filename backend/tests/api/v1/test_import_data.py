@@ -33,7 +33,7 @@ class TestXMLImportEndpoint:
 
         # Act
         response = client.post(
-            f"/api/v1/users/{user.id}/import/apple/xml",
+            f"/api/v1/users/{user.id}/import/apple/xml/s3",
             headers=headers,
             json=payload,
         )
@@ -60,7 +60,7 @@ class TestXMLImportEndpoint:
 
         # Act
         response = client.post(
-            f"/api/v1/users/{user.id}/import/apple/xml",
+            f"/api/v1/users/{user.id}/import/apple/xml/s3",
             json=payload,
         )
 
