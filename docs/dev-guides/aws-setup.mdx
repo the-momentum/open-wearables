@@ -1,0 +1,355 @@
+---
+title: "AWS Setup for XML Imports"
+description: "Configure AWS S3 and SQS for handling large file uploads"
+---
+
+## Overview
+
+To enable large XML file uploads via presigned URLs, you need to configure AWS S3 and SQS. This guide walks through creating and configuring the required AWS resources.
+
+## Prerequisites
+
+- AWS account with appropriate permissions
+- AWS CLI installed (optional, but recommended)
+- Access to AWS Console
+
+## Step 1: Create S3 Bucket
+
+<Steps>
+  <Step title="Open S3 Console">
+    Navigate to [AWS S3 Console](https://s3.console.aws.amazon.com/s3/)
+  </Step>
+
+  <Step title="Create Bucket">
+    Click **Create bucket** and configure:
+    
+    - **Bucket name**: Choose a unique name (e.g., `open-wearables-xml`)
+    - **AWS Region**: Select your preferred region (e.g., `eu-north-1`)
+    - **Block Public Access**: Keep all boxes checked (recommended)
+    - **Bucket Versioning**: Disabled (optional)
+    - **Encryption**: Enable with SSE-S3 (recommended)
+  </Step>
+
+  <Step title="Create Bucket">
+    Click **Create bucket** at the bottom
+  </Step>
+</Steps>
+
+<Accordion title="Using AWS CLI">
+```bash
+aws s3api create-bucket \
+  --bucket open-wearables-xml \
+  --region eu-north-1 \
+  --create-bucket-configuration LocationConstraint=eu-north-1
+```
+</Accordion>
+
+## Step 2: Create SQS Queue
+
+<Steps>
+  <Step title="Open SQS Console">
+    Navigate to [AWS SQS Console](https://console.aws.amazon.com/sqs/)
+  </Step>
+
+  <Step title="Create Queue">
+    Click **Create queue** and configure:
+    
+    - **Type**: Standard
+    - **Name**: e.g., `owear-queue` or `open-wearables-queue`
+    - **Visibility timeout**: 300 seconds (5 minutes) - adjust based on processing time
+    - **Message retention period**: 4 days (default)
+    - **Receive message wait time**: 0 seconds
+  </Step>
+
+  <Step title="Create Queue">
+    Click **Create queue** at the bottom
+  </Step>
+
+  <Step title="Copy Queue URL">
+    After creation, copy the **Queue URL** from the details page. It will look like:
+    
+    ```
+    https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
+    ```
+    
+    You'll need this for the environment variables.
+  </Step>
+</Steps>
+
+<Accordion title="Using AWS CLI">
+```bash
+aws sqs create-queue \
+  --queue-name owear-queue \
+  --region eu-north-1 \
+  --attributes VisibilityTimeout=300
+
+# Get the queue URL
+aws sqs get-queue-url --queue-name owear-queue --region eu-north-1
+```
+</Accordion>
+
+## Step 3: Add SQS Access Policy
+
+The SQS queue needs permission to receive messages from S3.
+
+<Steps>
+  <Step title="Get Queue ARN">
+    In the SQS console, click on your queue and note the **ARN** from the details:
+    
+    ```
+    arn:aws:sqs:eu-north-1:123456789012:owear-queue
+    ```
+  </Step>
+
+  <Step title="Update Queue Policy">
+    In your queue, go to **Access policy** tab → **Edit**
+    
+    Replace the policy with the following JSON (update the ARNs with your values):
+    
+    <Note>
+      **Important:** Please provide the SQS policy JSON you want me to use here. I'll update this section once you share it.
+    </Note>
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "s3.amazonaws.com"
+      },
+      "Action": "SQS:SendMessage",
+      "Resource": "arn:aws:sqs:eu-north-1:123456789012:owear-queue",
+      "Condition": {
+        "ArnLike": {
+          "aws:SourceArn": "arn:aws:s3:::open-wearables-xml"
+        }
+      }
+    }
+  ]
+}
+```
+  </Step>
+
+  <Step title="Save Policy">
+    Click **Save** to apply the policy
+  </Step>
+</Steps>
+
+<Warning>
+  Replace `123456789012` with your AWS Account ID, `open-wearables-xml` with your bucket name, and `owear-queue` with your queue name.
+</Warning>
+
+## Step 4: Add S3 Event Notification
+
+Configure S3 to send notifications to SQS when files are uploaded.
+
+<Steps>
+  <Step title="Open Bucket Properties">
+    Go to your S3 bucket → **Properties** tab
+  </Step>
+
+  <Step title="Create Event Notification">
+    Scroll to **Event notifications** → Click **Create event notification**
+    
+    Configure:
+    - **Name**: e.g., `xml-upload-notification`
+    - **Event types**: Check **All object create events** (or specifically `s3:ObjectCreated:Post`)
+    - **Prefix**: `apple-uploads/` (optional, to only notify for specific folder)
+    - **Suffix**: `.xml` (optional, to only notify for XML files)
+    - **Destination**: Select **SQS queue**
+    - **SQS queue**: Select your queue (e.g., `owear-queue`)
+  </Step>
+
+  <Step title="Save Configuration">
+    Click **Save changes**
+  </Step>
+</Steps>
+
+<Accordion title="Using AWS CLI">
+```bash
+# Create notification configuration JSON
+cat > notification.json <<EOF
+{
+  "QueueConfigurations": [
+    {
+      "QueueArn": "arn:aws:sqs:eu-north-1:123456789012:owear-queue",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            {"Name": "prefix", "Value": "apple-uploads/"},
+            {"Name": "suffix", "Value": ".xml"}
+          ]
+        }
+      }
+    }
+  ]
+}
+EOF
+
+# Apply notification configuration
+aws s3api put-bucket-notification-configuration \
+  --bucket open-wearables-xml \
+  --notification-configuration file://notification.json
+```
+</Accordion>
+
+## Step 5: Update Environment Variables
+
+Add the AWS configuration to your `.env` file:
+
+```bash
+# AWS S3 Configuration
+AWS_BUCKET_NAME=open-wearables-xml
+AWS_REGION=eu-north-1
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+
+# SQS Configuration
+SQS_QUEUE_URL=https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
+```
+
+<Accordion title="How to Get AWS Credentials">
+### Create IAM User with S3 and SQS Permissions
+
+1. Go to [IAM Console](https://console.aws.amazon.com/iam/)
+2. Click **Users** → **Add users**
+3. User name: `open-wearables-app`
+4. Select **Access key - Programmatic access**
+5. Click **Next: Permissions**
+6. Attach policies:
+   - `AmazonS3FullAccess` (or create a custom policy with specific bucket access)
+   - `AmazonSQSFullAccess` (or create a custom policy with specific queue access)
+7. Click through to create the user
+8. **Copy** the **Access key ID** and **Secret access key** immediately (you won't see the secret again)
+
+<Warning>
+  Keep your AWS credentials secure! Never commit them to version control.
+</Warning>
+</Accordion>
+
+## Step 6: Restart Services
+
+After updating the `.env` file, restart your services:
+
+```bash
+# Using Docker Compose
+docker compose down
+docker compose up -d
+```
+
+## Verify Setup
+
+Test your configuration:
+
+<Steps>
+  <Step title="Check Celery Worker">
+    Ensure the Celery worker is running and polling SQS:
+    
+    ```bash
+    docker compose logs -f celery-worker
+    ```
+    
+    You should see logs about SQS polling.
+  </Step>
+
+  <Step title="Test Upload">
+    Try uploading a small XML file using the presigned URL endpoint:
+    
+    ```bash
+    python upload_xml.py test-export.xml
+    ```
+    
+    See the [Apple XML Import Guide](/api-reference/guides/apple-xml-import) for details.
+  </Step>
+
+  <Step title="Monitor SQS Queue">
+    In the SQS console, check **Monitoring** tab to see:
+    - Messages sent
+    - Messages received
+    - Messages deleted
+    
+    If messages are stuck, check the Celery worker logs for errors.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Messages Not Appearing in SQS">
+    **Possible causes:**
+    - S3 event notification not configured correctly
+    - SQS policy doesn't allow S3 to send messages
+    - Wrong bucket or queue ARN in configuration
+    
+    **Fix:**
+    - Verify the event notification in S3 bucket properties
+    - Check the SQS access policy matches your bucket ARN
+    - Test by manually uploading a file to S3 and checking SQS
+  </Accordion>
+
+  <Accordion title="Celery Not Processing Messages">
+    **Possible causes:**
+    - Wrong `SQS_QUEUE_URL` in environment variables
+    - AWS credentials don't have SQS permissions
+    - Celery worker not running or crashed
+    
+    **Fix:**
+    - Verify `SQS_QUEUE_URL` matches your queue URL exactly
+    - Check IAM user has `sqs:ReceiveMessage` and `sqs:DeleteMessage` permissions
+    - Check Celery logs: `docker compose logs celery-worker`
+  </Accordion>
+
+  <Accordion title="Access Denied Errors">
+    **Possible causes:**
+    - IAM user doesn't have required permissions
+    - Wrong AWS credentials in `.env`
+    - Bucket or queue in different region
+    
+    **Fix:**
+    - Verify IAM user has S3 and SQS permissions
+    - Double-check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+    - Ensure `AWS_REGION` matches where your bucket and queue are located
+  </Accordion>
+</AccordionGroup>
+
+## Cost Optimization
+
+<CardGroup cols={2}>
+  <Card title="S3 Storage" icon="database">
+    - Uploaded XML files remain in S3 for your records
+    - Set up **Lifecycle Rules** to archive or delete old files if needed
+    - Consider moving to Glacier for long-term archival
+  </Card>
+  
+  <Card title="SQS Messages" icon="envelope">
+    - Messages are free for the first 1 million requests/month
+    - Reduce message retention period if needed
+  </Card>
+  
+  <Card title="Data Transfer" icon="arrow-right-arrow-left">
+    - Keep S3 bucket and servers in the same AWS region
+    - Use presigned URLs to avoid routing data through your server
+  </Card>
+  
+  <Card title="Request Costs" icon="money-bill">
+    - S3 PUT requests: $0.005 per 1,000 requests
+    - SQS requests: Free tier covers typical usage
+  </Card>
+</CardGroup>
+
+## Security Best Practices
+
+1. **Use IAM Roles**: If running on EC2/ECS, use IAM roles instead of access keys
+2. **Restrict Bucket Access**: Only allow specific IAM users/roles to access the bucket
+3. **Enable Encryption**: Use SSE-S3 or SSE-KMS for data at rest
+4. **Monitor Access**: Enable CloudTrail logging for S3 and SQS
+5. **Rotate Credentials**: Regularly rotate AWS access keys
+
+## Related Guides
+
+- [Apple XML Import Guide](/api-reference/guides/apple-xml-import) - Using the presigned URL endpoint
+- [How to Add a Provider](/dev-guides/how-to-add-new-provider) - Extending the platform
+- [Backend E2E Integration](/dev-guides/backend-e2e-integration) - Testing your setup
