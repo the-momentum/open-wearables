@@ -14,6 +14,7 @@ from app.integrations.redis_client import get_redis_client
 from app.repositories import UserConnectionRepository
 from app.schemas import GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
+from app.services.providers.garmin.workouts import GarminWorkouts
 
 router = APIRouter()
 logger = getLogger(__name__)
@@ -213,7 +214,9 @@ async def garmin_push_notification(
         # Get Garmin workouts service via factory
         factory = ProviderFactory()
         garmin_strategy = factory.get_provider("garmin")
-        garmin_workouts = garmin_strategy.workouts
+        if not isinstance(garmin_strategy.workouts, GarminWorkouts):
+            raise HTTPException(status_code=500, detail="Garmin workouts service not available")
+        garmin_workouts: GarminWorkouts = garmin_strategy.workouts
 
         # Process activities
         if "activities" in payload:
