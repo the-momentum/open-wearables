@@ -1,6 +1,8 @@
 from logging import Logger, getLogger
 from uuid import UUID
 
+from sqlalchemy.orm import selectinload
+
 from app.database import DbSession
 from app.models import (
     EventRecord,
@@ -198,6 +200,7 @@ class EventRecordService(
         # This is a simplified fetch, ideally we should have a dedicated repo method
         record = (
             db_session.query(EventRecord)
+            .options(selectinload(EventRecord.detail))
             .filter(EventRecord.id == workout_id, EventRecord.category == "workout")
             .first()
         )

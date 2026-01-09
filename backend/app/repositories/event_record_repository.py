@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, tuple_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
 from app.models import EventRecord, ExternalDeviceMapping, SleepDetails
@@ -68,9 +68,13 @@ class EventRecordRepository(
         query_params: EventRecordQueryParams,
         user_id: str,
     ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
-        query: Query = db_session.query(EventRecord, ExternalDeviceMapping).join(
-            ExternalDeviceMapping,
-            EventRecord.external_device_mapping_id == ExternalDeviceMapping.id,
+        query: Query = (
+            db_session.query(EventRecord, ExternalDeviceMapping)
+            .join(
+                ExternalDeviceMapping,
+                EventRecord.external_device_mapping_id == ExternalDeviceMapping.id,
+            )
+            .options(selectinload(EventRecord.detail))
         )
 
         filters = [ExternalDeviceMapping.user_id == UUID(user_id)]
