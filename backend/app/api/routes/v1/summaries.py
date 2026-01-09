@@ -28,8 +28,13 @@ async def get_activity_summary(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[ActivitySummary]:
-    """Returns daily aggregated activity metrics."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    """Returns daily aggregated activity metrics.
+
+    Aggregates time-series data (steps, energy, heart rate, etc.) by day.
+    """
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return await summaries_service.get_activity_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/sleep")

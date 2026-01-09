@@ -8,6 +8,7 @@ from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
 from app.models import EventRecord, ExternalDeviceMapping, SleepDetails
+from app.models.workout_details import WorkoutDetails
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
@@ -342,3 +343,61 @@ class EventRecordRepository(
                 }
             )
         return summaries
+
+    def get_daily_workout_aggregates(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict]:
+        """Get daily workout aggregates including elevation, distance, and energy.
+
+        Aggregates WorkoutDetails data by date for activity summaries.
+
+        Returns list of dicts with keys:
+        - workout_date, provider_name, device_id
+        - elevation_meters, distance_meters, energy_burned_kcal
+        """
+        results = (
+            db_session.query(
+                cast(self.model.end_datetime, Date).label("workout_date"),
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+                # Sum elevation gain for all workouts on that day
+                func.sum(WorkoutDetails.total_elevation_gain).label("elevation_sum"),
+                # Sum distance for all workouts
+                func.sum(WorkoutDetails.distance).label("distance_sum"),
+                # Sum energy burned
+                func.sum(WorkoutDetails.energy_burned).label("energy_sum"),
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(WorkoutDetails, self.model.id == WorkoutDetails.record_id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                self.model.category == "workout",
+                self.model.end_datetime >= start_date,
+                cast(self.model.end_datetime, Date) <= cast(end_date, Date),
+            )
+            .group_by(
+                cast(self.model.end_datetime, Date),
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+            )
+            .order_by(asc(cast(self.model.end_datetime, Date)))
+            .all()
+        )
+
+        aggregates = []
+        for row in results:
+            aggregates.append(
+                {
+                    "workout_date": row.workout_date,
+                    "provider_name": row.provider_name,
+                    "device_id": row.device_id,
+                    "elevation_meters": float(row.elevation_sum) if row.elevation_sum is not None else None,
+                    "distance_meters": float(row.distance_sum) if row.distance_sum is not None else None,
+                    "energy_burned_kcal": float(row.energy_sum) if row.energy_sum is not None else None,
+                }
+            )
+        return aggregates
