@@ -1,6 +1,6 @@
 """Service for daily summaries (sleep, activity, recovery, body)."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -15,7 +15,15 @@ from app.repositories.data_point_series_repository import (
 from app.repositories.user_repository import UserRepository
 from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.series_types import SeriesType
-from app.schemas.summaries import ActivitySummary, HeartRateStats, IntensityMinutes, SleepStagesSummary, SleepSummary
+from app.schemas.summaries import (
+    ActivitySummary,
+    BloodPressure,
+    BodySummary,
+    HeartRateStats,
+    IntensityMinutes,
+    SleepStagesSummary,
+    SleepSummary,
+)
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
@@ -34,6 +42,26 @@ METERS_PER_FLOOR = 3.0  # Standard floor height for floors_climbed calculation
 HR_ZONE_LIGHT = (0.50, 0.63)  # 50-63% of max HR
 HR_ZONE_MODERATE = (0.64, 0.76)  # 64-76% of max HR
 HR_ZONE_VIGOROUS = (0.77, 0.93)  # 77-93% of max HR
+
+# Body summary constants
+BODY_AGGREGATE_DAYS = 7  # Rolling window for vitals aggregation (resting HR, HRV, BP)
+
+# Series types for slow-changing body measurements (use latest value)
+BODY_SLOW_CHANGING_SERIES = [
+    SeriesType.weight,
+    SeriesType.height,
+    SeriesType.body_fat_percentage,
+    SeriesType.lean_body_mass,
+    SeriesType.body_temperature,
+]
+
+# Series types for vitals that need period aggregation
+BODY_VITALS_SERIES = [
+    SeriesType.resting_heart_rate,
+    SeriesType.heart_rate_variability_sdnn,
+    SeriesType.blood_pressure_systolic,
+    SeriesType.blood_pressure_diastolic,
+]
 
 
 class SummariesService:
@@ -359,6 +387,199 @@ class SummariesService:
                 start_time=start_date,
                 end_time=end_date,
             ),
+        )
+
+    def _calculate_age(self, birth_date: date, reference_date: date) -> int:
+        """Calculate age in years from birth date to reference date."""
+        age = reference_date.year - birth_date.year
+        # Adjust if birthday hasn't occurred yet this year
+        if (reference_date.month, reference_date.day) < (birth_date.month, birth_date.day):
+            age -= 1
+        return age
+
+    def _calculate_bmi(self, weight_kg: float | None, height_cm: float | None) -> float | None:
+        """Calculate BMI from weight (kg) and height (cm).
+
+        BMI = weight(kg) / height(m)^2
+        """
+        if weight_kg is None or height_cm is None or height_cm <= 0:
+            return None
+        height_m = height_cm / 100.0
+        bmi = weight_kg / (height_m * height_m)
+        return round(bmi, 1)
+
+    @handle_exceptions
+    async def get_body_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> PaginatedResponse[BodySummary]:
+        """Get daily body summaries with composition and vital statistics.
+
+        For each day in the range, returns:
+        - Static: age (from PersonalRecord birth_date)
+        - Latest values: weight, height, body fat %, lean body mass, temperature
+        - Computed: BMI (from weight and height)
+        - 7-day rolling averages: resting HR, HRV, blood pressure
+        """
+        self.logger.debug(f"Fetching body summaries for user {user_id} from {start_date} to {end_date}")
+
+        # Get user for static data (birth_date for age calculation)
+        user = self.user_repo.get(db_session, user_id)
+        birth_date = None
+        if user and user.personal_record:
+            birth_date = user.personal_record.birth_date
+
+        # Generate list of dates in range
+        current_date = start_date.date() if isinstance(start_date, datetime) else start_date
+        end_date_only = end_date.date() if isinstance(end_date, datetime) else end_date
+        dates_in_range: list[date] = []
+        while current_date <= end_date_only:
+            dates_in_range.append(current_date)
+            current_date += timedelta(days=1)
+
+        # Apply simple pagination
+        has_more = len(dates_in_range) > limit
+        if has_more:
+            dates_in_range = dates_in_range[:limit]
+
+        # For each date, we need to:
+        # 1. Get latest slow-changing values before end of that day
+        # 2. Get 7-day rolling aggregates for vitals ending on that day
+        data = []
+        for summary_date in dates_in_range:
+            # End of day for this date
+            day_end = datetime.combine(summary_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            # Start of 7-day window
+            aggregate_start = datetime.combine(
+                summary_date - timedelta(days=BODY_AGGREGATE_DAYS - 1), datetime.min.time()
+            ).replace(tzinfo=timezone.utc)
+
+            # Get latest slow-changing values
+            latest_values = self.data_point_repo.get_latest_values_for_types(
+                db_session, user_id, day_end, BODY_SLOW_CHANGING_SERIES
+            )
+
+            # Get vitals aggregates for 7-day window
+            vitals_aggregates = self.data_point_repo.get_aggregates_for_period(
+                db_session, user_id, aggregate_start, day_end, BODY_VITALS_SERIES
+            )
+
+            # Extract values
+            weight_data = latest_values.get(SeriesType.weight)
+            height_data = latest_values.get(SeriesType.height)
+            body_fat_data = latest_values.get(SeriesType.body_fat_percentage)
+            lean_mass_data = latest_values.get(SeriesType.lean_body_mass)
+            temp_data = latest_values.get(SeriesType.body_temperature)
+
+            weight_kg = weight_data[0] if weight_data else None
+            height_cm = height_data[0] if height_data else None
+            body_fat_pct = body_fat_data[0] if body_fat_data else None
+            muscle_mass_kg = lean_mass_data[0] if lean_mass_data else None
+            basal_temp = temp_data[0] if temp_data else None
+
+            # Calculate BMI
+            bmi = self._calculate_bmi(weight_kg, height_cm)
+
+            # Calculate age
+            age = self._calculate_age(birth_date, summary_date) if birth_date else None
+
+            # Extract vitals
+            resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
+            hrv_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
+            bp_systolic_data = vitals_aggregates.get(SeriesType.blood_pressure_systolic)
+            bp_diastolic_data = vitals_aggregates.get(SeriesType.blood_pressure_diastolic)
+
+            resting_hr = int(round(resting_hr_data["avg"])) if resting_hr_data and resting_hr_data["avg"] else None
+            avg_hrv = round(hrv_data["avg"], 1) if hrv_data and hrv_data["avg"] else None
+
+            # Build blood pressure if we have data
+            blood_pressure = None
+            if bp_systolic_data or bp_diastolic_data:
+                bp_count = max(
+                    bp_systolic_data.get("count", 0) if bp_systolic_data else 0,
+                    bp_diastolic_data.get("count", 0) if bp_diastolic_data else 0,
+                )
+                blood_pressure = BloodPressure(
+                    avg_systolic_mmhg=int(round(bp_systolic_data["avg"]))
+                    if bp_systolic_data and bp_systolic_data["avg"]
+                    else None,
+                    avg_diastolic_mmhg=int(round(bp_diastolic_data["avg"]))
+                    if bp_diastolic_data and bp_diastolic_data["avg"]
+                    else None,
+                    max_systolic_mmhg=int(round(bp_systolic_data["max"]))
+                    if bp_systolic_data and bp_systolic_data["max"]
+                    else None,
+                    min_diastolic_mmhg=int(round(bp_diastolic_data["min"]))
+                    if bp_diastolic_data and bp_diastolic_data["min"]
+                    else None,
+                    reading_count=bp_count if bp_count > 0 else None,
+                )
+
+            # Determine source - use the most recent data source from slow-changing values
+            # Priority: weight > height > body_fat > lean_mass > temp
+            provider = "unknown"
+            device_id = None
+            for series_data in [weight_data, height_data, body_fat_data, lean_mass_data, temp_data]:
+                if series_data:
+                    provider = series_data[2]  # provider_name
+                    device_id = series_data[3]  # device_id
+                    break
+
+            summary = BodySummary(
+                date=summary_date,
+                source=DataSource(provider=provider, device=device_id),
+                age=age,
+                height_cm=height_cm,
+                weight_kg=weight_kg,
+                body_fat_percent=body_fat_pct,
+                muscle_mass_kg=muscle_mass_kg,
+                bmi=bmi,
+                resting_heart_rate_bpm=resting_hr,
+                avg_hrv_rmssd_ms=avg_hrv,
+                blood_pressure=blood_pressure,
+                basal_body_temperature_celsius=basal_temp,
+            )
+            data.append(summary)
+
+        # Filter out days with no data
+        data = [d for d in data if self._has_body_data(d)]
+
+        # Generate cursors (simplified for now)
+        next_cursor: str | None = None
+        previous_cursor: str | None = None
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=start_date,
+                end_time=end_date,
+            ),
+        )
+
+    def _has_body_data(self, summary: BodySummary) -> bool:
+        """Check if a body summary has any meaningful data."""
+        return any(
+            [
+                summary.weight_kg is not None,
+                summary.height_cm is not None,
+                summary.body_fat_percent is not None,
+                summary.muscle_mass_kg is not None,
+                summary.resting_heart_rate_bpm is not None,
+                summary.avg_hrv_rmssd_ms is not None,
+                summary.blood_pressure is not None,
+                summary.basal_body_temperature_celsius is not None,
+            ]
         )
 
 

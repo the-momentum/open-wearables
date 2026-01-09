@@ -751,3 +751,127 @@ class DataPointSeriesRepository(
                 }
             )
         return aggregates
+
+    def get_latest_values_for_types(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        before_date: datetime,
+        series_types: list[SeriesType],
+    ) -> dict[SeriesType, tuple[float, datetime, str, str | None]]:
+        """Get the most recent value for each series type before a given date.
+
+        Used for slow-changing measurements like weight, height, body fat %.
+
+        Args:
+            before_date: Only consider measurements recorded before this datetime
+
+        Returns:
+            Dict mapping SeriesType to tuple of (value, recorded_at, provider_name, device_id)
+        """
+        if not series_types:
+            return {}
+
+        type_ids = [get_series_type_id(t) for t in series_types]
+
+        # Subquery to get the max recorded_at for each series type
+        latest_subq = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                func.max(self.model.recorded_at).label("max_recorded_at"),
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                self.model.recorded_at < before_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .group_by(self.model.series_type_definition_id)
+            .subquery()
+        )
+
+        # Main query to get the actual values at those timestamps
+        results = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                self.model.value,
+                self.model.recorded_at,
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(
+                latest_subq,
+                (self.model.series_type_definition_id == latest_subq.c.series_type_definition_id)
+                & (self.model.recorded_at == latest_subq.c.max_recorded_at),
+            )
+            .filter(ExternalDeviceMapping.user_id == user_id)
+            .all()
+        )
+
+        # Build result dict
+        latest_values: dict[SeriesType, tuple[float, datetime, str, str | None]] = {}
+        for type_id, value, recorded_at, provider_name, device_id in results:
+            try:
+                series_type = get_series_type_from_id(type_id)
+                latest_values[series_type] = (float(value), recorded_at, provider_name, device_id)
+            except KeyError:
+                pass
+
+        return latest_values
+
+    def get_aggregates_for_period(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        series_types: list[SeriesType],
+    ) -> dict[SeriesType, dict]:
+        """Get aggregate statistics for each series type within a time period.
+
+        Used for high-frequency measurements that need aggregation like
+        resting heart rate, HRV, blood pressure.
+
+        Returns:
+            Dict mapping SeriesType to dict with keys: avg, min, max, count
+        """
+        if not series_types:
+            return {}
+
+        type_ids = [get_series_type_id(t) for t in series_types]
+
+        results = (
+            db_session.query(
+                self.model.series_type_definition_id,
+                func.avg(self.model.value).label("avg_value"),
+                func.min(self.model.value).label("min_value"),
+                func.max(self.model.value).label("max_value"),
+                func.count(self.model.id).label("count"),
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                self.model.recorded_at >= start_date,
+                self.model.recorded_at < end_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .group_by(self.model.series_type_definition_id)
+            .all()
+        )
+
+        # Build result dict
+        aggregates: dict[SeriesType, dict] = {}
+        for type_id, avg_val, min_val, max_val, count in results:
+            try:
+                series_type = get_series_type_from_id(type_id)
+                aggregates[series_type] = {
+                    "avg": float(avg_val) if avg_val is not None else None,
+                    "min": float(min_val) if min_val is not None else None,
+                    "max": float(max_val) if max_val is not None else None,
+                    "count": count,
+                }
+            except KeyError:
+                pass
+
+        return aggregates

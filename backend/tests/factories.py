@@ -121,6 +121,96 @@ class SeriesTypeDefinitionFactory(BaseFactory):
                 return existing
         return cls(id=86, code="flights_climbed", unit="count")
 
+    @classmethod
+    def get_or_create_weight(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded weight series type (ID=41)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 41).first()
+            if existing:
+                return existing
+        return cls(id=41, code="weight", unit="kg")
+
+    @classmethod
+    def get_or_create_height(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded height series type (ID=40)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 40).first()
+            if existing:
+                return existing
+        return cls(id=40, code="height", unit="cm")
+
+    @classmethod
+    def get_or_create_body_fat_percentage(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded body_fat_percentage series type (ID=42)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 42).first()
+            if existing:
+                return existing
+        return cls(id=42, code="body_fat_percentage", unit="percent")
+
+    @classmethod
+    def get_or_create_lean_body_mass(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded lean_body_mass series type (ID=44)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 44).first()
+            if existing:
+                return existing
+        return cls(id=44, code="lean_body_mass", unit="kg")
+
+    @classmethod
+    def get_or_create_resting_heart_rate(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded resting_heart_rate series type (ID=2)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 2).first()
+            if existing:
+                return existing
+        return cls(id=2, code="resting_heart_rate", unit="bpm")
+
+    @classmethod
+    def get_or_create_heart_rate_variability_sdnn(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded heart_rate_variability_sdnn series type (ID=3)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 3).first()
+            if existing:
+                return existing
+        return cls(id=3, code="heart_rate_variability_sdnn", unit="ms")
+
+    @classmethod
+    def get_or_create_blood_pressure_systolic(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded blood_pressure_systolic series type (ID=22)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 22).first()
+            if existing:
+                return existing
+        return cls(id=22, code="blood_pressure_systolic", unit="mmHg")
+
+    @classmethod
+    def get_or_create_blood_pressure_diastolic(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded blood_pressure_diastolic series type (ID=23)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 23).first()
+            if existing:
+                return existing
+        return cls(id=23, code="blood_pressure_diastolic", unit="mmHg")
+
+    @classmethod
+    def get_or_create_body_temperature(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded body_temperature series type (ID=45)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 45).first()
+            if existing:
+                return existing
+        return cls(id=45, code="body_temperature", unit="celsius")
+
 
 class UserFactory(BaseFactory):
     """Factory for User model."""

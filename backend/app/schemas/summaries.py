@@ -66,21 +66,40 @@ class SleepSummary(BaseModel):
 
 
 class BloodPressure(BaseModel):
-    systolic_mmhg: int | None = None
-    diastolic_mmhg: int | None = None
+    """Blood pressure statistics aggregated over a period.
+
+    Values are aggregated from multiple readings to provide a more representative measure.
+    """
+
+    avg_systolic_mmhg: int | None = Field(None, description="Average systolic pressure", example=120)
+    avg_diastolic_mmhg: int | None = Field(None, description="Average diastolic pressure", example=80)
+    max_systolic_mmhg: int | None = Field(None, description="Maximum systolic pressure", example=135)
+    min_diastolic_mmhg: int | None = Field(None, description="Minimum diastolic pressure", example=72)
+    reading_count: int | None = Field(None, description="Number of readings in period", example=5)
 
 
 class BodySummary(BaseModel):
+    """Daily body composition and vital statistics summary.
+
+    Combines slow-changing measurements (weight, height, body fat) with
+    aggregated vitals (resting HR, HRV, blood pressure) over a rolling period.
+    """
+
     date: date
     source: DataSource
-    weight_kg: float | None = Field(None, example=72.5)
-    body_fat_percent: float | None = None
-    muscle_mass_kg: float | None = None
-    bmi: float | None = None
-    resting_heart_rate_bpm: int | None = Field(None, example=62)
-    avg_hrv_rmssd_ms: float | None = Field(None, example=45.2)
-    blood_pressure: BloodPressure | None = None
-    basal_body_temperature_celsius: float | None = None
+    # Static/demographic
+    age: int | None = Field(None, description="Age in years calculated from birth date", example=32)
+    # Body composition (latest values)
+    height_cm: float | None = Field(None, description="Height in centimeters", example=175.5)
+    weight_kg: float | None = Field(None, description="Most recent weight", example=72.5)
+    body_fat_percent: float | None = Field(None, description="Most recent body fat percentage", example=18.5)
+    muscle_mass_kg: float | None = Field(None, description="Most recent lean body mass", example=58.2)
+    bmi: float | None = Field(None, description="Calculated from weight and height", example=23.5)
+    # Vitals (7-day rolling averages)
+    resting_heart_rate_bpm: int | None = Field(None, description="Average resting heart rate over 7 days", example=62)
+    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (SDNN) over 7 days", example=45.2)
+    blood_pressure: BloodPressure | None = Field(None, description="Blood pressure averages over 7 days")
+    basal_body_temperature_celsius: float | None = Field(None, description="Most recent body temperature", example=36.6)
 
 
 class RecoverySummary(BaseModel):
