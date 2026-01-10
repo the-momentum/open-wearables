@@ -56,6 +56,10 @@ services:
           path: ./backend/uv.lock
     restart: on-failure
 
+  # MCP Server is spawned on-demand by MCP clients (e.g., Claude Desktop)
+  # using stdio transport. See docs/mcp-server.md for configuration.
+  # It uses the same image (open-wearables-platform:latest) built by the app service.
+
   celery-worker:
     container_name: celery-worker__open-wearables
     image: open-wearables-platform:latest

@@ -1,0 +1,83 @@
+---
+title: "MCP Server Configuration"
+description: "Connect Claude Desktop or other MCP clients to Open Wearables"
+---
+
+# MCP Server
+
+The Open Wearables MCP (Model Context Protocol) Server enables LLM clients like Claude Desktop to query health and wearable data using natural language.
+
+## Transport
+
+The MCP server uses **stdio transport**, which means:
+- MCP clients spawn the server as a subprocess
+- Communication happens via stdin/stdout
+- A new server instance is created per session
+
+This is the recommended approach per the [MCP specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+
+## Configuration
+
+**Prerequisites:**
+- Docker Desktop running
+- The `open-wearables-platform:latest` image built (`docker compose build`)
+- Database container running (`docker compose up db -d`)
+
+**Claude Desktop Configuration:**
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "open-wearables": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "--init",
+        "--network", "open-wearables_default",
+        "-e", "DB_HOST=db",
+        "open-wearables-platform:latest",
+        "scripts/start/mcp.sh"
+      ]
+    }
+  }
+}
+```
+
+The `--init` flag ensures proper signal handling and clean shutdown when the MCP client disconnects.
+
+
+## Available Tools
+
+The MCP server exposes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| `list_users` | List users with pagination and search |
+| `get_user` | Get detailed information for a specific user |
+
+
+### Debugging
+
+To test the MCP server manually:
+
+```bash
+docker run -it --rm --init \
+  --network open-wearables_default \
+  -e DB_HOST=db \
+  open-wearables-platform:latest \
+  scripts/start/mcp.sh
+```
+
+Then paste these JSON-RPC messages to test:
+
+```json
+{"jsonrpc": "2.0", "method": "initialize", "id": 1, "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0"}}}
+```
+
+```json
+{"jsonrpc": "2.0", "method": "tools/call", "id": 2, "params": {"name": "list_users", "arguments": {}}}
+```
