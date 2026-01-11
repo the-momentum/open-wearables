@@ -15,7 +15,6 @@ class PersonalRecord(BaseDbModel):
     user_id: Mapped[UniqueFkUser]
 
     birth_date: Mapped[date_col | None]
-    sex: Mapped[bool | None]
     gender: Mapped[str_32 | None]
 
     user: Mapped["User"] = relationship(back_populates="personal_record")

@@ -34,7 +34,7 @@ Those goals led us to employ a structure, consisting of three core components:
 - **Series** (*DataPointSeries*) - is meant to store all the medium to high frequency time series in a shared space, demarcated by type and source device id assigned to each data point
   - The observation values are stored as float values, offering no data loss between integer and float values possible for different observation types, as well as handling categorical data as numerical encoding
   - **Note: this is a current concession as we are fully aware of the adverse effect this has on storage space optimisation - this stopgap is planned to be easily migrated as described in the roadmap section**
-- **Descriptors** (*PersonalRecord*) - stores static user biometric information that changes slowly, if ever. Currently includes birth date (used for age calculation), sex, and gender. This structure is designed to be extended with additional static or slow-changing user attributes as needed.
+- **Descriptors** (*PersonalRecord*) - stores static user biometric information that changes slowly, if ever. Currently includes birth date (used for age calculation) and gender. This structure is designed to be extended with additional static or slow-changing user attributes as needed.
   - The time series data will be stored in the initial release along other series - eventually, BodyState table that backreferences a user that it is tied to, and holds all the supported and potentially possible descriptors will be introduced - here null values and redundant fields are a lesser evil, as the records will be sparse, and avoiding structure bloat is a bigger gain
 - **ID mapping** (*ExternalDeviceMapping*) - mapping internal reference id to a combination of user/device/provider, ensuring clear identification of the source, while preventing structure clutter with excessive IDs in other tables and reducing datapoint width, especially important for time series data
 - **Series descriptors** (*SeriesTypeDefinition*)  - meant to store series related details, applicable for the entire series type (i.e. unit type in which values are stored). This way we avoid redundant fields in the time series table, eventually ending up with minimal implementation of the datapoints.
@@ -77,7 +77,6 @@ erDiagram
         uuid id PK
         uuid user_id FK
         date birth_date
-        bool sex
         string gender
     }
     
