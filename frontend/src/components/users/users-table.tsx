@@ -43,6 +43,8 @@ import {
 
 // 10MB threshold - files larger than this use S3, smaller use direct upload
 const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
+// Maximum file size: 1GB (matches backend MAX_FILE_SIZE limit)
+const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
 interface UsersTableProps {
   data: UserRead[];
@@ -172,6 +174,16 @@ export function UsersTable({
 
     // Reset the input so the same file can be uploaded again
     event.target.value = '';
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      const maxSizeGB = (MAX_FILE_SIZE / (1024 * 1024 * 1024)).toFixed(0);
+      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
+      toast.error(
+        `File is too large (${fileSizeGB}GB). Maximum size is ${maxSizeGB}GB`
+      );
+      return;
+    }
 
     setUploadingUserId(userId);
 
@@ -354,7 +366,7 @@ export function UsersTable({
           <input
             ref={(el) => (fileInputRefs.current[row.original.id] = el)}
             type="file"
-            accept=".xml,text/xml,application/xml"
+            accept=".xml"
             onChange={(e) => handleFileUpload(row.original.id, e)}
             className="hidden"
           />
