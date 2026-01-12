@@ -207,6 +207,55 @@ export const apiClient = {
   delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   },
+
+  async postMultipart<T>(
+    endpoint: string,
+    formData: FormData,
+    options?: RequestOptions
+  ): Promise<T> {
+    const url = `${API_CONFIG.baseUrl}${endpoint}`;
+    const token = getToken();
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...(options?.headers as Record<string, string>),
+    };
+    // Don't set Content-Type for multipart/form-data - browser sets it with boundary
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetchWithRetry(url, {
+      ...options,
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (response.status === 401) {
+      clearSession();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      throw ApiError.fromResponse(response);
+    }
+
+    let data: unknown;
+    const contentType = response.headers.get('content-type');
+
+    if (contentType?.includes('application/json')) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    if (!response.ok) {
+      throw ApiError.fromResponse(response, data);
+    }
+
+    return data as T;
+  },
 };
 
 function delay(ms: number): Promise<void> {

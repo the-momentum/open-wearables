@@ -19,6 +19,10 @@ export const API_ENDPOINTS = {
   userDetail: (id: string) => `/api/v1/users/${id}`,
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
+  userAppleXmlImport: (userId: string) =>
+    `/api/v1/users/${userId}/import/apple/xml/direct`,
+  userAppleXmlPresignedUrl: (userId: string) =>
+    `/api/v1/users/${userId}/import/apple/xml/s3`,
 
   // OAuth endpoints
   oauthAuthorize: (provider: string) => `/api/v1/oauth/${provider}/authorize`,

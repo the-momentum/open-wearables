@@ -68,6 +68,21 @@ export interface UserUpdate {
   external_user_id?: string | null;
 }
 
+export interface PresignedURLRequest {
+  filename: string;
+  expiration_seconds?: number;
+  max_file_size?: number;
+}
+
+export interface PresignedURLResponse {
+  upload_url: string;
+  form_fields: Record<string, string>;
+  file_key: string;
+  expires_in: number;
+  max_file_size: number;
+  bucket: string;
+}
+
 export interface LoginRequest {
   email: string;
   password: string;

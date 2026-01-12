@@ -7,6 +7,8 @@ import type {
   UserUpdate,
   UserQueryParams,
   PaginatedUsersResponse,
+  PresignedURLRequest,
+  PresignedURLResponse,
 } from '../types';
 
 export const usersService = {
@@ -47,5 +49,50 @@ export const usersService = {
 
   async delete(id: string): Promise<void> {
     return apiClient.delete<void>(API_ENDPOINTS.userDetail(id));
+  },
+
+  async uploadAppleXml(userId: string, file: File): Promise<void> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.postMultipart<void>(
+      API_ENDPOINTS.userAppleXmlImport(userId),
+      formData
+    );
+  },
+
+  async getAppleXmlPresignedUrl(
+    userId: string,
+    request: PresignedURLRequest
+  ): Promise<PresignedURLResponse> {
+    return apiClient.post<PresignedURLResponse>(
+      API_ENDPOINTS.userAppleXmlPresignedUrl(userId),
+      request
+    );
+  },
+
+  async uploadToS3(
+    uploadUrl: string,
+    formFields: Record<string, string>,
+    file: File
+  ): Promise<void> {
+    const formData = new FormData();
+
+    // Add all form fields first (AWS requires these before the file)
+    Object.entries(formFields).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+
+    // Add the file last
+    formData.append('file', file);
+
+    // Upload directly to S3 (no auth needed, using presigned URL)
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`S3 upload failed: ${response.statusText}`);
+    }
   },
 };

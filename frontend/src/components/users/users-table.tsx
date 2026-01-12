@@ -21,11 +21,25 @@ import {
   ChevronsUpDown,
   Link as LinkIcon,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  useUploadAppleXml,
+  useUploadAppleXmlViaS3,
+} from '@/hooks/api/use-users';
+
+// 10MB threshold - files larger than this use S3, smaller use direct upload
+const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 import {
   Pagination,
   PaginationContent,
@@ -77,6 +91,11 @@ export function UsersTable({
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedPairLink, setCopiedPairLink] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const { mutate: uploadDirect } = useUploadAppleXml();
+  const { mutate: uploadViaS3 } = useUploadAppleXmlViaS3();
+  const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
 
   const onQueryChangeRef = useRef(onQueryChange);
   useEffect(() => {
@@ -144,6 +163,36 @@ export function UsersTable({
     } catch {
       toast.error('Failed to copy pairing link to clipboard');
     }
+  };
+
+  const handleUploadClick = (userId: string) => {
+    fileInputRefs.current[userId]?.click();
+  };
+
+  const handleFileUpload = async (
+    userId: string,
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be uploaded again
+    event.target.value = '';
+
+    setUploadingUserId(userId);
+
+    // Choose upload method based on file size
+    const uploadMutation =
+      file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
+
+    uploadMutation(
+      { userId, file },
+      {
+        onSettled: () => {
+          setUploadingUserId(null);
+        },
+      }
+    );
   };
 
   const truncateId = (id: string) => {
@@ -295,6 +344,41 @@ export function UsersTable({
               <Eye className="h-4 w-4" />
             </Link>
           </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => handleUploadClick(row.original.id)}
+                  disabled={uploadingUserId === row.original.id}
+                  title="Upload Apple Health XML"
+                >
+                  {uploadingUserId === row.original.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  Upload Apple Health XML
+                  <br />
+                  <span className="text-zinc-500">
+                    &lt;10MB: Direct • &gt;10MB: S3
+                  </span>
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <input
+            ref={(el) => (fileInputRefs.current[row.original.id] = el)}
+            type="file"
+            accept=".xml,text/xml,application/xml"
+            onChange={(e) => handleFileUpload(row.original.id, e)}
+            className="hidden"
+          />
           <Button
             variant="outline"
             size="icon"
