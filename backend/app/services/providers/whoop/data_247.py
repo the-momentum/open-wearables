@@ -7,15 +7,17 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.models import EventRecord, ExternalDeviceMapping
+from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.external_mapping_repository import ExternalMappingRepository
-from app.schemas import EventRecordCreate
+from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.series_types import SeriesType, get_series_type_id
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.timeseries_service import timeseries_service
 
 
 class Whoop247Data(Base247DataTemplate):
@@ -308,6 +310,7 @@ class Whoop247Data(Base247DataTemplate):
             "sleep_sessions_synced": 0,
             "recovery_samples_synced": 0,
             "activity_samples_synced": 0,
+            "body_measurement_samples_synced": 0,
         }
 
         try:
@@ -315,7 +318,115 @@ class Whoop247Data(Base247DataTemplate):
         except Exception as e:
             self.logger.error(f"Failed to sync sleep data: {e}")
 
+        try:
+            results["body_measurement_samples_synced"] = self.load_and_save_body_measurement(db, user_id)
+        except Exception as e:
+            self.logger.error(f"Failed to sync body measurement data: {e}")
+
         return results
+
+    # -------------------------------------------------------------------------
+    # Body Measurement Data (Height/Weight)
+    # -------------------------------------------------------------------------
+
+    def get_body_measurement(
+        self,
+        db: DbSession,
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        """Fetch body measurements from Whoop API.
+
+        Returns height_meter, weight_kilogram, and max_heart_rate.
+        See: https://developer.whoop.com/api/#tag/Body-Measurement
+        """
+        try:
+            response = self._make_api_request(db, user_id, "/v2/user/measurement/body")
+            return response if isinstance(response, dict) else {}
+        except Exception as e:
+            self.logger.error(f"Error fetching Whoop body measurement: {e}")
+            return {}
+
+    def _get_latest_value(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        series_type: SeriesType,
+    ) -> Decimal | None:
+        """Get the most recent value for a series type for this user/provider."""
+        type_id = get_series_type_id(series_type)
+        result = (
+            db.query(DataPointSeries.value)
+            .join(ExternalDeviceMapping, DataPointSeries.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                ExternalDeviceMapping.provider_name == self.provider_name,
+                DataPointSeries.series_type_definition_id == type_id,
+            )
+            .order_by(DataPointSeries.recorded_at.desc())
+            .first()
+        )
+        return result[0] if result else None
+
+    def load_and_save_body_measurement(
+        self,
+        db: DbSession,
+        user_id: UUID,
+    ) -> int:
+        """Fetch body measurements and save height/weight to data_point_series.
+
+        Only saves if the value has changed from the most recent entry.
+        Returns the number of samples saved.
+        """
+        body = self.get_body_measurement(db, user_id)
+        if not body:
+            return 0
+
+        count = 0
+        recorded_at = datetime.now(timezone.utc)
+
+        # Save height (convert meters to centimeters) if changed
+        height_meter = body.get("height_meter")
+        if height_meter is not None:
+            try:
+                height_cm = Decimal(str(height_meter)) * 100
+                latest_height = self._get_latest_value(db, user_id, SeriesType.height)
+
+                if latest_height is None or abs(latest_height - height_cm) > Decimal("0.01"):
+                    sample = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=height_cm,
+                        series_type=SeriesType.height,
+                    )
+                    timeseries_service.crud.create(db, sample)
+                    count += 1
+            except Exception as e:
+                self.logger.warning(f"Failed to save height data: {e}")
+
+        # Save weight (already in kilograms) if changed
+        weight_kg = body.get("weight_kilogram")
+        if weight_kg is not None:
+            try:
+                weight = Decimal(str(weight_kg))
+                latest_weight = self._get_latest_value(db, user_id, SeriesType.weight)
+
+                if latest_weight is None or abs(latest_weight - weight) > Decimal("0.01"):
+                    sample = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=weight,
+                        series_type=SeriesType.weight,
+                    )
+                    timeseries_service.crud.create(db, sample)
+                    count += 1
+            except Exception as e:
+                self.logger.warning(f"Failed to save weight data: {e}")
+
+        return count
 
     # -------------------------------------------------------------------------
     # Recovery Data
