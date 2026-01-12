@@ -13,6 +13,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries
@@ -124,6 +125,48 @@ class TestDataPointSeriesRepository:
 
         expected_id = get_series_type_id(SeriesType.steps)
         assert result.series_type_definition_id == expected_id
+
+    def test_create_duplicate_raises_integrity_error(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Test that creating duplicate data points raises IntegrityError due to unique constraint."""
+        # Arrange
+        user = UserFactory()
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
+        recorded_time = datetime.now(timezone.utc)
+
+        # Create first sample
+        first_sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user.id,
+            provider_name="apple",
+            device_id="watch123",
+            external_device_mapping_id=mapping.id,
+            recorded_at=recorded_time,
+            value=72.5,
+            series_type=SeriesType.heart_rate,
+        )
+        series_repo.create(db, first_sample)
+        db.commit()
+
+        # Create duplicate sample with same mapping, series_type, and recorded_at
+        duplicate_sample = TimeSeriesSampleCreate(
+            id=uuid4(),  # Different ID
+            user_id=user.id,
+            provider_name="apple",
+            device_id="watch123",
+            external_device_mapping_id=mapping.id,
+            recorded_at=recorded_time,  # Same timestamp
+            value=75.0,  # Different value
+            series_type=SeriesType.heart_rate,  # Same series type
+        )
+
+        # Act & Assert
+        with pytest.raises(IntegrityError) as exc_info:
+            series_repo.create(db, duplicate_sample)
+            db.commit()
+
+        # Verify the error message mentions the unique constraint
+        assert "uq_data_point_series_mapping_type_time" in str(exc_info.value)
+        db.rollback()
 
     def test_get_samples_requires_device_filter(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples requires at least device_id or external_device_mapping_id."""
@@ -420,7 +463,7 @@ class TestDataPointSeriesRepository:
                 provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
             )
@@ -443,7 +486,7 @@ class TestDataPointSeriesRepository:
         two_days_ago = now - timedelta(days=2)
 
         # Create samples at different times
-        for dt in [two_days_ago, yesterday, yesterday, now]:
+        for i, dt in enumerate([two_days_ago, yesterday, yesterday + timedelta(seconds=1), now]):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
@@ -480,14 +523,14 @@ class TestDataPointSeriesRepository:
         ]
 
         for dt, count in dates_and_counts:
-            for _ in range(count):
+            for i in range(count):
                 sample = TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user.id,
                     provider_name="apple",
                     device_id="device1",
                     external_device_mapping_id=mapping.id,
-                    recorded_at=dt,
+                    recorded_at=dt + timedelta(seconds=i),
                     value=72,
                     series_type=SeriesType.heart_rate,
                 )
@@ -511,28 +554,28 @@ class TestDataPointSeriesRepository:
         now = datetime.now(timezone.utc)
 
         # Create heart rate samples
-        for _ in range(3):
+        for i in range(3):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
             )
             series_repo.create(db, sample)
 
         # Create steps samples
-        for _ in range(2):
+        for i in range(2):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=10000,
                 series_type=SeriesType.steps,
             )
@@ -561,28 +604,28 @@ class TestDataPointSeriesRepository:
         now = datetime.now(timezone.utc)
 
         # Create samples for Apple
-        for _ in range(3):
+        for i in range(3):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping_apple.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
             )
             series_repo.create(db, sample)
 
         # Create samples for Garmin
-        for _ in range(2):
+        for i in range(2):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="garmin",
                 device_id="device2",
                 external_device_mapping_id=mapping_garmin.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=75,
                 series_type=SeriesType.heart_rate,
             )
@@ -607,14 +650,14 @@ class TestDataPointSeriesRepository:
         now = datetime.now(timezone.utc)
 
         # Create samples for user1
-        for _ in range(2):
+        for i in range(2):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user1.id,
                 provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping1.id,
-                recorded_at=now,
+                recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
             )
