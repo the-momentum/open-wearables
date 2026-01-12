@@ -179,13 +179,6 @@ export function UsersTable({
     const uploadMutation =
       file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
 
-    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-    const method = file.size > S3_UPLOAD_THRESHOLD ? 'S3' : 'Direct';
-    console.log(
-      `Uploading ${file.name} (${fileSizeMB}MB) via ${method} upload`
-    );
-    console.log(file.size, S3_UPLOAD_THRESHOLD);
-
     uploadMutation(
       { userId, file },
       {

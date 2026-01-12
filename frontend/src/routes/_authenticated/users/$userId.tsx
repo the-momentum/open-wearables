@@ -164,9 +164,6 @@ function UserDetailPage() {
 
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
     const method = file.size > S3_UPLOAD_THRESHOLD ? 'S3' : 'Direct';
-    console.log(
-      `Uploading ${file.name} (${fileSizeMB}MB) via ${method} upload`
-    );
 
     uploadMutation(
       { userId, file },
