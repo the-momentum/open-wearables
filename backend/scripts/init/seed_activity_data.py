@@ -54,7 +54,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
     series_type_percentages = {}
 
     with open(config_path, encoding="utf-8") as yamlfile:
-        config = yaml.safe_load(yamlfile)
+        config = yaml.safe_load(yamlfile) or {}
 
         for series_name, values in config.get("series_types", {}).items():
             try:
