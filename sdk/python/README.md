@@ -1,5 +1,8 @@
 # Open Wearables Python SDK
 
+> [!CAUTION]
+> This is SDK is unstable beta right now.
+
 A typed, async-ready Python SDK for the [Open Wearables API](https://github.com/TudorGR/open-wearables).
 
 ## Installation
