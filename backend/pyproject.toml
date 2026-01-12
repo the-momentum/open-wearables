@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.32.5",
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
+    "resend>=2.0.0",
 ]
 
 [dependency-groups]
@@ -36,13 +37,18 @@ dev = [
     "pytest>=8.4.1",
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
+    "freezegun>=1.5.0",
+    "setuptools>=75.0.0",
+    "factory-boy>=3.3.0",
     "faker>=33.1.0",
+    "psycopg-binary>=3.3.2",
+    "ruff>=0.14.7",
 ]
 
 [tool.ruff]
 line-length = 120
 target-version = 'py313'
-exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
+exclude = ["README.md", ".python-version", "LICENSE", "app/models/"]
 
 [tool.ruff.lint]
 select = [
@@ -66,6 +72,7 @@ ignore = [
     "ANN204", # missing-return-type-special-method
     "ANN401", # any-type
     "RET503", # implicit-return
+    "COM812", # trailing-comma (conflicts with ruff format)
 ]
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
@@ -73,7 +80,19 @@ ignore = [
 "app/schemas/suunto/*.py" = ["N815"]  # mixedCase from external API
 
 [tool.ty.src]
-exclude = ["migrations/", "app/models/", "README.md", ".python-version", "LICENSE"]
+exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+addopts = "-v --tb=short"
 
 [build-system]
 requires = ["uv_build"]

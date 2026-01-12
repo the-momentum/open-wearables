@@ -3,6 +3,7 @@ import {
   healthService,
   type WorkoutsParams,
 } from '@/lib/api/services/health.service';
+import type { TimeSeriesParams } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { queryClient } from '@/lib/query/client';
@@ -20,18 +21,6 @@ export function useUserConnections(userId: string) {
 }
 
 /**
- * Get heart rate data for a user
- * Uses GET /api/v1/users/{user_id}/heart-rate
- */
-export function useHeartRate(userId: string) {
-  return useQuery({
-    queryKey: queryKeys.health.heartRate(userId),
-    queryFn: () => healthService.getHeartRate(userId),
-    enabled: !!userId,
-  });
-}
-
-/**
  * Get workouts for a user
  * Uses GET /api/v1/users/{user_id}/workouts
  */
@@ -40,6 +29,18 @@ export function useWorkouts(userId: string, params?: WorkoutsParams) {
     queryKey: queryKeys.health.workouts(userId, params),
     queryFn: () => healthService.getWorkouts(userId, params),
     enabled: !!userId,
+  });
+}
+
+/**
+ * Get time series data for a user
+ * Uses GET /api/v1/users/{user_id}/timeseries
+ */
+export function useTimeSeries(userId: string, params: TimeSeriesParams) {
+  return useQuery({
+    queryKey: queryKeys.health.timeseries(userId, params),
+    queryFn: () => healthService.getTimeSeries(userId, params),
+    enabled: !!userId && !!params.start_time && !!params.end_time,
   });
 }
 

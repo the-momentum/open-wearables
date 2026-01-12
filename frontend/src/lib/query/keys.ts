@@ -1,3 +1,5 @@
+import type { HealthDataParams, UserQueryParams } from '../api/types';
+
 export const queryKeys = {
   auth: {
     all: ['auth'] as const,
@@ -7,8 +9,8 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     lists: () => [...queryKeys.users.all, 'list'] as const,
-    list: (filters?: { search?: string; status?: string }) =>
-      [...queryKeys.users.lists(), filters] as const,
+    list: (params?: UserQueryParams) =>
+      [...queryKeys.users.lists(), params] as const,
     details: () => [...queryKeys.users.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.users.details(), id] as const,
   },
@@ -54,8 +56,6 @@ export const queryKeys = {
 
   healthData: {
     all: (userId: string) => ['healthData', userId] as const,
-    heartRate: (userId: string, dateRange?: { start: string; end: string }) =>
-      [...queryKeys.healthData.all(userId), 'heartRate', dateRange] as const,
     sleep: (userId: string, dateRange?: { start: string; end: string }) =>
       [...queryKeys.healthData.all(userId), 'sleep', dateRange] as const,
     activity: (userId: string, dateRange?: { start: string; end: string }) =>
@@ -64,12 +64,19 @@ export const queryKeys = {
 
   health: {
     all: ['health'] as const,
-    heartRate: (userId: string) =>
-      [...queryKeys.health.all, 'heartRate', userId] as const,
-    workouts: (
-      userId: string,
-      params?: { [key: string]: string | number | undefined }
-    ) => [...queryKeys.health.all, 'workouts', userId, params] as const,
+    providers: () => [...queryKeys.health.all, 'providers'] as const,
+    connections: (userId: string) =>
+      [...queryKeys.health.all, 'connections', userId] as const,
+    sleep: (userId: string, days: number) =>
+      [...queryKeys.health.all, 'sleep', userId, days] as const,
+    activity: (userId: string, days: number) =>
+      [...queryKeys.health.all, 'activity', userId, days] as const,
+    summary: (userId: string, period?: string) =>
+      [...queryKeys.health.all, 'summary', userId, period] as const,
+    workouts: (userId: string, params?: HealthDataParams) =>
+      [...queryKeys.health.all, 'workouts', userId, params] as const,
+    timeseries: (userId: string, params?: unknown) =>
+      [...queryKeys.health.all, 'timeseries', userId, params] as const,
   },
 
   connections: {
@@ -103,5 +110,19 @@ export const queryKeys = {
         'list',
         { cloudOnly, enabledOnly },
       ] as const,
+  },
+
+  developers: {
+    all: ['developers'] as const,
+    lists: () => [...queryKeys.developers.all, 'list'] as const,
+    list: () => [...queryKeys.developers.lists()] as const,
+    details: () => [...queryKeys.developers.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.developers.details(), id] as const,
+  },
+
+  invitations: {
+    all: ['invitations'] as const,
+    lists: () => [...queryKeys.invitations.all, 'list'] as const,
+    list: () => [...queryKeys.invitations.lists()] as const,
   },
 } as const;

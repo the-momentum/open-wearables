@@ -14,6 +14,10 @@ def sync_all_users(start_date: str | None = None, end_date: str | None = None) -
     """
     Sync all users with active connections.
     Calls sync_vendor_data for each user with the same parameters.
+
+    Args:
+        start_date: ISO 8601 date string for start of sync period
+        end_date: ISO 8601 date string for end of sync period
     """
     logger.info("[sync_all_users] Starting sync for all users")
 

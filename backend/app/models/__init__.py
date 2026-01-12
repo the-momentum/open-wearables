@@ -1,17 +1,37 @@
 from .api_key import ApiKey
+from .application import Application
+from .data_point_series import DataPointSeries
 from .developer import Developer
+from .device import Device
+from .device_software import DeviceSoftware
+from .event_record import EventRecord
+from .event_record_detail import EventRecordDetail
+from .external_device_mapping import ExternalDeviceMapping
+from .invitation import Invitation
+from .personal_record import PersonalRecord
 from .provider_setting import ProviderSetting
+from .series_type_definition import SeriesTypeDefinition
+from .sleep_details import SleepDetails
 from .user import User
 from .user_connection import UserConnection
-from .workout import Workout
-from .workout_statistic import WorkoutStatistic
+from .workout_details import WorkoutDetails
 
 __all__ = [
     "ApiKey",
+    "Application",
     "Developer",
+    "Device",
+    "DeviceSoftware",
+    "Invitation",
     "ProviderSetting",
     "User",
     "UserConnection",
-    "Workout",
-    "WorkoutStatistic",
+    "EventRecord",
+    "EventRecordDetail",
+    "SleepDetails",
+    "WorkoutDetails",
+    "PersonalRecord",
+    "DataPointSeries",
+    "ExternalDeviceMapping",
+    "SeriesTypeDefinition",
 ]

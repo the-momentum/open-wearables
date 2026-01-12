@@ -2,12 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { usersService } from '../../lib/api';
 import { queryKeys } from '../../lib/query/keys';
-import type { UserRead, UserCreate, UserUpdate } from '../../lib/api/types';
+import type {
+  UserRead,
+  UserCreate,
+  UserUpdate,
+  UserQueryParams,
+} from '../../lib/api/types';
 
-export function useUsers(filters?: { search?: string }) {
+export function useUsers(params?: UserQueryParams) {
   return useQuery({
-    queryKey: queryKeys.users.list(filters),
-    queryFn: () => usersService.getAll(filters),
+    queryKey: queryKeys.users.list(params),
+    queryFn: () => usersService.getAll(params),
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -27,6 +33,11 @@ export function useCreateUser() {
     onSuccess: () => {
       // Invalidate users list
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() });
+      // Invalidate dashboard stats - only refetches if dashboard is currently open
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.stats(),
+        refetchType: 'active',
+      });
       toast.success('User created successfully');
     },
     onError: (error: unknown) => {
@@ -102,37 +113,16 @@ export function useDeleteUser() {
 
   return useMutation({
     mutationFn: (id: string) => usersService.delete(id),
-    onMutate: async (id) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: queryKeys.users.lists() });
-
-      // Snapshot previous value
-      const previousUsers = queryClient.getQueryData<UserRead[]>(
-        queryKeys.users.lists()
-      );
-
-      // Optimistically remove from cache
-      if (previousUsers) {
-        queryClient.setQueryData<UserRead[]>(
-          queryKeys.users.lists(),
-          previousUsers.filter((u) => u.id !== id)
-        );
-      }
-
-      return { previousUsers };
-    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.users.lists() });
+      // Invalidate dashboard stats - only refetches if dashboard is currently open
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboard.stats(),
+        refetchType: 'active',
+      });
       toast.success('User deleted successfully');
     },
-    onError: (error: unknown, _id, context) => {
-      // Rollback on error
-      if (context?.previousUsers) {
-        queryClient.setQueryData(
-          queryKeys.users.lists(),
-          context.previousUsers
-        );
-      }
+    onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to delete user';
       toast.error(message);

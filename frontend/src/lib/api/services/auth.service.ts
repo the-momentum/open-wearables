@@ -7,6 +7,7 @@ import type {
   RegisterResponse,
   ForgotPasswordRequest,
   ResetPasswordRequest,
+  Developer,
 } from '../types';
 
 export const authService = {
@@ -24,6 +25,10 @@ export const authService = {
 
   async logout(): Promise<void> {
     return apiClient.post<void>(API_ENDPOINTS.logout);
+  },
+
+  async me(): Promise<Developer> {
+    return apiClient.get<Developer>(API_ENDPOINTS.me);
   },
 
   async forgotPassword(data: ForgotPasswordRequest): Promise<void> {

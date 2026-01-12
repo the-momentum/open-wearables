@@ -1,0 +1,176 @@
+---
+title: 'Error Handling'
+description: 'Common API errors and how to resolve them'
+---
+
+## Authentication Errors
+
+### Missing Authentication
+
+```json
+{
+  "detail": "Authentication required: provide JWT token or API key"
+}
+```
+
+**Cause:** No API key provided in the request.
+
+**Solution:** Include the API key header:
+```bash
+-H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+<Warning>
+  Use `X-Open-Wearables-API-Key` header, **not** `Authorization: Bearer`.
+</Warning>
+
+### Invalid API Key
+
+```json
+{
+  "detail": "Invalid or missing API key"
+}
+```
+
+**Cause:** The provided API key doesn't exist or has been revoked.
+
+**Solution:** Verify your API key is correct and active in the developer portal.
+
+### Protected Endpoint
+
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+**Cause:** Attempting to access an endpoint that requires developer JWT authentication (not just an API key).
+
+**Solution:** Some operations (like deleting users) require logging in via the developer portal. Use JWT authentication for these endpoints.
+
+---
+
+## Provider Errors
+
+### User Not Connected
+
+```json
+{
+  "detail": "User not connected to garmin"
+}
+```
+
+**Cause:** Attempting to sync or fetch data from a provider the user hasn't connected yet.
+
+**Solution:** Complete the OAuth flow first:
+```bash
+GET /api/v1/oauth/garmin/authorize?user_id={user_id}
+```
+
+### Token Expired
+
+```json
+{
+  "detail": "Token expired and no refresh token available for garmin"
+}
+```
+
+Or:
+
+```json
+{
+  "detail": "Garmin authorization expired. Please re-authorize."
+}
+```
+
+**Cause:** The OAuth token for this provider has expired and cannot be refreshed.
+
+**Solution:** User needs to reconnect via OAuth:
+```bash
+GET /api/v1/oauth/garmin/authorize?user_id={user_id}
+```
+
+### Provider Doesn't Support OAuth
+
+```json
+{
+  "detail": "Provider 'apple' does not support OAuth"
+}
+```
+
+**Cause:** Attempting to use OAuth with a push-only provider like Apple Health.
+
+**Solution:** Apple Health data is pushed from the device, not pulled via OAuth. Use the SDK sync or import endpoints instead.
+
+### Invalid Provider Name
+
+```json
+{
+  "detail": "Input should be 'apple', 'garmin', 'polar' or 'suunto'"
+}
+```
+
+**Cause:** Provider name is invalid or has wrong case.
+
+**Solution:** Use lowercase provider names: `garmin`, `polar`, `suunto`, `apple`.
+
+---
+
+## Validation Errors
+
+### Missing Required Field
+
+```json
+{
+  "detail": "Field required"
+}
+```
+
+**Cause:** A required query parameter or request body field is missing.
+
+**Solution:** Check the API documentation for required parameters. Common required fields:
+- `start_time` and `end_time` for timeseries endpoints
+- `start_date` and `end_date` for event endpoints
+- `user_id` for OAuth authorization
+
+### Invalid UUID Format
+
+```json
+{
+  "detail": "Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1"
+}
+```
+
+**Cause:** A UUID parameter (like `user_id`) has an invalid format.
+
+**Solution:** Ensure UUIDs are in the correct format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+
+---
+
+## Resource Errors
+
+### Resource Not Found
+
+```json
+{
+  "detail": "User with ID: {id} not found."
+}
+```
+
+**Cause:** The requested resource (user, connection, etc.) doesn't exist.
+
+**Solution:** Verify the ID is correct and the resource was created.
+
+---
+
+## HTTP Status Code Reference
+
+| Status | Meaning | Common Causes |
+|--------|---------|---------------|
+| 200 | Success | Request completed successfully |
+| 201 | Created | Resource created successfully |
+| 400 | Bad Request | Invalid parameters, validation errors |
+| 401 | Unauthorized | Missing or invalid authentication |
+| 404 | Not Found | Resource doesn't exist |
+| 422 | Unprocessable | Request body validation failed |
+| 500 | Server Error | Internal error (please report) |

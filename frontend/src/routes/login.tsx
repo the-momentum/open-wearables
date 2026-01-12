@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, Link } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { isAuthenticated } from '@/lib/auth/session';
@@ -45,7 +45,7 @@ function LoginPage() {
                 Welcome back
               </h1>
               <p className="text-sm text-zinc-500">
-                Enter your credentials to access your unified API keys.
+                Sign in to access dashboard, users, and settings.
               </p>
             </div>
 
@@ -76,20 +76,12 @@ function LoginPage() {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="password"
-                    className="text-xs font-medium text-zinc-300"
-                  >
-                    Password
-                  </label>
-                  <Link
-                    to="/forgot-password"
-                    className="text-xs text-zinc-500 hover:text-white transition-colors"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
+                <label
+                  htmlFor="password"
+                  className="text-xs font-medium text-zinc-300"
+                >
+                  Password
+                </label>
                 <div className="relative group">
                   <input
                     type="password"
@@ -143,19 +135,8 @@ function LoginPage() {
           </div>
 
           {/* Footer Links */}
-          <div className="flex items-center justify-between text-xs text-zinc-600">
+          <div className="flex items-center text-xs text-zinc-600">
             <p>© 2025 Open Wearables</p>
-            <div className="flex gap-3">
-              <a href="#" className="hover:text-zinc-400 transition-colors">
-                Privacy
-              </a>
-              <Link
-                to="/register"
-                className="text-white hover:text-zinc-200 transition-colors"
-              >
-                Sign up
-              </Link>
-            </div>
           </div>
         </div>
 

@@ -3,7 +3,16 @@ from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.schemas.system_info import CountWithGrowth, DataPointsInfo, SystemInfoResponse
+from app.schemas.series_types import get_series_type_from_id
+from app.schemas.system_info import (
+    CountWithGrowth,
+    DataPointsInfo,
+    SeriesTypeMetric,
+    SystemInfoResponse,
+    WorkoutTypeMetric,
+)
+from app.services.event_record_service import EventRecordService, event_record_service
+from app.services.timeseries_service import TimeSeriesService, timeseries_service
 from app.services.user_connection_service import UserConnectionService, user_connection_service
 from app.services.user_service import UserService, user_service
 
@@ -16,10 +25,14 @@ class SystemInfoService:
         log: Logger,
         user_service: UserService,
         user_connection_service: UserConnectionService,
+        timeseries_service: TimeSeriesService,
+        event_record_service: EventRecordService,
     ):
         self.logger = log
         self.user_service = user_service
         self.user_connection_service = user_connection_service
+        self.timeseries_service = timeseries_service
+        self.event_record_service = event_record_service
 
     def _calculate_weekly_growth(self, current: int, previous: int) -> float:
         """Calculate weekly growth percentage."""
@@ -69,20 +82,44 @@ class SystemInfoService:
             now,
         )
 
-        # Mock data points for now
-        # TODO: Replace with actual data points query when ready
-        data_points_histogram = [100, 120, 95, 110, 130, 115, 125]  # Mock: 7 days of data
-        data_points_count = sum(data_points_histogram)
-        data_points_week_ago_count = 700  # Mock previous week total
-        data_points_growth = self._calculate_weekly_growth(data_points_count, data_points_week_ago_count)
+        # Data Points
+        data_points_stats = self._get_growth_stats(
+            db_session,
+            self.timeseries_service.crud.get_total_count,
+            self.timeseries_service.get_count_in_range,
+            week_ago,
+            two_weeks_ago,
+            now,
+        )
+
+        # Get metrics by series type
+        series_type_counts = self.timeseries_service.get_count_by_series_type(db_session)
+        top_series_types = [
+            SeriesTypeMetric(
+                series_type=get_series_type_from_id(series_type_id).value,
+                count=count,
+            )
+            for series_type_id, count in series_type_counts[:5]  # Top 5
+        ]
+
+        # Get metrics by workout type
+        workout_type_counts = self.event_record_service.get_count_by_workout_type(db_session)
+        top_workout_types = [
+            WorkoutTypeMetric(
+                workout_type=workout_type or "Unknown",
+                count=count,
+            )
+            for workout_type, count in workout_type_counts[:5]  # Top 5
+        ]
 
         return SystemInfoResponse(
             total_users=users_stats,
             active_conn=active_conn_stats,
             data_points=DataPointsInfo(
-                weekly_histogram=data_points_histogram,
-                count=data_points_count,
-                weekly_growth=data_points_growth,
+                count=data_points_stats.count,
+                weekly_growth=data_points_stats.weekly_growth,
+                top_series_types=top_series_types,
+                top_workout_types=top_workout_types,
             ),
         )
 
@@ -91,4 +128,6 @@ system_info_service = SystemInfoService(
     log=getLogger(__name__),
     user_service=user_service,
     user_connection_service=user_connection_service,
+    timeseries_service=timeseries_service,
+    event_record_service=event_record_service,
 )

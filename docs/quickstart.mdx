@@ -19,19 +19,28 @@ Get Open Wearables running locally and start integrating wearable device data.
     ```
   </Accordion>
   <Accordion icon="gear" title="Configure environment variables">
-    Create your environment file from the example:
+    Create environment files for both backend and frontend:
     
+    **Backend configuration:**
     ```bash
-    cp ./config/.env.example ./config/.env
+    cp ./backend/config/.env.example ./backend/config/.env
     ```
     
-    Edit the `.env` file with your configuration. You'll need to set up:
+    Edit `./backend/config/.env` with your configuration. You'll need to set up:
     - Database credentials
     - Redis/Celery broker settings
     - OAuth credentials for wearable providers (Garmin, Fitbit, etc.)
     - Secret keys for authentication
     
-    <Tip>Default credentials are provided in the `.env.example` file for local development.</Tip>
+    **Frontend configuration:**
+    ```bash
+    cp ./frontend/.env.example ./frontend/.env
+    ```
+    
+    Edit `./frontend/.env` with your frontend configuration:
+    - `VITE_API_URL` - Backend API URL (default: `http://localhost:8000`)
+    
+    <Tip>Default credentials are provided in the `.env.example` files for local development.</Tip>
   </Accordion>
 </AccordionGroup>
 
@@ -45,22 +54,37 @@ Get Open Wearables running locally and start integrating wearable device data.
     docker compose up -d
     ```
     
+    For development with hot-reloading, use the `--watch` flag:
+    
+    ```bash
+    docker compose watch
+    ```
+    
+    The `--watch` flag enables automatic file synchronization and service restarts:
+    - **Backend**: Automatically syncs code changes and restarts services on file updates
+    - **Frontend**: Hot-reloads on source file changes
+    - **Migrations**: Restarts backend when migration files change
+    - **Dependencies**: Rebuilds containers when package files change
+    
     This will start all required services:
     - PostgreSQL database
-    - Redis (for Celery)
+    - Redis
     - FastAPI backend
     - Celery worker
     - Celery beat (scheduler)
+    - Frontend development server
     
     Once started, access:
     - 🌐 **API**: http://localhost:8000
     - 📚 **Swagger UI**: http://localhost:8000/docs
-    - 🔐 **Admin Panel**: http://localhost:8000/admin
+    - 🔐 **Developer Panel**: http://localhost:3000
     
     <Tip>Use `docker compose logs -f` to view logs from all services.</Tip>
   </Accordion>
   <Accordion icon="rectangle-terminal" title="Local development setup">
     For local development without Docker:
+    
+    **Backend setup:**
     
     1. Install dependencies using `uv` (recommended) or `pip`:
        ```bash
@@ -79,6 +103,21 @@ Get Open Wearables running locally and start integrating wearable device data.
        ```bash
        uvicorn app.main:api --reload
        ```
+    
+    **Frontend setup:**
+    
+    5. Install frontend dependencies using `npm`:
+       ```bash
+       cd frontend
+       npm install
+       ```
+    
+    6. Start the frontend development server:
+       ```bash
+       npm run dev
+       ```
+    
+    The frontend will be available at http://localhost:3000
   </Accordion>
 </AccordionGroup>
 
@@ -87,75 +126,47 @@ Get Open Wearables running locally and start integrating wearable device data.
 <Accordion icon="rocket" title="Test the API">
   Once the application is running, you can test it:
 
-  1. **Check server status**:
+  1. **Seed sample data** (optional but recommended):
+     If you're using Docker, seed the database with sample data including an admin account:
+     ```bash
+     make init
+     ```
+     
+     This will create:
+     - An admin user account (`admin@admin.com` / `secret123`)
+     - 10 test users
+     - Sample activity data for test users
+     
+     <Tip>For local development, run the seed scripts manually from the backend directory.</Tip>
+
+  2. **Check server status**:
      ```bash
      curl http://localhost:8000/
      ```
      Should return: `{"message": "Server is running!"}`
 
-  2. **View API documentation**:
+  3. **View API documentation**:
      Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
 
-  3. **Create an API key**:
-     Use the admin panel at http://localhost:8000/admin to create a developer account and generate API keys.
+  4. **Create an API key**:
+     Use the admin panel at http://localhost:3000/ to generate API keys. If you ran the seed script, you can log in with the previously created admin account (`admin@admin.com` / `secret123`). 
 
-  4. **Authenticate and make requests**:
-     ```bash
-     # Get authentication token
-     curl -X POST http://localhost:8000/api/v1/auth/login \
-       -H "Content-Type: application/json" \
-       -d '{"username": "your_username", "password": "your_password"}'
-     
-     # Use the token to make authenticated requests
+     If you didn't run the seed script, run `backend/scripts/init/seed_admin.py` manually to create an admin account.
+
+  5. **Make requests**:
+     ```bash     
+     # Use the API key to make authenticated requests
      curl http://localhost:8000/api/v1/users \
-       -H "Authorization: Bearer YOUR_TOKEN"
+       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
      ```
 </Accordion>
 
-## Core Concepts
-
-### Authentication
-
-Open Wearables uses API key authentication. Generate API keys through the admin panel or via the API:
-
-```http
-POST /api/v1/developer/api-keys
-Authorization: Bearer YOUR_TOKEN
-```
-
-### OAuth Flow
-
-Connect user wearables through OAuth:
-
-1. Generate a connection link for your user
-2. User authenticates with their wearable provider
-3. Data automatically syncs to your platform
-4. Access via unified API
-
-### Data Types
-
-The platform supports various health data types:
-- ❤️ Heart rate (BPM)
-- 😴 Sleep (stages, duration, quality)
-- 🏃 Activity (workouts, exercises)
-- 👣 Steps and distance
-- 🔥 Calories burned
-- 📈 Heart rate variability (HRV)
-- 🫁 Blood oxygen (SpO2)
-- ⚖️ Body metrics (weight, BMI)
-- 📍 GPS/location data
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
     Explore all available API endpoints.
-  </Card>
-  <Card title="Development Guide" icon="code" href="/development">
-    Learn about local development and contributing.
-  </Card>
-  <Card title="Provider Setup" icon="plug" href="/api-reference/introduction">
-    Configure OAuth credentials for wearable providers.
   </Card>
   <Card title="GitHub" icon="github" href="https://github.com/the-momentum/open-wearables">
     View source code and contribute.

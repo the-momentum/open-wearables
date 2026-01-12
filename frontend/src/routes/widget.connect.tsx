@@ -1,8 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Check, ChevronRight, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { WEARABLE_PROVIDERS } from '@/lib/constants/providers';
+import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
+import { API_CONFIG } from '@/lib/api/config';
 
 export const Route = createFileRoute('/widget/connect')({
   component: ConnectWidgetPage,
@@ -16,8 +17,25 @@ function ConnectWidgetPage() {
     useState<ConnectionState>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
+  const { data: apiProviders, isLoading } = useOAuthProviders(true, true);
+
+  const displayProviders = useMemo(() => {
+    if (!apiProviders) return [];
+    return apiProviders.map((apiProvider) => {
+      return {
+        id: apiProvider.provider,
+        name: apiProvider.name,
+        description: 'Connect your device',
+        logoPath: apiProvider.icon_url
+          ? `${API_CONFIG.baseUrl}${apiProvider.icon_url}`
+          : '',
+        isAvailable: apiProvider.is_enabled,
+      };
+    });
+  }, [apiProviders]);
+
   const handleConnect = async (providerId: string, providerName: string) => {
-    const provider = WEARABLE_PROVIDERS.find((p) => p.id === providerId);
+    const provider = displayProviders.find((p) => p.id === providerId);
     if (!provider?.isAvailable) {
       return;
     }
@@ -131,53 +149,59 @@ function ConnectWidgetPage() {
 
       {/* Grid Layout */}
       <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
-        {WEARABLE_PROVIDERS.map((provider) => {
-          const isConnecting =
-            selectedProvider === provider.id &&
-            connectionState === 'connecting';
+        {isLoading ? (
+          <div className="col-span-2 flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+          </div>
+        ) : (
+          displayProviders.map((provider) => {
+            const isConnecting =
+              selectedProvider === provider.id &&
+              connectionState === 'connecting';
 
-          return (
-            <button
-              key={provider.id}
-              onClick={() => handleConnect(provider.id, provider.name)}
-              disabled={!provider.isAvailable || isConnecting}
-              className={`group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border border-white/5 hover:bg-zinc-900/80 hover:border-white/10 transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20 ${
-                !provider.isAvailable ? 'opacity-50 cursor-not-allowed' : ''
-              } ${isConnecting ? 'border-white/20' : ''}`}
-            >
-              <div className="mb-8 flex items-center justify-center h-20 w-20 bg-white rounded-2xl shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
-                <img
-                  src={provider.logoPath}
-                  alt={`${provider.name} logo`}
-                  className="w-14 h-14 object-contain"
-                />
-              </div>
+            return (
+              <button
+                key={provider.id}
+                onClick={() => handleConnect(provider.id, provider.name)}
+                disabled={!provider.isAvailable || isConnecting}
+                className={`group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border border-white/5 hover:bg-zinc-900/80 hover:border-white/10 transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20 ${
+                  !provider.isAvailable ? 'opacity-50 cursor-not-allowed' : ''
+                } ${isConnecting ? 'border-white/20' : ''}`}
+              >
+                <div className="mb-8 flex items-center justify-center h-20 w-20 bg-white rounded-2xl shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
+                  <img
+                    src={provider.logoPath}
+                    alt={`${provider.name} logo`}
+                    className="w-14 h-14 object-contain"
+                  />
+                </div>
 
-              <h3 className="text-xl font-medium text-white mb-3">
-                {provider.name}
-              </h3>
-              <p className="text-base text-zinc-500 max-w-xs leading-relaxed">
-                {provider.description}
-              </p>
+                <h3 className="text-xl font-medium text-white mb-3">
+                  {provider.name}
+                </h3>
+                <p className="text-base text-zinc-500 max-w-xs leading-relaxed">
+                  {provider.description}
+                </p>
 
-              <div className="mt-8 flex items-center gap-1.5 text-base font-medium text-zinc-200 group-hover:text-white transition-colors">
-                {isConnecting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Connecting...
-                  </>
-                ) : !provider.isAvailable ? (
-                  'Coming Soon'
-                ) : (
-                  <>
-                    Connect
-                    <ChevronRight className="w-4 h-4 stroke-[1.5]" />
-                  </>
-                )}
-              </div>
-            </button>
-          );
-        })}
+                <div className="mt-8 flex items-center gap-1.5 text-base font-medium text-zinc-200 group-hover:text-white transition-colors">
+                  {isConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : !provider.isAvailable ? (
+                    'Coming Soon'
+                  ) : (
+                    <>
+                      Connect
+                      <ChevronRight className="w-4 h-4 stroke-[1.5]" />
+                    </>
+                  )}
+                </div>
+              </button>
+            );
+          })
+        )}
       </div>
 
       {/* Footer Security */}

@@ -1,6 +1,7 @@
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from functools import singledispatch, wraps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 from uuid import UUID
 
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -18,6 +19,11 @@ class ResourceNotFoundError(Exception):
             self.detail = f"{entity_name.capitalize()} with ID: {entity_id} not found."
         else:
             self.detail = f"{entity_name.capitalize()} not found."
+
+
+class InvalidCursorError(Exception):
+    def __init__(self, cursor: str):
+        self.detail = f"Invalid cursor format: '{cursor}'. Expected 'timestamp|id'."
 
 
 @singledispatch
@@ -39,6 +45,11 @@ def _(exc: ResourceNotFoundError, _: str) -> HTTPException:
 
 
 @handle_exception.register
+def _(exc: InvalidCursorError, _: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=exc.detail)
+
+
+@handle_exception.register
 def _(exc: AttributeError, entity: str) -> HTTPException:
     return HTTPException(
         status_code=400,
@@ -56,13 +67,39 @@ def _(exc: RequestValidationError, _: str) -> HTTPException:
     return HTTPException(status_code=400, detail=detail)
 
 
-def handle_exceptions[**P, T, Service: AppService](func: Callable[P, T]) -> Callable[P, T]:
+@overload
+def handle_exceptions[**P, T, Service: AppService](
+    func: Callable[P, Awaitable[T]],
+) -> Callable[P, Awaitable[T]]: ...
+
+
+@overload
+def handle_exceptions[**P, T, Service: AppService](
+    func: Callable[P, T],
+) -> Callable[P, T]: ...
+
+
+def handle_exceptions[**P, T, Service: AppService](
+    func: Callable[P, T] | Callable[P, Awaitable[T]],
+) -> Callable[P, T] | Callable[P, Awaitable[T]]:
+    if inspect.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
+            try:
+                return await func(instance, *args, **kwargs)  # type: ignore[misc]
+            except Exception as exc:
+                entity_name = getattr(instance, "name", "unknown")
+                raise handle_exception(exc, entity_name) from exc
+
+        return async_wrapper  # type: ignore[return-value]
+
     @wraps(func)
-    def async_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
+    def sync_wrapper(instance: Service, *args: P.args, **kwargs: P.kwargs) -> T:
         try:
-            return func(instance, *args, **kwargs)
+            return func(instance, *args, **kwargs)  # type: ignore[misc]
         except Exception as exc:
             entity_name = getattr(instance, "name", "unknown")
             raise handle_exception(exc, entity_name) from exc
 
-    return async_wrapper
+    return sync_wrapper  # type: ignore[return-value]

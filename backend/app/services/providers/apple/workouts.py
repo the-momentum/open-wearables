@@ -3,9 +3,10 @@ from typing import Any
 from uuid import UUID
 
 from app.database import DbSession
+from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.repositories.workout_repository import WorkoutRepository
-from app.schemas.workout import WorkoutCreate
+from app.schemas.event_record import EventRecordCreate
+from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler
@@ -17,7 +18,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
 
     def __init__(
         self,
-        workout_repo: WorkoutRepository,
+        workout_repo: EventRecordRepository,
         connection_repo: UserConnectionRepository,
     ):
         super().__init__(
@@ -47,49 +48,31 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """
         return []
 
-    def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
-        """Apple Health doesn't support pulling workouts from API.
+    def _normalize_workout(
+        self,
+        raw_workout: Any,
+        user_id: UUID,
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        """Apple payloads are normalized directly in handler classes."""
+        raise NotImplementedError("Direct normalization not supported. Use process_push_data.")
 
-        Apple Health is push-based only - data comes from device uploads.
-        """
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Apple Health uses datetime objects directly."""
+        if isinstance(start_timestamp, datetime) and isinstance(end_timestamp, datetime):
+            return start_timestamp, end_timestamp
+        raise ValueError("Apple Health expects datetime objects for timestamps")
+
+    def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
+        """Apple Health does not support cloud API - data is push-only."""
         return []
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
-        """Apple Health doesn't support pulling workout details from API.
-
-        Apple Health is push-based only - data comes from device uploads.
-        """
-        return None
-
-    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
-        """Extract start and end dates from timestamps.
-
-        Not used for Apple Health as it's push-based, but required by base template.
-        """
-        raise NotImplementedError("Apple Health doesn't use API-based date extraction")
-
-    def _normalize_workout(self, raw_workout: Any, user_id: UUID) -> WorkoutCreate:
-        """Converts a provider-specific workout object into WorkoutCreate.
-
-        Not used directly for Apple Health - use handlers instead via process_payload.
-        """
-        raise NotImplementedError("Use process_payload with handlers for Apple Health")
+        """Apple Health does not support cloud API - data is push-only."""
+        raise NotImplementedError("Apple Health does not support API-based workout detail fetching")
 
     def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
-        """Load data from provider API.
-
-        Apple Health doesn't support API-based data loading - it's push-based only.
-        """
-        return False
-
-    def normalize_workout(self, raw_workout: Any) -> WorkoutCreate:
-        """Normalizes Apple Health workout data.
-
-        This method is used by the Pull flow (get_workouts).
-        Since Apple is Push-based, this might not be used directly unless
-        get_workouts returns data.
-        """
-        raise NotImplementedError("Direct normalization not supported. Use process_push_data.")
+        """Apple Health uses push-based data ingestion via process_payload."""
+        raise NotImplementedError("Apple Health uses process_payload for data ingestion, not load_data")
 
     def process_payload(
         self,
@@ -110,12 +93,12 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         if not handler:
             raise ValueError(f"Unknown Apple Health source: {source_type}")
 
-        normalized_workouts = handler.normalize(payload)
+        normalized_data = handler.normalize(payload)
 
-        for workout in normalized_workouts:
+        for record, detail in normalized_data:
             # We can reuse the internal save method from the template
-            # Note: We need to ensure user_id is set on the workout object
-            workout.user_id = user_id
-            self._save_workout(db, workout)
+            # Note: We need to ensure user_id is set on the record object
+            record.user_id = user_id
+            self._save_workout(db, record, detail)
 
     # Deprecated methods removed in favor of handlers

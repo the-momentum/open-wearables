@@ -1,0 +1,149 @@
+---
+title: "System Overview"
+description: "Repository structure, runtime stack, and technology choices"
+---
+
+## Repository Structure
+
+Open Wearables follows a monorepo structure with clear separation between backend and frontend:
+
+```
+open-wearables/
+├── backend/          # FastAPI Python backend
+│   ├── app/
+│   │   ├── api/     # API routes and endpoints
+│   │   ├── models/  # SQLAlchemy database models
+│   │   ├── schemas/ # Pydantic request/response schemas
+│   │   ├── services/# Business logic layer
+│   │   ├── repositories/ # Data access layer
+│   │   └── integrations/ # Third-party integrations (Celery, Sentry, SQLAdmin)
+│   ├── migrations/  # Alembic database migrations
+│   └── scripts/     # Utility and initialization scripts
+├── frontend/        # React + TanStack Router frontend
+│   └── src/
+│       ├── components/ # React components
+│       ├── routes/     # Route definitions
+│       ├── hooks/      # Custom React hooks
+│       └── lib/        # Utilities and API clients
+└── docs/            # Mintlify documentation
+```
+
+## Runtime Stack
+
+### Backend
+
+**Core Framework:**
+- **FastAPI** (Python 3.13+) - Modern, fast web framework with automatic OpenAPI documentation
+- **SQLAlchemy 2.0** - ORM for database interactions
+- **Alembic** - Database migration management
+- **Pydantic** - Data validation and settings management
+
+**Database & Caching:**
+- **PostgreSQL 18** - Primary relational database
+- **Redis 8** - Task queue broker and caching
+
+**Task Processing:**
+- **Celery** - Distributed task queue for background jobs
+- **Celery Beat** - Scheduled task execution
+- **Flower** - Celery monitoring and administration
+
+**Authentication & Security:**
+- **python-jose** - JWT token handling
+- **bcrypt** - Password hashing
+- **cryptography** - Encrypted provider settings storage
+
+**Infrastructure:**
+- **Docker & Docker Compose** - Containerization and orchestration
+- **Sentry** - Error tracking and monitoring
+- **SQLAdmin** - Admin interface for database management
+
+### Frontend
+
+**Core Framework:**
+- **React 19** - UI library
+- **TanStack Router** - Type-safe routing
+- **TanStack Query** - Server state management
+- **Vite** - Build tool and dev server
+
+**UI Components:**
+- **Radix UI** - Accessible component primitives
+- **Tailwind CSS 4** - Utility-first styling
+- **Lucide React** - Icon library
+- **Motion** - Animation library
+
+**Form Handling:**
+- **React Hook Form** - Form state management
+- **Zod** - Schema validation
+
+**Data Visualization:**
+- **Recharts** - Chart library for metrics visualization
+
+## Architecture Patterns
+
+### Backend Architecture
+
+The backend follows a layered architecture:
+
+1. **API Layer** (`app/api/routes/`) - HTTP endpoints and request handling
+2. **Service Layer** (`app/services/`) - Business logic and orchestration
+3. **Repository Layer** (`app/repositories/`) - Data access abstraction
+4. **Model Layer** (`app/models/`) - Database schema definitions
+
+### Data Flow
+
+```
+Client Request
+    ↓
+API Route (FastAPI)
+    ↓
+Service Layer (Business Logic)
+    ↓
+Repository Layer (Data Access)
+    ↓
+Database (PostgreSQL)
+```
+
+### Background Processing
+
+Long-running tasks (data synchronization, webhooks) are handled asynchronously:
+
+```
+API Endpoint
+    ↓
+Celery Task Queue (Redis)
+    ↓
+Celery Worker
+    ↓
+Provider API / Webhook Delivery
+```
+
+## Deployment Architecture
+
+The platform is designed for **self-hosting** with Docker Compose:
+
+**Services:**
+- `app` - FastAPI application server
+- `db` - PostgreSQL database
+- `redis` - Redis cache and message broker
+- `celery-worker` - Background task processor
+- `celery-beat` - Scheduled task scheduler
+- `flower` - Celery monitoring dashboard
+- `frontend` - React development server (production builds use static hosting)
+
+**Key Design Decisions:**
+- Single-tenant architecture (one deployment = one organization)
+- No external dependencies for core functionality
+- All services can run locally with `docker compose up`
+- Stateless application servers (horizontal scaling ready)
+
+## Development Workflow
+
+**Backend:**
+- Hot-reload enabled via Docker Compose watch mode
+- Database migrations via Alembic
+- Code quality enforced with Ruff
+
+**Frontend:**
+- Vite HMR (Hot Module Replacement) for instant updates
+- TypeScript for type safety
+- Oxlint for fast linting

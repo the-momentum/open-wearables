@@ -5,14 +5,6 @@ export interface ApiErrorResponse {
   details?: Record<string, unknown>;
 }
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-  hasMore: boolean;
-}
-
 export interface ApiResponse<T> {
   data: T;
   message?: string;
@@ -32,6 +24,41 @@ export interface UserCreate {
   last_name?: string | null;
   email?: string | null;
   external_user_id?: string | null;
+}
+
+export interface UserQueryParams {
+  page?: number;
+  limit?: number;
+  sort_by?: 'created_at' | 'email' | 'first_name' | 'last_name';
+  sort_order?: 'asc' | 'desc';
+  search?: string;
+  email?: string;
+  external_user_id?: string;
+}
+
+export interface PaginatedUsersResponse {
+  items: UserRead[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  has_next: boolean;
+  has_prev: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    next_cursor: string | null;
+    previous_cursor: string | null;
+    has_more: boolean;
+  };
+  metadata: {
+    resolution: string | null;
+    sample_count: number | null;
+    start_time: string | null;
+    end_time: string | null;
+  };
 }
 
 export interface UserUpdate {
@@ -72,16 +99,53 @@ export interface ForgotPasswordRequest {
   email: string;
 }
 
+export interface TimeSeriesSample {
+  timestamp: string;
+  type: string;
+  value: number;
+  unit: string;
+}
+
+export interface TimeSeriesParams {
+  start_time: string;
+  end_time: string;
+  types?: string[];
+  resolution?: 'raw' | '1min' | '5min' | '15min' | '1hour';
+  cursor?: string;
+  limit?: number;
+}
+
 export interface ResetPasswordRequest {
   token: string;
   password: string;
 }
 
+export interface CountWithGrowth {
+  count: number;
+  weekly_growth: number;
+}
+
+export interface SeriesTypeMetric {
+  series_type: string;
+  count: number;
+}
+
+export interface WorkoutTypeMetric {
+  workout_type: string | null;
+  count: number;
+}
+
+export interface DataPointsInfo {
+  count: number;
+  weekly_growth: number;
+  top_series_types: SeriesTypeMetric[];
+  top_workout_types: WorkoutTypeMetric[];
+}
+
 export interface DashboardStats {
-  totalUsers: number;
-  activeConnections: number;
-  dataPoints: number;
-  apiCalls: number;
+  total_users: CountWithGrowth;
+  active_conn: CountWithGrowth;
+  data_points: DataPointsInfo;
 }
 
 export interface Provider {
@@ -112,14 +176,6 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
-}
-
-export interface HeartRateData {
-  id: string;
-  userId: string;
-  timestamp: string;
-  value: number;
-  source: string;
 }
 
 export interface SleepData {
@@ -153,12 +209,6 @@ export interface ActivityData {
 export interface HealthDataSummary {
   userId: string;
   period: string;
-  heartRate: {
-    average: number;
-    min: number;
-    max: number;
-    data: HeartRateData[];
-  };
   sleep: {
     averageMinutes: number;
     averageEfficiency: number;
@@ -170,11 +220,6 @@ export interface HealthDataSummary {
     data: ActivityData[];
   };
   lastUpdated: string;
-}
-
-export interface HeartRatePoint {
-  timestamp: string;
-  bpm: number;
 }
 
 export interface SleepSession {
@@ -310,153 +355,84 @@ export interface ChatRequest {
   userId?: string;
 }
 
-export interface HeartRateValue {
-  value: number;
-  unit: string;
-}
-
-export interface HeartRateDataResponse {
-  id: number;
-  workout_id: string;
-  date: string;
-  source: string | null;
-  units: string | null;
-  avg: HeartRateValue | null;
-  min: HeartRateValue | null;
-  max: HeartRateValue | null;
-}
-
-export interface HeartRateRecoveryResponse {
-  id: number;
-  workout_id: string;
-  date: string;
-  source: string | null;
-  units: string | null;
-  avg: HeartRateValue | null;
-  min: HeartRateValue | null;
-  max: HeartRateValue | null;
-}
-
-export interface HeartRateSummary {
-  total_records: number;
-  avg_heart_rate: number;
-  max_heart_rate: number;
-  min_heart_rate: number;
-  avg_recovery_rate: number;
-  max_recovery_rate: number;
-  min_recovery_rate: number;
-}
-
-export interface HeartRateMeta {
-  requested_at: string;
-  filters: Record<string, unknown>;
-  result_count: number;
-  date_range: Record<string, unknown>;
-}
-
-export interface HeartRateListResponse {
-  data: HeartRateDataResponse[];
-  recovery_data: HeartRateRecoveryResponse[];
-  summary: HeartRateSummary;
-  meta: HeartRateMeta;
-}
-
-export interface DateRange {
-  start: string;
-  end: string;
-  duration_days: number;
-}
-
-export interface WorkoutSummary {
-  total_statistics: number;
-  avg_statistic_value: number;
-  max_statistic_value: number;
-  min_statistic_value: number;
-  avg_heart_rate: number;
-  max_heart_rate: number;
-  min_heart_rate: number;
-  total_calories: number;
-}
-
-/**
- * Workout response from backend
- * GET /api/v1/users/{user_id}/workouts
- */
-export interface WorkoutResponse {
-  id: string;
-  type: string | null;
-  duration_seconds: string;
-  source_name: string;
-  start_datetime: string;
-  end_datetime: string;
-  statistics: WorkoutStatisticResponse[];
-}
-
-/**
- * Workout statistic response from backend
- * GET /api/v1/users/{user_id}/heart-rate
- */
-export interface WorkoutStatisticResponse {
-  id: string;
-  user_id: string;
-  workout_id: string;
-  type: string;
-  start_datetime: string;
-  end_datetime: string;
-  min: number | null;
-  max: number | null;
-  avg: number | null;
-  unit: string;
-}
-
-export interface WorkoutMeta {
-  requested_at: string;
-  filters: Record<string, unknown>;
-  result_count: number;
-  total_count: number;
-  date_range: DateRange;
-}
-
-export interface WorkoutListResponse {
-  data: WorkoutResponse[];
-  meta: WorkoutMeta;
-}
-
-export interface MetadataEntryResponse {
-  id: string;
-  key: string;
-  value: string;
-}
-
-export interface RecordResponse {
+export interface EventRecordResponse {
   id: string;
   type: string;
-  sourceName: string;
-  startDate: string;
-  endDate: string;
-  unit: string;
-  value: string;
-  user_id: string;
-  recordMetadata: MetadataEntryResponse[];
-}
+  name?: string | null;
+  start_time: string;
+  end_time: string;
+  duration_seconds?: number | null;
+  source?: {
+    provider: string;
+    device?: string | null;
+  };
+  calories_kcal?: number | null;
+  distance_meters?: number | null;
 
-export interface RecordMeta {
-  requested_at: string;
-  filters: Record<string, unknown>;
-  result_count: number;
-  total_count: number;
-  date_range: DateRange;
-}
-
-export interface RecordListResponse {
-  data: RecordResponse[];
-  meta: RecordMeta;
+  // Legacy fields (keeping for compatibility if needed, but marked optional)
+  user_id?: string;
+  provider_id?: string | null;
+  category?: string;
+  source_name?: string;
+  device_id?: string | null;
+  start_datetime?: string;
+  end_datetime?: string;
+  heart_rate_min?: number | string | null;
+  heart_rate_max?: number | string | null;
+  heart_rate_avg?: number | string | null;
+  steps_min?: number | string | null;
+  steps_max?: number | string | null;
+  steps_avg?: number | string | null;
+  max_speed?: number | string | null;
+  max_watts?: number | string | null;
+  moving_time_seconds: number | string | null;
+  total_elevation_gain: number | string | null;
+  average_speed: number | string | null;
+  average_watts: number | string | null;
+  elev_high: number | string | null;
+  elev_low: number | string | null;
+  sleep_total_duration_minutes: number | string | null;
+  sleep_time_in_bed_minutes: number | string | null;
+  sleep_efficiency_score: number | string | null;
+  sleep_deep_minutes: number | string | null;
+  sleep_rem_minutes: number | string | null;
+  sleep_light_minutes: number | string | null;
+  sleep_awake_minutes: number | string | null;
 }
 
 export interface HealthDataParams {
-  start_date?: string;
-  end_date?: string;
+  start_datetime?: string;
+  end_datetime?: string;
+  device_id?: string;
   limit?: number;
   offset?: number;
   [key: string]: string | number | undefined;
+}
+
+export interface Developer {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  created_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  invited_by: string;
+  created_at: string;
+  expires_at: string;
+  status: 'pending' | 'sent' | 'failed' | 'accepted' | 'expired' | 'revoked';
+}
+
+export interface InvitationCreate {
+  email: string;
+}
+
+export interface InvitationAccept {
+  token: string;
+  first_name: string;
+  last_name: string;
+  password: string;
 }

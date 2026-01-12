@@ -1,18 +1,23 @@
-from app.repositories.user_connection_repository import UserConnectionRepository
-
 from .api_key_repository import ApiKeyRepository
+from .data_point_series_repository import DataPointSeriesRepository
 from .developer_repository import DeveloperRepository
+from .event_record_detail_repository import EventRecordDetailRepository
+from .event_record_repository import EventRecordRepository
+from .external_mapping_repository import ExternalMappingRepository
+from .invitation_repository import InvitationRepository
 from .repositories import CrudRepository
+from .user_connection_repository import UserConnectionRepository
 from .user_repository import UserRepository
-from .workout_repository import WorkoutRepository
-from .workout_statistic_repository import WorkoutStatisticRepository
 
 __all__ = [
     "UserRepository",
     "ApiKeyRepository",
-    "WorkoutRepository",
-    "WorkoutStatisticRepository",
+    "EventRecordRepository",
+    "EventRecordDetailRepository",
+    "DataPointSeriesRepository",
     "UserConnectionRepository",
     "DeveloperRepository",
+    "InvitationRepository",
     "CrudRepository",
+    "ExternalMappingRepository",
 ]

@@ -5,15 +5,16 @@ from uuid import UUID, uuid4
 
 import isodate
 
+from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
 from app.schemas import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
     PolarExerciseJSON,
-    WorkoutCreate,
-    WorkoutStatisticCreate,
 )
+from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.services.workout_service import workout_service
-from app.services.workout_statistic_service import workout_statistic_service
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
@@ -71,102 +72,73 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         end_date = start_date + duration_td
         return start_date, end_date
 
+    def _build_metrics(self, raw_workout: PolarExerciseJSON) -> EventRecordMetrics:
+        hr_avg = (
+            Decimal(str(raw_workout.heart_rate.average))
+            if raw_workout.heart_rate and raw_workout.heart_rate.average is not None
+            else None
+        )
+        hr_max = (
+            Decimal(str(raw_workout.heart_rate.maximum))
+            if raw_workout.heart_rate and raw_workout.heart_rate.maximum is not None
+            else None
+        )
+
+        return {
+            "heart_rate_min": int(hr_avg) if hr_avg is not None else None,
+            "heart_rate_max": int(hr_max) if hr_max is not None else None,
+            "heart_rate_avg": hr_avg,
+            "steps_count": None,
+        }
+
     def _normalize_workout(
         self,
         raw_workout: PolarExerciseJSON,
         user_id: UUID,
-    ) -> WorkoutCreate:
-        """Normalize Polar exercise to WorkoutCreate."""
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
+        """Normalize Polar exercise to EventRecordCreate and EventRecordDetailCreate."""
         workout_id = uuid4()
 
+        workout_type = get_unified_workout_type(raw_workout.sport, raw_workout.detailed_sport_info)
+
         start_date, end_date = self._extract_dates_with_offset(
             raw_workout.start_time,
             raw_workout.start_time_utc_offset,
             raw_workout.duration,
         )
-        duration_seconds = (end_date - start_date).total_seconds()
+        duration_seconds = int((end_date - start_date).total_seconds())
 
-        return WorkoutCreate(
-            id=workout_id,
-            provider_id=raw_workout.id,
-            user_id=user_id,
-            type=raw_workout.sport,
-            duration_seconds=Decimal(duration_seconds),
+        metrics = self._build_metrics(raw_workout)
+
+        record = EventRecordCreate(
+            category="workout",
+            type=workout_type.value,
             source_name=raw_workout.device,
+            device_id=raw_workout.device,
+            duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            id=workout_id,
+            external_id=raw_workout.id,
+            provider_name="Polar",
+            user_id=user_id,
         )
 
-    def _normalize_workout_statistics(
-        self,
-        raw_workout: PolarExerciseJSON,
-        user_id: UUID,
-        workout_id: UUID,
-    ) -> list[WorkoutStatisticCreate]:
-        """Normalize Polar exercise statistics to WorkoutStatisticCreate."""
-        workout_statistics = []
-
-        start_date, end_date = self._extract_dates_with_offset(
-            raw_workout.start_time,
-            raw_workout.start_time_utc_offset,
-            raw_workout.duration,
+        detail = EventRecordDetailCreate(
+            record_id=workout_id,
+            **metrics,
         )
 
-        units = {
-            "calories": "kcal",
-            "distance": "m",
-        }
-
-        for field in ["calories", "distance"]:
-            val = getattr(raw_workout, field)
-            if val is not None:
-                workout_statistics.append(
-                    WorkoutStatisticCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        workout_id=workout_id,
-                        type=field,
-                        start_datetime=start_date,
-                        end_datetime=end_date,
-                        min=None,
-                        max=None,
-                        avg=val,
-                        unit=units[field],
-                    ),
-                )
-
-        if raw_workout.heart_rate:
-            hr_avg = raw_workout.heart_rate.average
-            hr_max = raw_workout.heart_rate.maximum
-
-            if hr_avg is not None or hr_max is not None:
-                workout_statistics.append(
-                    WorkoutStatisticCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        workout_id=workout_id,
-                        type="heartRate",
-                        start_datetime=start_date,
-                        end_datetime=end_date,
-                        min=None,
-                        max=hr_max,
-                        avg=hr_avg,
-                        unit="bpm",
-                    ),
-                )
-
-        return workout_statistics
+        return record, detail
 
     def _build_bundles(
         self,
         raw: list[PolarExerciseJSON],
         user_id: UUID,
-    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
-        """Build bundles of WorkoutCreate and WorkoutStatisticCreate."""
+    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
+        """Build event record payloads for Polar exercises."""
         for raw_workout in raw:
-            workout = self._normalize_workout(raw_workout, user_id)
-            statistics = self._normalize_workout_statistics(raw_workout, user_id, workout.id)
-            yield workout, statistics
+            yield self._normalize_workout(raw_workout, user_id)
 
     def load_data(
         self,
@@ -178,10 +150,10 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         workouts_data = self.get_workouts_from_api(db, user_id, **kwargs)
         workouts = [PolarExerciseJSON(**w) for w in workouts_data]
 
-        for workout_row, workout_statistics in self._build_bundles(workouts, user_id):
-            workout_service.create(db, workout_row)
-            for stat in workout_statistics:
-                workout_statistic_service.create(db, stat)
+        for record, detail in self._build_bundles(workouts, user_id):
+            created_record = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            event_record_service.create_detail(db, detail_for_record)
 
         return True
 

@@ -1,17 +1,36 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
-import type { UserRead, UserCreate, UserUpdate } from '../types';
+import { appendSearchParams } from '@/lib/utils/url';
+import type {
+  UserRead,
+  UserCreate,
+  UserUpdate,
+  UserQueryParams,
+  PaginatedUsersResponse,
+} from '../types';
 
 export const usersService = {
-  async getAll(filters?: { search?: string }): Promise<UserRead[]> {
-    const params = new URLSearchParams();
-    if (filters?.search) params.append('search', filters.search);
+  async getAll(params?: UserQueryParams): Promise<PaginatedUsersResponse> {
+    const searchParams = new URLSearchParams();
 
-    const endpoint = params.toString()
-      ? `${API_ENDPOINTS.users}?${params}`
+    if (params) {
+      appendSearchParams(searchParams, {
+        page: params.page,
+        limit: params.limit,
+        sort_by: params.sort_by,
+        sort_order: params.sort_order,
+        search: params.search,
+        email: params.email,
+        external_user_id: params.external_user_id,
+      });
+    }
+
+    const queryString = searchParams.toString();
+    const url = queryString
+      ? `${API_ENDPOINTS.users}?${queryString}`
       : API_ENDPOINTS.users;
 
-    return apiClient.get<UserRead[]>(endpoint);
+    return apiClient.get<PaginatedUsersResponse>(url);
   },
 
   async getById(id: string): Promise<UserRead> {

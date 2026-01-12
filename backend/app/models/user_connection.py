@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from sqlalchemy import Index, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, PrimaryKey, datetime_tz, str_64
@@ -14,12 +14,13 @@ class UserConnection(BaseDbModel):
     __table_args__ = (
         UniqueConstraint("user_id", "provider", name="uq_user_provider"),
         Index(
-            "idx_user_connections_token_expiry",
+            "idx_user_connection_token_expiry",
             "token_expires_at",
             postgresql_where="status = 'active'",
         ),
-        Index("idx_user_connections_user_provider", "user_id", "provider"),
+        Index("idx_user_connection_user_provider", "user_id", "provider"),
     )
+    __tablename__ = "user_connection"
 
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]

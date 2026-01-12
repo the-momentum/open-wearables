@@ -56,8 +56,25 @@ async function fetchWithRetry(
 
 export const apiClient = {
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const url = `${API_CONFIG.baseUrl}${endpoint}`;
+    let url = `${API_CONFIG.baseUrl}${endpoint}`;
     const token = getToken();
+
+    if (options.params) {
+      const searchParams = new URLSearchParams();
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          if (Array.isArray(value)) {
+            value.forEach((item) => searchParams.append(key, String(item)));
+          } else {
+            searchParams.append(key, String(value));
+          }
+        }
+      });
+      const queryString = searchParams.toString();
+      if (queryString) {
+        url += (url.includes('?') ? '&' : '?') + queryString;
+      }
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -68,9 +85,12 @@ export const apiClient = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // Remove params from options passed to fetch
+    const { params: _params, ...fetchOptions } = options;
+
     try {
       const response = await fetchWithRetry(url, {
-        ...options,
+        ...fetchOptions,
         headers,
       });
 

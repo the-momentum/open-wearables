@@ -1,9 +1,12 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import type {
-  WorkoutStatisticResponse,
-  WorkoutResponse,
   UserConnection,
+  EventRecordResponse,
+  HealthDataParams,
+  PaginatedResponse,
+  TimeSeriesParams,
+  TimeSeriesSample,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -45,24 +48,65 @@ export const healthService = {
   },
 
   /**
-   * Get heart rate data for a user
-   */
-  async getHeartRate(userId: string): Promise<WorkoutStatisticResponse[]> {
-    return apiClient.get<WorkoutStatisticResponse[]>(
-      API_ENDPOINTS.userHeartRate(userId)
-    );
-  },
-
-  /**
    * Get workouts for a user
    */
   async getWorkouts(
     userId: string,
-    params?: WorkoutsParams
-  ): Promise<WorkoutResponse[]> {
-    return apiClient.get<WorkoutResponse[]>(
+    params?: HealthDataParams
+  ): Promise<PaginatedResponse<EventRecordResponse>> {
+    return apiClient.get<PaginatedResponse<EventRecordResponse>>(
       API_ENDPOINTS.userWorkouts(userId),
-      { params }
+      {
+        params,
+      }
+    );
+  },
+
+  async getSleepData(userId: string, days: number = 7): Promise<SleepData[]> {
+    return apiClient.get<SleepData[]>(`/v1/users/${userId}/sleep`, {
+      params: { days },
+    });
+  },
+
+  async getActivityData(
+    userId: string,
+    days: number = 7
+  ): Promise<ActivityData[]> {
+    return apiClient.get<ActivityData[]>(`/v1/users/${userId}/activity`, {
+      params: { days },
+    });
+  },
+
+  async getHealthSummary(
+    userId: string,
+    period: string = '7d'
+  ): Promise<HealthDataSummary> {
+    return apiClient.get<HealthDataSummary>(
+      `/v1/users/${userId}/health-summary`,
+      {
+        params: { period },
+      }
+    );
+  },
+
+  async syncUserData(
+    userId: string
+  ): Promise<{ message: string; jobId: string }> {
+    return apiClient.post<{ message: string; jobId: string }>(
+      `/v1/users/${userId}/sync`,
+      {}
+    );
+  },
+
+  async getTimeSeries(
+    userId: string,
+    params: TimeSeriesParams
+  ): Promise<PaginatedResponse<TimeSeriesSample>> {
+    return apiClient.get<PaginatedResponse<TimeSeriesSample>>(
+      `/api/v1/users/${userId}/timeseries`,
+      {
+        params,
+      }
     );
   },
 };

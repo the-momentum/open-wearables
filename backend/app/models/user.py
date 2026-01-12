@@ -1,10 +1,9 @@
-from typing import Optional
 from uuid import UUID
 
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from app.mappings import OneToMany, PrimaryKey, Unique, datetime_tz, str_100, str_255, email
+from app.mappings import PrimaryKey, Unique, datetime_tz, email, str_100, str_255
 
 
 class User(BaseDbModel):
@@ -19,5 +18,8 @@ class User(BaseDbModel):
 
     external_user_id: Mapped[Unique[str_255] | None]
 
-    workouts: Mapped[OneToMany["Workout"]]
-    workout_statistics: Mapped[OneToMany["WorkoutStatistic"]]
+    personal_record: Mapped["PersonalRecord | None"] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

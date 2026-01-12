@@ -8,12 +8,11 @@ from typing import Any
 from uuid import UUID
 
 import httpx
-import redis
 from fastapi import HTTPException
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
-from app.config import settings
 from app.database import DbSession
+from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.oauth import (
@@ -40,12 +39,7 @@ class BaseOAuthTemplate(ABC):
         self.connection_repo = connection_repo
         self.provider_name = provider_name
         self.api_base_url = api_base_url
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            db=settings.redis_db,
-            decode_responses=True,
-        )
+        self.redis_client = get_redis_client()
         self.state_ttl = 900  # 15 minutes
 
     @property
@@ -157,7 +151,10 @@ class BaseOAuthTemplate(ABC):
         )
 
         if self.credentials.default_scope:
-            auth_url += f"&scope={self.credentials.default_scope}"
+            from urllib.parse import quote
+
+            encoded_scope = quote(self.credentials.default_scope)
+            auth_url += f"&scope={encoded_scope}"
 
         # pkce_data will be None for non-PKCE providers
         return auth_url, pkce_data
@@ -283,12 +280,16 @@ class BaseOAuthTemplate(ABC):
         )
 
         if existing_connection:
-            self.connection_repo.update_tokens(
+            # Update tokens, user info, and scope
+            self.connection_repo.update_connection_info(
                 db,
                 existing_connection,
-                token_response.access_token,
-                token_response.refresh_token,
-                token_response.expires_in,
+                access_token=token_response.access_token,
+                refresh_token=token_response.refresh_token,
+                expires_in=token_response.expires_in,
+                provider_user_id=provider_user_id,
+                provider_username=provider_username,
+                scope=token_response.scope,
             )
         else:
             connection_create = UserConnectionCreate(

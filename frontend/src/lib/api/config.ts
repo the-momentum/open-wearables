@@ -18,8 +18,7 @@ export const API_ENDPOINTS = {
   users: '/api/v1/users',
   userDetail: (id: string) => `/api/v1/users/${id}`,
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
-  userHeartRate: (userId: string) => `/api/v1/users/${userId}/heart-rate`,
-  userWorkouts: (userId: string) => `/api/v1/users/${userId}/workouts`,
+  userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
 
   // OAuth endpoints
   oauthAuthorize: (provider: string) => `/api/v1/oauth/${provider}/authorize`,
@@ -51,4 +50,16 @@ export const API_ENDPOINTS = {
   automations: '/api/v1/automations',
   automationDetail: (id: string) => `/api/v1/automations/${id}`,
   testAutomation: (id: string) => `/api/v1/automations/${id}/test`,
+
+  // Developers endpoints
+  developers: '/api/v1/developers',
+  developerDetail: (id: string) => `/api/v1/developers/${id}`,
+
+  // Invitations endpoints (authenticated)
+  invitations: '/api/v1/invitations',
+  invitationDetail: (id: string) => `/api/v1/invitations/${id}`,
+  invitationResend: (id: string) => `/api/v1/invitations/${id}/resend`,
+
+  // Accept invitation (public - no auth)
+  acceptInvitation: '/api/v1/invitations/accept',
 } as const;

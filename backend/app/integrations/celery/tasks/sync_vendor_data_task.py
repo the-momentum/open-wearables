@@ -1,6 +1,7 @@
-from datetime import datetime
+from contextlib import suppress
+from datetime import datetime, timedelta
 from logging import getLogger
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from app.database import SessionLocal
@@ -73,32 +74,62 @@ def sync_vendor_data(
 
                 try:
                     strategy = factory.get_provider(provider_name)
+                    provider_result = ProviderSyncResult(success=True, params={})
 
-                    if not strategy.workouts:
-                        result.errors[provider_name] = "Workouts not supported"
-                        continue
+                    # Sync workouts
+                    if strategy.workouts:
+                        params = _build_sync_params(provider_name, start_date, end_date)
+                        try:
+                            success = strategy.workouts.load_data(db, user_uuid, **params)
+                            provider_result.params["workouts"] = {"success": success, **params}
+                        except Exception as e:
+                            logger.warning(f"[sync_vendor_data] Workouts sync failed for {provider_name}: {e}")
+                            provider_result.params["workouts"] = {"success": False, "error": str(e)}
 
-                    params = _build_sync_params(provider_name, start_date, end_date)
+                    # Sync 247 data (sleep, recovery, activity) and SAVE to database
+                    if hasattr(strategy, "data_247") and strategy.data_247:
+                        # Parse dates
+                        start_dt = datetime.now() - timedelta(days=30)
+                        end_dt = datetime.now()
 
-                    success = strategy.workouts.load_data(db, user_uuid, **params)
+                        if start_date:
+                            with suppress(ValueError):
+                                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                        if end_date:
+                            with suppress(ValueError):
+                                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
-                    if success:
-                        connection.last_synced_at = datetime.now()
-                        db.add(connection)
-                        db.commit()
+                        try:
+                            # Use load_and_save_all if available (saves data to DB)
+                            # Otherwise fallback to load_all_247_data (just returns data)
+                            provider_any = cast(Any, strategy.data_247)
+                            if hasattr(provider_any, "load_and_save_all"):
+                                results_247 = provider_any.load_and_save_all(
+                                    db,
+                                    user_uuid,
+                                    start_time=start_dt,
+                                    end_time=end_dt,
+                                )
+                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
+                            else:
+                                results_247 = strategy.data_247.load_all_247_data(
+                                    db,
+                                    user_uuid,
+                                    start_time=start_dt,
+                                    end_time=end_dt,
+                                )
+                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
+                            logger.info(f"[sync_vendor_data] 247 data synced for {provider_name}: {results_247}")
+                        except Exception as e:
+                            logger.warning(f"[sync_vendor_data] 247 data sync failed for {provider_name}: {e}")
+                            provider_result.params["data_247"] = {"success": False, "error": str(e)}
 
-                        result.providers_synced[provider_name] = ProviderSyncResult(
-                            success=True,
-                            params=params,
-                        )
-                        logger.info(
-                            f"[sync_vendor_data] Successfully synced {provider_name} for user {user_id}",
-                        )
-                    else:
-                        result.errors[provider_name] = "Sync returned False"
-                        logger.warning(
-                            f"[sync_vendor_data] Sync returned False for {provider_name}, user {user_id}",
-                        )
+                    user_connection_repo.update_last_synced_at(db, connection)
+
+                    result.providers_synced[provider_name] = provider_result
+                    logger.info(
+                        f"[sync_vendor_data] Successfully synced {provider_name} for user {user_id}",
+                    )
 
                 except Exception as e:
                     logger.error(
@@ -131,7 +162,10 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
     Returns:
         Dictionary of parameters for the provider's load_data method
     """
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = {
+        "start_date": start_date,
+        "end_date": end_date,
+    }
 
     # Convert date strings to appropriate formats
     start_timestamp = None
@@ -157,15 +191,8 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
         except (ValueError, AttributeError) as e:
             logger.warning(f"[_build_sync_params] Invalid end_date format: {end_date}, error: {e}")
 
-    # Provider-specific parameters
-    if provider_name == "suunto":
-        # Suunto parameters
-        params["since"] = start_timestamp if start_timestamp else 0  # 0 = all history
-        params["limit"] = 100  # Max allowed by Suunto
-        params["offset"] = 0
-        params["filter_by_modification_time"] = True
-
-    elif provider_name == "polar":
+    # Provider-specific parameter mapping
+    if provider_name == "polar":
         # Polar parameters
         # Note: Polar typically uses its own pagination, but we can include optional flags
         params["samples"] = False  # Can be enabled for detailed sample data
@@ -178,6 +205,13 @@ def _build_sync_params(provider_name: str, start_date: str | None, end_date: str
             params["summary_start_time"] = start_date
         if end_date:
             params["summary_end_time"] = end_date
+
+    elif provider_name == "whoop":
+        # Whoop API uses 'start' and 'end' parameters (ISO 8601 strings)
+        if start_date:
+            params["start"] = start_date
+        if end_date:
+            params["end"] = end_date
 
     # Add generic parameters for providers that might use them
     if start_timestamp:

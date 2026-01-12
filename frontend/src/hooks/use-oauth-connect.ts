@@ -5,7 +5,10 @@ export type OAuthConnectionState = 'idle' | 'connecting' | 'success' | 'error';
 
 export interface UseOAuthConnectOptions {
   userId: string;
+  /** OAuth callback URI (where user returns after provider OAuth) */
   redirectUri?: string;
+  /** Developer's app redirect URL (passed through to success page) */
+  redirectUrl?: string;
   onSuccess?: (providerId: string) => void;
   onError?: (error: string) => void;
 }
@@ -25,7 +28,7 @@ export interface UseOAuthConnectReturn {
 export function useOAuthConnect(
   options: UseOAuthConnectOptions
 ): UseOAuthConnectReturn {
-  const { userId, redirectUri, onSuccess, onError } = options;
+  const { userId, redirectUri, redirectUrl, onSuccess, onError } = options;
 
   const [connectionState, setConnectionState] =
     useState<OAuthConnectionState>('idle');
@@ -41,9 +44,14 @@ export function useOAuthConnect(
       setError(null);
 
       try {
+        const successParams = new URLSearchParams({ provider: providerId });
+        if (redirectUrl) {
+          successParams.set('redirect_url', redirectUrl);
+        }
+
         const finalRedirectUri =
           redirectUri ||
-          `${window.location.origin}/users/${userId}/pair/success?provider=${providerId}`;
+          `${window.location.origin}/users/${userId}/pair/success?${successParams}`;
 
         const params = new URLSearchParams({
           user_id: userId,
@@ -77,7 +85,7 @@ export function useOAuthConnect(
         onError?.(errorMessage);
       }
     },
-    [userId, redirectUri, onSuccess, onError]
+    [userId, redirectUri, redirectUrl, onSuccess, onError]
   );
 
   const reset = useCallback(() => {

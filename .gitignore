@@ -161,3 +161,11 @@ volumes
 
 *.json
 *.xml
+
+# AI instruction local overrides (not committed)
+CLAUDE.local.md
+.claude/settings.local.json
+*.local.mdc
+
+# Exception: AI tool configs that should be tracked
+!.gemini/settings.json

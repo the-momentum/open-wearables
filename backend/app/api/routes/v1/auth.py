@@ -1,12 +1,10 @@
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import DbSession
 from app.schemas import DeveloperRead, DeveloperUpdate
-from app.schemas.developer import DeveloperCreate
 from app.schemas.oauth import Token
 from app.services import DeveloperDep, developer_service
 from app.utils.security import create_access_token, verify_password
@@ -47,15 +45,6 @@ async def login(
     return Token(access_token=access_token, token_type="bearer")
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=DeveloperRead)
-async def register(
-    developer_in: DeveloperCreate,
-    db: DbSession,
-):
-    """Register a new developer."""
-    return developer_service.register(db, developer_in)
-
-
 @router.post("/logout")
 async def logout(_developer: DeveloperDep):
     """Logout developer (token invalidation should be handled client-side)."""
@@ -79,26 +68,3 @@ async def update_current_developer(
 ):
     """Update current authenticated developer."""
     return developer_service.update_developer_info(db, developer.id, payload)
-
-
-@router.get("/{developer_id}", response_model=DeveloperRead)
-async def get_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
-    """Get developer by ID (admin only)."""
-    return developer_service.get(db, developer_id, raise_404=True)
-
-
-@router.patch("/{developer_id}", response_model=DeveloperRead)
-async def update_developer(
-    developer_id: UUID,
-    payload: DeveloperUpdate,
-    db: DbSession,
-    _auth: DeveloperDep,
-):
-    """Update developer by ID (admin only)."""
-    return developer_service.update_developer_info(db, developer_id, payload, raise_404=True)
-
-
-@router.delete("/{developer_id}", response_model=DeveloperRead)
-async def delete_developer(developer_id: UUID, db: DbSession, _auth: DeveloperDep):
-    """Delete developer by ID (admin only)."""
-    return developer_service.delete(db, developer_id, raise_404=True)

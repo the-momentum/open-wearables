@@ -1,0 +1,164 @@
+---
+title: 'Data Types'
+description: 'Reference for available metrics, workout types, and data formats'
+---
+
+## Timeseries Types
+
+The `types` parameter in the timeseries endpoint accepts the following values:
+
+### Heart & Cardiovascular
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `heart_rate` | bpm | Heart rate |
+| `resting_heart_rate` | bpm | Resting heart rate |
+| `heart_rate_variability_sdnn` | ms | HRV (SDNN method) |
+| `heart_rate_recovery_one_minute` | bpm | HR recovery after 1 minute |
+| `walking_heart_rate_average` | bpm | Average HR while walking |
+
+### Blood & Respiratory
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `oxygen_saturation` | % | SpO2 blood oxygen |
+| `blood_glucose` | mg/dL | Blood glucose level |
+| `blood_pressure_systolic` | mmHg | Systolic blood pressure |
+| `blood_pressure_diastolic` | mmHg | Diastolic blood pressure |
+| `respiratory_rate` | brpm | Breathing rate |
+| `sleeping_breathing_disturbances` | count | Sleep breathing disturbances |
+
+### Body Composition
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `height` | cm | Height |
+| `weight` | kg | Weight |
+| `body_fat_percentage` | % | Body fat percentage |
+| `body_mass_index` | kg/m² | BMI |
+| `lean_body_mass` | kg | Lean body mass |
+| `body_temperature` | °C | Body temperature |
+
+### Fitness Metrics
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `vo2_max` | mL/kg/min | VO2 max |
+| `six_minute_walk_test_distance` | meters | 6-minute walk test |
+
+### Activity - Basic
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `steps` | count | Step count |
+| `energy` | kcal | Active energy burned |
+| `basal_energy` | kcal | Basal/resting energy |
+| `stand_time` | minutes | Time spent standing |
+| `exercise_time` | minutes | Exercise duration |
+| `physical_effort` | score | Physical effort score |
+| `flights_climbed` | count | Floors/flights climbed |
+
+### Activity - Distance
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `distance_walking_running` | meters | Walking/running distance |
+| `distance_cycling` | meters | Cycling distance |
+| `distance_swimming` | meters | Swimming distance |
+| `distance_downhill_snow_sports` | meters | Skiing/snowboarding distance |
+
+### Activity - Walking Metrics
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `walking_step_length` | cm | Average step length |
+| `walking_speed` | m/s | Walking speed |
+| `walking_double_support_percentage` | % | Double support time |
+| `walking_asymmetry_percentage` | % | Gait asymmetry |
+| `walking_steadiness` | % | Walking steadiness score |
+| `stair_descent_speed` | m/s | Stair descent speed |
+| `stair_ascent_speed` | m/s | Stair ascent speed |
+
+### Activity - Running Metrics
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `running_power` | watts | Running power |
+| `running_speed` | m/s | Running speed |
+| `running_vertical_oscillation` | cm | Vertical oscillation |
+| `running_ground_contact_time` | ms | Ground contact time |
+| `running_stride_length` | cm | Stride length |
+
+### Activity - Other
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `swimming_stroke_count` | count | Swimming strokes |
+| `cadence` | rpm | Cadence (cycling, etc.) |
+| `power` | watts | Power output |
+
+### Environmental
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `environmental_audio_exposure` | dB | Environmental noise |
+| `headphone_audio_exposure` | dB | Headphone volume |
+| `environmental_sound_reduction` | dB | Sound reduction |
+| `time_in_daylight` | minutes | Daylight exposure |
+| `water_temperature` | °C | Water temperature |
+
+---
+
+## Workout Types
+
+Common workout types returned by the events/workouts endpoint. This is not an exhaustive list—the API supports 70+ workout types:
+
+| Type | Description |
+|------|-------------|
+| `running` | Running/jogging |
+| `cycling` | Cycling/biking |
+| `swimming` | Swimming (pool or open water) |
+| `walking` | Walking |
+| `hiking` | Hiking |
+| `strength_training` | Weight/resistance training |
+| `yoga` | Yoga |
+| `pilates` | Pilates |
+| `elliptical` | Elliptical trainer |
+| `rowing` | Rowing |
+| `cross_country_skiing` | Cross-country skiing |
+| `downhill_skiing` | Downhill/alpine skiing |
+| `snowboarding` | Snowboarding |
+| `other` | Other/unknown activity |
+
+<Note>
+  Workout types are normalized from provider-specific values. The original provider type is preserved in the raw data.
+</Note>
+
+---
+
+## Resolution Options
+
+The `resolution` parameter for timeseries aggregation:
+
+| Resolution | Description |
+|------------|-------------|
+| `raw` | Original data points as recorded |
+| `1min` | Aggregated to 1-minute intervals |
+| `5min` | Aggregated to 5-minute intervals |
+| `15min` | Aggregated to 15-minute intervals |
+| `1hour` | Aggregated to 1-hour intervals |
+
+---
+
+## Example: Fetching Multiple Types
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2025-01-01T00:00:00Z&end_time=2025-01-31T00:00:00Z&types=heart_rate&types=steps&types=energy&resolution=1hour" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+<Tip>
+  Leave `types` empty to fetch all available data types for the user.
+</Tip>
+
+

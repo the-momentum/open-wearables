@@ -8,23 +8,25 @@ from uuid import UUID, uuid4
 from app.database import DbSession
 from app.schemas import (
     AEWorkoutJSON,
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
+    HeartRateSampleCreate,
     RootJSON,
     UploadDataResponse,
-    WorkoutCreate,
-    WorkoutStatisticCreate,
 )
-from app.services.workout_service import workout_service
-from app.services.workout_statistic_service import workout_statistic_service
+from app.services.event_record_service import event_record_service
+from app.services.timeseries_service import timeseries_service
 from app.utils.exceptions import handle_exceptions
 
 APPLE_DT_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
 
 class ImportService:
-    def __init__(self, log: Logger, **kwargs):
+    def __init__(self, log: Logger):
         self.log = log
-        self.workout_service = workout_service
-        self.workout_statistic_service = workout_statistic_service
+        self.event_record_service = event_record_service
+        self.timeseries_service = timeseries_service
 
     def _dt(self, s: str) -> datetime:
         s = s.replace(" +", "+").replace(" ", "T", 1)
@@ -35,71 +37,61 @@ class ImportService:
     def _dec(self, x: float | int | None) -> Decimal | None:
         return None if x is None else Decimal(str(x))
 
-    def _get_workout_statistics(
-        self,
-        workout: AEWorkoutJSON,
-        user_id: str,
-        workout_id: UUID,
-    ) -> list[WorkoutStatisticCreate]:
-        """
-        Get workout statistics from workout JSON.
-        """
-        statistics: list[WorkoutStatisticCreate] = []
+    def _compute_metrics(self, workout: AEWorkoutJSON) -> EventRecordMetrics:
+        hr_entries = workout.heartRateData or []
 
-        for field in ["activeEnergyBurned", "distance", "intensity", "temperature", "humidity"]:
-            if field in workout:
-                data = getattr(workout, field)
-                statistics.append(
-                    WorkoutStatisticCreate(
-                        id=uuid4(),
-                        user_id=UUID(user_id),
-                        workout_id=workout_id,
-                        type=field,
-                        start_datetime=datetime.strptime(workout.start, APPLE_DT_FORMAT),
-                        end_datetime=datetime.strptime(workout.end, APPLE_DT_FORMAT),
-                        min=data.qty or 0,
-                        max=data.qty or 0,
-                        avg=data.qty or 0,
-                        unit=data.units or "",
-                    ),
-                )
+        hr_min_candidates = [self._dec(entry.min) for entry in hr_entries if entry.min is not None]
+        hr_max_candidates = [self._dec(entry.max) for entry in hr_entries if entry.max is not None]
+        hr_avg_candidates = [self._dec(entry.avg) for entry in hr_entries if entry.avg is not None]
 
-        return statistics
+        heart_rate_min = min(hr_min_candidates) if hr_min_candidates else None
+        heart_rate_max = max(hr_max_candidates) if hr_max_candidates else None
+        heart_rate_avg = (
+            sum(hr_avg_candidates, Decimal("0")) / Decimal(len(hr_avg_candidates)) if hr_avg_candidates else None
+        )
+
+        return {
+            "heart_rate_min": int(heart_rate_min) if heart_rate_min is not None else None,
+            "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
+            "heart_rate_avg": heart_rate_avg,
+            "steps_count": None,
+        }
 
     def _get_records(
         self,
         workout: AEWorkoutJSON,
-        workout_id: UUID,
-        user_id: str,
-    ) -> list[WorkoutStatisticCreate]:
-        statistics: list[WorkoutStatisticCreate] = []
+        user_id: UUID,
+    ) -> list[HeartRateSampleCreate]:
+        samples: list[HeartRateSampleCreate] = []
 
-        for field in ["heartRate", "heartRateRecovery", "activeEnergy"]:
-            if field in workout:
-                data = getattr(workout, field)
-                for entry in data:
-                    statistics.append(
-                        WorkoutStatisticCreate(
-                            id=uuid4(),
-                            user_id=UUID(user_id),
-                            workout_id=workout_id,
-                            type=field,
-                            start_datetime=self._dt(entry.date),
-                            end_datetime=self._dt(entry.date),
-                            min=entry.min or 0,
-                            max=entry.max or 0,
-                            avg=entry.avg or 0,
-                            unit=entry.units or "",
-                        ),
-                    )
+        heart_rate_fields = ("heartRate", "heartRateRecovery")
+        for field in heart_rate_fields:
+            entries = getattr(workout, field, None)
+            if not entries:
+                continue
 
-        return statistics
+            for entry in entries:
+                value = entry.avg or entry.max or entry.min or 0
+                source_name = getattr(entry, "source", None) or "Auto Export"
+                samples.append(
+                    HeartRateSampleCreate(
+                        id=uuid4(),
+                        external_id=None,
+                        user_id=user_id,
+                        provider_name="Apple",
+                        device_id=source_name,
+                        recorded_at=self._dt(entry.date),
+                        value=self._dec(value) or 0,
+                    ),
+                )
+
+        return samples
 
     def _build_import_bundles(
         self,
         raw: dict,
         user_id: str,
-    ) -> Iterable[tuple[WorkoutCreate, list[WorkoutStatisticCreate]]]:
+    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate, list[HeartRateSampleCreate]]]:
         """
         Given the parsed JSON dict from HealthAutoExport, yield ImportBundles
         ready to insert the database.
@@ -107,6 +99,7 @@ class ImportService:
         root = RootJSON(**raw)
         workouts_raw = root.data.get("workouts", [])
 
+        user_uuid = UUID(user_id)
         for w in workouts_raw:
             wjson = AEWorkoutJSON(**w)
 
@@ -114,38 +107,47 @@ class ImportService:
 
             start_date = self._dt(wjson.start)
             end_date = self._dt(wjson.end)
-            duration_seconds = Decimal(str((end_date - start_date).total_seconds()))
+            duration_seconds = int((end_date - start_date).total_seconds())
 
-            workout_statistics = self._get_workout_statistics(wjson, user_id, workout_id)
-            records = self._get_records(wjson, workout_id, user_id)
-
-            statistics = [*workout_statistics, *records]
+            metrics = self._compute_metrics(wjson)
+            hr_samples = self._get_records(wjson, user_uuid)
 
             workout_type = wjson.name or "Unknown Workout"
 
-            workout_row = WorkoutCreate(
-                id=workout_id,
-                user_id=UUID(user_id),
+            record = EventRecordCreate(
+                category="workout",
                 type=workout_type,
-                duration_seconds=duration_seconds,
                 source_name="Auto Export",
+                device_id=None,
+                duration_seconds=duration_seconds,
                 start_datetime=start_date,
                 end_datetime=end_date,
+                id=workout_id,
+                external_id=wjson.id,
+                provider_name="Apple",
+                user_id=user_uuid,
             )
 
-            yield workout_row, statistics
+            detail = EventRecordDetailCreate(
+                record_id=workout_id,
+                **metrics,
+            )
+
+            yield record, detail, hr_samples
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
-        for workout_row, statistics in self._build_import_bundles(raw, user_id):
-            self.workout_service.create(db_session, workout_row)
+        for record, detail, hr_samples in self._build_import_bundles(raw, user_id):
+            created_record = self.event_record_service.create(db_session, record)
+            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+            self.event_record_service.create_detail(db_session, detail_for_record)
 
-            for stat in statistics:
-                self.workout_statistic_service.create(db_session, stat)
+            if hr_samples:
+                self.timeseries_service.bulk_create_samples(db_session, hr_samples)
 
         return True
 
     @handle_exceptions
-    async def import_data_from_request(
+    def import_data_from_request(
         self,
         db_session: DbSession,
         request_content: str,

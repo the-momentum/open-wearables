@@ -17,16 +17,36 @@
             "group": "Getting started",
             "pages": [
               "index",
-              "quickstart"
+              "quickstart",
+              "roadmap"
             ]
           },
           {
-            "group": "Provider setup",
+            "group": "Architecture",
             "pages": [
-              "provider-setup/suunto",
-              "provider-setup/apple-health",
-              "provider-setup/garmin",
-              "provider-setup/polar"
+              "architecture/system-overview",
+              "architecture/unified-data-model"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "provider-setup/index"
+            ]
+          },
+          {
+            "group": "Developer Guides",
+            "pages": [
+              "dev-guides/backend-e2e-integration",
+              "dev-guides/how-to-add-new-provider",
+              "dev-guides/aws-setup"
+            ]
+          },
+          {
+            "group": "Support",
+            "pages": [
+              "support",
+              "faqs"
             ]
           }
         ]
@@ -39,6 +59,16 @@
             "group": "Overview",
             "pages": [
               "api-reference/introduction"
+            ]
+          },
+          {
+            "group": "Integration Guides",
+            "pages": [
+              "api-reference/guides/quick-integration",
+              "api-reference/guides/apple-xml-import",
+              "api-reference/guides/provider-setup",
+              "api-reference/guides/data-types",
+              "api-reference/guides/error-handling"
             ]
           }
         ]

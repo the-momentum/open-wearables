@@ -18,7 +18,7 @@ up:	## Runs the non-detached environment
 	$(DOCKER_COMMAND) up --force-recreate
 
 watch:	## Runs the environment with hot-reload
-	$(DOCKER_COMMAND) --watch
+	$(DOCKER_COMMAND) watch
 
 stop:	## Stops running instance
 	$(DOCKER_COMMAND) stop
@@ -36,6 +36,7 @@ migrate:  ## Apply all migrations
 init:  ## Seed sample data
 	$(DOCKER_EXEC) uv sync --group dev
 	$(DOCKER_EXEC) uv run python scripts/init/seed_admin.py
+	$(DOCKER_EXEC) uv run python scripts/init/seed_series_types.py
 	$(DOCKER_EXEC) uv run python scripts/init/seed_activity_data.py
 
 create_migration:  ## Create a new migration. Use 'make create_migration m="Description of the change"'

@@ -40,10 +40,6 @@ class Settings(BaseSettings):
     db_user: str = "open-wearables"
     db_password: SecretStr = SecretStr("open-wearables")
 
-    # CELERY SETTINGS
-    CELERY_BROKER_URL: str
-    CELERY_RESULT_BACKEND: str
-
     # Sentry
     SENTRY_ENABLED: bool = False
     SENTRY_DSN: str | None = None
@@ -63,12 +59,15 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
+    # SYNC SETTINGS
+    sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
     suunto_client_secret: SecretStr | None = None
     suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
     suunto_subscription_key: SecretStr | None = None
-    suunto_default_scope: str = "workout"
+    suunto_default_scope: str = ""
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None
@@ -81,6 +80,20 @@ class Settings(BaseSettings):
     polar_client_secret: SecretStr | None = None
     polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
     polar_default_scope: str = "accesslink.read_all"
+
+    # WHOOP OAUTH SETTINGS
+    whoop_client_id: str | None = None
+    whoop_client_secret: SecretStr | None = None
+    whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
+    whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
+
+    # EMAIL SETTINGS (Resend)
+    resend_api_key: SecretStr | None = None
+    email_from_address: str | None = None
+    email_from_name: str = "Open Wearables"
+    frontend_url: str = "http://localhost:3000"
+    invitation_expire_days: int = 7
+    email_max_retries: int = 5
 
     # AWS SETTINGS
     aws_bucket_name: str | None = None

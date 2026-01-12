@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    paths:
+    branches:
+      - main
+    paths: &paths
       - "backend/**"
       - "frontend/**"
+  pull_request:
+    paths: *paths
 
 jobs:
   # Detect which parts of the codebase changed
@@ -70,6 +74,50 @@ jobs:
       - name: Run type checker
         working-directory: backend
         run: uv run ty check
+
+  backend-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: open-wearables
+          POSTGRES_PASSWORD: open-wearables
+          POSTGRES_DB: open_wearables_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    env:
+      ENV: test
+      TEST_DATABASE_URL: postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test
+      SECRET_KEY: test-secret-key-for-ci
+      MASTER_KEY: dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk=
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync --group dev
+      - name: Run tests with coverage
+        working-directory: backend
+        run: uv run pytest -v --cov=app --cov-report=xml --cov-report=term-missing
 
   frontend-setup:
     needs: changes
