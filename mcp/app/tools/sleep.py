@@ -1,0 +1,238 @@
+"""MCP tool for querying sleep records."""
+
+import logging
+from datetime import UTC, datetime, timedelta
+
+from app.services.api_client import client
+
+logger = logging.getLogger(__name__)
+
+
+def _format_duration(minutes: int | None) -> str | None:
+    """Format duration in minutes to human-readable string."""
+    if minutes is None:
+        return None
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours}h {mins}m"
+
+
+def _format_time(dt_str: str | None) -> str | None:
+    """Extract time portion from ISO datetime string."""
+    if not dt_str:
+        return None
+    try:
+        # Parse ISO format and return just the time
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return dt.strftime("%H:%M")
+    except (ValueError, AttributeError):
+        return dt_str
+
+
+async def get_sleep_records(
+    user_id: str | None = None,
+    user_name: str | None = None,
+    days: int = 7,
+) -> dict:
+    """
+    Get sleep records for a user over the last X days.
+
+    This tool retrieves daily sleep summaries including start time, end time,
+    duration, and sleep stages (if available from the wearable device).
+
+    Args:
+        user_id: UUID of the user. If not provided, will attempt to find user by name
+                 or list available users if multiple exist.
+        user_name: First name of the user to search for. Used if user_id is not provided.
+                   Example: "John" will match users with "John" in their first name.
+        days: Number of days to look back. Default is 7. Maximum is 90.
+
+    Returns:
+        A dictionary containing:
+        - user: Information about the user (id, first_name, last_name)
+        - period: The date range queried (start, end)
+        - records: List of sleep records with date, start_time, end_time, duration
+        - summary: Aggregate statistics (avg_duration, total_nights, etc.)
+
+    Example response:
+        {
+            "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
+            "period": {"start": "2025-01-05", "end": "2025-01-12"},
+            "records": [
+                {
+                    "date": "2025-01-11",
+                    "start_time": "23:15",
+                    "end_time": "07:30",
+                    "duration_minutes": 495,
+                    "duration_formatted": "8h 15m",
+                    "source": "whoop"
+                }
+            ],
+            "summary": {
+                "total_nights": 7,
+                "nights_with_data": 6,
+                "avg_duration_minutes": 465,
+                "avg_duration_formatted": "7h 45m",
+                "min_duration_minutes": 360,
+                "max_duration_minutes": 540
+            }
+        }
+
+    Notes for LLMs:
+        - If user_id is not provided and multiple users exist, this will return
+          an error with available_users list. Use list_users to discover users first.
+        - Duration is in minutes. Use duration_formatted for human-readable output.
+        - start_time and end_time may be null if not recorded by the device.
+        - The 'source' field indicates which wearable provided the data (whoop, garmin, etc.)
+        - For questions about sleep quality, check if stages data is available in the backend.
+    """
+    # Validate days parameter
+    days = min(max(1, days), 90)
+
+    try:
+        # Step 1: Resolve user ID
+        resolved_user = None
+
+        if user_id:
+            # Fetch user details to confirm they exist
+            try:
+                user_data = await client.get_user(user_id)
+                resolved_user = {
+                    "id": str(user_data.get("id")),
+                    "first_name": user_data.get("first_name"),
+                    "last_name": user_data.get("last_name"),
+                }
+            except ValueError as e:
+                return {"error": f"User not found: {user_id}", "details": str(e)}
+
+        elif user_name:
+            # Search for user by name
+            users_response = await client.get_users(search=user_name)
+            users = users_response.get("items", [])
+
+            if len(users) == 0:
+                return {
+                    "error": f"No user found with name '{user_name}'",
+                    "suggestion": "Use list_users to see all available users.",
+                }
+            elif len(users) == 1:
+                user = users[0]
+                resolved_user = {
+                    "id": str(user.get("id")),
+                    "first_name": user.get("first_name"),
+                    "last_name": user.get("last_name"),
+                }
+            else:
+                # Multiple matches - return options
+                return {
+                    "error": f"Multiple users match '{user_name}'. Please specify user_id.",
+                    "matches": [
+                        {
+                            "id": str(u.get("id")),
+                            "first_name": u.get("first_name"),
+                            "last_name": u.get("last_name"),
+                        }
+                        for u in users
+                    ],
+                }
+
+        else:
+            # No user specified - check if there's only one user
+            users_response = await client.get_users()
+            users = users_response.get("items", [])
+
+            if len(users) == 0:
+                return {"error": "No users found. Create a user first via the Open Wearables API."}
+            elif len(users) == 1:
+                user = users[0]
+                resolved_user = {
+                    "id": str(user.get("id")),
+                    "first_name": user.get("first_name"),
+                    "last_name": user.get("last_name"),
+                }
+            else:
+                # Multiple users - need to specify
+                return {
+                    "error": "Multiple users available. Please specify user_id or user_name.",
+                    "available_users": [
+                        {
+                            "id": str(u.get("id")),
+                            "first_name": u.get("first_name"),
+                            "last_name": u.get("last_name"),
+                        }
+                        for u in users[:10]  # Limit to first 10
+                    ],
+                    "total_users": len(users),
+                }
+
+        # Step 2: Calculate date range
+        end_date = datetime.now(UTC)
+        start_date = end_date - timedelta(days=days)
+
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+
+        # Step 3: Fetch sleep data
+        sleep_response = await client.get_sleep_summaries(
+            user_id=resolved_user["id"],
+            start_date=start_str,
+            end_date=end_str,
+        )
+
+        records_data = sleep_response.get("data", [])
+
+        # Step 4: Transform records
+        records = []
+        durations = []
+
+        for record in records_data:
+            duration = record.get("duration_minutes")
+            if duration is not None:
+                durations.append(duration)
+
+            source = record.get("source", {})
+            records.append(
+                {
+                    "date": str(record.get("date")),
+                    "start_time": _format_time(record.get("start_time")),
+                    "end_time": _format_time(record.get("end_time")),
+                    "duration_minutes": duration,
+                    "duration_formatted": _format_duration(duration),
+                    "source": source.get("provider") if isinstance(source, dict) else source,
+                }
+            )
+
+        # Step 5: Calculate summary statistics
+        summary = {
+            "total_nights": len(records),
+            "nights_with_data": len(durations),
+            "avg_duration_minutes": None,
+            "avg_duration_formatted": None,
+            "min_duration_minutes": None,
+            "max_duration_minutes": None,
+        }
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            summary.update(
+                {
+                    "avg_duration_minutes": round(avg),
+                    "avg_duration_formatted": _format_duration(round(avg)),
+                    "min_duration_minutes": min(durations),
+                    "max_duration_minutes": max(durations),
+                }
+            )
+
+        return {
+            "user": resolved_user,
+            "period": {"start": start_str, "end": end_str},
+            "records": records,
+            "summary": summary,
+        }
+
+    except ValueError as e:
+        logger.error(f"API error in get_sleep_records: {e}")
+        return {"error": str(e)}
+    except Exception as e:
+        logger.exception(f"Unexpected error in get_sleep_records: {e}")
+        return {"error": f"Failed to fetch sleep records: {e}"}
