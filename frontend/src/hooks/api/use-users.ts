@@ -138,7 +138,9 @@ export function useUploadAppleXml() {
       usersService.uploadAppleXml(userId, file),
     onSuccess: (_data, { userId }) => {
       // Invalidate user data to show new imported data
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.detail(userId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.users.detail(userId),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.all,
         refetchType: 'active',
@@ -157,21 +159,12 @@ export function useUploadAppleXmlViaS3() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({
-      userId,
-      file,
-    }: {
-      userId: string;
-      file: File;
-    }) => {
+    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
       // Step 1: Get presigned URL from backend
-      const presignedData = await usersService.getAppleXmlPresignedUrl(
-        userId,
-        {
-          filename: file.name,
-          max_file_size: file.size,
-        }
-      );
+      const presignedData = await usersService.getAppleXmlPresignedUrl(userId, {
+        filename: file.name,
+        max_file_size: file.size,
+      });
 
       // Step 2: Upload directly to S3
       await usersService.uploadToS3(
@@ -184,7 +177,9 @@ export function useUploadAppleXmlViaS3() {
     },
     onSuccess: (_data, { userId }) => {
       // Invalidate user data (processing will happen asynchronously via SQS)
-      queryClient.invalidateQueries({ queryKey: queryKeys.users.detail(userId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.users.detail(userId),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.all,
         refetchType: 'active',
