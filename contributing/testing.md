@@ -16,7 +16,7 @@ docker compose up db -d
 docker compose logs -f db  # Look for "database system is ready"
 
 # Create the test database
-docker compose exec db createdb -U open-wearables open_wearables_test
+docker compose exec db psql -U open-wearables -c "CREATE DATABASE open_wearables_test;"
 ```
 
 ### Option 2: Local PostgreSQL
@@ -47,7 +47,7 @@ cd backend
 uv run pytest
 
 # Run specific test file
-uv run pytest tests/test_users.py
+uv run pytest tests/api/v1/test_users.py
 
 # Run with verbose output
 uv run pytest -v

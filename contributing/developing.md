@@ -8,7 +8,7 @@ This guide covers setting up your local development environment for Open Wearabl
 - **uv** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically
 - **pnpm** - Node.js package manager ([Install pnpm](https://pnpm.io/installation))
 
-For local development without Docker, you'll also need:
+For local frontend development without Docker, you'll also need:
 - **Node.js 22+** - For frontend development
 
 ## Quick Start with Docker (Recommended)

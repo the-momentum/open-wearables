@@ -4,7 +4,7 @@ This guide covers how to report bugs and request features for Open Wearables.
 
 ## Before Creating an Issue
 
-1. **Search existing issues** - Your issue may already be reported at [GitHub Issues](https://github.com/open-wearables/open-wearables/issues)
+1. **Search existing issues** - Your issue may already be reported at [GitHub Issues](https://github.com/the-momentum/open-wearables/issues)
 2. **Check closed issues** - The issue may have been resolved in a recent update
 3. **Update to latest** - Ensure you're running the latest version
 

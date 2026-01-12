@@ -2,11 +2,29 @@
 
 This guide covers code formatting and linting for Open Wearables.
 
+## Quick Start
+
+The project uses **pre-commit hooks** to run all checks automatically. This is the recommended way to ensure your code passes all checks:
+
+```bash
+# Run all checks (from project root)
+uv run pre-commit run --all-files
+```
+
+This runs:
+- Ruff linter with auto-fix
+- Ruff formatter
+- ty type checker
+- Trailing whitespace removal
+- End-of-file fixer
+
 ## Backend (Python)
 
 We use **Ruff** for linting and formatting, and **ty** for type checking.
 
-### Commands
+### Individual Commands
+
+If you need to run checks individually:
 
 ```bash
 cd backend
@@ -24,7 +42,7 @@ uv run ruff format --check .
 uv run ruff format .
 
 # Type checking
-uv run ty check
+uv run ty check .
 ```
 
 ### Style Guidelines
@@ -32,22 +50,6 @@ uv run ty check
 - **Line length**: 120 characters
 - **Type hints**: Required on all function parameters and return types
 - **Imports**: Sorted automatically by Ruff
-
-### Before Submitting a PR
-
-The project uses pre-commit hooks. Run all checks with:
-
-```bash
-# Run all checks (from project root)
-uv run pre-commit run --all-files
-```
-
-This runs:
-- Ruff linter with auto-fix
-- Ruff formatter
-- ty type checker
-- Trailing whitespace removal
-- End-of-file fixer
 
 ## Frontend (TypeScript/React)
 
@@ -116,10 +118,9 @@ Recommended extensions:
 The project uses pre-commit hooks to run checks automatically before each commit:
 
 ```bash
-# Install pre-commit hooks (first time only)
-cd backend
+# Install pre-commit hooks (first time only, from project root)
 uv sync --group code-quality
-pre-commit install
+uv run pre-commit install
 
 # Run all checks manually
 uv run pre-commit run --all-files

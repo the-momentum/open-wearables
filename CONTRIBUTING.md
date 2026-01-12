@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to Open Wearables! This project aims to provide a unified API for health and wearable data aggregation.
 
-Before jumping into a PR, please search [existing PRs](https://github.com/open-wearables/open-wearables/pulls) or [issues](https://github.com/open-wearables/open-wearables/issues) for an open or closed item that relates to your submission.
+Before jumping into a PR, please search [existing PRs](https://github.com/the-momentum/open-wearables/pulls) or [issues](https://github.com/the-momentum/open-wearables/issues) for an open or closed item that relates to your submission.
 
 ## Development
 
