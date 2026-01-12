@@ -28,18 +28,9 @@ import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
   useUploadAppleXml,
   useUploadAppleXmlViaS3,
 } from '@/hooks/api/use-users';
-
-// 10MB threshold - files larger than this use S3, smaller use direct upload
-const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 import {
   Pagination,
   PaginationContent,
@@ -49,6 +40,9 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from '@/components/ui/pagination';
+
+// 10MB threshold - files larger than this use S3, smaller use direct upload
+const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 
 interface UsersTableProps {
   data: UserRead[];
@@ -184,6 +178,13 @@ export function UsersTable({
     // Choose upload method based on file size
     const uploadMutation =
       file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
+
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+    const method = file.size > S3_UPLOAD_THRESHOLD ? 'S3' : 'Direct';
+    console.log(
+      `Uploading ${file.name} (${fileSizeMB}MB) via ${method} upload`
+    );
+    console.log(file.size, S3_UPLOAD_THRESHOLD);
 
     uploadMutation(
       { userId, file },
@@ -344,34 +345,19 @@ export function UsersTable({
               <Eye className="h-4 w-4" />
             </Link>
           </Button>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleUploadClick(row.original.id)}
-                  disabled={uploadingUserId === row.original.id}
-                  title="Upload Apple Health XML"
-                >
-                  {uploadingUserId === row.original.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs">
-                  Upload Apple Health XML
-                  <br />
-                  <span className="text-zinc-500">
-                    &lt;10MB: Direct • &gt;10MB: S3
-                  </span>
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => handleUploadClick(row.original.id)}
+            disabled={uploadingUserId === row.original.id}
+            title="Upload Apple Health XML"
+          >
+            {uploadingUserId === row.original.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+          </Button>
           <input
             ref={(el) => (fileInputRefs.current[row.original.id] = el)}
             type="file"
