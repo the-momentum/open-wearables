@@ -20,13 +20,8 @@ import {
   useWorkouts,
   useTimeSeries,
 } from '@/hooks/api/use-health';
-import {
-  useUser,
-  useDeleteUser,
-  useUpdateUser,
-  useUploadAppleXml,
-  useUploadAppleXmlViaS3,
-} from '@/hooks/api/use-users';
+import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
+import { useAppleXmlUpload } from '@/hooks/api/use-apple-xml-upload';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, truncateId } from '@/lib/utils/format';
@@ -48,11 +43,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-
-// 10MB threshold - files larger than this use S3, smaller use direct upload
-const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
-// Maximum file size: 1GB (matches backend MAX_FILE_SIZE limit)
-const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
 const TIME_SERIES_TYPES = ['energy', 'steps', 'heart_rate'];
 
@@ -113,9 +103,7 @@ function UserDetailPage() {
     useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
-  const { mutate: uploadDirect } = useUploadAppleXml();
-  const { mutate: uploadViaS3 } = useUploadAppleXmlViaS3();
-  const [isUploading, setIsUploading] = useState(false);
+  const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
   const [copied, setCopied] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -125,6 +113,8 @@ function UserDetailPage() {
     external_user_id: '',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isUploading = isUploadingFile(userId);
 
   useEffect(() => {
     if (user) {
@@ -147,41 +137,6 @@ function UserDetailPage() {
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
-  };
-
-  const handleFileUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Reset the input so the same file can be uploaded again
-    event.target.value = '';
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      const maxSizeGB = (MAX_FILE_SIZE / (1024 * 1024 * 1024)).toFixed(0);
-      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
-      toast.error(
-        `File is too large (${fileSizeGB}GB). Maximum size is ${maxSizeGB}GB`
-      );
-      return;
-    }
-
-    setIsUploading(true);
-
-    // Choose upload method based on file size
-    const uploadMutation =
-      file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
-
-    uploadMutation(
-      { userId, file },
-      {
-        onSettled: () => {
-          setIsUploading(false);
-        },
-      }
-    );
   };
 
   const handleDelete = () => {
@@ -279,7 +234,7 @@ function UserDetailPage() {
             ref={fileInputRef}
             type="file"
             accept=".xml"
-            onChange={handleFileUpload}
+            onChange={(e) => handleUpload(userId, e)}
             className="hidden"
           />
           <button

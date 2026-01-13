@@ -27,10 +27,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
-import {
-  useUploadAppleXml,
-  useUploadAppleXmlViaS3,
-} from '@/hooks/api/use-users';
+import { useAppleXmlUpload } from '@/hooks/api/use-apple-xml-upload';
 import {
   Pagination,
   PaginationContent,
@@ -40,11 +37,6 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from '@/components/ui/pagination';
-
-// 10MB threshold - files larger than this use S3, smaller use direct upload
-const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
-// Maximum file size: 1GB (matches backend MAX_FILE_SIZE limit)
-const MAX_FILE_SIZE = 1024 * 1024 * 1024;
 
 interface UsersTableProps {
   data: UserRead[];
@@ -89,9 +81,7 @@ export function UsersTable({
   const [copiedPairLink, setCopiedPairLink] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
-  const { mutate: uploadDirect } = useUploadAppleXml();
-  const { mutate: uploadViaS3 } = useUploadAppleXmlViaS3();
-  const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
+  const { handleUpload, uploadingUserId } = useAppleXmlUpload();
 
   const onQueryChangeRef = useRef(onQueryChange);
   useEffect(() => {
@@ -163,42 +153,6 @@ export function UsersTable({
 
   const handleUploadClick = (userId: string) => {
     fileInputRefs.current[userId]?.click();
-  };
-
-  const handleFileUpload = async (
-    userId: string,
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Reset the input so the same file can be uploaded again
-    event.target.value = '';
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      const maxSizeGB = (MAX_FILE_SIZE / (1024 * 1024 * 1024)).toFixed(0);
-      const fileSizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
-      toast.error(
-        `File is too large (${fileSizeGB}GB). Maximum size is ${maxSizeGB}GB`
-      );
-      return;
-    }
-
-    setUploadingUserId(userId);
-
-    // Choose upload method based on file size
-    const uploadMutation =
-      file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
-
-    uploadMutation(
-      { userId, file },
-      {
-        onSettled: () => {
-          setUploadingUserId(null);
-        },
-      }
-    );
   };
 
   const truncateId = (id: string) => {
@@ -367,7 +321,7 @@ export function UsersTable({
             ref={(el) => (fileInputRefs.current[row.original.id] = el)}
             type="file"
             accept=".xml"
-            onChange={(e) => handleFileUpload(row.original.id, e)}
+            onChange={(e) => handleUpload(row.original.id, e)}
             className="hidden"
           />
           <Button
