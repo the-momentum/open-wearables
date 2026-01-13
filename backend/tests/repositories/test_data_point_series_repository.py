@@ -159,9 +159,11 @@ class TestDataPointSeriesRepository:
             series_type=SeriesType.heart_rate,  # Same series type
         )
 
-        # Act & Assert
+        # Act
+        series_repo.create(db, duplicate_sample)
+
+        # Assert - The IntegrityError should be raised on commit
         with pytest.raises(IntegrityError) as exc_info:
-            series_repo.create(db, duplicate_sample)
             db.commit()
 
         # Verify the error message mentions the unique constraint
