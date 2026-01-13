@@ -29,8 +29,8 @@ class DataPointSeriesRepository(
     @handle_exceptions
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataPointSeries:
         """Create a data point sample, or return existing if duplicate.
-        
-        Handles duplicate records gracefully by catching IntegrityError and 
+
+        Handles duplicate records gracefully by catching IntegrityError and
         returning the existing record instead.
         """
         mapping = self.mapping_repo.ensure_mapping(
@@ -55,12 +55,12 @@ class DataPointSeriesRepository(
             return creation
         except Exception as e:
             # Check if this is a unique constraint violation
-            from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
             from psycopg.errors import UniqueViolation
-            
+            from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+
             if isinstance(e, SQLAIntegrityError) and isinstance(e.orig, UniqueViolation):
                 db_session.rollback()
-                
+
                 # Query for existing record using the unique constraint fields
                 existing = (
                     db_session.query(self.model)
@@ -71,10 +71,10 @@ class DataPointSeriesRepository(
                     )
                     .first()
                 )
-                
+
                 if existing:
                     return existing
-            
+
             # If it's not a duplicate error or we couldn't find the existing record, re-raise
             raise
 
