@@ -405,6 +405,10 @@ class DataPointSeriesRepository(
         """Get average values for specified series types within a time range.
 
         Returns a dict mapping SeriesType to average value (or None if no data).
+
+        TODO: This method uses closed interval [start, end] (<=) while other methods
+        use half-open [start, end) (<). Consider standardizing on half-open intervals
+        for consistency across the repository.
         """
         if not series_types:
             return {}
@@ -791,6 +795,7 @@ class DataPointSeriesRepository(
         )
 
         # Main query to get the actual values at those timestamps
+        # Use DISTINCT ON to handle multiple records with identical timestamps
         results = (
             db_session.query(
                 self.model.series_type_definition_id,
@@ -806,6 +811,10 @@ class DataPointSeriesRepository(
                 & (self.model.recorded_at == latest_subq.c.max_recorded_at),
             )
             .filter(ExternalDeviceMapping.user_id == user_id)
+            # DISTINCT ON (PostgreSQL) ensures exactly one result per series type
+            # Order by id desc as tiebreaker for deterministic selection
+            .distinct(self.model.series_type_definition_id)
+            .order_by(self.model.series_type_definition_id, self.model.id.desc())
             .all()
         )
 

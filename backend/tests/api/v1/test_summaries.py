@@ -195,7 +195,7 @@ class TestSleepSummaryEndpoint:
 
         # Physiological metrics should be null when no data exists
         assert sleep_data["avg_heart_rate_bpm"] is None
-        assert sleep_data["avg_hrv_rmssd_ms"] is None
+        assert sleep_data["avg_hrv_sdnn_ms"] is None
         assert sleep_data["avg_respiratory_rate"] is None
         assert sleep_data["avg_spo2_percent"] is None
 
@@ -1024,7 +1024,7 @@ class TestBodySummaryEndpoint:
         # Average of 58, 59, 60, 61, 62, 63, 64 = 61
         assert body["resting_heart_rate_bpm"] == 61
         # Average of 40, 42, 44, 46, 48, 50, 52 = 46
-        assert body["avg_hrv_rmssd_ms"] == 46.0
+        assert body["avg_hrv_sdnn_ms"] == 46.0
 
     def test_get_body_summary_with_blood_pressure(self, client: TestClient, db: Session) -> None:
         """Test body summary includes blood pressure averages."""
@@ -1085,10 +1085,11 @@ class TestBodySummaryEndpoint:
         assert body["blood_pressure"]["avg_systolic_mmhg"] == 121
         # Average diastolic: (80 + 78 + 82 + 80 + 79) / 5 = 79.8 -> 80
         assert body["blood_pressure"]["avg_diastolic_mmhg"] == 80
-        # Max systolic: 125
-        assert body["blood_pressure"]["max_systolic_mmhg"] == 125
-        # Min diastolic: 78
-        assert body["blood_pressure"]["min_diastolic_mmhg"] == 78
+        # Max/min for both readings
+        assert body["blood_pressure"]["max_systolic_mmhg"] == 125  # max(120, 118, 125, 122, 119)
+        assert body["blood_pressure"]["max_diastolic_mmhg"] == 82  # max(80, 78, 82, 80, 79)
+        assert body["blood_pressure"]["min_systolic_mmhg"] == 118  # min(120, 118, 125, 122, 119)
+        assert body["blood_pressure"]["min_diastolic_mmhg"] == 78  # min(80, 78, 82, 80, 79)
         assert body["blood_pressure"]["reading_count"] == 5
 
     def test_get_body_summary_uses_latest_value(self, client: TestClient, db: Session) -> None:
@@ -1173,16 +1174,21 @@ class TestBodySummaryEndpoint:
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-28T00:00:00Z"},
+            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-27T23:59:59Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
         # Should have data for both days (Dec 26 and 27)
         # Dec 26 has weight from Dec 26, Dec 27 uses latest (Dec 26)
-        assert len(data["data"]) >= 1
+        assert len(data["data"]) == 2
 
         # First day should show Dec 26 data
         body_26 = data["data"][0]
         assert body_26["date"] == "2025-12-26"
         assert body_26["weight_kg"] == 71.8
+
+        # Second day should show Dec 27 data (using latest available weight)
+        body_27 = data["data"][1]
+        assert body_27["date"] == "2025-12-27"
+        assert body_27["weight_kg"] == 71.8  # Uses most recent weight

@@ -66,4 +66,13 @@ export const API_ENDPOINTS = {
 
   // Accept invitation (public - no auth)
   acceptInvitation: '/api/v1/invitations/accept',
+
+  // Summary endpoints (authenticated - requires user authorization)
+  userActivitySummary: (userId: string) =>
+    `/api/v1/users/${userId}/summaries/activity`,
+  userSleepSummary: (userId: string) =>
+    `/api/v1/users/${userId}/summaries/sleep`,
+  userBodySummary: (userId: string) => `/api/v1/users/${userId}/summaries/body`,
+  userRecoverySummary: (userId: string) =>
+    `/api/v1/users/${userId}/summaries/recovery`,
 } as const;

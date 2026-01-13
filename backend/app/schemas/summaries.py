@@ -60,7 +60,7 @@ class SleepSummary(BaseModel):
     nap_count: int | None = Field(None, description="Number of naps taken", example=1)
     nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
     avg_heart_rate_bpm: int | None = None
-    avg_hrv_rmssd_ms: float | None = None
+    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN) during sleep")
     avg_respiratory_rate: float | None = None
     avg_spo2_percent: float | None = None
 
@@ -74,6 +74,8 @@ class BloodPressure(BaseModel):
     avg_systolic_mmhg: int | None = Field(None, description="Average systolic pressure", example=120)
     avg_diastolic_mmhg: int | None = Field(None, description="Average diastolic pressure", example=80)
     max_systolic_mmhg: int | None = Field(None, description="Maximum systolic pressure", example=135)
+    max_diastolic_mmhg: int | None = Field(None, description="Maximum diastolic pressure", example=90)
+    min_systolic_mmhg: int | None = Field(None, description="Minimum systolic pressure", example=110)
     min_diastolic_mmhg: int | None = Field(None, description="Minimum diastolic pressure", example=72)
     reading_count: int | None = Field(None, description="Number of readings in period", example=5)
 
@@ -93,11 +95,11 @@ class BodySummary(BaseModel):
     height_cm: float | None = Field(None, description="Height in centimeters", example=175.5)
     weight_kg: float | None = Field(None, description="Most recent weight", example=72.5)
     body_fat_percent: float | None = Field(None, description="Most recent body fat percentage", example=18.5)
-    muscle_mass_kg: float | None = Field(None, description="Most recent lean body mass", example=58.2)
+    muscle_mass_kg: float | None = Field(None, description="Most recent muscle mass", example=58.2)
     bmi: float | None = Field(None, description="Calculated from weight and height", example=23.5)
     # Vitals (7-day rolling averages)
     resting_heart_rate_bpm: int | None = Field(None, description="Average resting heart rate over 7 days", example=62)
-    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (SDNN) over 7 days", example=45.2)
+    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN) over 7 days", example=45.2)
     blood_pressure: BloodPressure | None = Field(None, description="Blood pressure averages over 7 days")
     basal_body_temperature_celsius: float | None = Field(None, description="Most recent body temperature", example=36.6)
 
@@ -108,6 +110,6 @@ class RecoverySummary(BaseModel):
     sleep_duration_seconds: int | None = None
     sleep_efficiency_percent: float | None = None
     resting_heart_rate_bpm: int | None = None
-    avg_hrv_rmssd_ms: float | None = None
+    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN)")
     avg_spo2_percent: float | None = None
     recovery_score: int | None = Field(None, ge=0, le=100, description="0-100 score")

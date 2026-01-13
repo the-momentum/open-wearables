@@ -25,7 +25,13 @@ from app.schemas.summaries import (
     SleepSummary,
 )
 from app.utils.exceptions import handle_exceptions
-from app.utils.pagination import encode_cursor
+from app.utils.pagination import (
+    decode_activity_cursor,
+    decode_date_cursor,
+    encode_activity_cursor,
+    encode_cursor,
+    encode_date_cursor,
+)
 
 # Series types needed for sleep physiological metrics
 # TODO: Add HRV, respiratory rate, and SpO2 when ready
@@ -196,7 +202,7 @@ class SummariesService:
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,
                 # TODO: Implement these when ready
-                avg_hrv_rmssd_ms=None,
+                avg_hrv_sdnn_ms=None,
                 avg_respiratory_rate=None,
                 avg_spo2_percent=None,
             )
@@ -287,15 +293,52 @@ class SummariesService:
             key = (im["activity_date"], im["provider_name"], im.get("device_id"))
             intensity_lookup[key] = im
 
-        # Apply pagination (simple offset-based for now, cursor-based can be added later)
-        # TODO: Implement proper cursor pagination like sleep summaries
+        # Apply cursor-based pagination using compound key (date, provider, device)
+        # This ensures we don't skip records when multiple providers exist for the same date
+        if cursor:
+            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
+            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
+
+            if direction == "prev":
+                # Backward pagination: get items BEFORE cursor key
+                results = [
+                    r
+                    for r in results
+                    if (r["activity_date"], r["provider_name"], r.get("device_id") or "") < cursor_key
+                ]
+                # Reverse to get correct order for backward pagination
+                results = list(reversed(results))
+            else:
+                # Forward pagination: get items AFTER cursor key
+                results = [
+                    r
+                    for r in results
+                    if (r["activity_date"], r["provider_name"], r.get("device_id") or "") > cursor_key
+                ]
+
+        # Check for more data
         has_more = len(results) > limit
         if has_more:
             results = results[:limit]
 
-        # Generate cursors (simplified for now)
+        # Generate cursors
         next_cursor: str | None = None
         previous_cursor: str | None = None
+
+        if results:
+            # Next cursor points to last item's compound key
+            if has_more:
+                last = results[-1]
+                next_cursor = encode_activity_cursor(
+                    last["activity_date"], last["provider_name"], last.get("device_id"), "next"
+                )
+
+            # Previous cursor if we had a cursor (not first page)
+            if cursor:
+                first = results[0]
+                previous_cursor = encode_activity_cursor(
+                    first["activity_date"], first["provider_name"], first.get("device_id"), "prev"
+                )
 
         # Transform to schema
         data = []
@@ -442,10 +485,25 @@ class SummariesService:
             dates_in_range.append(current_date)
             current_date += timedelta(days=1)
 
-        # Apply simple pagination
-        has_more = len(dates_in_range) > limit
-        if has_more:
-            dates_in_range = dates_in_range[:limit]
+        # Apply cursor-based pagination using date as cursor key
+        if cursor:
+            cursor_date, direction = decode_date_cursor(cursor)
+            if direction == "prev":
+                # Backward pagination: get dates BEFORE cursor date
+                dates_in_range = [d for d in dates_in_range if d < cursor_date]
+                # Reverse to get correct order for backward pagination
+                dates_in_range = list(reversed(dates_in_range))
+            else:
+                # Forward pagination: get dates AFTER cursor date
+                dates_in_range = [d for d in dates_in_range if d > cursor_date]
+
+        # Over-fetch dates to account for empty days that will be filtered out.
+        # We fetch extra dates and then limit after filtering empty summaries.
+        # This ensures we return closer to `limit` items when some days are empty.
+        over_fetch_factor = 2  # Fetch 2x to handle sparse data
+        fetch_limit = limit * over_fetch_factor
+        total_dates_available = len(dates_in_range)
+        dates_in_range = dates_in_range[:fetch_limit]
 
         # For each date, we need to:
         # 1. Get latest slow-changing values before end of that day
@@ -514,6 +572,12 @@ class SummariesService:
                     max_systolic_mmhg=int(round(bp_systolic_data["max"]))
                     if bp_systolic_data and bp_systolic_data["max"]
                     else None,
+                    max_diastolic_mmhg=int(round(bp_diastolic_data["max"]))
+                    if bp_diastolic_data and bp_diastolic_data["max"]
+                    else None,
+                    min_systolic_mmhg=int(round(bp_systolic_data["min"]))
+                    if bp_systolic_data and bp_systolic_data["min"]
+                    else None,
                     min_diastolic_mmhg=int(round(bp_diastolic_data["min"]))
                     if bp_diastolic_data and bp_diastolic_data["min"]
                     else None,
@@ -540,7 +604,7 @@ class SummariesService:
                 muscle_mass_kg=muscle_mass_kg,
                 bmi=bmi,
                 resting_heart_rate_bpm=resting_hr,
-                avg_hrv_rmssd_ms=avg_hrv,
+                avg_hrv_sdnn_ms=avg_hrv,
                 blood_pressure=blood_pressure,
                 basal_body_temperature_celsius=basal_temp,
             )
@@ -549,9 +613,28 @@ class SummariesService:
         # Filter out days with no data
         data = [d for d in data if self._has_body_data(d)]
 
-        # Generate cursors (simplified for now)
+        # Apply limit after filtering and determine has_more
+        # has_more is true if:
+        # 1. We have more filtered items than limit, OR
+        # 2. We didn't fetch all available dates (more dates exist beyond what we fetched)
+        has_more = len(data) > limit or total_dates_available > fetch_limit
+        if len(data) > limit:
+            data = data[:limit]
+
+        # Generate cursors based on actual data returned
         next_cursor: str | None = None
         previous_cursor: str | None = None
+
+        if data:
+            # Next cursor points to last item's date
+            if has_more:
+                last_date = data[-1].date
+                next_cursor = encode_date_cursor(last_date, "next")
+
+            # Previous cursor if we had a cursor (not first page)
+            if cursor:
+                first_date = data[0].date
+                previous_cursor = encode_date_cursor(first_date, "prev")
 
         return PaginatedResponse(
             data=data,
@@ -576,7 +659,7 @@ class SummariesService:
                 summary.body_fat_percent is not None,
                 summary.muscle_mass_kg is not None,
                 summary.resting_heart_rate_bpm is not None,
-                summary.avg_hrv_rmssd_ms is not None,
+                summary.avg_hrv_sdnn_ms is not None,
                 summary.blood_pressure is not None,
                 summary.basal_body_temperature_celsius is not None,
             ]

@@ -458,7 +458,9 @@ class Suunto247Data(Base247DataTemplate):
             "steps": SeriesType.steps,
             "spo2": SeriesType.oxygen_saturation,
             "energy": SeriesType.energy,
-            "hrv": SeriesType.heart_rate_variability_sdnn,  # Using SDNN as placeholder for HRV
+            # TODO: Suunto provides RMSSD, not SDNN. See GitHub issue for fix.
+            # https://www.suunto.com/sports/News-Articles-container-page/how-to-use-hrv-to-optimize-your-recovery/
+            "hrv": SeriesType.heart_rate_variability_sdnn,
         }
 
         for key, samples in normalized_samples.items():

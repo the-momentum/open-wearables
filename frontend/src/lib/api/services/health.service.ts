@@ -9,6 +9,10 @@ import type {
   TimeSeriesSample,
   SyncResponse,
   GarminBackfillStatus,
+  ActivitySummary,
+  SleepSummary,
+  BodySummary,
+  RecoverySummary,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -27,6 +31,14 @@ export interface WorkoutsParams {
     | 'duration_seconds'
     | 'type'
     | 'source_name';
+  [key: string]: string | number | undefined;
+}
+
+export interface SummaryParams {
+  start_date: string; // ISO date string (e.g., "2025-01-01T00:00:00Z")
+  end_date: string; // ISO date string
+  cursor?: string;
+  limit?: number; // 1-100, default 50
   [key: string]: string | number | undefined;
 }
 
@@ -76,30 +88,55 @@ export const healthService = {
     );
   },
 
-  async getSleepData(userId: string, days: number = 7): Promise<SleepData[]> {
-    return apiClient.get<SleepData[]>(`/v1/users/${userId}/sleep`, {
-      params: { days },
-    });
+  /**
+   * Get activity summaries for a date range
+   */
+  async getActivitySummaries(
+    userId: string,
+    params: SummaryParams
+  ): Promise<PaginatedResponse<ActivitySummary>> {
+    return apiClient.get<PaginatedResponse<ActivitySummary>>(
+      API_ENDPOINTS.userActivitySummary(userId),
+      { params }
+    );
   },
 
-  async getActivityData(
+  /**
+   * Get sleep summaries for a date range
+   */
+  async getSleepSummaries(
     userId: string,
-    days: number = 7
-  ): Promise<ActivityData[]> {
-    return apiClient.get<ActivityData[]>(`/v1/users/${userId}/activity`, {
-      params: { days },
-    });
+    params: SummaryParams
+  ): Promise<PaginatedResponse<SleepSummary>> {
+    return apiClient.get<PaginatedResponse<SleepSummary>>(
+      API_ENDPOINTS.userSleepSummary(userId),
+      { params }
+    );
   },
 
-  async getHealthSummary(
+  /**
+   * Get body composition and vitals summaries for a date range
+   */
+  async getBodySummaries(
     userId: string,
-    period: string = '7d'
-  ): Promise<HealthDataSummary> {
-    return apiClient.get<HealthDataSummary>(
-      `/v1/users/${userId}/health-summary`,
-      {
-        params: { period },
-      }
+    params: SummaryParams
+  ): Promise<PaginatedResponse<BodySummary>> {
+    return apiClient.get<PaginatedResponse<BodySummary>>(
+      API_ENDPOINTS.userBodySummary(userId),
+      { params }
+    );
+  },
+
+  /**
+   * Get recovery summaries for a date range
+   */
+  async getRecoverySummaries(
+    userId: string,
+    params: SummaryParams
+  ): Promise<PaginatedResponse<RecoverySummary>> {
+    return apiClient.get<PaginatedResponse<RecoverySummary>>(
+      API_ENDPOINTS.userRecoverySummary(userId),
+      { params }
     );
   },
 

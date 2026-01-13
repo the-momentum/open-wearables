@@ -372,7 +372,8 @@ class EventRecordRepository(
                 func.sum(WorkoutDetails.energy_burned).label("energy_sum"),
             )
             .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
-            .join(WorkoutDetails, self.model.id == WorkoutDetails.record_id)
+            # Use outerjoin since WorkoutDetails is optional - some workouts may not have details
+            .outerjoin(WorkoutDetails, self.model.id == WorkoutDetails.record_id)
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 self.model.category == "workout",
