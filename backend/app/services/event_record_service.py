@@ -162,9 +162,8 @@ class EventRecordService(
                 end_time=record.end_datetime,
                 duration_seconds=record.duration_seconds,
                 source=self._map_source(mapping),
-                calories_kcal=None,  # Need to check where this is stored,
-                # likely in details but not in WorkoutDetails definition I saw earlier?
-                distance_meters=None,
+                calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
+                distance_meters=float(details.distance) if details and details.distance else None,
                 avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
@@ -228,8 +227,8 @@ class EventRecordService(
             end_time=record.end_datetime,
             duration_seconds=record.duration_seconds,
             source=self._map_source(mapping),
-            calories_kcal=None,
-            distance_meters=None,
+            calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
+            distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
             max_heart_rate_bpm=details.heart_rate_max if details else None,
             avg_pace_sec_per_km=None,
