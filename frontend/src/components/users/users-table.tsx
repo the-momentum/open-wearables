@@ -27,7 +27,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
-import { useAppleXmlUpload } from '@/hooks/api/use-apple-xml-upload';
+import { useAppleXmlUpload } from '@/hooks/api/use-users';
 import {
   Pagination,
   PaginationContent,

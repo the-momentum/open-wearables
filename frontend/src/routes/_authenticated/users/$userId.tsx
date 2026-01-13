@@ -20,8 +20,12 @@ import {
   useWorkouts,
   useTimeSeries,
 } from '@/hooks/api/use-health';
-import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
-import { useAppleXmlUpload } from '@/hooks/api/use-apple-xml-upload';
+import {
+  useUser,
+  useDeleteUser,
+  useUpdateUser,
+  useAppleXmlUpload,
+} from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, truncateId } from '@/lib/utils/format';
