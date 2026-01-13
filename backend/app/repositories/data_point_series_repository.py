@@ -13,7 +13,6 @@ from app.schemas import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
-from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -28,8 +27,12 @@ class DataPointSeriesRepository(
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     @handle_exceptions
-    @handle_duplicates
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataPointSeries:
+        """Create a data point sample, or return existing if duplicate.
+        
+        Handles duplicate records gracefully by catching IntegrityError and 
+        returning the existing record instead.
+        """
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
@@ -44,11 +47,36 @@ class DataPointSeriesRepository(
         for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
             creation_data.pop(redundant_key, None)
 
-        creation = self.model(**creation_data)
-        db_session.add(creation)
-        db_session.commit()
-        db_session.refresh(creation)
-        return creation
+        try:
+            creation = self.model(**creation_data)
+            db_session.add(creation)
+            db_session.commit()
+            db_session.refresh(creation)
+            return creation
+        except Exception as e:
+            # Check if this is a unique constraint violation
+            from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+            from psycopg.errors import UniqueViolation
+            
+            if isinstance(e, SQLAIntegrityError) and isinstance(e.orig, UniqueViolation):
+                db_session.rollback()
+                
+                # Query for existing record using the unique constraint fields
+                existing = (
+                    db_session.query(self.model)
+                    .filter(
+                        self.model.external_device_mapping_id == creation_data["external_device_mapping_id"],
+                        self.model.series_type_definition_id == creation_data["series_type_definition_id"],
+                        self.model.recorded_at == creation_data["recorded_at"],
+                    )
+                    .first()
+                )
+                
+                if existing:
+                    return existing
+            
+            # If it's not a duplicate error or we couldn't find the existing record, re-raise
+            raise
 
     def get_samples(
         self,

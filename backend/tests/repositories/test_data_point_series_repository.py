@@ -13,7 +13,6 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries
@@ -127,7 +126,7 @@ class TestDataPointSeriesRepository:
         assert result.series_type_definition_id == expected_id
 
     def test_create_duplicate_raises_integrity_error(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test that creating duplicate data points raises IntegrityError due to unique constraint."""
+        """Test that creating duplicate data points returns the existing record instead of raising error."""
         # Arrange
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
@@ -144,8 +143,8 @@ class TestDataPointSeriesRepository:
             value=72.5,
             series_type=SeriesType.heart_rate,
         )
-        series_repo.create(db, first_sample)
-        db.commit()
+        result1 = series_repo.create(db, first_sample)
+        first_id = result1.id
 
         # Create duplicate sample with same mapping, series_type, and recorded_at
         duplicate_sample = TimeSeriesSampleCreate(
@@ -159,13 +158,15 @@ class TestDataPointSeriesRepository:
             series_type=SeriesType.heart_rate,  # Same series type
         )
 
-        # Act & Assert - IntegrityError should be raised during create
-        with pytest.raises(IntegrityError) as exc_info:
-            series_repo.create(db, duplicate_sample)
+        # Act - Should return existing record, not raise error
+        result2 = series_repo.create(db, duplicate_sample)
 
-        # Verify the error message mentions the unique constraint
-        assert "uq_data_point_series_mapping_type_time" in str(exc_info.value)
-        db.rollback()
+        # Assert - Should return the first record, not create a new one
+        assert result2 is not None
+        assert result2.id == first_id  # Same ID as the first record
+        assert result2.value == Decimal("72.5")  # Original value, not the duplicate's value
+        assert result2.external_device_mapping_id == mapping.id
+        assert result2.recorded_at == recorded_time
 
     def test_get_samples_requires_device_filter(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples requires at least device_id or external_device_mapping_id."""
