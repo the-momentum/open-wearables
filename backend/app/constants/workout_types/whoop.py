@@ -1,111 +1,155 @@
 from app.schemas.workout_types import WorkoutType
 
-# Whoop uses lowercase sport_name strings (e.g., "running", "cycling")
+# WHOOP workout type mappings based on WHOOP API documentation
+# Reference: https://developer.whoop.com/docs/developing/user-data/workout
+# WHOOP uses lowercase sport_name strings (e.g., "running", "cycling")
 # Format: (whoop_sport_name, unified_type)
 WHOOP_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     # Running & Walking
     ("running", WorkoutType.RUNNING),
-    ("trail_running", WorkoutType.TRAIL_RUNNING),
-    ("treadmill", WorkoutType.TREADMILL),
     ("walking", WorkoutType.WALKING),
-    ("hiking", WorkoutType.HIKING),
-    ("mountaineering", WorkoutType.MOUNTAINEERING),
+    ("hiking/rucking", WorkoutType.HIKING),
+    ("track & field", WorkoutType.RUNNING),
+    ("stroller walking", WorkoutType.WALKING),
+    ("stroller jogging", WorkoutType.RUNNING),
+    ("dog walking", WorkoutType.WALKING),
+    ("caddying", WorkoutType.WALKING),
+    ("toddlerwearing", WorkoutType.WALKING),
+    ("babywearing", WorkoutType.WALKING),
     # Cycling
     ("cycling", WorkoutType.CYCLING),
-    ("mountain_biking", WorkoutType.MOUNTAIN_BIKING),
-    ("indoor_cycling", WorkoutType.INDOOR_CYCLING),
-    ("cyclocross", WorkoutType.CYCLOCROSS),
-    # Swimming
+    ("mountain biking", WorkoutType.MOUNTAIN_BIKING),
+    ("spin", WorkoutType.INDOOR_CYCLING),
+    ("assault bike", WorkoutType.INDOOR_CYCLING),
+    # Swimming & Water Sports
     ("swimming", WorkoutType.SWIMMING),
-    ("pool_swimming", WorkoutType.POOL_SWIMMING),
-    ("open_water_swimming", WorkoutType.OPEN_WATER_SWIMMING),
-    # Strength & Gym
-    ("strength_training", WorkoutType.STRENGTH_TRAINING),
-    ("cardio_training", WorkoutType.CARDIO_TRAINING),
-    ("fitness_equipment", WorkoutType.FITNESS_EQUIPMENT),
-    ("elliptical", WorkoutType.ELLIPTICAL),
-    ("rowing_machine", WorkoutType.ROWING_MACHINE),
-    ("stair_climbing", WorkoutType.STAIR_CLIMBING),
-    # Flexibility & Mind-Body
-    ("yoga", WorkoutType.YOGA),
-    ("pilates", WorkoutType.PILATES),
-    ("stretching", WorkoutType.STRETCHING),
-    # Winter Sports
-    ("cross_country_skiing", WorkoutType.CROSS_COUNTRY_SKIING),
-    ("alpine_skiing", WorkoutType.ALPINE_SKIING),
-    ("backcountry_skiing", WorkoutType.BACKCOUNTRY_SKIING),
-    ("downhill_skiing", WorkoutType.DOWNHILL_SKIING),
-    ("snowboarding", WorkoutType.SNOWBOARDING),
-    ("snowshoeing", WorkoutType.SNOWSHOEING),
-    ("ice_skating", WorkoutType.ICE_SKATING),
-    # Water Sports
+    ("water polo", WorkoutType.WATER_POLO),
     ("rowing", WorkoutType.ROWING),
     ("kayaking", WorkoutType.KAYAKING),
-    ("canoeing", WorkoutType.CANOEING),
-    ("paddling", WorkoutType.PADDLING),
-    ("stand_up_paddleboarding", WorkoutType.STAND_UP_PADDLEBOARDING),
+    ("paddleboarding", WorkoutType.STAND_UP_PADDLEBOARDING),
     ("surfing", WorkoutType.SURFING),
-    ("kitesurfing", WorkoutType.KITESURFING),
-    ("windsurfing", WorkoutType.WINDSURFING),
     ("sailing", WorkoutType.SAILING),
-    # Team Sports
+    ("diving", WorkoutType.DIVING),
+    ("water skiing", WorkoutType.SURFING),
+    ("wakeboarding", WorkoutType.SURFING),
+    ("kite boarding", WorkoutType.KITESURFING),
+    ("operations - water", WorkoutType.OTHER),
+    # Strength & Gym
+    ("weightlifting", WorkoutType.STRENGTH_TRAINING),
+    ("powerlifting", WorkoutType.STRENGTH_TRAINING),
+    ("strength trainer", WorkoutType.STRENGTH_TRAINING),
+    ("functional fitness", WorkoutType.CARDIO_TRAINING),
+    ("elliptical", WorkoutType.ELLIPTICAL),
+    ("stairmaster", WorkoutType.STAIR_CLIMBING),
+    ("climber", WorkoutType.STAIR_CLIMBING),
+    ("stadium steps", WorkoutType.STAIR_CLIMBING),
+    ("hiit", WorkoutType.CARDIO_TRAINING),
+    ("jumping rope", WorkoutType.CARDIO_TRAINING),
+    ("obstacle course racing", WorkoutType.CARDIO_TRAINING),
+    ("parkour", WorkoutType.CARDIO_TRAINING),
+    # Flexibility & Mind-Body
+    ("yoga", WorkoutType.YOGA),
+    ("hot yoga", WorkoutType.YOGA),
+    ("pilates", WorkoutType.PILATES),
+    ("stretching", WorkoutType.STRETCHING),
+    ("meditation", WorkoutType.MEDITATION),
+    ("barre", WorkoutType.GROUP_EXERCISE),
+    ("barre3", WorkoutType.GROUP_EXERCISE),
+    # Winter Sports
+    ("skiing", WorkoutType.ALPINE_SKIING),
+    ("cross country skiing", WorkoutType.CROSS_COUNTRY_SKIING),
+    ("snowboarding", WorkoutType.SNOWBOARDING),
+    ("ice skating", WorkoutType.ICE_SKATING),
+    # Team Sports - Ball Sports
     ("soccer", WorkoutType.SOCCER),
     ("basketball", WorkoutType.BASKETBALL),
-    ("football", WorkoutType.FOOTBALL),
-    ("american_football", WorkoutType.AMERICAN_FOOTBALL),
+    ("football", WorkoutType.AMERICAN_FOOTBALL),
+    ("australian football", WorkoutType.FOOTBALL),
+    ("gaelic football", WorkoutType.FOOTBALL),
     ("baseball", WorkoutType.BASEBALL),
-    ("tennis", WorkoutType.TENNIS),
-    ("badminton", WorkoutType.BADMINTON),
+    ("softball", WorkoutType.BASEBALL),
     ("volleyball", WorkoutType.VOLLEYBALL),
-    ("handball", WorkoutType.HANDBALL),
     ("rugby", WorkoutType.RUGBY),
-    ("hockey", WorkoutType.HOCKEY),
-    ("floorball", WorkoutType.FLOORBALL),
+    ("lacrosse", WorkoutType.LACROSSE),
+    ("cricket", WorkoutType.CRICKET),
+    ("netball", WorkoutType.SPORT),
+    ("ultimate", WorkoutType.SPORT),
+    ("spikeball", WorkoutType.SPORT),
+    ("hurling/camogie", WorkoutType.SPORT),
+    # Team Sports - Hockey
+    ("ice hockey", WorkoutType.HOCKEY),
+    ("field hockey", WorkoutType.HOCKEY),
     # Racket Sports
+    ("tennis", WorkoutType.TENNIS),
     ("squash", WorkoutType.SQUASH),
-    ("table_tennis", WorkoutType.TABLE_TENNIS),
+    ("badminton", WorkoutType.BADMINTON),
+    ("table tennis", WorkoutType.TABLE_TENNIS),
     ("padel", WorkoutType.PADEL),
     ("pickleball", WorkoutType.PICKLEBALL),
+    ("paddle tennis", WorkoutType.PADEL),
     # Combat Sports
     ("boxing", WorkoutType.BOXING),
-    ("martial_arts", WorkoutType.MARTIAL_ARTS),
-    # Outdoor Activities
-    ("rock_climbing", WorkoutType.ROCK_CLIMBING),
-    ("indoor_climbing", WorkoutType.INDOOR_CLIMBING),
-    ("bouldering", WorkoutType.BOULDERING),
-    ("trail_hiking", WorkoutType.TRAIL_HIKING),
-    ("orienteering", WorkoutType.ORIENTEERING),
-    # Other Sports
+    ("kickboxing", WorkoutType.BOXING),
+    ("box fitness", WorkoutType.BOXING),
+    ("martial arts", WorkoutType.MARTIAL_ARTS),
+    ("jiu jitsu", WorkoutType.MARTIAL_ARTS),
+    ("wrestling", WorkoutType.WRESTLING),
+    ("fencing", WorkoutType.MARTIAL_ARTS),
+    # Climbing
+    ("rock climbing", WorkoutType.ROCK_CLIMBING),
+    # Golf
     ("golf", WorkoutType.GOLF),
-    ("skating", WorkoutType.SKATING),
-    ("inline_skating", WorkoutType.INLINE_SKATING),
+    ("disc golf", WorkoutType.GOLF),
+    # Skating
+    ("inline skating", WorkoutType.INLINE_SKATING),
     ("skateboarding", WorkoutType.SKATEBOARDING),
-    ("horseback_riding", WorkoutType.HORSEBACK_RIDING),
+    # Equestrian
+    ("horseback riding", WorkoutType.HORSEBACK_RIDING),
+    ("polo", WorkoutType.HORSEBACK_RIDING),
     # Multisport
     ("triathlon", WorkoutType.TRIATHLON),
-    ("multisport", WorkoutType.MULTISPORT),
+    ("duathlon", WorkoutType.MULTISPORT),
     # Motor Sports
-    ("motorcycling", WorkoutType.MOTORCYCLING),
-    ("motor_sports", WorkoutType.MOTOR_SPORTS),
+    ("motocross", WorkoutType.MOTORCYCLING),
+    ("motor racing", WorkoutType.MOTOR_SPORTS),
     # Dance & Group Fitness
     ("dance", WorkoutType.DANCE),
-    ("aerobics", WorkoutType.AEROBICS),
-    ("group_exercise", WorkoutType.GROUP_EXERCISE),
-    # E-Sports & Alternative
-    ("e_biking", WorkoutType.E_BIKING),
-    ("virtual_activity", WorkoutType.VIRTUAL_ACTIVITY),
-    # Diving
-    ("diving", WorkoutType.DIVING),
-    ("snorkeling", WorkoutType.SNORKELING),
-    # Casual & General
-    ("walking_fitness", WorkoutType.WALKING_FITNESS),
-    ("casual_walking", WorkoutType.CASUAL_WALKING),
-    # Transition
-    ("transition", WorkoutType.TRANSITION),
+    ("circus arts", WorkoutType.DANCE),
+    ("stage performance", WorkoutType.DANCE),
+    ("f45 training", WorkoutType.GROUP_EXERCISE),
+    ("barry's", WorkoutType.GROUP_EXERCISE),
+    # Gymnastics
+    ("gymnastics", WorkoutType.GYMNASTICS),
+    # Handball
+    ("handball", WorkoutType.HANDBALL),
+    # Recovery & Wellness (map to OTHER as not traditional workouts)
+    ("ice bath", WorkoutType.OTHER),
+    ("sauna", WorkoutType.OTHER),
+    ("massage therapy", WorkoutType.OTHER),
+    ("air compression", WorkoutType.OTHER),
+    ("percussive massage", WorkoutType.OTHER),
+    # Work & Daily Activities (map to OTHER)
+    ("operations - tactical", WorkoutType.OTHER),
+    ("operations - medical", WorkoutType.OTHER),
+    ("operations - flying", WorkoutType.OTHER),
+    ("manual labor", WorkoutType.OTHER),
+    ("high stress work", WorkoutType.OTHER),
+    ("coaching", WorkoutType.OTHER),
+    ("watching sports", WorkoutType.OTHER),
+    ("commuting", WorkoutType.OTHER),
+    ("gaming", WorkoutType.OTHER),
+    ("yard work", WorkoutType.OTHER),
+    ("cooking", WorkoutType.OTHER),
+    ("cleaning", WorkoutType.OTHER),
+    ("public speaking", WorkoutType.OTHER),
+    ("musical performance", WorkoutType.OTHER),
+    ("dedicated parenting", WorkoutType.OTHER),
+    ("wheelchair pushing", WorkoutType.WALKING),
+    # Outdoor Activities
+    ("paintball", WorkoutType.SPORT),
     # Generic/Other
-    ("generic", WorkoutType.GENERIC),
+    ("activity", WorkoutType.OTHER),
     ("other", WorkoutType.OTHER),
-    ("sport", WorkoutType.SPORT),
 ]
 
 # Create lookup dictionary (case-insensitive)
@@ -114,13 +158,12 @@ WHOOP_TO_UNIFIED: dict[str, WorkoutType] = {
 }
 
 
-def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int | None = None) -> WorkoutType:
+def get_unified_workout_type(whoop_sport_name: str | None) -> WorkoutType:
     """
     Convert Whoop sport name to unified WorkoutType.
 
     Args:
         whoop_sport_name: Whoop sport name string (e.g., "running", "cycling")
-        whoop_sport_id: Whoop sport ID (optional fallback, not currently used)
 
     Returns:
         Unified WorkoutType enum value
@@ -140,7 +183,6 @@ def get_unified_workout_type(whoop_sport_name: str | None, whoop_sport_id: int |
     Note:
         - Whoop uses lowercase strings for sport names
         - If sport_name is missing, defaults to WorkoutType.OTHER
-        - sport_id is included for potential future use but not currently mapped
     """
     if not whoop_sport_name:
         return WorkoutType.OTHER
