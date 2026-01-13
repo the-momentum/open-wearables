@@ -13,6 +13,8 @@ from app.schemas import (
     TimeSeriesSampleUpdate,
 )
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
+from app.utils.duplicates import handle_duplicates
+from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
 
@@ -25,6 +27,8 @@ class DataPointSeriesRepository(
         super().__init__(model)
         self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
+    @handle_exceptions
+    @handle_duplicates
     def create(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataPointSeries:
         mapping = self.mapping_repo.ensure_mapping(
             db_session,
