@@ -469,7 +469,11 @@ class Ultrahuman247Data(Base247DataTemplate):
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
     ) -> dict[str, int]:
-        """Load and save all 247 data types (sleep, recovery, activity)."""
+        """Load and save all 247 data types (activity samples).
+
+        Ultrahuman provides ring metrics (activity samples) through /user_data/metrics endpoint.
+        Sleep and recovery data are not provided as separate endpoints.
+        """
         from datetime import timedelta
 
         # Handle date defaults (last 30 days if not specified)
@@ -478,15 +482,8 @@ class Ultrahuman247Data(Base247DataTemplate):
         if isinstance(end_time, str):
             end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
 
-        if not start_time:
-            start_time = datetime.now(timezone.utc) - timedelta(days=30)
-        if not end_time:
-            end_time = datetime.now(timezone.utc)
-
-        results = {
-            "sleep_sessions_synced": 0,
-            "recovery_samples_synced": 0,
-            "activity_samples_synced": 0,
+        return {
+            "activity_samples": self.process_activity_samples(db, user_id, start_time, end_time),
         }
 
         try:
