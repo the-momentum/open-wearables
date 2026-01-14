@@ -6,6 +6,7 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 
 - **list_users**: Discover users accessible via your API key
 - **get_sleep_records**: Get sleep data for a user over the last X days
+- **get_workouts**: Get workout data for a user over the last X days
 
 ## Prerequisites
 
@@ -112,6 +113,22 @@ User: "Show me Jane's sleep for the last month"
 Claude: [calls get_sleep_records(user_name="Jane", days=30)]
 ```
 
+### Querying workout data
+
+```
+User: "What workouts did John do this week?"
+Claude: [calls get_workouts(user_name="John", days=7)]
+Claude: "John completed 5 workouts this week: 3 runs and 2 cycling sessions.
+Total distance: 45 km. Total duration: 3h 28m."
+```
+
+### Filtering by workout type
+
+```
+User: "Show me all of Jane's runs in the last 2 weeks"
+Claude: [calls get_workouts(user_name="Jane", days=14, workout_type="running")]
+```
+
 ## Available Tools
 
 ### list_users
@@ -164,6 +181,52 @@ Get sleep records for a user over the last X days.
 }
 ```
 
+### get_workouts
+
+Get workout records for a user over the last X days.
+
+**Parameters:**
+- `user_id` (optional): UUID of the user
+- `user_name` (optional): First name to search for
+- `days` (optional): Number of days to look back (default: 7, max: 90)
+- `workout_type` (optional): Filter by type (e.g., "running", "cycling", "swimming")
+
+**Returns:**
+```json
+{
+  "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
+  "period": {"start": "2025-01-07", "end": "2025-01-14"},
+  "workouts": [
+    {
+      "date": "2025-01-13",
+      "type": "running",
+      "name": "Morning Run",
+      "start_time": "07:15",
+      "end_time": "08:02",
+      "duration_seconds": 2820,
+      "duration_formatted": "47m",
+      "distance_meters": 7500,
+      "distance_formatted": "7.50 km",
+      "calories_kcal": 520,
+      "avg_heart_rate_bpm": 145,
+      "max_heart_rate_bpm": 172,
+      "pace_formatted": "6:16 min/km",
+      "elevation_gain_meters": 85,
+      "source": "garmin"
+    }
+  ],
+  "summary": {
+    "total_workouts": 5,
+    "workouts_by_type": {"running": 3, "cycling": 2},
+    "total_duration_seconds": 12500,
+    "total_duration_formatted": "3h 28m",
+    "total_distance_meters": 45000,
+    "total_distance_formatted": "45.00 km",
+    "total_calories_kcal": 2100
+  }
+}
+```
+
 ## Architecture
 
 ```
@@ -173,7 +236,8 @@ mcp/
 │   ├── config.py         # Settings (API URL, API key)
 │   ├── tools/
 │   │   ├── users.py      # list_users tool
-│   │   └── sleep.py      # get_sleep_records tool
+│   │   ├── sleep.py      # get_sleep_records tool
+│   │   └── workouts.py   # get_workouts tool
 │   └── services/
 │       └── api_client.py # HTTP client for backend API
 ├── config/

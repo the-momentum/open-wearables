@@ -110,6 +110,36 @@ class OpenWearablesClient:
         }
         return await self._request("GET", f"/api/v1/users/{user_id}/summaries/sleep", params=params)
 
+    async def get_workouts(
+        self,
+        user_id: str,
+        start_date: str,
+        end_date: str,
+        workout_type: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """
+        Get workout events for a user within a date range.
+
+        Args:
+            user_id: UUID of the user
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
+            workout_type: Optional filter by workout type (e.g., "running", "cycling")
+            limit: Maximum number of records to return
+
+        Returns:
+            Paginated response with workout events
+        """
+        params: dict[str, Any] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "limit": limit,
+        }
+        if workout_type:
+            params["record_type"] = workout_type
+        return await self._request("GET", f"/api/v1/users/{user_id}/events/workouts", params=params)
+
 
 # Singleton instance
 client = OpenWearablesClient()

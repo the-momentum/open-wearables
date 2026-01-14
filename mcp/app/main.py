@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 from app.config import settings
 from app.tools.sleep import get_sleep_records
 from app.tools.users import list_users
+from app.tools.workouts import get_workouts
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +26,7 @@ mcp = FastMCP(
     Available tools:
     - list_users: Discover users accessible via your API key
     - get_sleep_records: Get sleep data for a user over the last X days
+    - get_workouts: Get workout data for a user over the last X days
 
     Workflow:
     1. If you don't know the user's ID, call list_users first
@@ -38,6 +40,7 @@ mcp = FastMCP(
 # Register tools
 mcp.tool(list_users)
 mcp.tool(get_sleep_records)
+mcp.tool(get_workouts)
 
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
