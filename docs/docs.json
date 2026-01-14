@@ -68,6 +68,7 @@
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
               "api-reference/guides/data-types",
+              "api-reference/guides/provider-coverage",
               "api-reference/guides/error-handling"
             ]
           }

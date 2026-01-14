@@ -1,0 +1,178 @@
+# Series type configuration for activity data seeding
+# Each entry defines the value range and sampling percentage for a series type
+
+series_types:
+  # Heart & Cardiovascular
+  heart_rate:
+    min_value: 90
+    max_value: 180
+    percentage: 80
+
+  resting_heart_rate:
+    min_value: 55
+    max_value: 75
+    percentage: 1
+
+  walking_heart_rate_average:
+    min_value: 100
+    max_value: 140
+    percentage: 8
+
+  heart_rate_variability_sdnn:
+    min_value: 20
+    max_value: 80
+    percentage: 3
+
+  # Activity - Basic
+  steps:
+    min_value: 10
+    max_value: 50
+    percentage: 30
+
+  energy:
+    min_value: 5
+    max_value: 20
+    percentage: 25
+
+  basal_energy:
+    min_value: 0.4
+    max_value: 1.0
+    percentage: 2
+
+  flights_climbed:
+    min_value: 0
+    max_value: 2
+    percentage: 2
+
+  physical_effort:
+    min_value: 1
+    max_value: 10
+    percentage: 2
+
+  # Activity - Distance
+  distance_walking_running:
+    min_value: 10
+    max_value: 100
+    percentage: 20
+
+  distance_cycling:
+    min_value: 50
+    max_value: 250
+    percentage: 10
+
+  distance_swimming:
+    min_value: 5
+    max_value: 30
+    percentage: 5
+
+  # Respiratory & Blood
+  respiratory_rate:
+    min_value: 12
+    max_value: 30
+    percentage: 25
+
+  oxygen_saturation:
+    min_value: 95
+    max_value: 100
+    percentage: 3
+
+  # Body Composition
+  body_temperature:
+    min_value: 36.0
+    max_value: 37.5
+    percentage: 1
+
+  weight:
+    min_value: 50.0
+    max_value: 120.0
+    percentage: 1
+
+  body_fat_percentage:
+    min_value: 10.0
+    max_value: 35.0
+    percentage: 1
+
+  height:
+    min_value: 150
+    max_value: 200
+    percentage: 1
+
+  # Fitness Metrics
+  vo2_max:
+    min_value: 25
+    max_value: 80
+    percentage: 1
+
+  six_minute_walk_test_distance:
+    min_value: 400
+    max_value: 700
+    percentage: 1
+
+  # Running Metrics
+  running_power:
+    min_value: 200
+    max_value: 400
+    percentage: 8
+
+  running_speed:
+    min_value: 2.0
+    max_value: 6.0
+    percentage: 8
+
+  running_vertical_oscillation:
+    min_value: 6
+    max_value: 15
+    percentage: 5
+
+  running_ground_contact_time:
+    min_value: 150
+    max_value: 300
+    percentage: 5
+
+  running_stride_length:
+    min_value: 80
+    max_value: 150
+    percentage: 5
+
+  # Swimming Metrics
+  swimming_stroke_count:
+    min_value: 5
+    max_value: 20
+    percentage: 5
+
+  # Generic Activity Metrics
+  cadence:
+    min_value: 150
+    max_value: 200
+    percentage: 15
+
+  power:
+    min_value: 100
+    max_value: 300
+    percentage: 12
+
+  # Environmental
+  environmental_audio_exposure:
+    min_value: 40
+    max_value: 85
+    percentage: 1
+
+  headphone_audio_exposure:
+    min_value: 50
+    max_value: 95
+    percentage: 1
+
+  environmental_sound_reduction:
+    min_value: 5
+    max_value: 30
+    percentage: 1
+
+  time_in_daylight:
+    min_value: 0
+    max_value: 30
+    percentage: 1
+
+  water_temperature:
+    min_value: 15
+    max_value: 30
+    percentage: 1

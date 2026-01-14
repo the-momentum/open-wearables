@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
   Link as LinkIcon,
@@ -11,6 +11,8 @@ import {
   Heart,
   Footprints,
   Flame,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -18,7 +20,12 @@ import {
   useWorkouts,
   useTimeSeries,
 } from '@/hooks/api/use-health';
-import { useUser, useDeleteUser, useUpdateUser } from '@/hooks/api/use-users';
+import {
+  useUser,
+  useDeleteUser,
+  useUpdateUser,
+  useAppleXmlUpload,
+} from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, truncateId } from '@/lib/utils/format';
@@ -100,6 +107,7 @@ function UserDetailPage() {
     useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
+  const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
   const [copied, setCopied] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -108,6 +116,9 @@ function UserDetailPage() {
     email: '',
     external_user_id: '',
   });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isUploading = isUploadingFile(userId);
 
   useEffect(() => {
     if (user) {
@@ -126,6 +137,10 @@ function UserDetailPage() {
     setCopied(true);
     toast.success('Pairing link copied to clipboard');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleDelete = () => {
@@ -202,6 +217,30 @@ function UserDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleUploadClick}
+            disabled={isUploading}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Upload className="h-4 w-4" />
+                Upload Apple Health XML
+              </>
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml"
+            onChange={(e) => handleUpload(userId, e)}
+            className="hidden"
+          />
           <button
             onClick={handleCopyPairLink}
             className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"

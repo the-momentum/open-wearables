@@ -3,6 +3,12 @@ title: 'Data Types'
 description: 'Reference for available metrics, workout types, and data formats'
 ---
 
+This page lists all supported data types, units, and formats. For provider-specific availability, see the [Provider Coverage Matrix](/api-reference/guides/provider-coverage).
+
+<Tip>
+  Not all providers support all data types. Check the [Provider Coverage Matrix](/api-reference/guides/provider-coverage) to see which metrics are available from each wearable device.
+</Tip>
+
 ## Timeseries Types
 
 The `types` parameter in the timeseries endpoint accepts the following values:
@@ -103,9 +109,10 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 |------|------|-------------|
 | `environmental_audio_exposure` | dB | Environmental noise |
 | `headphone_audio_exposure` | dB | Headphone volume |
-| `environmental_sound_reduction` | dB | Sound reduction |
-| `time_in_daylight` | minutes | Daylight exposure |
-| `water_temperature` | °C | Water temperature |
+
+<Note>
+  Additional environmental types (`environmental_sound_reduction`, `time_in_daylight`, `water_temperature`) are defined but not currently supported by any provider.
+</Note>
 
 ---
 
@@ -161,4 +168,27 @@ curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=
   Leave `types` empty to fetch all available data types for the user.
 </Tip>
 
+---
 
+## Provider Support
+
+Data availability varies by provider. Here's a quick summary:
+
+| Provider | Timeseries | Workouts | Sleep | Best For |
+|----------|:-----------:|:--------:|:-----:|----------|
+| Apple Health | ✅ | ✅ | 🔜 | Comprehensive health data |
+| Garmin | ◐ | ✅ | 🔜 | Fitness activities |
+| Polar | ◐ | ✅ | ❌ | Heart rate training |
+| Suunto | ✅ | ✅ | ✅ | Outdoor sports + 24/7 data |
+| Whoop | ❌ | ✅ | ✅ | Recovery, sleep & workouts |
+
+<Accordion title="Legend">
+  - ✅ **Full support** — Fully implemented
+  - ◐ **Partial** — Limited data (e.g., workouts only)
+  - 🔜 **Coming soon** — API supports, processing not yet implemented
+  - ❌ **Not available** — Not supported
+</Accordion>
+
+<Card title="Full Provider Coverage Matrix" icon="table" href="/api-reference/guides/provider-coverage">
+  See detailed breakdown of which data types each provider supports, including provider-specific quirks and normalization details.
+</Card>

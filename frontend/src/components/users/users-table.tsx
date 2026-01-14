@@ -21,11 +21,13 @@ import {
   ChevronsUpDown,
   Link as LinkIcon,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
+import { useAppleXmlUpload } from '@/hooks/api/use-users';
 import {
   Pagination,
   PaginationContent,
@@ -77,6 +79,9 @@ export function UsersTable({
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedPairLink, setCopiedPairLink] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const { handleUpload, uploadingUserId } = useAppleXmlUpload();
 
   const onQueryChangeRef = useRef(onQueryChange);
   useEffect(() => {
@@ -144,6 +149,10 @@ export function UsersTable({
     } catch {
       toast.error('Failed to copy pairing link to clipboard');
     }
+  };
+
+  const handleUploadClick = (userId: string) => {
+    fileInputRefs.current[userId]?.click();
   };
 
   const truncateId = (id: string) => {
@@ -295,6 +304,26 @@ export function UsersTable({
               <Eye className="h-4 w-4" />
             </Link>
           </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => handleUploadClick(row.original.id)}
+            disabled={uploadingUserId === row.original.id}
+            title="Upload Apple Health XML"
+          >
+            {uploadingUserId === row.original.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+          </Button>
+          <input
+            ref={(el) => (fileInputRefs.current[row.original.id] = el)}
+            type="file"
+            accept=".xml"
+            onChange={(e) => handleUpload(row.original.id, e)}
+            className="hidden"
+          />
           <Button
             variant="outline"
             size="icon"

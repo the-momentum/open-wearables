@@ -25,6 +25,7 @@ from app.models import (
     EventRecord,
     EventRecordDetail,
     ExternalDeviceMapping,
+    PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
     SleepDetails,
@@ -80,6 +81,46 @@ class SeriesTypeDefinitionFactory(BaseFactory):
         # Fallback: create new one (shouldn't happen with proper seeding)
         return cls(id=80, code="steps", unit="count")
 
+    @classmethod
+    def get_or_create_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded energy (active calories) series type (ID=81)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 81).first()
+            if existing:
+                return existing
+        return cls(id=81, code="energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_basal_energy(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded basal_energy series type (ID=82)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 82).first()
+            if existing:
+                return existing
+        return cls(id=82, code="basal_energy", unit="kcal")
+
+    @classmethod
+    def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded distance_walking_running series type (ID=100)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 100).first()
+            if existing:
+                return existing
+        return cls(id=100, code="distance_walking_running", unit="meters")
+
+    @classmethod
+    def get_or_create_flights_climbed(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded flights_climbed series type (ID=86)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 86).first()
+            if existing:
+                return existing
+        return cls(id=86, code="flights_climbed", unit="count")
+
 
 class UserFactory(BaseFactory):
     """Factory for User model."""
@@ -93,6 +134,19 @@ class UserFactory(BaseFactory):
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
     external_user_id = None
+
+
+class PersonalRecordFactory(BaseFactory):
+    """Factory for PersonalRecord model."""
+
+    class Meta:
+        model = PersonalRecord
+
+    id = LazyFunction(uuid4)
+    user = factory.SubFactory(UserFactory)
+    birth_date = None
+    sex = None
+    gender = None
 
 
 class DeveloperFactory(BaseFactory):

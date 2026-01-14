@@ -11,17 +11,33 @@ class IntensityMinutes(BaseModel):
     vigorous: int | None = None
 
 
+class HeartRateStats(BaseModel):
+    """Heart rate statistics for a period."""
+
+    avg_bpm: int | None = None
+    max_bpm: int | None = None
+    min_bpm: int | None = None
+
+
 class ActivitySummary(BaseModel):
     date: date
     source: DataSource
+    # Step and movement metrics
     steps: int | None = Field(None, description="Total step count", example=8432)
     distance_meters: float | None = Field(None, example=6240.5)
-    floors_climbed: int | None = Field(None, example=12)
-    active_calories_kcal: float | None = Field(None, example=342.5)
-    total_calories_kcal: float | None = Field(None, example=2150.0)
-    active_duration_seconds: int | None = Field(None, description="Total active time", example=3600)
-    sedentary_duration_seconds: int | None = Field(None, example=28800)
+    # Elevation metrics
+    floors_climbed: int | None = Field(None, description="Calculated from elevation (1 floor ≈ 3m)", example=12)
+    elevation_meters: float | None = Field(None, description="Raw total elevation gain", example=36.0)
+    # Energy metrics
+    active_calories_kcal: float | None = Field(None, description="Active energy burned", example=342.5)
+    total_calories_kcal: float | None = Field(None, description="Active + basal energy", example=2150.0)
+    # Duration metrics (based on step threshold)
+    active_minutes: int | None = Field(None, description="Minutes with activity above threshold", example=60)
+    sedentary_minutes: int | None = Field(None, description="Minutes with minimal activity", example=480)
+    # Intensity metrics (based on HR zones)
     intensity_minutes: IntensityMinutes | None = None
+    # Heart rate aggregates
+    heart_rate: HeartRateStats | None = None
 
 
 class SleepStagesSummary(BaseModel):

@@ -13,7 +13,7 @@ from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
 from app.integrations.sqladmin import add_admin_views
 from app.middlewares import add_cors_middleware
-from app.utils.exceptions import handle_exception
+from app.utils.exceptions import DatetimeParseError, handle_exception
 
 basicConfig(level=INFO, format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s")
 
@@ -38,6 +38,11 @@ async def root() -> dict[str, str]:
 
 @api.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(_: Request, exc: RequestValidationError) -> None:
+    raise handle_exception(exc, "")
+
+
+@api.exception_handler(DatetimeParseError)
+async def datetime_parse_exception_handler(_: Request, exc: DatetimeParseError) -> None:
     raise handle_exception(exc, "")
 
 

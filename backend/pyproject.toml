@@ -25,6 +25,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "isodate>=0.7.2",
     "resend>=2.0.0",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
