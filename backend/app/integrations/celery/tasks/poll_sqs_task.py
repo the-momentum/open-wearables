@@ -6,6 +6,7 @@ import boto3
 
 from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
+from app.utils.sentry_helpers import log_and_capture_error
 from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
@@ -72,7 +73,12 @@ def poll_sqs_messages() -> dict[str, Any]:
                 sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
 
             except Exception as e:
-                logger.info(f"[poll_sqs_messages] Error processing message {message_id}: {str(e)}")
+                log_and_capture_error(
+                    e,
+                    logger,
+                    f"[poll_sqs_messages] Error processing message {message_id}: {e}",
+                    extra={"message_id": message_id},
+                )
                 failed_count += 1
                 continue
 
@@ -83,6 +89,7 @@ def poll_sqs_messages() -> dict[str, Any]:
         }
 
     except Exception as e:
+        log_and_capture_error(e, logger, f"[poll_sqs_messages] Error polling SQS: {e}")
         return {"status": "error", "error": str(e)}
 
 

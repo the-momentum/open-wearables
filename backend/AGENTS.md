@@ -136,6 +136,8 @@ class UserCreateInternal(UserCreate):
 
 ### Error Handling
 
+**General rule:** Let exceptions propagate up to global handlers when possible.
+
 ```python
 # In services - use raise_404=True
 user = user_service.get(db, user_id, raise_404=True)
@@ -146,6 +148,39 @@ from fastapi import HTTPException, status
 if not user:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 ```
+
+**Handled exceptions in background tasks:**
+
+When catching exceptions that are intentionally not propagated (e.g., to collect partial errors), use `log_and_capture_error` to ensure they're reported to Sentry:
+
+```python
+from app.utils.sentry_helpers import log_and_capture_error
+
+# DON'T - error never reaches Sentry
+try:
+    process_item(item)
+except Exception as e:
+    logger.error(f"Failed to process: {e}")
+    continue
+
+# DO - error is logged AND captured in Sentry
+try:
+    process_item(item)
+except Exception as e:
+    log_and_capture_error(
+        e,
+        logger,
+        f"Failed to process item {item.id}: {e}",
+        extra={"item_id": item.id, "user_id": user_id}
+    )
+    continue
+```
+
+**When to use `log_and_capture_error`:**
+- ✅ Celery tasks that catch exceptions and return error responses instead of failing
+- ✅ Batch processing where you want to continue despite errors
+- ✅ Multi-provider sync where one provider failure shouldn't stop others
+- ❌ Don't use if exception is re-raised or allowed to propagate naturally
 
 ### Provider Strategy Pattern
 

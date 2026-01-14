@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
+from app.utils.sentry_helpers import log_and_capture_error
 from celery import shared_task
 
 logger = getLogger(__name__)
@@ -132,9 +133,11 @@ def sync_vendor_data(
                     )
 
                 except Exception as e:
-                    logger.error(
+                    log_and_capture_error(
+                        e,
+                        logger,
                         f"[sync_vendor_data] Error syncing {provider_name} for user {user_id}: {str(e)}",
-                        exc_info=True,
+                        extra={"user_id": user_id, "provider": provider_name},
                     )
                     result.errors[provider_name] = str(e)
                     continue
@@ -142,9 +145,11 @@ def sync_vendor_data(
             return result.model_dump()
 
         except Exception as e:
-            logger.error(
+            log_and_capture_error(
+                e,
+                logger,
                 f"[sync_vendor_data] Error processing user {user_id}: {str(e)}",
-                exc_info=True,
+                extra={"user_id": user_id},
             )
             result.errors["general"] = str(e)
             return result.model_dump()

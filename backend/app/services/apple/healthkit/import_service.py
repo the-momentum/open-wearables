@@ -23,6 +23,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
 
 
 class ImportService:
@@ -183,6 +184,7 @@ class ImportService:
             self.load_data(db_session, data, user_id=user_id)
 
         except Exception as e:
+            log_and_capture_error(e, self.log, f"Import failed for user {user_id}: {e}", extra={"user_id": user_id})
             return UploadDataResponse(status_code=400, response=f"Import failed: {str(e)}")
 
         return UploadDataResponse(status_code=200, response="Import successful")
