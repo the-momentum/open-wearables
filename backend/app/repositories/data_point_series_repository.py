@@ -3,6 +3,9 @@ from typing import TypedDict
 from uuid import UUID
 
 from sqlalchemy import Date, asc, case, cast, func, literal_column, tuple_
+from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
+from sqlalchemy.dialects.postgresql import insert
+from psycopg.errors import UniqueViolation
 
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
@@ -72,50 +75,72 @@ class DataPointSeriesRepository(
         Handles duplicate records gracefully by catching IntegrityError and
         returning the existing record instead.
         """
-        mapping = self.mapping_repo.ensure_mapping(
+        mapping = self.create_mapping(db_session, creator)
+
+        creation_data = creator.model_dump()
+        creation_data["external_device_mapping_id"] = mapping.id
+        creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
+
+        for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
+            creation_data.pop(redundant_key, None)
+
+        creation = self.model(**creation_data)
+        db_session.add(creation)
+        return self.try_commit(db_session, creation)
+
+    @handle_exceptions
+    def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> list[DataPointSeries]:
+        """Bulk create data point samples."""
+        creations = []
+        for creator in creators:
+            mapping = self.create_mapping(db_session, creator)
+
+            creation_data = creator.model_dump()
+            creation_data["external_device_mapping_id"] = mapping.id
+            creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
+
+            for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
+                creation_data.pop(redundant_key, None)
+
+            creation = self.model(**creation_data)
+            creations.append(creation)
+
+        insert_stmt = insert(self.model).prefix_with("OR REPLACE")
+        db_session.execute(insert_stmt, creations)
+        db_session.commit()
+        return creations
+
+    def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
+        try:
+            db_session.commit()
+            db_session.refresh(creation)
+            return creation
+        except Exception as e:
+            if isinstance(e, SQLAIntegrityError) and isinstance(e.orig, UniqueViolation):
+                    db_session.rollback()
+
+                    # Query for existing record using the unique constraint fields
+                    existing = (
+                        db_session.query(self.model)
+                        .filter(
+                            self.model.external_device_mapping_id == creation.external_device_mapping_id,
+                            self.model.series_type_definition_id == creation.series_type_definition_id,
+                            self.model.recorded_at == creation.recorded_at,
+                        )
+                        .first()
+                    )
+
+                    if existing:
+                        return existing
+
+    def create_mapping(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> ExternalDeviceMapping:
+        return self.mapping_repo.ensure_mapping(
             db_session,
             creator.user_id,
             creator.provider_name,
             creator.device_id,
             creator.external_device_mapping_id,
         )
-
-        creation_data = creator.model_dump()
-        creation_data["external_device_mapping_id"] = mapping.id
-        creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
-        for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
-            creation_data.pop(redundant_key, None)
-
-        try:
-            creation = self.model(**creation_data)
-            db_session.add(creation)
-            db_session.commit()
-            db_session.refresh(creation)
-            return creation
-        except Exception as e:
-            # Check if this is a unique constraint violation
-            from psycopg.errors import UniqueViolation
-            from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
-
-            if isinstance(e, SQLAIntegrityError) and isinstance(e.orig, UniqueViolation):
-                db_session.rollback()
-
-                # Query for existing record using the unique constraint fields
-                existing = (
-                    db_session.query(self.model)
-                    .filter(
-                        self.model.external_device_mapping_id == creation_data["external_device_mapping_id"],
-                        self.model.series_type_definition_id == creation_data["series_type_definition_id"],
-                        self.model.recorded_at == creation_data["recorded_at"],
-                    )
-                    .first()
-                )
-
-                if existing:
-                    return existing
-
-            # If it's not a duplicate error or we couldn't find the existing record, re-raise
-            raise
 
     def get_samples(
         self,
