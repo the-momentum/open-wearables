@@ -7,6 +7,11 @@ from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
 from app.integrations.celery.tasks import sync_vendor_data
+from app.integrations.celery.tasks.garmin_backfill_task import (
+    get_backfill_status,
+    start_backfill,
+)
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
@@ -76,13 +81,13 @@ async def sync_user_data(
 
     **Data Types:**
     - `workouts`: Workouts/exercises/activities
-    - `247`: 24/7 data including sleep, recovery, and activity samples (Suunto only)
+    - `247`: 24/7 data including sleep, recovery, and activity samples
     - `all`: All available data types
 
     **Provider-specific:**
     - **Suunto**: Supports workouts and 247 data with pagination
     - **Polar**: Supports workouts (exercises) only
-    - **Garmin**: Supports workouts (activities) only
+    - **Garmin**: Workouts sync directly; 247 data (sleep, dailies, epochs) arrives via webhooks only
     - **Whoop**: Supports workouts and 247 data (sleep/recovery)
 
     **Execution Mode:**
@@ -93,6 +98,24 @@ async def sync_user_data(
     """
     # Async mode: dispatch to Celery and return immediately
     if run_async:
+        # For Garmin: Check if backfill is already in progress
+        if provider.value == "garmin":
+            backfill_status = get_backfill_status(str(user_id))
+            if backfill_status["in_progress"]:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "message": "Garmin backfill already in progress. Please wait for completion.",
+                        "backfill_status": backfill_status,
+                    },
+                )
+
+            # Start backfill tracking for 1 year of history
+            connection_repo = UserConnectionRepository()
+            connection = connection_repo.get_by_user_and_provider(db, user_id, "garmin")
+            if connection:
+                start_backfill(str(user_id))
+
         # Convert since timestamp to ISO date if provided
         start_date_iso = None
         if since > 0:
@@ -108,12 +131,18 @@ async def sync_user_data(
             end_date=end_date_iso,
             providers=[provider.value],
         )
-        return {
+
+        # Include backfill status in response for Garmin
+        response: dict[str, Any] = {
             "success": True,
             "async": True,
             "task_id": task.id,
             "message": f"Sync task queued for {provider.value}. Check task status for results.",
         }
+        if provider.value == "garmin":
+            response["backfill_status"] = get_backfill_status(str(user_id))
+
+        return response
 
     # Synchronous mode (original behavior)
     strategy = factory.get_provider(provider.value)
@@ -182,3 +211,27 @@ async def sync_user_data(
         )
 
     return {"success": all(results.values()), "details": results}
+
+
+@router.get("/garmin/users/{user_id}/backfill-status")
+async def get_garmin_backfill_status(
+    user_id: UUID,
+    _api_key: ApiKeyDep,
+) -> dict[str, Any]:
+    """
+    Get Garmin backfill status for a user.
+
+    Returns backfill progress including:
+    - `in_progress`: Whether backfill is currently running
+    - `months_completed`: Number of 30-day periods fetched (0-12)
+    - `target_months`: Total months to fetch (12 = 1 year)
+    - `current_end_date`: End date of last backfill period
+
+    Use this to display progress in the UI during initial sync.
+    """
+    status = get_backfill_status(str(user_id))
+    return {
+        "user_id": str(user_id),
+        "provider": "garmin",
+        **status,
+    }

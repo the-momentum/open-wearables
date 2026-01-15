@@ -25,7 +25,11 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         start_date: datetime,
         end_date: datetime,
     ) -> list[Any]:
-        """Get activities from Garmin API."""
+        """Get activities from Garmin API for a single time range.
+
+        Note: Garmin API has a maximum range of ~24 hours per request.
+        For longer date ranges, use get_workouts_historical().
+        """
         # Garmin API uses seconds for timestamps
         start_ts = int(start_date.timestamp())
         end_ts = int(end_date.timestamp())
@@ -42,8 +46,57 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             params=params,
         )
 
+    def get_workouts_historical(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        chunk_hours: int = 24,
+    ) -> list[Any]:
+        """Fetch workouts in 24-hour chunks for extended date ranges.
+
+        Garmin API limits requests to ~24 hours. This method fetches data
+        in chunks to support historical backfill of any date range.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            start_date: Start of date range
+            end_date: End of date range
+            chunk_hours: Size of each chunk in hours (default 24)
+
+        Returns:
+            List of all activities from the date range
+        """
+        all_activities: list[Any] = []
+        current_start = start_date
+
+        while current_start < end_date:
+            current_end = min(current_start + timedelta(hours=chunk_hours), end_date)
+
+            try:
+                activities = self.get_workouts(db, user_id, current_start, current_end)
+                if isinstance(activities, list):
+                    all_activities.extend(activities)
+            except Exception as e:
+                # Log error but continue with other chunks
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}"
+                )
+
+            current_start = current_end
+
+        return all_activities
+
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
-        """Get activities from Garmin API with options."""
+        """Get activities from Garmin API with options.
+
+        Supports extended date ranges by automatically chunking requests
+        when the range exceeds 24 hours (Garmin API limit).
+        """
         summary_start_time = kwargs.get("summary_start_time")
         summary_end_time = kwargs.get("summary_end_time")
 
@@ -51,12 +104,20 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         end_ts = self._parse_timestamp(summary_end_time)
 
         # Default to last 24 hours if no time range provided
-        # Garmin API requires these parameters and has a max range of 86400 seconds (24 hours)
         if not start_ts:
             start_ts = int((datetime.now() - timedelta(hours=24)).timestamp())
         if not end_ts:
             end_ts = int(datetime.now().timestamp())
 
+        # Convert to datetime for chunked fetching
+        start_dt = datetime.fromtimestamp(start_ts)
+        end_dt = datetime.fromtimestamp(end_ts)
+
+        # Check if range exceeds 24 hours - if so, use chunked fetching
+        if (end_dt - start_dt) > timedelta(hours=24):
+            return self.get_workouts_historical(db, user_id, start_dt, end_dt)
+
+        # Single request for ranges <= 24 hours
         params = {
             "uploadStartTimeInSeconds": start_ts,
             "uploadEndTimeInSeconds": end_ts,
@@ -176,16 +237,58 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         user_id: UUID,
         **kwargs: Any,
     ) -> bool:
-        """Load data from Garmin API."""
-        workouts = self.get_workouts_from_api(db, user_id, **kwargs)
-        activities = [GarminActivityJSON(**activity) for activity in workouts]
+        """Load data from Garmin API via backfill.
 
-        for record, detail in self._build_bundles(activities, user_id):
-            created_record = event_record_service.create(db, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
-            event_record_service.create_detail(db, detail_for_record)
+        Note: Garmin Health API requires pull tokens for direct polling.
+        Instead, we use the backfill API which triggers Garmin to send
+        data to our configured webhooks asynchronously.
+        """
+        from contextlib import suppress
 
-        return True
+        from app.services.providers.garmin.backfill import GarminBackfillService
+
+        # Parse date range from kwargs
+        start_dt: datetime | None = None
+        end_dt: datetime | None = None
+
+        summary_start_time = kwargs.get("summary_start_time")
+        summary_end_time = kwargs.get("summary_end_time")
+
+        if summary_start_time:
+            with suppress(ValueError, AttributeError):
+                if isinstance(summary_start_time, str):
+                    start_dt = datetime.fromisoformat(summary_start_time.replace("Z", "+00:00"))
+                elif isinstance(summary_start_time, datetime):
+                    start_dt = summary_start_time
+
+        if summary_end_time:
+            with suppress(ValueError, AttributeError):
+                if isinstance(summary_end_time, str):
+                    end_dt = datetime.fromisoformat(summary_end_time.replace("Z", "+00:00"))
+                elif isinstance(summary_end_time, datetime):
+                    end_dt = summary_end_time
+
+        # Use backfill API - data will arrive via webhooks
+        backfill_service = GarminBackfillService(
+            provider_name=self.provider_name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
+
+        result = backfill_service.trigger_backfill(
+            db=db,
+            user_id=user_id,
+            data_types=["activities"],
+            start_time=start_dt,
+            end_time=end_dt,
+        )
+
+        self.logger.info(
+            f"Garmin activities backfill triggered for user {user_id}: "
+            f"triggered={result['triggered']}, failed={result['failed']}"
+        )
+
+        return "activities" in result["triggered"]
 
     def get_activity_detail(
         self,

@@ -76,6 +76,15 @@ from .garmin.activity_import import (
 from .garmin.activity_import import (
     RootJSON as GarminRootJSON,
 )
+from .garmin.wellness_import import (
+    GarminBodyCompJSON,
+    GarminDailyJSON,
+    GarminEpochJSON,
+    GarminPulseOxJSON,
+    GarminRespirationJSON,
+    GarminSleepJSON,
+    GarminStressJSON,
+)
 from .invitation import (
     InvitationAccept,
     InvitationCreate,
@@ -244,6 +253,13 @@ __all__ = [
     # Garmin schemas
     "GarminRootJSON",
     "GarminActivityJSON",
+    "GarminSleepJSON",
+    "GarminDailyJSON",
+    "GarminEpochJSON",
+    "GarminBodyCompJSON",
+    "GarminStressJSON",
+    "GarminPulseOxJSON",
+    "GarminRespirationJSON",
     # Polar schemas
     "PolarExerciseJSON",
     # Whoop schemas

@@ -481,3 +481,22 @@ export interface InvitationAccept {
   last_name: string;
   password: string;
 }
+
+// Garmin Backfill Status (sequential: 5 data types × 30 days)
+export interface GarminBackfillStatus {
+  in_progress: boolean;
+  days_completed: number;
+  current_data_type_index: number;
+  current_data_type: string; // "sleeps" | "dailies" | "epochs" | "bodyComps" | "hrv"
+  current_end_date: string | null;
+  target_days: number;
+}
+
+// Sync Response (returned by provider sync endpoint)
+export interface SyncResponse {
+  success: boolean;
+  async: boolean;
+  task_id: string;
+  message: string;
+  backfill_status?: GarminBackfillStatus;
+}
