@@ -367,7 +367,7 @@ class TestGarmin247Data:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             results = garmin_247.load_and_save_all(db, user.id)
 
             assert results["backfill_triggered"] is True
@@ -382,7 +382,7 @@ class TestGarmin247Data:
         end = datetime(2024, 1, 7, tzinfo=timezone.utc)
 
         with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill") as mock_start_backfill,
+            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
             patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
         ):
             mock_trigger.return_value = {
@@ -391,7 +391,7 @@ class TestGarmin247Data:
                 "start_time": start.isoformat(),
                 "end_time": end.isoformat(),
             }
-            
+
             results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
             # Verify custom dates were used
@@ -416,7 +416,7 @@ class TestGarmin247Data:
                 "start_time": "2024-01-01T00:00:00+00:00",
                 "end_time": "2024-01-07T00:00:00+00:00",
             }
-            
+
             results = garmin_247.load_and_save_all(
                 db,
                 user.id,
@@ -440,7 +440,7 @@ class TestGarmin247Data:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             results = garmin_247.load_and_save_all(db, user.id)
 
             # Should still return with backfill_triggered

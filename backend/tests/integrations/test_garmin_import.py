@@ -73,7 +73,7 @@ class TestGarminWorkoutImport:
                 "start_time": "2024-01-15T00:00:00+00:00",
                 "end_time": "2024-01-20T00:00:00+00:00",
             }
-            
+
             # Act
             result = strategy.workouts.load_data(
                 db,
@@ -126,7 +126,7 @@ class TestGarminWorkoutImport:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
@@ -184,7 +184,7 @@ class TestGarminWorkoutImport:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
@@ -207,7 +207,7 @@ class TestGarminWorkoutImport:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
@@ -224,16 +224,18 @@ class TestGarminWorkoutImport:
         assert strategy.workouts is not None
 
         with (
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill", 
-                  side_effect=Exception("API Error")),
+            patch(
+                "app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill",
+                side_effect=Exception("API Error"),
+            ),
             pytest.raises(Exception, match="API Error"),
         ):
             strategy.workouts.load_data(db, user.id)
 
     def test_get_workouts_from_api_with_params(self, db: Session) -> None:
         """Test getting workouts from API with custom parameters.
-        
-        Note: For date ranges exceeding 24 hours, the implementation uses 
+
+        Note: For date ranges exceeding 24 hours, the implementation uses
         chunked fetching (24-hour chunks), so multiple API calls are made.
         """
         # Arrange
@@ -287,7 +289,7 @@ class TestGarminWorkoutImport:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 

@@ -92,7 +92,6 @@ export function useGarminBackfillStatus(userId: string, enabled: boolean) {
     queryKey: queryKeys.garmin.backfillStatus(userId),
     queryFn: () => healthService.getGarminBackfillStatus(userId),
     enabled,
-    refetchInterval: (query) =>
-      query.state.data?.in_progress ? 15000 : false,
+    refetchInterval: (query) => (query.state.data?.in_progress ? 15000 : false),
   });
 }

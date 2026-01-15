@@ -237,7 +237,7 @@ class TestGarminWorkouts:
                 "start_time": "2024-01-14T00:00:00+00:00",
                 "end_time": "2024-01-15T00:00:00+00:00",
             }
-            
+
             result = garmin_workouts.load_data(db, user.id)
 
             assert result is True

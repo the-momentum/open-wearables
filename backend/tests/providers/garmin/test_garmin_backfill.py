@@ -70,7 +70,7 @@ class TestGarminBackfillTimeframeLogic:
 
     def test_first_sync_timeframe_calculation(self) -> None:
         """Test that first sync calculates appropriate timeframe.
-        
+
         Note: In the current implementation, first sync uses BACKFILL_CHUNK_DAYS (1 day)
         not the full 2-year history. Full history is handled via sequential backfill.
         """
