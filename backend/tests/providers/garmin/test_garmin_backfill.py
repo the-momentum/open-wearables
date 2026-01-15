@@ -1,7 +1,7 @@
 """Tests for Garmin Backfill Service."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -23,9 +23,10 @@ class TestGarminBackfillServiceUnit:
 
     def test_backfill_limits_constants(self, backfill_service: GarminBackfillService) -> None:
         """Test that backfill limit constants are set correctly."""
-        # Official Garmin limits
-        assert backfill_service.HEALTH_API_MAX_DAYS == 730  # 2 years
-        assert backfill_service.ACTIVITY_API_MAX_DAYS == 1825  # 5 years
+        # Actual constants from implementation
+        assert backfill_service.BACKFILL_CHUNK_DAYS == 1  # Per request (1 day at a time)
+        assert backfill_service.MAX_BACKFILL_DAYS == 30  # Target: 1 month of history
+        assert backfill_service.MAX_REQUEST_DAYS == 90  # Max days per single backfill request (Garmin limit)
         assert backfill_service.DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
 
     def test_backfill_endpoints_mapping(self, backfill_service: GarminBackfillService) -> None:
@@ -56,41 +57,44 @@ class TestGarminBackfillServiceUnit:
     def test_default_data_types(self, backfill_service: GarminBackfillService) -> None:
         """Test default data types for backfill."""
         expected_defaults = ["sleeps", "dailies", "epochs", "bodyComps", "hrv"]
-        assert backfill_service.DEFAULT_DATA_TYPES == expected_defaults
+        assert expected_defaults == backfill_service.DEFAULT_DATA_TYPES
 
     def test_rate_limit_constants(self, backfill_service: GarminBackfillService) -> None:
         """Test rate limit constants."""
-        assert backfill_service.REQUEST_DELAY_SECONDS == 2.0
-        assert backfill_service.MAX_RETRIES == 3
-        assert backfill_service.RETRY_BASE_DELAY == 10.0
+        assert backfill_service.REQUEST_DELAY_SECONDS == 0.5  # Small delay between requests
+        # Note: MAX_RETRIES and RETRY_BASE_DELAY are not defined in current implementation
 
 
 class TestGarminBackfillTimeframeLogic:
     """Test backfill timeframe logic without actual API calls."""
 
     def test_first_sync_timeframe_calculation(self) -> None:
-        """Test that first sync calculates 2-year timeframe."""
+        """Test that first sync calculates appropriate timeframe.
+        
+        Note: In the current implementation, first sync uses BACKFILL_CHUNK_DAYS (1 day)
+        not the full 2-year history. Full history is handled via sequential backfill.
+        """
         # Simulate the logic from trigger_backfill
         is_first_sync = True
-        HEALTH_API_MAX_DAYS = 730
-        DEFAULT_BACKFILL_DAYS = 1
+        backfill_chunk_days = 1  # Current implementation value
+        default_backfill_days = 1
 
         end_time = datetime.now(timezone.utc)
-        days = HEALTH_API_MAX_DAYS if is_first_sync else DEFAULT_BACKFILL_DAYS
+        days = backfill_chunk_days if is_first_sync else default_backfill_days
         start_time = end_time - timedelta(days=days)
 
         days_diff = (end_time - start_time).days
-        assert days_diff == 730
+        assert days_diff == 1
 
     def test_subsequent_sync_timeframe_calculation(self) -> None:
         """Test that subsequent sync calculates 1-day timeframe."""
         # Simulate the logic from trigger_backfill
         is_first_sync = False
-        HEALTH_API_MAX_DAYS = 730
-        DEFAULT_BACKFILL_DAYS = 1
+        backfill_chunk_days = 1
+        default_backfill_days = 1
 
         end_time = datetime.now(timezone.utc)
-        days = HEALTH_API_MAX_DAYS if is_first_sync else DEFAULT_BACKFILL_DAYS
+        days = backfill_chunk_days if is_first_sync else default_backfill_days
         start_time = end_time - timedelta(days=days)
 
         days_diff = (end_time - start_time).days

@@ -6,7 +6,6 @@ pull tokens that can be used to fetch user data directly from the API.
 
 import logging
 import re
-from datetime import datetime, timezone
 
 import httpx
 
@@ -74,7 +73,7 @@ class GarminPullTokenService:
                 if "endpoints" in location:
                     self.logger.info("Successfully authenticated with Garmin Dashboard")
                     return True
-                elif "unknownCredentials" in location:
+                if "unknownCredentials" in location:
                     self.logger.error("Invalid Garmin credentials")
                     return False
 

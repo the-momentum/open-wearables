@@ -18,13 +18,13 @@ from app.integrations.celery.tasks.garmin_backfill_task import (
 )
 from app.integrations.redis_client import get_redis_client
 from app.models import Developer
-from app.utils.auth import get_current_developer
 from app.repositories import UserConnectionRepository
 from app.schemas import GarminActivityJSON
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.workouts import GarminWorkouts
+from app.utils.auth import get_current_developer
 
 router = APIRouter()
 logger = getLogger(__name__)

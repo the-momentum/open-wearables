@@ -36,8 +36,8 @@ class GarminBackfillService:
     """
 
     # Backfill configuration
-    BACKFILL_CHUNK_DAYS = 1   # Per request (1 day at a time)
-    MAX_BACKFILL_DAYS = 30    # Target: 1 month of history
+    BACKFILL_CHUNK_DAYS = 1  # Per request (1 day at a time)
+    MAX_BACKFILL_DAYS = 30  # Target: 1 month of history
     MAX_REQUEST_DAYS = 90  # Max days per single backfill request (Garmin limit)
 
     # Mapping of data type to backfill endpoint

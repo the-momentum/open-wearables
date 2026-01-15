@@ -354,21 +354,25 @@ class TestGarmin247Data:
     # -------------------------------------------------------------------------
 
     def test_load_and_save_all_default_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all with default date range."""
+        """Test load_and_save_all triggers backfill with default date range."""
         user = UserFactory()
 
         with (
-            patch.object(garmin_247, "load_and_save_sleep", return_value=2),
-            patch.object(garmin_247, "load_and_save_dailies", return_value=10),
-            patch.object(garmin_247, "load_and_save_epochs", return_value=50),
-            patch.object(garmin_247, "load_and_save_body_composition", return_value=1),
+            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill") as mock_start_backfill,
+            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
         ):
+            mock_trigger.return_value = {
+                "triggered": ["sleeps"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+            
             results = garmin_247.load_and_save_all(db, user.id)
 
-            assert results["sleep_sessions"] == 2
-            assert results["daily_samples"] == 10
-            assert results["epoch_samples"] == 50
-            assert results["body_composition_samples"] == 1
+            assert results["backfill_triggered"] is True
+            assert "sleeps" in results["triggered_types"]
+            mock_start_backfill.assert_called_once()
 
     def test_load_and_save_all_custom_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with custom date range."""
@@ -378,31 +382,41 @@ class TestGarmin247Data:
         end = datetime(2024, 1, 7, tzinfo=timezone.utc)
 
         with (
-            patch.object(garmin_247, "load_and_save_sleep", return_value=5) as mock_sleep,
-            patch.object(garmin_247, "load_and_save_dailies", return_value=20),
-            patch.object(garmin_247, "load_and_save_epochs", return_value=100),
-            patch.object(garmin_247, "load_and_save_body_composition", return_value=2),
+            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill") as mock_start_backfill,
+            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
         ):
+            mock_trigger.return_value = {
+                "triggered": ["sleeps"],
+                "failed": {},
+                "start_time": start.isoformat(),
+                "end_time": end.isoformat(),
+            }
+            
             results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
             # Verify custom dates were used
-            mock_sleep.assert_called_once()
-            call_args = mock_sleep.call_args
-            assert call_args[0][2] == start  # start_time argument
-            assert call_args[0][3] == end  # end_time argument
+            mock_trigger.assert_called_once()
+            call_kwargs = mock_trigger.call_args[1]
+            assert call_kwargs["start_time"] == start
+            assert call_kwargs["end_time"] == end
 
-            assert results["sleep_sessions"] == 5
+            assert results["backfill_triggered"] is True
 
     def test_load_and_save_all_string_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with ISO string dates."""
         user = UserFactory()
 
         with (
-            patch.object(garmin_247, "load_and_save_sleep", return_value=3),
-            patch.object(garmin_247, "load_and_save_dailies", return_value=15),
-            patch.object(garmin_247, "load_and_save_epochs", return_value=75),
-            patch.object(garmin_247, "load_and_save_body_composition", return_value=1),
+            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
+            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
         ):
+            mock_trigger.return_value = {
+                "triggered": ["sleeps"],
+                "failed": {},
+                "start_time": "2024-01-01T00:00:00+00:00",
+                "end_time": "2024-01-07T00:00:00+00:00",
+            }
+            
             results = garmin_247.load_and_save_all(
                 db,
                 user.id,
@@ -410,24 +424,29 @@ class TestGarmin247Data:
                 end_time="2024-01-07T00:00:00Z",
             )
 
-            assert results["sleep_sessions"] == 3
+            assert results["backfill_triggered"] is True
 
     def test_load_and_save_all_handles_errors(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all continues on individual errors."""
+        """Test load_and_save_all handles errors from backfill service."""
         user = UserFactory()
 
         with (
-            patch.object(garmin_247, "load_and_save_sleep", side_effect=Exception("Sleep error")),
-            patch.object(garmin_247, "load_and_save_dailies", return_value=10),
-            patch.object(garmin_247, "load_and_save_epochs", return_value=50),
-            patch.object(garmin_247, "load_and_save_body_composition", return_value=1),
+            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
+            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
         ):
+            mock_trigger.return_value = {
+                "triggered": [],
+                "failed": {"sleeps": "API Error"},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+            
             results = garmin_247.load_and_save_all(db, user.id)
 
-            # Should still have results from other data types
-            assert results["sleep_sessions"] == 0  # Error case
-            assert results["daily_samples"] == 10
-            assert results["epoch_samples"] == 50
+            # Should still return with backfill_triggered
+            assert results["backfill_triggered"] is True
+            assert results["triggered_types"] == []
+            assert "sleeps" in results["failed_types"]
 
     # -------------------------------------------------------------------------
     # HRV Data Tests

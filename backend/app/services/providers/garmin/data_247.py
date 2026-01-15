@@ -653,9 +653,7 @@ class Garmin247Data(Base247DataTemplate):
                 )
                 self.data_point_repo.create(db, sample)
                 count += 1
-                self.logger.debug(
-                    f"Saved HRV nightly avg={last_night_avg}ms for {calendar_date}"
-                )
+                self.logger.debug(f"Saved HRV nightly avg={last_night_avg}ms for {calendar_date}")
             except Exception as e:
                 self.logger.debug(f"Failed to save HRV lastNightAvg: {e}")
 

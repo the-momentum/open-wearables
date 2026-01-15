@@ -131,7 +131,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               Day {(backfillStatus?.days_completed ?? 0) + 1}/
-              {backfillStatus?.target_days ?? 30} ({backfillStatus?.current_data_type ?? 'syncing'})
+              {backfillStatus?.target_days ?? 30} (
+              {backfillStatus?.current_data_type ?? 'syncing'})
             </>
           ) : isSynchronizing ? (
             <>

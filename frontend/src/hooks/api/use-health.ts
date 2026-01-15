@@ -85,7 +85,7 @@ export function useSynchronizeDataFromProvider(
 
 /**
  * Get Garmin backfill status for a user
- * Polls every 5 seconds while backfill is in progress
+ * Polls every 15 seconds while backfill is in progress
  */
 export function useGarminBackfillStatus(userId: string, enabled: boolean) {
   return useQuery({
@@ -93,6 +93,6 @@ export function useGarminBackfillStatus(userId: string, enabled: boolean) {
     queryFn: () => healthService.getGarminBackfillStatus(userId),
     enabled,
     refetchInterval: (query) =>
-      query.state.data?.in_progress ? 5000 : false,
+      query.state.data?.in_progress ? 15000 : false,
   });
 }

@@ -12,13 +12,12 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
-from celery import shared_task
-
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.backfill import GarminBackfillService
+from celery import shared_task
 
 logger = getLogger(__name__)
 
