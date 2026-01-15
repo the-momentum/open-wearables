@@ -2,10 +2,10 @@ from datetime import date, datetime
 from typing import TypedDict
 from uuid import UUID
 
-from sqlalchemy import Date, asc, case, cast, func, literal_column, tuple_
-from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
-from sqlalchemy.dialects.postgresql import insert
 from psycopg.errors import UniqueViolation
+from sqlalchemy import Date, asc, case, cast, func, literal_column, tuple_
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
 from app.database import DbSession
 from app.models import DataPointSeries, ExternalDeviceMapping
@@ -115,23 +115,25 @@ class DataPointSeriesRepository(
             db_session.commit()
             db_session.refresh(creation)
             return creation
-        except Exception as e:
-            if isinstance(e, SQLAIntegrityError) and isinstance(e.orig, UniqueViolation):
-                    db_session.rollback()
+        except SQLAIntegrityError as e:
+            if isinstance(e.orig, UniqueViolation):
+                db_session.rollback()
 
-                    # Query for existing record using the unique constraint fields
-                    existing = (
-                        db_session.query(self.model)
-                        .filter(
-                            self.model.external_device_mapping_id == creation.external_device_mapping_id,
-                            self.model.series_type_definition_id == creation.series_type_definition_id,
-                            self.model.recorded_at == creation.recorded_at,
-                        )
-                        .first()
+                # Query for existing record using the unique constraint fields
+                existing = (
+                    db_session.query(self.model)
+                    .filter(
+                        self.model.external_device_mapping_id == creation.external_device_mapping_id,
+                        self.model.series_type_definition_id == creation.series_type_definition_id,
+                        self.model.recorded_at == creation.recorded_at,
                     )
+                    .first()
+                )
 
-                    if existing:
-                        return existing
+                if existing:
+                    return existing
+            # Re-raise if not a duplicate or if existing record not found
+            raise
 
     def create_mapping(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> ExternalDeviceMapping:
         return self.mapping_repo.ensure_mapping(
