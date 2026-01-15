@@ -82,6 +82,18 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get body summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/body
+ */
+export function useBodySummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.bodySummaries(userId, params),
+    queryFn: () => healthService.getBodySummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
  * Synchronize workouts/exercises/activities from fitness provider API for a specific user
  */
 export function useSynchronizeDataFromProvider(

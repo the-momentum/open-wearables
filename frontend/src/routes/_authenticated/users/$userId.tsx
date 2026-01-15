@@ -26,6 +26,7 @@ import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
 import { SleepSection } from '@/components/user/sleep-section';
 import { ActivitySection } from '@/components/user/activity-section';
+import { BodySection } from '@/components/user/body-section';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -458,6 +459,9 @@ function UserDetailPage() {
         dateRange={sleepDateRange}
         onDateRangeChange={setSleepDateRange}
       />
+
+      {/* Body Metrics Section */}
+      <BodySection userId={userId} />
 
       {/* Edit User Dialog */}
       {isEditDialogOpen && (
