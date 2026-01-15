@@ -31,6 +31,7 @@ import { Label } from '@/components/ui/label';
 import { formatDate, truncateId } from '@/lib/utils/format';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
+import { SleepSection } from '@/components/user/sleep-section';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -62,6 +63,7 @@ function UserDetailPage() {
   const [dateRange, setDateRange] = useState<DateRangeValue>(30);
   const [dataPointsDateRange, setDataPointsDateRange] =
     useState<DateRangeValue>(30);
+  const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
 
   // Calculate dates for workouts
   const { workoutStartDate, workoutEndDate } = useMemo(() => {
@@ -573,6 +575,13 @@ function UserDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Sleep Section */}
+      <SleepSection
+        userId={userId}
+        dateRange={sleepDateRange}
+        onDateRangeChange={setSleepDateRange}
+      />
 
       {/* Edit User Dialog */}
       {isEditDialogOpen && (

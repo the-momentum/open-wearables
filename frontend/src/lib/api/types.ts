@@ -205,6 +205,25 @@ export interface SleepStagesSummary {
   rem_minutes: number | null;
 }
 
+export interface SleepSession {
+  id: string;
+  start_time: string;
+  end_time: string;
+  source: DataSource;
+  duration_seconds: number;
+  efficiency_percent: number | null;
+  stages: SleepStagesSummary | null;
+  is_nap: boolean;
+}
+
+export interface SleepSessionsParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
+}
+
 export interface SleepSummary {
   date: string;
   source: DataSource;
