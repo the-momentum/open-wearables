@@ -25,6 +25,7 @@ def create_celery() -> Celery:
             "task": "app.integrations.celery.tasks.periodic_sync_task.sync_all_users",
             "schedule": float(settings.sync_interval_seconds),
             "args": (),  # No args - task calculates date range dynamically
+            "kwargs": {"user_id": None},
         },
     }
 

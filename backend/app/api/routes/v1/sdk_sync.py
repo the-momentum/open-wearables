@@ -50,7 +50,12 @@ async def sync_data_auto_health_export(
     content_str, content_type = content[0], content[1]
 
     # Queue the import task in Celery with auto-health-export source
-    process_apple_upload.delay(content_str, content_type, user_id, "auto-health-export")
+    process_apple_upload.delay(
+        content=content_str,
+        content_type=content_type,
+        user_id=user_id,
+        source="auto-health-export",
+    )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully")
 
@@ -75,6 +80,11 @@ async def sync_data_healthion(
     content_str, content_type = content[0], content[1]
 
     # Queue the import task in Celery with healthion source
-    process_apple_upload.delay(content_str, content_type, user_id, "healthion")
+    process_apple_upload.delay(
+        content=content_str,
+        content_type=content_type,
+        user_id=user_id,
+        source="healthion",
+    )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully")
