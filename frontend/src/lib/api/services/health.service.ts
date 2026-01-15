@@ -21,7 +21,7 @@ export interface WorkoutsParams {
   start_date?: string;
   end_date?: string;
   limit?: number;
-  offset?: number;
+  cursor?: string;
   sort_order?: 'asc' | 'desc';
   workout_type?: string;
   source_name?: string;
