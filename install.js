@@ -9,7 +9,7 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "docker --version"
+        message: "docker --version || (echo '❌ Docker not found! Please install Docker Desktop first.' && exit 1)"
       }
     },
     {
@@ -19,17 +19,9 @@ module.exports = {
       }
     },
     {
-      method: "fs.copy",
+      method: "shell.run",
       params: {
-        src: "backend/config/.env.local.template",
-        dest: "backend/config/.env"
-      }
-    },
-    {
-      method: "fs.copy",
-      params: {
-        src: "frontend/.env.local.template",
-        dest: "frontend/.env"
+        message: "cp backend/config/.env.local.template backend/config/.env.local"
       }
     },
     {
@@ -64,4 +56,3 @@ module.exports = {
     }
   ]
 };
-

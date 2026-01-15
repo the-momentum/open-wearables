@@ -1,33 +1,39 @@
 # Simplified Docker Compose for personal/local use
 # Optimized for non-technical users via Pinokio
 # Project name: open-wearables-local
+#
+# PORTS (different from main docker-compose.yml to avoid conflicts):
+#   Frontend: 3001 (main uses 3000)
+#   Backend:  8001 (main uses 8000)
+#   Postgres: 5433 (main uses 5432)
+#   Redis:    6380 (main uses 6379)
 
 services:
   db:
     image: postgres:18
     container_name: owlocal-postgres
     environment:
-      POSTGRES_DB: open-wearables
+      POSTGRES_DB: open-wearables-local
       POSTGRES_USER: open-wearables
-      POSTGRES_PASSWORD: open-wearables
+      POSTGRES_PASSWORD: open-wearables-local
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
+      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables-local"]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - owlocal_postgres_data:/var/lib/postgresql
     restart: unless-stopped
 
   redis:
     container_name: owlocal-redis
     image: redis:8
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
-      - redis_data:/var/lib/redis/data
+      - owlocal_redis_data:/var/lib/redis/data
     restart: unless-stopped
 
   app:
@@ -38,13 +44,17 @@ services:
     image: open-wearables-local:latest
     command: scripts/start/app.sh
     env_file:
-      - ./backend/config/.env
+      - ./backend/config/.env.local
     environment:
       - DB_HOST=db
+      - DB_NAME=open-wearables-local
+      - DB_PASSWORD=open-wearables-local
       - REDIS_HOST=redis
       - ENVIRONMENT=local
+      - FRONTEND_URL=http://localhost:3001
+      - CORS_ORIGINS=["http://localhost:3001"]
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -57,9 +67,11 @@ services:
     image: open-wearables-local:latest
     command: scripts/start/worker.sh
     env_file:
-      - ./backend/config/.env
+      - ./backend/config/.env.local
     environment:
       - DB_HOST=db
+      - DB_NAME=open-wearables-local
+      - DB_PASSWORD=open-wearables-local
       - REDIS_HOST=redis
     depends_on:
       - redis
@@ -72,9 +84,11 @@ services:
     image: open-wearables-local:latest
     command: scripts/start/beat.sh
     env_file:
-      - ./backend/config/.env
+      - ./backend/config/.env.local
     environment:
       - DB_HOST=db
+      - DB_NAME=open-wearables-local
+      - DB_PASSWORD=open-wearables-local
       - REDIS_HOST=redis
     depends_on:
       - redis
@@ -89,14 +103,14 @@ services:
     container_name: owlocal-frontend
     image: open-wearables-frontend-local:dev
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://localhost:8001
     depends_on:
       - app
     restart: unless-stopped
 
 volumes:
-  postgres_data:
-  redis_data:
+  owlocal_postgres_data:
+  owlocal_redis_data:
 

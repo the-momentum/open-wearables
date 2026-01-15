@@ -3,13 +3,13 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo ''"
+        message: "echo '📋 Open Wearables Logs (last 50 lines per service)'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '⚙️  Provider Configuration'"
+        message: "echo ''"
       }
     },
     {
@@ -21,19 +21,13 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo ''"
+        message: "echo '🔧 BACKEND LOGS:'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '✅ AVAILABLE WITHOUT API KEYS:'"
-      }
-    },
-    {
-      method: "shell.run",
-      params: {
-        message: "echo '   • Apple Health - Sync via iOS app (no API key needed)'"
+        message: "docker logs owlocal-backend --tail 50 2>&1 || echo 'Backend not running'"
       }
     },
     {
@@ -45,31 +39,19 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo '🔐 REQUIRE DEVELOPER API ACCESS (Business accounts only):'"
+        message: "echo '═══════════════════════════════════════════════════════════════'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '   • Garmin  - Requires Garmin Health API partnership'"
+        message: "echo '🎨 FRONTEND LOGS:'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '   • Suunto  - Requires Suunto API partnership'"
-      }
-    },
-    {
-      method: "shell.run",
-      params: {
-        message: "echo '   • Polar   - Requires Polar AccessLink API access'"
-      }
-    },
-    {
-      method: "shell.run",
-      params: {
-        message: "echo '   • Whoop   - Requires Whoop API access'"
+        message: "docker logs owlocal-frontend --tail 30 2>&1 || echo 'Frontend not running'"
       }
     },
     {
@@ -81,25 +63,19 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo '📝 To configure providers with API keys:'"
+        message: "echo '═══════════════════════════════════════════════════════════════'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '   1. Edit: backend/config/.env.local'"
+        message: "echo '⚙️  WORKER LOGS:'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '   2. Add your CLIENT_ID and CLIENT_SECRET for each provider'"
-      }
-    },
-    {
-      method: "shell.run",
-      params: {
-        message: "echo '   3. Restart Open Wearables (Stop → Start)'"
+        message: "docker logs owlocal-worker --tail 20 2>&1 || echo 'Worker not running'"
       }
     },
     {
@@ -111,13 +87,19 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo '💡 For personal use, Apple Health covers most fitness data!'"
+        message: "echo '═══════════════════════════════════════════════════════════════'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo ''"
+        message: "echo '📊 CONTAINER STATUS:'"
+      }
+    },
+    {
+      method: "shell.run",
+      params: {
+        message: "docker ps -a --filter 'name=owlocal' --format 'table {{.Names}}\\t{{.Status}}\\t{{.Ports}}'"
       }
     }
   ]

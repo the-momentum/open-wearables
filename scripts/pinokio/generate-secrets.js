@@ -12,8 +12,8 @@ function generateSecretKey(length = 64) {
   return crypto.randomBytes(length).toString('base64url');
 }
 
-// Path to the .env file
-const envPath = path.join(__dirname, '..', '..', 'backend', 'config', '.env');
+// Path to the .env.local file (for Pinokio local installation)
+const envPath = path.join(__dirname, '..', '..', 'backend', 'config', '.env.local');
 
 // Check if .env exists
 if (!fs.existsSync(envPath)) {

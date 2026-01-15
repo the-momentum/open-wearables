@@ -27,7 +27,7 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "docker volume rm open-wearables-local_postgres_data open-wearables-local_redis_data 2>/dev/null || true"
+        message: "docker volume rm open-wearables-local_owlocal_postgres_data open-wearables-local_owlocal_redis_data 2>/dev/null || true"
       }
     },
     {

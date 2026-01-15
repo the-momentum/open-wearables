@@ -75,13 +75,15 @@ These providers require developer API access that is typically only granted to b
 
 ## Ports Used
 
-| Service | Port | URL |
-|---------|------|-----|
-| Frontend Dashboard | 3000 | http://localhost:3000 |
-| Backend API | 8000 | http://localhost:8000 |
-| API Documentation | 8000 | http://localhost:8000/docs |
-| PostgreSQL | 5432 | (internal) |
-| Redis | 6379 | (internal) |
+Pinokio version uses different ports to avoid conflicts with the development setup:
+
+| Service | Pinokio Port | Dev Port | URL |
+|---------|--------------|----------|-----|
+| Frontend Dashboard | 3001 | 3000 | http://localhost:3001 |
+| Backend API | 8001 | 8000 | http://localhost:8001 |
+| API Documentation | 8001 | 8000 | http://localhost:8001/docs |
+| PostgreSQL | 5433 | 5432 | (internal) |
+| Redis | 6380 | 6379 | (internal) |
 
 ## Troubleshooting
 
@@ -89,7 +91,9 @@ These providers require developer API access that is typically only granted to b
 Make sure Docker Desktop is started and running before using Open Wearables.
 
 ### "Port already in use"
-If you see port conflicts, make sure no other services are using ports 3000, 8000, 5432, or 6379.
+If you see port conflicts, make sure no other services are using ports 3001, 8001, 5433, or 6380.
+
+Note: Pinokio uses different ports than the development setup, so both can run simultaneously.
 
 ### "Installation failed"
 1. Make sure you have at least 4GB of free disk space
@@ -110,15 +114,33 @@ Subsequent starts will be much faster.
 If you have access to provider APIs (Garmin, Suunto, Polar, Whoop):
 
 1. Stop Open Wearables
-2. Edit `backend/config/.env`
+2. Edit `backend/config/.env.local`
 3. Add your CLIENT_ID and CLIENT_SECRET for each provider
 4. Start Open Wearables again
+
+## Uninstalling
+
+### From Pinokio:
+1. Click **Stop** to shut down the services
+2. Right-click on "Open Wearables Local" → **Delete** or **Remove**
+
+### Complete cleanup (removes all data):
+```bash
+# Stop and remove containers
+docker compose -f docker-compose.local.yml -p open-wearables-local down -v
+
+# Remove Docker volumes
+docker volume rm open-wearables-local_owlocal_postgres_data open-wearables-local_owlocal_redis_data
+
+# Remove Docker images
+docker rmi open-wearables-local:latest open-wearables-frontend-local:dev
+```
 
 ## Data Location
 
 Your data is stored in Docker volumes:
-- **Database:** `open-wearables-local_postgres_data`
-- **Cache:** `open-wearables-local_redis_data`
+- **Database:** `open-wearables-local_owlocal_postgres_data`
+- **Cache:** `open-wearables-local_owlocal_redis_data`
 
 To backup your data, you can use Docker volume backup tools or export via the API.
 

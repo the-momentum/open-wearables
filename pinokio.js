@@ -20,12 +20,12 @@ module.exports = {
     },
     {
       text: "Open Dashboard",
-      href: "http://localhost:3000",
+      href: "http://localhost:3001",
       icon: "fa-solid fa-globe"
     },
     {
       text: "Open API Docs",
-      href: "http://localhost:8000/docs",
+      href: "http://localhost:8001/docs",
       icon: "fa-solid fa-book"
     },
     {
@@ -34,9 +34,19 @@ module.exports = {
       icon: "fa-solid fa-gear"
     },
     {
+      text: "View Logs",
+      href: "logs.js",
+      icon: "fa-solid fa-list"
+    },
+    {
       text: "Reset Database",
       href: "reset.js",
       icon: "fa-solid fa-rotate-left"
+    },
+    {
+      text: "Uninstall",
+      href: "uninstall.js",
+      icon: "fa-solid fa-trash"
     }
   ]
 };

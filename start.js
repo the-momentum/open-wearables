@@ -15,13 +15,13 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo '⏳ Waiting for services to be ready...'"
+        message: "echo '⏳ Waiting for services to be ready (15 seconds)...'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "sleep 10"
+        message: "sleep 15"
       }
     },
     {
@@ -33,7 +33,7 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "docker compose -f docker-compose.local.yml -p open-wearables-local exec -T app uv run python scripts/init/main.py || echo 'Database already initialized'"
+        message: "docker compose -f docker-compose.local.yml -p open-wearables-local exec -T app uv run python scripts/init/main.py 2>/dev/null || echo 'ℹ️  Database already initialized or still starting'"
       }
     },
     {
@@ -57,13 +57,13 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        message: "echo '📱 Dashboard: http://localhost:3000'"
+        message: "echo '📱 Dashboard: http://localhost:3001'"
       }
     },
     {
       method: "shell.run",
       params: {
-        message: "echo '📚 API Docs:  http://localhost:8000/docs'"
+        message: "echo '📚 API Docs:  http://localhost:8001/docs'"
       }
     },
     {
@@ -80,4 +80,3 @@ module.exports = {
     }
   ]
 };
-
