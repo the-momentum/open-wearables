@@ -299,7 +299,7 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.recorded_at >= params.start_datetime)
 
         if params.end_datetime:
-            query = query.filter(self.model.recorded_at <= params.end_datetime)
+            query = query.filter(self.model.recorded_at < params.end_datetime)
 
         # Calculate total count BEFORE applying cursor pagination
         # This gives us the total matching records (after all other filters)
@@ -404,11 +404,9 @@ class DataPointSeriesRepository(
     ) -> dict[SeriesType, float | None]:
         """Get average values for specified series types within a time range.
 
-        Returns a dict mapping SeriesType to average value (or None if no data).
+        Uses half-open interval [start_time, end_time).
 
-        TODO: This method uses closed interval [start, end] (<=) while other methods
-        use half-open [start, end) (<). Consider standardizing on half-open intervals
-        for consistency across the repository.
+        Returns a dict mapping SeriesType to average value (or None if no data).
         """
         if not series_types:
             return {}
@@ -424,7 +422,7 @@ class DataPointSeriesRepository(
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 self.model.recorded_at >= start_time,
-                self.model.recorded_at <= end_time,
+                self.model.recorded_at < end_time,
                 self.model.series_type_definition_id.in_(type_ids),
             )
             .group_by(self.model.series_type_definition_id)
@@ -509,7 +507,7 @@ class DataPointSeriesRepository(
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) <= cast(end_date, Date),
+                cast(self.model.recorded_at, Date) < cast(end_date, Date),
                 self.model.series_type_definition_id.in_(
                     [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
                 ),
@@ -585,7 +583,7 @@ class DataPointSeriesRepository(
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) <= cast(end_date, Date),
+                cast(self.model.recorded_at, Date) < cast(end_date, Date),
                 self.model.series_type_definition_id == steps_id,
             )
             .group_by(
@@ -681,7 +679,7 @@ class DataPointSeriesRepository(
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) <= cast(end_date, Date),
+                cast(self.model.recorded_at, Date) < cast(end_date, Date),
                 self.model.series_type_definition_id == hr_id,
             )
             .group_by(
