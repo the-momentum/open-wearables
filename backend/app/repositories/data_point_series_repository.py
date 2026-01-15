@@ -409,7 +409,7 @@ class DataPointSeriesRepository(
         Returns a dict mapping SeriesType to average value (or None if no data).
         """
         if not series_types:
-            return {}
+            raise ValueError("series_types cannot be empty")
 
         type_ids = [get_series_type_id(t) for t in series_types]
 
@@ -772,7 +772,7 @@ class DataPointSeriesRepository(
             Dict mapping SeriesType to tuple of (value, recorded_at, provider_name, device_id)
         """
         if not series_types:
-            return {}
+            raise ValueError("series_types cannot be empty")
 
         type_ids = [get_series_type_id(t) for t in series_types]
 
@@ -844,7 +844,7 @@ class DataPointSeriesRepository(
             Dict mapping SeriesType to dict with keys: avg, min, max, count
         """
         if not series_types:
-            return {}
+            raise ValueError("series_types cannot be empty")
 
         type_ids = [get_series_type_id(t) for t in series_types]
 
