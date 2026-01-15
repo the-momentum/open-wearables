@@ -42,7 +42,7 @@ class TestUltrahumanStrategy:
         api_base_url = strategy.api_base_url
 
         # Assert
-        assert api_base_url == "https://partner.ultrahuman.com"
+        assert api_base_url == "https://partner.ultrahuman.com/api/partners/v1"
 
     def test_ultrahuman_strategy_display_name(self, db: Session) -> None:
         """Should return correct display name."""

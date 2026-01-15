@@ -131,6 +131,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         light_seconds = raw_sleep.get("light_sleep_duration", 0) or 0
 
         # Calculate awake time (time in bed - total sleep)
+        time_in_bed_seconds = 0
         if start_dt and end_dt:
             time_in_bed_seconds = int((end_dt - start_dt).total_seconds())
             awake_seconds = max(0, time_in_bed_seconds - total_seconds)
@@ -200,6 +201,7 @@ class Ultrahuman247Data(Base247DataTemplate):
             type="sleep_session",
             source_name="Ultrahuman Ring Air",
             device_id=None,
+            external_device_mapping_id=None,
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
@@ -482,13 +484,28 @@ class Ultrahuman247Data(Base247DataTemplate):
         if isinstance(end_time, str):
             end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
 
-        return {
-            "activity_samples": self.process_activity_samples(db, user_id, start_time, end_time),
+        # Set defaults if None
+        if end_time is None:
+            end_time = datetime.now(timezone.utc)
+        if start_time is None:
+            start_time = end_time - timedelta(days=30)
+
+        results = {
+            "sleep_sessions_synced": 0,
+            "activity_samples": 0,
         }
 
         try:
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
             self.logger.error(f"Failed to sync sleep data: {e}")
+
+        try:
+            activity_result = self.process_activity_samples(db, user_id, start_time, end_time)
+            # Count total samples
+            total_samples = sum(len(v) for v in activity_result.values())
+            results["activity_samples"] = total_samples
+        except Exception as e:
+            self.logger.error(f"Failed to sync activity samples: {e}")
 
         return results

@@ -36,8 +36,8 @@ class TestUltrahumanOAuthConfiguration:
         endpoints = oauth.endpoints
 
         # Assert
-        assert endpoints.authorize_url == "https://partner.ultrahuman.com/oauth2/authorize"
-        assert endpoints.token_url == "https://partner.ultrahuman.com/oauth2/token"
+        assert endpoints.authorize_url == "https://auth.ultrahuman.com/authorise"
+        assert endpoints.token_url == "https://partner.ultrahuman.com/api/partners/oauth/token"
 
     def test_ultrahuman_oauth_credentials_structure(self, db: Session) -> None:
         """Test Ultrahuman OAuth credentials are structured correctly."""
@@ -132,7 +132,7 @@ class TestUltrahumanOAuthAuthorization:
         auth_url, state = oauth.get_authorization_url(user.id)
 
         # Assert
-        assert "https://partner.ultrahuman.com/oauth2/authorize" in auth_url
+        assert "https://auth.ultrahuman.com/authorise" in auth_url
         assert "response_type=code" in auth_url
         assert f"state={state}" in auth_url
         assert "client_id=" in auth_url
