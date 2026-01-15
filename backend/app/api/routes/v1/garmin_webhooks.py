@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
 
@@ -65,6 +65,9 @@ async def _process_wellness_notification(
             continue
 
         # Find internal user
+        if not garmin_user_id:
+            logger.warning(f"No user ID in {summary_type} notification")
+            continue
         connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connection:
             logger.warning(f"No connection found for Garmin user {garmin_user_id}")
@@ -103,7 +106,7 @@ async def _process_wellness_notification(
                         count += garmin_247.save_epochs_data(db, user_id, normalized)
                     elif summary_type == "bodyComps":
                         # Body composition data
-                        count += garmin_247.save_body_composition_data(db, user_id, [item])
+                        count += garmin_247.save_body_composition(db, user_id, item)
                     else:
                         # Log unsupported types for future implementation
                         logger.info(
@@ -295,7 +298,7 @@ async def garmin_ping_notification(
         garmin_strategy = factory.get_provider("garmin")
 
         if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
-            garmin_247: Garmin247Data = garmin_strategy.data_247
+            garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
 
             for summary_type in wellness_types:
                 if summary_type in payload and payload[summary_type]:
@@ -473,7 +476,7 @@ async def garmin_push_notification(
         wellness_results: dict[str, Any] = {}
 
         if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
-            garmin_247: Garmin247Data = garmin_strategy.data_247
+            garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
             repo = UserConnectionRepository()
 
             # Handle sleeps (batch processing - log once at end)
@@ -705,6 +708,9 @@ async def verify_pull_token(
         # Get Garmin provider for OAuth
         factory = ProviderFactory()
         garmin_strategy = factory.get_provider("garmin")
+
+        if not garmin_strategy.oauth:
+            raise HTTPException(status_code=500, detail="Garmin OAuth not configured")
 
         # Make authenticated request with pull token
         response = make_authenticated_request(

@@ -118,7 +118,7 @@ class GarminPullTokenService:
                 r'id="expires"[^>]*value="([^"]+)"',
                 html,
             )
-            expires = expires_match.group(1) if expires_match else None
+            expires = expires_match.group(1) if expires_match else ""
 
             self.logger.info(f"Generated pull token: {token[:20]}... (expires: {expires})")
 

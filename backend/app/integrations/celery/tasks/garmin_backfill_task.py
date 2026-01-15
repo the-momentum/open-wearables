@@ -191,6 +191,11 @@ def trigger_next_backfill(user_id: str) -> dict[str, Any]:
             factory = ProviderFactory()
             garmin_strategy = factory.get_provider("garmin")
 
+            if not garmin_strategy.oauth:
+                logger.error("Garmin OAuth not configured")
+                complete_backfill(user_id)
+                return {"error": "Garmin OAuth not configured"}
+
             backfill_service = GarminBackfillService(
                 provider_name="garmin",
                 api_base_url="https://apis.garmin.com",

@@ -312,11 +312,13 @@ class Garmin247Data(Base247DataTemplate):
         # Use start timestamp or parse calendar date (noon UTC as reference time)
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
-        else:
+        elif calendar_date:
             try:
                 recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
             except ValueError:
                 return 0
+        else:
+            return 0
 
         # Save individual metrics as DataPointSeries
         series_mappings: list[tuple[str, SeriesType]] = [
