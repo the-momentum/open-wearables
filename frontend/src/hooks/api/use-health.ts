@@ -70,6 +70,18 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get activity summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/activity
+ */
+export function useActivitySummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.activitySummaries(userId, params),
+    queryFn: () => healthService.getActivitySummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
  * Synchronize workouts/exercises/activities from fitness provider API for a specific user
  */
 export function useSynchronizeDataFromProvider(

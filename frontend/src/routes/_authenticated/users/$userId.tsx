@@ -8,18 +8,11 @@ import {
   Check,
   Pencil,
   X,
-  Heart,
-  Footprints,
-  Flame,
   Upload,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  useUserConnections,
-  useWorkouts,
-  useTimeSeries,
-} from '@/hooks/api/use-health';
+import { useUserConnections, useWorkouts } from '@/hooks/api/use-health';
 import {
   useUser,
   useDeleteUser,
@@ -32,6 +25,7 @@ import { formatDate, truncateId } from '@/lib/utils/format';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import { ConnectionCard } from '@/components/user/connection-card';
 import { SleepSection } from '@/components/user/sleep-section';
+import { ActivitySection } from '@/components/user/activity-section';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -49,8 +43,6 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-const TIME_SERIES_TYPES = ['energy', 'steps', 'heart_rate'];
-
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
 });
@@ -61,7 +53,7 @@ function UserDetailPage() {
   const { data: user, isLoading: userLoading } = useUser(userId);
 
   const [dateRange, setDateRange] = useState<DateRangeValue>(30);
-  const [dataPointsDateRange, setDataPointsDateRange] =
+  const [activityDateRange, setActivityDateRange] =
     useState<DateRangeValue>(30);
   const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
 
@@ -79,31 +71,6 @@ function UserDetailPage() {
     limit: 100,
     sort_order: 'desc',
   });
-
-  // Calculate dates for time series
-  const { tsStartDate, tsEndDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dataPointsDateRange);
-    return { tsStartDate: start, tsEndDate: end };
-  }, [dataPointsDateRange]);
-
-  const { data: timeSeries, isLoading: timeSeriesLoading } = useTimeSeries(
-    userId,
-    {
-      start_time: tsStartDate.toISOString(),
-      end_time: tsEndDate.toISOString(),
-      types: TIME_SERIES_TYPES,
-      limit: 100,
-    }
-  );
-
-  // Process time series data for display
-  const processedTimeSeries = {
-    energy: timeSeries?.data.filter((d) => d.type === 'energy') || [],
-    steps: timeSeries?.data.filter((d) => d.type === 'steps') || [],
-    heartRate: timeSeries?.data.filter((d) => d.type === 'heart_rate') || [],
-  };
 
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
@@ -478,103 +445,12 @@ function UserDetailPage() {
         </div>
       </div>
 
-      {/* Data Points Section */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h3 className="text-sm font-medium text-white">Data Points</h3>
-            <DateRangeSelector
-              value={dataPointsDateRange}
-              onChange={setDataPointsDateRange}
-            />
-          </div>
-          <Activity className="h-4 w-4 text-zinc-500" />
-        </div>
-        <div className="p-6">
-          {timeSeriesLoading ? (
-            <div className="space-y-3">
-              <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
-              <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
-            </div>
-          ) : timeSeries?.data && timeSeries.data.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Energy Card */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-orange-500/10 rounded-lg">
-                    <Flame className="h-5 w-5 text-orange-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-300">Energy</p>
-                    <p className="text-xs text-zinc-500">Total Calories</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <p className="text-2xl font-semibold text-white">
-                    {processedTimeSeries.energy
-                      .reduce((acc, curr) => acc + curr.value, 0)
-                      .toLocaleString()}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">kcal</p>
-                </div>
-              </div>
-
-              {/* Steps Card */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-emerald-500/10 rounded-lg">
-                    <Footprints className="h-5 w-5 text-emerald-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-300">Steps</p>
-                    <p className="text-xs text-zinc-500">Total Steps</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <p className="text-2xl font-semibold text-white">
-                    {processedTimeSeries.steps
-                      .reduce((acc, curr) => acc + curr.value, 0)
-                      .toLocaleString()}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">steps</p>
-                </div>
-              </div>
-
-              {/* Heart Rate Card */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-rose-500/10 rounded-lg">
-                    <Heart className="h-5 w-5 text-rose-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-zinc-300">
-                      Heart Rate
-                    </p>
-                    <p className="text-xs text-zinc-500">Average BPM</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <p className="text-2xl font-semibold text-white">
-                    {processedTimeSeries.heartRate.length > 0
-                      ? Math.round(
-                          processedTimeSeries.heartRate.reduce(
-                            (acc, curr) => acc + curr.value,
-                            0
-                          ) / processedTimeSeries.heartRate.length
-                        )
-                      : '-'}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">bpm</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-500 text-center">
-              No data points available yet
-            </p>
-          )}
-        </div>
-      </div>
+      {/* Activity Section */}
+      <ActivitySection
+        userId={userId}
+        dateRange={activityDateRange}
+        onDateRangeChange={setActivityDateRange}
+      />
 
       {/* Sleep Section */}
       <SleepSection
