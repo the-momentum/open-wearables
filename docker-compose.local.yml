@@ -1,0 +1,102 @@
+# Simplified Docker Compose for personal/local use
+# Optimized for non-technical users via Pinokio
+# Project name: open-wearables-local
+
+services:
+  db:
+    image: postgres:18
+    container_name: owlocal-postgres
+    environment:
+      POSTGRES_DB: open-wearables
+      POSTGRES_USER: open-wearables
+      POSTGRES_PASSWORD: open-wearables
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: unless-stopped
+
+  redis:
+    container_name: owlocal-redis
+    image: redis:8
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/var/lib/redis/data
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: owlocal-backend
+    image: open-wearables-local:latest
+    command: scripts/start/app.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - ENVIRONMENT=local
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-worker:
+    container_name: owlocal-worker
+    image: open-wearables-local:latest
+    command: scripts/start/worker.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  celery-beat:
+    container_name: owlocal-beat
+    image: open-wearables-local:latest
+    command: scripts/start/beat.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: owlocal-frontend
+    image: open-wearables-frontend-local:dev
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
