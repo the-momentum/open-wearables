@@ -53,7 +53,7 @@
       },
       {
         "tab": "API Reference",
-        "openapi": "https://open-wearables-production.up.railway.app/openapi.json",
+        "openapi": "https://api.openwearables.io/openapi.json",
         "groups": [
           {
             "group": "Overview",
