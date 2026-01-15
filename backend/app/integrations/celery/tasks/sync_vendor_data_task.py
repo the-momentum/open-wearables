@@ -89,6 +89,9 @@ def sync_vendor_data(
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
+                        # Determine if this is first sync (max timeframe) or subsequent sync
+                        is_first_sync = connection.last_synced_at is None
+
                         # Parse dates
                         start_dt = datetime.now() - timedelta(days=30)
                         end_dt = datetime.now()
@@ -110,6 +113,7 @@ def sync_vendor_data(
                                     user_uuid,
                                     start_time=start_dt,
                                     end_time=end_dt,
+                                    is_first_sync=is_first_sync,
                                 )
                                 provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
                             else:

@@ -21,7 +21,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useSynchronizeDataFromProvider } from '@/hooks/api/use-health';
+import {
+  useSynchronizeDataFromProvider,
+  useGarminBackfillStatus,
+} from '@/hooks/api/use-health';
 
 interface ConnectionCardProps {
   connection: UserConnection;
@@ -31,6 +34,16 @@ interface ConnectionCardProps {
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
+
+  // For Garmin, check backfill status
+  const { data: backfillStatus } = useGarminBackfillStatus(
+    connection.user_id,
+    connection.provider === 'garmin'
+  );
+
+  const isGarminBackfilling =
+    connection.provider === 'garmin' && backfillStatus?.in_progress;
+
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -112,14 +125,26 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
           size="sm"
           className="w-full"
           onClick={() => synchronizeDataFromProvider()}
-          disabled={isSynchronizing}
+          disabled={isSynchronizing || isGarminBackfilling}
         >
-          {isSynchronizing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+          {isGarminBackfilling ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Day {(backfillStatus?.days_completed ?? 0) + 1}/
+              {backfillStatus?.target_days ?? 30} (
+              {backfillStatus?.current_data_type ?? 'syncing'})
+            </>
+          ) : isSynchronizing ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Sync Now
+            </>
           ) : (
-            <RefreshCw className="h-4 w-4" />
+            <>
+              <RefreshCw className="h-4 w-4" />
+              Sync Now
+            </>
           )}
-          Sync Now
         </Button>
       </CardContent>
     </Card>

@@ -53,19 +53,45 @@ export function useSynchronizeDataFromProvider(
 ) {
   return useMutation({
     mutationFn: () => healthService.synchronizeProvider(provider, userId),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.connections.all(userId),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.workouts(userId),
       });
-      toast.success('Data synchronized successfully');
+      // Invalidate Garmin backfill status to refresh the UI
+      if (provider === 'garmin') {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.garmin.backfillStatus(userId),
+        });
+      }
+      // Show appropriate toast based on backfill status
+      if (data.backfill_status?.in_progress) {
+        toast.info(
+          'Syncing 30 days of Garmin data. This may take a few minutes.'
+        );
+      } else {
+        toast.success('Data synchronized successfully');
+      }
     },
     onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to synchronize data';
       toast.error(message);
     },
+  });
+}
+
+/**
+ * Get Garmin backfill status for a user
+ * Polls every 15 seconds while backfill is in progress
+ */
+export function useGarminBackfillStatus(userId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.garmin.backfillStatus(userId),
+    queryFn: () => healthService.getGarminBackfillStatus(userId),
+    enabled,
+    refetchInterval: (query) => (query.state.data?.in_progress ? 15000 : false),
   });
 }

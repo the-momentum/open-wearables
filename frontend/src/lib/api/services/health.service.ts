@@ -7,6 +7,8 @@ import type {
   PaginatedResponse,
   TimeSeriesParams,
   TimeSeriesSample,
+  SyncResponse,
+  GarminBackfillStatus,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -32,9 +34,21 @@ export const healthService = {
   /**
    * Synchronize workouts/exercises/activities from fitness provider API for a specific user
    */
-  async synchronizeProvider(provider: string, userId: string): Promise<void> {
-    return apiClient.post<void>(
+  async synchronizeProvider(
+    provider: string,
+    userId: string
+  ): Promise<SyncResponse> {
+    return apiClient.post<SyncResponse>(
       API_ENDPOINTS.providerSynchronization(provider, userId)
+    );
+  },
+
+  /**
+   * Get Garmin backfill status for a user
+   */
+  async getGarminBackfillStatus(userId: string): Promise<GarminBackfillStatus> {
+    return apiClient.get<GarminBackfillStatus>(
+      `/api/v1/providers/garmin/users/${userId}/backfill-status`
     );
   },
 

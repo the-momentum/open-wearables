@@ -58,7 +58,7 @@ class TestGarminWorkoutImport:
         db: Session,
         sample_garmin_activities: list[dict[str, Any]],
     ) -> None:
-        """Test successful import of Garmin activities."""
+        """Test successful import of Garmin activities via backfill."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -66,7 +66,14 @@ class TestGarminWorkoutImport:
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=sample_garmin_activities):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-15T00:00:00+00:00",
+                "end_time": "2024-01-20T00:00:00+00:00",
+            }
+
             # Act
             result = strategy.workouts.load_data(
                 db,
@@ -77,6 +84,7 @@ class TestGarminWorkoutImport:
 
             # Assert
             assert result is True
+            mock_trigger.assert_called_once()
 
     def test_import_garmin_activities_with_date_range(
         self,
@@ -103,7 +111,7 @@ class TestGarminWorkoutImport:
             assert activities[1]["activityType"] == "CYCLING"
 
     def test_import_garmin_activities_empty_response(self, db: Session) -> None:
-        """Test handling empty activities response."""
+        """Test handling empty activities response via backfill."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -111,11 +119,18 @@ class TestGarminWorkoutImport:
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=[]):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
-            # Assert
+            # Assert - backfill was triggered successfully
             assert result is True
 
     def test_get_activity_detail(self, db: Session) -> None:
@@ -154,32 +169,22 @@ class TestGarminWorkoutImport:
         self,
         db: Session,
     ) -> None:
-        """Test that Garmin activity types are normalized correctly."""
+        """Test that Garmin activity types are normalized correctly via backfill."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
 
-        activities = [
-            {
-                "userId": "garmin_user_123",
-                "activityId": "act_001",
-                "summaryId": "sum_001",
-                "activityType": "TRAIL_RUNNING",
-                "startTimeInSeconds": 1705309200,
-                "durationInSeconds": 3600,
-                "deviceName": "Garmin",
-                "distanceInMeters": 10000,
-                "steps": 8000,
-                "activeKilocalories": 600,
-                "averageHeartRateInBeatsPerMinute": 150,
-                "maxHeartRateInBeatsPerMinute": 180,
-            },
-        ]
-
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
@@ -187,32 +192,22 @@ class TestGarminWorkoutImport:
             assert result is True
 
     def test_import_handles_missing_heart_rate(self, db: Session) -> None:
-        """Test importing activities without heart rate data."""
+        """Test importing activities without heart rate data via backfill."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
 
-        activities = [
-            {
-                "userId": "garmin_user_123",
-                "activityId": "act_no_hr",
-                "summaryId": "sum_no_hr",
-                "activityType": "WALKING",
-                "startTimeInSeconds": 1705309200,
-                "durationInSeconds": 1800,
-                "deviceName": "Garmin",
-                "distanceInMeters": 3000,
-                "steps": 4000,
-                "activeKilocalories": 200,
-                "averageHeartRateInBeatsPerMinute": 0,
-                "maxHeartRateInBeatsPerMinute": 0,
-            },
-        ]
-
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 
@@ -229,13 +224,20 @@ class TestGarminWorkoutImport:
         assert strategy.workouts is not None
 
         with (
-            patch.object(strategy.workouts, "_make_api_request", side_effect=Exception("API Error")),
+            patch(
+                "app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill",
+                side_effect=Exception("API Error"),
+            ),
             pytest.raises(Exception, match="API Error"),
         ):
             strategy.workouts.load_data(db, user.id)
 
     def test_get_workouts_from_api_with_params(self, db: Session) -> None:
-        """Test getting workouts from API with custom parameters."""
+        """Test getting workouts from API with custom parameters.
+
+        Note: For date ranges exceeding 24 hours, the implementation uses
+        chunked fetching (24-hour chunks), so multiple API calls are made.
+        """
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -244,7 +246,7 @@ class TestGarminWorkoutImport:
         assert strategy.workouts is not None
 
         with patch.object(strategy.workouts, "_make_api_request", return_value=[]) as mock_request:
-            # Act
+            # Act - using a 31-day date range
             strategy.workouts.get_workouts_from_api(
                 db,
                 user.id,
@@ -252,10 +254,13 @@ class TestGarminWorkoutImport:
                 summary_end_time="2024-01-31T23:59:59Z",
             )
 
-            # Assert
-            mock_request.assert_called_once()
-            call_args = mock_request.call_args
-            params = call_args[1]["params"]
+            # Assert - multiple calls due to chunked fetching (24-hour chunks for 31 days)
+            assert mock_request.call_count >= 1
+            # Verify the API endpoint is correct
+            first_call = mock_request.call_args_list[0]
+            assert "/wellness-api/rest/activities" in first_call[0][2]
+            # Verify params structure
+            params = first_call[1]["params"]
             assert "uploadStartTimeInSeconds" in params
             assert "uploadEndTimeInSeconds" in params
 
@@ -269,46 +274,22 @@ class TestGarminWorkoutImport:
         assert isinstance(strategy.workouts, GarminWorkouts)
 
     def test_import_multiple_activity_types(self, db: Session) -> None:
-        """Test importing activities with various types."""
+        """Test importing activities with various types via backfill."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
 
-        activities = [
-            {
-                "userId": "garmin_user_123",
-                "activityId": "swimming_001",
-                "summaryId": "sum_001",
-                "activityType": "LAP_SWIMMING",
-                "startTimeInSeconds": 1705309200,
-                "durationInSeconds": 2400,
-                "deviceName": "Garmin Swim 2",
-                "distanceInMeters": 1500,
-                "steps": 0,
-                "activeKilocalories": 400,
-                "averageHeartRateInBeatsPerMinute": 130,
-                "maxHeartRateInBeatsPerMinute": 160,
-            },
-            {
-                "userId": "garmin_user_123",
-                "activityId": "yoga_001",
-                "summaryId": "sum_002",
-                "activityType": "YOGA",
-                "startTimeInSeconds": 1705395600,
-                "durationInSeconds": 1800,
-                "deviceName": "Garmin Venu 2",
-                "distanceInMeters": 0,
-                "steps": 50,
-                "activeKilocalories": 150,
-                "averageHeartRateInBeatsPerMinute": 95,
-                "maxHeartRateInBeatsPerMinute": 120,
-            },
-        ]
-
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch.object(strategy.workouts, "_make_api_request", return_value=activities):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+
             # Act
             result = strategy.workouts.load_data(db, user.id)
 

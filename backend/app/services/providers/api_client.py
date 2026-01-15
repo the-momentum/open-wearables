@@ -58,6 +58,7 @@ def make_authenticated_request(
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     json_data: dict[str, Any] | None = None,
+    expect_json: bool = True,
 ) -> Any:
     """Make authenticated request to provider API.
 
@@ -75,9 +76,11 @@ def make_authenticated_request(
         params: Query parameters
         headers: Additional headers (Authorization header will be added automatically)
         json_data: JSON body for POST/PUT requests
+        expect_json: Whether to parse response as JSON (default True).
+            Set to False for endpoints that return empty bodies (e.g., 202 Accepted).
 
     Returns:
-        Any: API response JSON
+        Any: API response JSON, or dict with status_code if expect_json=False
 
     Raises:
         HTTPException: If API request fails
@@ -106,6 +109,13 @@ def make_authenticated_request(
             timeout=30.0,
         )
         response.raise_for_status()
+
+        # Handle non-JSON responses (e.g., 202 Accepted with empty body)
+        if not expect_json:
+            return {
+                "status_code": response.status_code,
+                "accepted": response.status_code == 202,
+            }
 
         result = response.json()
 

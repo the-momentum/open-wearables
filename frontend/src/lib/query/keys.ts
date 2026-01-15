@@ -85,6 +85,12 @@ export const queryKeys = {
       [...queryKeys.connections.all(userId), 'status'] as const,
   },
 
+  garmin: {
+    all: ['garmin'] as const,
+    backfillStatus: (userId: string) =>
+      [...queryKeys.garmin.all, 'backfill', userId] as const,
+  },
+
   requestLogs: {
     all: ['requestLogs'] as const,
     lists: () => [...queryKeys.requestLogs.all, 'list'] as const,

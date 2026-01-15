@@ -221,25 +221,29 @@ class TestGarminWorkouts:
             assert isinstance(record, EventRecordCreate)
             assert isinstance(detail, EventRecordDetailCreate)
 
-    @patch("app.services.event_record_service.event_record_service.create")
-    @patch("app.services.event_record_service.event_record_service.create_detail")
-    def test_load_data_creates_records(
+    def test_load_data_triggers_backfill(
         self,
-        mock_create_detail: MagicMock,
-        mock_create: MagicMock,
         garmin_workouts: GarminWorkouts,
         db: Session,
         sample_activity: dict[str, Any],
     ) -> None:
-        """Test load_data creates event records."""
+        """Test load_data triggers backfill for activities."""
         user = UserFactory()
 
-        with patch.object(garmin_workouts, "get_workouts_from_api", return_value=[sample_activity]):
+        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
+            mock_trigger.return_value = {
+                "triggered": ["activities"],
+                "failed": {},
+                "start_time": "2024-01-14T00:00:00+00:00",
+                "end_time": "2024-01-15T00:00:00+00:00",
+            }
+
             result = garmin_workouts.load_data(db, user.id)
 
             assert result is True
-            assert mock_create.call_count == 1
-            assert mock_create_detail.call_count == 1
+            mock_trigger.assert_called_once()
+            call_kwargs = mock_trigger.call_args[1]
+            assert call_kwargs["data_types"] == ["activities"]
 
     def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting activity detail from API."""
