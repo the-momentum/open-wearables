@@ -93,7 +93,7 @@ class DataPointSeriesRepository(
         """Bulk create data point samples."""
         if not creators:
             return []
-        
+
         values_list = []
         creations = []
         for creator in creators:
@@ -105,7 +105,7 @@ class DataPointSeriesRepository(
 
             for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
                 creation_data.pop(redundant_key, None)
-            
+
             values_list.append(creation_data)
             creations.append(self.model(**creation_data))
 
@@ -116,7 +116,7 @@ class DataPointSeriesRepository(
                 index_elements=["external_device_mapping_id", "series_type_definition_id", "recorded_at"]
             )
         )
-        
+
         db_session.execute(stmt)
         db_session.commit()
         return creations
