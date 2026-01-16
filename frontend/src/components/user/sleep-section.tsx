@@ -23,18 +23,11 @@ import {
   useTimeSeries,
 } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import {
-  DateRangeSelector,
-  type DateRangeValue,
-} from '@/components/ui/date-range-selector';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
+import type { DateRangeValue } from '@/components/ui/date-range-selector';
+import { CursorPagination } from '@/components/common/cursor-pagination';
+import { MetricCard } from '@/components/common/metric-card';
+import { SectionHeader } from '@/components/common/section-header';
 import {
   Tooltip,
   TooltipContent,
@@ -44,8 +37,24 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from '@/components/ui/chart';
+import {
+  formatDuration,
+  formatMinutes,
+  formatBedtime,
+} from '@/lib/utils/format';
+import {
+  calculateSleepStats,
+  getSleepSessionDetailFields,
+  getSleepStageData,
+  SLEEP_METRIC_CHART_COLORS,
+  SLEEP_STAGE_COLORS,
+  SLEEP_STAGE_LABELS,
+  type SleepStats,
+  type SleepStageKey,
+} from '@/lib/utils/sleep';
+import { prepareHrChartData } from '@/lib/utils/timeseries';
+import { HR_CHART_CONFIG } from '@/lib/utils/chart-config';
 import type {
   SleepSession,
   SleepStagesSummary,
@@ -60,43 +69,8 @@ interface SleepSectionProps {
 
 const SESSIONS_PER_PAGE = 10;
 
-// Color mapping for sleep stages
-const STAGE_COLORS = {
-  deep: 'bg-indigo-500',
-  rem: 'bg-purple-500',
-  light: 'bg-sky-400',
-  awake: 'bg-zinc-500',
-} as const;
-
-const STAGE_LABELS = {
-  deep: 'Deep',
-  rem: 'REM',
-  light: 'Light',
-  awake: 'Awake',
-} as const;
-
-const sleepHrChartConfig = {
-  hr: {
-    label: 'Heart Rate (bpm)',
-    color: '#f43f5e',
-  },
-  avgHr: {
-    label: 'Avg HR (bpm)',
-    color: '#f43f5e',
-  },
-} satisfies ChartConfig;
-
-// Metric definitions for clickable sleep cards
+// Metric definitions for clickable sleep cards (kept here due to Lucide icon imports)
 type SleepMetricKey = 'efficiency' | 'duration';
-
-interface SleepStats {
-  avgDuration: number | null;
-  avgEfficiency: number | null;
-  nightsTracked: number;
-  avgBedtime: number | null;
-  stages: SleepStagesSummary | null;
-  stagesTotal: number;
-}
 
 interface SleepMetricDefinition {
   key: SleepMetricKey;
@@ -141,38 +115,6 @@ const SLEEP_METRICS: SleepMetricDefinition[] = [
   },
 ];
 
-// Map sleep metric colors to hex for chart
-const SLEEP_METRIC_CHART_COLORS: Record<SleepMetricKey, string> = {
-  efficiency: '#10b981',
-  duration: '#6366f1',
-};
-
-function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours === 0) return `${minutes}m`;
-  return `${hours}h ${minutes}m`;
-}
-
-function formatMinutes(minutes: number | null): string {
-  if (minutes === null) return '-';
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  if (hours === 0) return `${mins}m`;
-  return `${hours}h ${mins}m`;
-}
-
-function formatBedtime(minutes: number | null): string {
-  if (minutes === null) return '-';
-  // Handle wrap-around for late nights
-  const normalizedMinutes = minutes >= 1440 ? minutes - 1440 : minutes;
-  const hours = Math.floor(normalizedMinutes / 60);
-  const mins = Math.round(normalizedMinutes % 60);
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-  return `${displayHours}:${mins.toString().padStart(2, '0')} ${period}`;
-}
-
 // Component for visualizing sleep stages as a horizontal bar
 function SleepStagesBar({
   stages,
@@ -181,58 +123,15 @@ function SleepStagesBar({
   stages: SleepStagesSummary | null;
   className?: string;
 }) {
-  if (!stages) {
+  const stageData = getSleepStageData(stages);
+
+  if (stageData.length === 0) {
     return (
       <div className={`h-2 bg-zinc-700 rounded-full ${className}`}>
         <div className="h-full w-full bg-zinc-600 rounded-full" />
       </div>
     );
   }
-
-  const total =
-    (stages.deep_minutes || 0) +
-    (stages.rem_minutes || 0) +
-    (stages.light_minutes || 0) +
-    (stages.awake_minutes || 0);
-
-  if (total === 0) {
-    return (
-      <div className={`h-2 bg-zinc-700 rounded-full ${className}`}>
-        <div className="h-full w-full bg-zinc-600 rounded-full" />
-      </div>
-    );
-  }
-
-  const stageData = [
-    {
-      key: 'deep',
-      minutes: stages.deep_minutes || 0,
-      pct: ((stages.deep_minutes || 0) / total) * 100,
-      color: STAGE_COLORS.deep,
-      label: STAGE_LABELS.deep,
-    },
-    {
-      key: 'rem',
-      minutes: stages.rem_minutes || 0,
-      pct: ((stages.rem_minutes || 0) / total) * 100,
-      color: STAGE_COLORS.rem,
-      label: STAGE_LABELS.rem,
-    },
-    {
-      key: 'light',
-      minutes: stages.light_minutes || 0,
-      pct: ((stages.light_minutes || 0) / total) * 100,
-      color: STAGE_COLORS.light,
-      label: STAGE_LABELS.light,
-    },
-    {
-      key: 'awake',
-      minutes: stages.awake_minutes || 0,
-      pct: ((stages.awake_minutes || 0) / total) * 100,
-      color: STAGE_COLORS.awake,
-      label: STAGE_LABELS.awake,
-    },
-  ];
 
   return (
     <div
@@ -280,58 +179,14 @@ function SleepSessionRow({
     limit: 100,
   });
 
-  // Prepare HR chart data
-  const hrChartData = useMemo(() => {
-    if (!hrData?.data?.length) return [];
-    return hrData.data
-      .filter((d) => d.type === 'heart_rate')
-      .sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      )
-      .map((d) => ({
-        time: format(new Date(d.timestamp), 'HH:mm'),
-        hr: d.value,
-      }));
-  }, [hrData]);
+  // Prepare HR chart data using utility function
+  const hrChartData = useMemo(() => prepareHrChartData(hrData?.data), [hrData]);
 
-  // Collect all available detail fields (expanded view)
-  const detailFields = useMemo(() => {
-    const fields: { label: string; value: string }[] = [];
-
-    // Stage details
-    if (session.stages?.deep_minutes != null) {
-      fields.push({
-        label: 'Deep Sleep',
-        value: formatMinutes(session.stages.deep_minutes),
-      });
-    }
-    if (session.stages?.rem_minutes != null) {
-      fields.push({
-        label: 'REM Sleep',
-        value: formatMinutes(session.stages.rem_minutes),
-      });
-    }
-    if (session.stages?.light_minutes != null) {
-      fields.push({
-        label: 'Light Sleep',
-        value: formatMinutes(session.stages.light_minutes),
-      });
-    }
-    if (session.stages?.awake_minutes != null) {
-      fields.push({
-        label: 'Time Awake',
-        value: formatMinutes(session.stages.awake_minutes),
-      });
-    }
-
-    // Source
-    if (session.source?.provider) {
-      fields.push({ label: 'Source', value: session.source.provider });
-    }
-
-    return fields;
-  }, [session]);
+  // Get detail fields using utility function
+  const detailFields = useMemo(
+    () => getSleepSessionDetailFields(session),
+    [session]
+  );
 
   // Always expandable - we'll show HR chart even without detail fields
   const hasDetails = true;
@@ -442,7 +297,7 @@ function SleepSessionRow({
               </div>
             ) : hrChartData.length > 0 ? (
               <ChartContainer
-                config={sleepHrChartConfig}
+                config={HR_CHART_CONFIG}
                 className="h-[160px] w-full"
               >
                 <LineChart
@@ -597,26 +452,9 @@ export function SleepSection({
   // Cursor-based pagination for sleep sessions
   const pagination = useCursorPagination();
 
-  // Calculate date range for summary
-  const { startDate, endDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dateRange);
-    return {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-    };
-  }, [dateRange]);
-
-  // Wide date range for fetching sleep sessions
-  const allTimeRange = useMemo(() => {
-    const start = new Date('2000-01-01');
-    const end = new Date();
-    return {
-      start_date: start.toISOString(),
-      end_date: end.toISOString(),
-    };
-  }, []);
+  // Date range hooks
+  const { startDate, endDate } = useDateRange(dateRange);
+  const allTimeRange = useAllTimeRange();
 
   // Fetch sleep summaries for summary stats (date range filtered)
   const { data: sleepSummaries, isLoading: summaryLoading } = useSleepSummaries(
@@ -647,87 +485,10 @@ export function SleepSection({
   const handlePrevPage = pagination.goToPrevPage;
 
   // Calculate aggregate statistics from date-range filtered summaries
-  const stats = useMemo(() => {
-    const summaries = sleepSummaries?.data || [];
-    if (summaries.length === 0) {
-      return null;
-    }
-
-    // Filter out null values for averaging
-    const durations = summaries
-      .map((s) => s.duration_minutes)
-      .filter((d): d is number => d !== null);
-    const efficiencies = summaries
-      .map((s) => s.efficiency_percent)
-      .filter((e): e is number => e !== null);
-
-    // Aggregate sleep stages (calculate averages)
-    const totalDeep = summaries.reduce(
-      (acc, s) => acc + (s.stages?.deep_minutes || 0),
-      0
-    );
-    const totalRem = summaries.reduce(
-      (acc, s) => acc + (s.stages?.rem_minutes || 0),
-      0
-    );
-    const totalLight = summaries.reduce(
-      (acc, s) => acc + (s.stages?.light_minutes || 0),
-      0
-    );
-    const totalAwake = summaries.reduce(
-      (acc, s) => acc + (s.stages?.awake_minutes || 0),
-      0
-    );
-    const nightCount = summaries.length;
-    const avgDeep = nightCount > 0 ? totalDeep / nightCount : 0;
-    const avgRem = nightCount > 0 ? totalRem / nightCount : 0;
-    const avgLight = nightCount > 0 ? totalLight / nightCount : 0;
-    const avgAwake = nightCount > 0 ? totalAwake / nightCount : 0;
-    const avgStagesTotal = avgDeep + avgRem + avgLight + avgAwake;
-
-    // Calculate average bedtime
-    const bedtimes = summaries
-      .map((s) => s.start_time)
-      .filter((t): t is string => t !== null)
-      .map((t) => {
-        const date = new Date(t);
-        // Convert to minutes from midnight, handling late night times
-        let minutes = date.getHours() * 60 + date.getMinutes();
-        // If before 6am, treat as previous day's evening
-        if (minutes < 360) minutes += 1440;
-        return minutes;
-      });
-
-    const avgBedtimeMinutes =
-      bedtimes.length > 0
-        ? bedtimes.reduce((a, b) => a + b, 0) / bedtimes.length
-        : null;
-
-    return {
-      avgDuration:
-        durations.length > 0
-          ? durations.reduce((a, b) => a + b, 0) / durations.length
-          : null,
-      avgEfficiency:
-        efficiencies.length > 0
-          ? efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length
-          : null,
-      nightsTracked: summaries.length,
-      avgBedtime: avgBedtimeMinutes,
-      // Use SleepStagesSummary format so we can reuse SleepStagesBar
-      // Store averages (not totals) so tooltip shows avg per night
-      stages:
-        avgStagesTotal > 0
-          ? {
-              deep_minutes: avgDeep,
-              rem_minutes: avgRem,
-              light_minutes: avgLight,
-              awake_minutes: avgAwake,
-            }
-          : null,
-      stagesTotal: avgStagesTotal,
-    };
-  }, [sleepSummaries]);
+  const stats = useMemo(
+    () => calculateSleepStats(sleepSummaries?.data || []),
+    [sleepSummaries]
+  );
 
   // Get displayed sessions from current page data
   const displayedSessions = sessionsData?.data || [];
@@ -758,10 +519,11 @@ export function SleepSection({
     <div className="space-y-6">
       {/* Summary Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Sleep Summary</h3>
-          <DateRangeSelector value={dateRange} onChange={onDateRangeChange} />
-        </div>
+        <SectionHeader
+          title="Sleep Summary"
+          dateRange={dateRange}
+          onDateRangeChange={onDateRangeChange}
+        />
 
         <div className="p-6">
           {summaryLoading ? (
@@ -775,61 +537,38 @@ export function SleepSection({
               {/* Summary Stats - Top Row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {/* Nights Tracked - non-clickable */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-purple-500/10 rounded-lg">
-                      <BedDouble className="h-5 w-5 text-purple-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {stats.nightsTracked}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Nights Tracked</p>
-                </div>
+                <MetricCard
+                  icon={BedDouble}
+                  iconColor="text-purple-400"
+                  iconBgColor="bg-purple-500/10"
+                  value={String(stats.nightsTracked)}
+                  label="Nights Tracked"
+                />
 
                 {/* Clickable Metric Cards */}
-                {SLEEP_METRICS.map((metric) => {
-                  const Icon = metric.icon;
-                  const isSelected = selectedMetric === metric.key;
-                  return (
-                    <button
-                      key={metric.key}
-                      onClick={() => setSelectedMetric(metric.key)}
-                      className={`p-4 border rounded-lg bg-zinc-900/30 text-left transition-all duration-200 cursor-pointer
-                        ${
-                          isSelected
-                            ? `border-zinc-600 ${metric.glowColor}`
-                            : 'border-zinc-800 hover:border-zinc-700 hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`p-2 ${metric.bgColor} rounded-lg`}>
-                          <Icon className={`h-5 w-5 ${metric.color}`} />
-                        </div>
-                      </div>
-                      <p className="text-2xl font-semibold text-white">
-                        {metric.formatValue(metric.getValue(stats))}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1">
-                        {metric.label}
-                      </p>
-                    </button>
-                  );
-                })}
+                {SLEEP_METRICS.map((metric) => (
+                  <MetricCard
+                    key={metric.key}
+                    icon={metric.icon}
+                    iconColor={metric.color}
+                    iconBgColor={metric.bgColor}
+                    value={metric.formatValue(metric.getValue(stats))}
+                    label={metric.label}
+                    isClickable
+                    isSelected={selectedMetric === metric.key}
+                    glowColor={metric.glowColor}
+                    onClick={() => setSelectedMetric(metric.key)}
+                  />
+                ))}
 
                 {/* Average Bedtime - non-clickable */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-sky-500/10 rounded-lg">
-                      <Clock className="h-5 w-5 text-sky-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatBedtime(stats.avgBedtime)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Avg Bedtime</p>
-                </div>
+                <MetricCard
+                  icon={Clock}
+                  iconColor="text-sky-400"
+                  iconBgColor="bg-sky-500/10"
+                  value={formatBedtime(stats.avgBedtime)}
+                  label="Avg Bedtime"
+                />
               </div>
 
               {/* Dynamic Chart for Selected Metric */}
@@ -918,10 +657,10 @@ export function SleepSection({
                               className="flex items-center gap-2"
                             >
                               <div
-                                className={`w-3 h-3 rounded-sm ${STAGE_COLORS[stage]}`}
+                                className={`w-3 h-3 rounded-sm ${SLEEP_STAGE_COLORS[stage as SleepStageKey]}`}
                               />
                               <span className="text-xs text-zinc-300">
-                                {STAGE_LABELS[stage]}
+                                {SLEEP_STAGE_LABELS[stage as SleepStageKey]}
                               </span>
                               <span className="text-xs text-zinc-500 ml-auto">
                                 {Math.round(percent)}%
@@ -941,14 +680,16 @@ export function SleepSection({
 
       {/* Sleep Sessions Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Sleep Sessions</h3>
-          {!sessionsLoading && hasData && (
-            <span className="text-xs text-zinc-500">
-              Page {pagination.currentPage}
-            </span>
-          )}
-        </div>
+        <SectionHeader
+          title="Sleep Sessions"
+          rightContent={
+            !sessionsLoading && hasData ? (
+              <span className="text-xs text-zinc-500">
+                Page {pagination.currentPage}
+              </span>
+            ) : undefined
+          }
+        />
 
         <div className="p-6">
           {sessionsLoading ? (
@@ -971,39 +712,14 @@ export function SleepSection({
               </div>
 
               {/* Pagination Controls */}
-              {(pagination.hasPrevPage || hasNextPage) && (
-                <div className="pt-4 border-t border-zinc-800">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={handlePrevPage}
-                          className={
-                            !pagination.hasPrevPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationLink isActive>
-                          {pagination.currentPage}
-                        </PaginationLink>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={handleNextPage}
-                          className={
-                            !hasNextPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+              <CursorPagination
+                currentPage={pagination.currentPage}
+                hasPrevPage={pagination.hasPrevPage}
+                hasNextPage={hasNextPage}
+                isFetching={isFetching}
+                onPrevPage={handlePrevPage}
+                onNextPage={handleNextPage}
+              />
             </div>
           )}
         </div>

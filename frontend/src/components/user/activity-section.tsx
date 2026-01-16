@@ -15,23 +15,28 @@ import {
 } from 'lucide-react';
 import { useActivitySummaries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
-import {
-  DateRangeSelector,
-  type DateRangeValue,
-} from '@/components/ui/date-range-selector';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
+import type { DateRangeValue } from '@/components/ui/date-range-selector';
+import { CursorPagination } from '@/components/common/cursor-pagination';
+import { MetricCard } from '@/components/common/metric-card';
+import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import {
+  formatNumber,
+  formatDistance,
+  formatMinutes,
+} from '@/lib/utils/format';
+import {
+  calculateActivityStats,
+  getActivityDetailFields,
+  ACTIVITY_METRIC_CHART_COLORS,
+  type ActivityStats,
+  type ActivityMetricKey,
+} from '@/lib/utils/activity';
 import type { ActivitySummary } from '@/lib/api/types';
 
 interface ActivitySectionProps {
@@ -42,41 +47,18 @@ interface ActivitySectionProps {
 
 const DAYS_PER_PAGE = 10;
 
-// Metric definitions for the summary cards
-type MetricKey =
-  | 'steps'
-  | 'calories'
-  | 'activeTime'
-  | 'heartRate'
-  | 'distance'
-  | 'floors'
-  | 'sedentary';
-
 interface MetricDefinition {
-  key: MetricKey;
+  key: ActivityMetricKey;
   label: string;
   shortLabel: string;
   icon: React.ElementType;
   color: string;
   bgColor: string;
   glowColor: string;
-  getValue: (stats: Stats) => number | null;
+  getValue: (stats: ActivityStats) => number | null;
   formatValue: (value: number | null) => string;
   getChartValue: (summary: ActivitySummary) => number;
   unit: string;
-}
-
-interface Stats {
-  totalSteps: number;
-  avgSteps: number;
-  totalCalories: number;
-  avgCalories: number;
-  totalDistance: number;
-  totalActiveMinutes: number;
-  totalFloorsClimbed: number;
-  totalSedentaryMinutes: number;
-  avgHeartRate: number | null;
-  daysTracked: number;
 }
 
 const METRICS: MetricDefinition[] = [
@@ -173,39 +155,6 @@ const METRICS: MetricDefinition[] = [
   },
 ];
 
-// Map metric colors to hex for chart
-const METRIC_CHART_COLORS: Record<MetricKey, string> = {
-  steps: '#10b981',
-  calories: '#f97316',
-  activeTime: '#0ea5e9',
-  heartRate: '#f43f5e',
-  distance: '#a855f7',
-  floors: '#f59e0b',
-  sedentary: '#71717a',
-};
-
-function formatNumber(value: number | null): string {
-  if (value === null) return '-';
-  return value.toLocaleString();
-}
-
-function formatDistance(meters: number | null): string {
-  if (meters === null) return '-';
-  const km = meters / 1000;
-  if (km >= 1) {
-    return `${km.toFixed(1)} km`;
-  }
-  return `${Math.round(meters)} m`;
-}
-
-function formatMinutes(minutes: number | null): string {
-  if (minutes === null) return '-';
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  if (hours === 0) return `${mins}m`;
-  return `${hours}h ${mins}m`;
-}
-
 // Loading skeleton
 function ActivitySectionSkeleton() {
   return (
@@ -230,76 +179,11 @@ function ActivitySectionSkeleton() {
 function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Collect all available detail fields
-  const detailFields = useMemo(() => {
-    const fields: { label: string; value: string }[] = [];
-
-    if (summary.distance_meters != null) {
-      fields.push({
-        label: 'Distance',
-        value: formatDistance(summary.distance_meters),
-      });
-    }
-    if (summary.floors_climbed != null) {
-      fields.push({
-        label: 'Floors Climbed',
-        value: formatNumber(summary.floors_climbed),
-      });
-    }
-    if (summary.elevation_meters != null) {
-      fields.push({
-        label: 'Elevation',
-        value: `${Math.round(summary.elevation_meters)} m`,
-      });
-    }
-    if (summary.total_calories_kcal != null) {
-      fields.push({
-        label: 'Total Calories',
-        value: formatNumber(summary.total_calories_kcal),
-      });
-    }
-    if (summary.sedentary_minutes != null) {
-      fields.push({
-        label: 'Sedentary Time',
-        value: formatMinutes(summary.sedentary_minutes),
-      });
-    }
-    if (summary.heart_rate?.max_bpm != null) {
-      fields.push({
-        label: 'Max Heart Rate',
-        value: `${summary.heart_rate.max_bpm} bpm`,
-      });
-    }
-    if (summary.heart_rate?.min_bpm != null) {
-      fields.push({
-        label: 'Min Heart Rate',
-        value: `${summary.heart_rate.min_bpm} bpm`,
-      });
-    }
-    if (summary.intensity_minutes?.light != null) {
-      fields.push({
-        label: 'Light Activity',
-        value: formatMinutes(summary.intensity_minutes.light),
-      });
-    }
-    if (summary.intensity_minutes?.moderate != null) {
-      fields.push({
-        label: 'Moderate Activity',
-        value: formatMinutes(summary.intensity_minutes.moderate),
-      });
-    }
-    if (summary.intensity_minutes?.vigorous != null) {
-      fields.push({
-        label: 'Vigorous Activity',
-        value: formatMinutes(summary.intensity_minutes.vigorous),
-      });
-    }
-    if (summary.source?.provider) {
-      fields.push({ label: 'Source', value: summary.source.provider });
-    }
-
-    return fields;
-  }, [summary]);
+  // Get detail fields using utility function
+  const detailFields = useMemo(
+    () => getActivityDetailFields(summary),
+    [summary]
+  );
 
   const hasDetails = detailFields.length > 0;
 
@@ -437,26 +321,9 @@ export function ActivitySection({
   // Cursor-based pagination for activity days
   const pagination = useCursorPagination();
 
-  // Calculate date range for summary
-  const { startDate, endDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dateRange);
-    return {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-    };
-  }, [dateRange]);
-
-  // Wide date range for fetching activity days
-  const allTimeRange = useMemo(() => {
-    const start = new Date('2000-01-01');
-    const end = new Date();
-    return {
-      start_date: start.toISOString(),
-      end_date: end.toISOString(),
-    };
-  }, []);
+  // Date range hooks
+  const { startDate, endDate } = useDateRange(dateRange);
+  const allTimeRange = useAllTimeRange();
 
   // Fetch activity summaries for summary stats (date range filtered)
   const { data: summaryData, isLoading: summaryLoading } = useActivitySummaries(
@@ -487,71 +354,18 @@ export function ActivitySection({
   const handlePrevPage = pagination.goToPrevPage;
 
   // Calculate aggregate statistics from date-range filtered data
-  const stats = useMemo(() => {
-    const summaries = summaryData?.data || [];
-    if (summaries.length === 0) {
-      return null;
-    }
-
-    // Sum totals
-    const totalSteps = summaries.reduce((acc, s) => acc + (s.steps || 0), 0);
-    const totalCalories = summaries.reduce(
-      (acc, s) => acc + (s.active_calories_kcal || 0),
-      0
-    );
-    const totalDistance = summaries.reduce(
-      (acc, s) => acc + (s.distance_meters || 0),
-      0
-    );
-    const totalActiveMinutes = summaries.reduce(
-      (acc, s) => acc + (s.active_minutes || 0),
-      0
-    );
-    const totalFloorsClimbed = summaries.reduce(
-      (acc, s) => acc + (s.floors_climbed || 0),
-      0
-    );
-    const totalSedentaryMinutes = summaries.reduce(
-      (acc, s) => acc + (s.sedentary_minutes || 0),
-      0
-    );
-
-    // Calculate averages
-    const daysWithSteps = summaries.filter((s) => s.steps !== null).length;
-    const daysWithCalories = summaries.filter(
-      (s) => s.active_calories_kcal !== null
-    ).length;
-
-    // Heart rate stats (average of daily averages)
-    const heartRates = summaries
-      .map((s) => s.heart_rate?.avg_bpm)
-      .filter((hr): hr is number => hr !== null);
-    const avgHeartRate =
-      heartRates.length > 0
-        ? heartRates.reduce((a, b) => a + b, 0) / heartRates.length
-        : null;
-
-    return {
-      totalSteps,
-      avgSteps: daysWithSteps > 0 ? Math.round(totalSteps / daysWithSteps) : 0,
-      totalCalories,
-      avgCalories:
-        daysWithCalories > 0 ? Math.round(totalCalories / daysWithCalories) : 0,
-      totalDistance,
-      totalActiveMinutes,
-      totalFloorsClimbed,
-      totalSedentaryMinutes,
-      avgHeartRate,
-      daysTracked: summaries.length,
-    };
-  }, [summaryData]);
+  const stats = useMemo(
+    () => calculateActivityStats(summaryData?.data || []),
+    [summaryData]
+  );
 
   // Get displayed days from current page data
   const displayedDays = daysData?.data || [];
   const hasData = displayedDays.length > 0;
 
   // Selected metric for the chart
-  const [selectedMetric, setSelectedMetric] = useState<MetricKey>('steps');
+  const [selectedMetric, setSelectedMetric] =
+    useState<ActivityMetricKey>('steps');
 
   // Get the selected metric definition
   const currentMetric =
@@ -574,10 +388,11 @@ export function ActivitySection({
     <div className="space-y-6">
       {/* Summary Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Activity Summary</h3>
-          <DateRangeSelector value={dateRange} onChange={onDateRangeChange} />
-        </div>
+        <SectionHeader
+          title="Activity Summary"
+          dateRange={dateRange}
+          onDateRangeChange={onDateRangeChange}
+        />
 
         <div className="p-6">
           {summaryLoading ? (
@@ -590,47 +405,28 @@ export function ActivitySection({
             <div className="space-y-6">
               {/* Clickable Metric Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {METRICS.map((metric) => {
-                  const Icon = metric.icon;
-                  const isSelected = selectedMetric === metric.key;
-                  return (
-                    <button
-                      key={metric.key}
-                      onClick={() => setSelectedMetric(metric.key)}
-                      className={`p-4 border rounded-lg bg-zinc-900/30 text-left transition-all duration-200 cursor-pointer
-                        ${
-                          isSelected
-                            ? `border-zinc-600 ${metric.glowColor}`
-                            : 'border-zinc-800 hover:border-zinc-700 hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
-                        }
-                      `}
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className={`p-2 ${metric.bgColor} rounded-lg`}>
-                          <Icon className={`h-5 w-5 ${metric.color}`} />
-                        </div>
-                      </div>
-                      <p className="text-2xl font-semibold text-white">
-                        {metric.formatValue(metric.getValue(stats))}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-1">
-                        {metric.label}
-                      </p>
-                    </button>
-                  );
-                })}
+                {METRICS.map((metric) => (
+                  <MetricCard
+                    key={metric.key}
+                    icon={metric.icon}
+                    iconColor={metric.color}
+                    iconBgColor={metric.bgColor}
+                    value={metric.formatValue(metric.getValue(stats))}
+                    label={metric.label}
+                    isClickable
+                    isSelected={selectedMetric === metric.key}
+                    glowColor={metric.glowColor}
+                    onClick={() => setSelectedMetric(metric.key)}
+                  />
+                ))}
                 {/* Days Tracked - non-clickable */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                      <Activity className="h-5 w-5 text-indigo-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {stats.daysTracked}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Days Tracked</p>
-                </div>
+                <MetricCard
+                  icon={Activity}
+                  iconColor="text-indigo-400"
+                  iconBgColor="bg-indigo-500/10"
+                  value={String(stats.daysTracked)}
+                  label="Days Tracked"
+                />
               </div>
 
               {/* Dynamic Chart for Selected Metric */}
@@ -643,7 +439,7 @@ export function ActivitySection({
                     config={{
                       value: {
                         label: currentMetric.shortLabel,
-                        color: METRIC_CHART_COLORS[selectedMetric],
+                        color: ACTIVITY_METRIC_CHART_COLORS[selectedMetric],
                       },
                     }}
                     className="h-[200px] w-full"
@@ -689,14 +485,16 @@ export function ActivitySection({
 
       {/* Activity Days Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Activity Days</h3>
-          {!daysLoading && hasData && (
-            <span className="text-xs text-zinc-500">
-              Page {pagination.currentPage}
-            </span>
-          )}
-        </div>
+        <SectionHeader
+          title="Activity Days"
+          rightContent={
+            !daysLoading && hasData ? (
+              <span className="text-xs text-zinc-500">
+                Page {pagination.currentPage}
+              </span>
+            ) : undefined
+          }
+        />
 
         <div className="p-6">
           {daysLoading ? (
@@ -740,39 +538,14 @@ export function ActivitySection({
               </div>
 
               {/* Pagination Controls */}
-              {(pagination.hasPrevPage || hasNextPage) && (
-                <div className="pt-4 border-t border-zinc-800">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={handlePrevPage}
-                          className={
-                            !pagination.hasPrevPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationLink isActive>
-                          {pagination.currentPage}
-                        </PaginationLink>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={handleNextPage}
-                          className={
-                            !hasNextPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+              <CursorPagination
+                currentPage={pagination.currentPage}
+                hasPrevPage={pagination.hasPrevPage}
+                hasNextPage={hasNextPage}
+                isFetching={isFetching}
+                onPrevPage={handlePrevPage}
+                onNextPage={handleNextPage}
+              />
             </div>
           )}
         </div>

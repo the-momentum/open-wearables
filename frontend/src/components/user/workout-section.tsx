@@ -13,238 +13,33 @@ import {
 import { useWorkouts, useTimeSeries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
-  DateRangeSelector,
-  type DateRangeValue,
-} from '@/components/ui/date-range-selector';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
+  useDateRangeDates,
+  useAllTimeRangeTimestamp,
+} from '@/hooks/use-date-range';
+import type { DateRangeValue } from '@/components/ui/date-range-selector';
+import { CursorPagination } from '@/components/common/cursor-pagination';
+import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
+import { formatDuration, formatCalories } from '@/lib/utils/format';
+import { prepareHrChartData } from '@/lib/utils/timeseries';
+import { HR_CHART_CONFIG } from '@/lib/utils/chart-config';
+import {
+  getWorkoutCategory,
+  getWorkoutDetailFields,
+  calculateWorkoutStats,
+  dateToTimestamp,
+} from '@/lib/utils/workout';
 import type { EventRecordResponse } from '@/lib/api/types';
-
-const workoutHrChartConfig = {
-  hr: {
-    label: 'Heart Rate (bpm)',
-    color: '#f43f5e',
-  },
-};
 
 interface WorkoutSectionProps {
   userId: string;
   dateRange: DateRangeValue;
   onDateRangeChange: (value: DateRangeValue) => void;
-}
-
-// Define which fields to show for each workout category
-type WorkoutCategory =
-  | 'running'
-  | 'cycling'
-  | 'swimming'
-  | 'strength'
-  | 'cardio'
-  | 'default';
-
-interface FieldConfig {
-  key: keyof EventRecordResponse;
-  label: string;
-  format: (value: unknown) => string;
-}
-
-// Field definitions
-const FIELD_DEFINITIONS: Record<string, FieldConfig> = {
-  start_time: {
-    key: 'start_time',
-    label: 'Start',
-    format: (v) => (v ? format(new Date(v as string), 'h:mm a') : '-'),
-  },
-  end_time: {
-    key: 'end_time',
-    label: 'End',
-    format: (v) => (v ? format(new Date(v as string), 'h:mm a') : '-'),
-  },
-  distance_meters: {
-    key: 'distance_meters',
-    label: 'Distance',
-    format: (v) => {
-      if (!v) return '-';
-      const meters = Number(v);
-      if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
-      return `${Math.round(meters)} m`;
-    },
-  },
-  steps_count: {
-    key: 'steps_avg',
-    label: 'Steps',
-    format: (v) => (v ? Number(v).toLocaleString() : '-'),
-  },
-  heart_rate_avg: {
-    key: 'heart_rate_avg',
-    label: 'Avg HR',
-    format: (v) => (v ? `${Math.round(Number(v))} bpm` : '-'),
-  },
-  heart_rate_max: {
-    key: 'heart_rate_max',
-    label: 'Max HR',
-    format: (v) => (v ? `${Math.round(Number(v))} bpm` : '-'),
-  },
-  total_elevation_gain: {
-    key: 'total_elevation_gain',
-    label: 'Elevation',
-    format: (v) => (v ? `${Math.round(Number(v))} m` : '-'),
-  },
-  average_speed: {
-    key: 'average_speed',
-    label: 'Avg Speed',
-    format: (v) => (v ? `${Number(v).toFixed(1)} km/h` : '-'),
-  },
-  max_speed: {
-    key: 'max_speed',
-    label: 'Max Speed',
-    format: (v) => (v ? `${Number(v).toFixed(1)} km/h` : '-'),
-  },
-  average_watts: {
-    key: 'average_watts',
-    label: 'Avg Power',
-    format: (v) => (v ? `${Math.round(Number(v))} W` : '-'),
-  },
-  moving_time: {
-    key: 'moving_time_seconds',
-    label: 'Moving Time',
-    format: (v) => {
-      if (!v) return '-';
-      const secs = Number(v);
-      const mins = Math.floor(secs / 60);
-      const hours = Math.floor(mins / 60);
-      if (hours > 0) return `${hours}h ${mins % 60}m`;
-      return `${mins}m`;
-    },
-  },
-  source: {
-    key: 'source',
-    label: 'Source',
-    format: (v) => {
-      if (!v) return '-';
-      const source = v as { provider?: string; device?: string };
-      return source.provider || '-';
-    },
-  },
-};
-
-// Workout category field configurations
-const WORKOUT_FIELD_CONFIG: Record<WorkoutCategory, string[]> = {
-  running: [
-    'start_time',
-    'end_time',
-    'distance_meters',
-    'steps_count',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'total_elevation_gain',
-    'average_speed',
-    'source',
-  ],
-  cycling: [
-    'start_time',
-    'end_time',
-    'distance_meters',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'total_elevation_gain',
-    'average_speed',
-    'max_speed',
-    'average_watts',
-    'source',
-  ],
-  swimming: [
-    'start_time',
-    'end_time',
-    'distance_meters',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'moving_time',
-    'source',
-  ],
-  strength: [
-    'start_time',
-    'end_time',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'source',
-  ],
-  cardio: [
-    'start_time',
-    'end_time',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'steps_count',
-    'source',
-  ],
-  default: [
-    'start_time',
-    'end_time',
-    'distance_meters',
-    'heart_rate_avg',
-    'heart_rate_max',
-    'source',
-  ],
-};
-
-// Map workout types to categories
-function getWorkoutCategory(type: string): WorkoutCategory {
-  const lowerType = type.toLowerCase();
-
-  if (
-    lowerType.includes('run') ||
-    lowerType.includes('walk') ||
-    lowerType.includes('hik')
-  ) {
-    return 'running';
-  }
-  if (lowerType.includes('cycl') || lowerType.includes('bik')) {
-    return 'cycling';
-  }
-  if (lowerType.includes('swim')) {
-    return 'swimming';
-  }
-  if (
-    lowerType.includes('strength') ||
-    lowerType.includes('weight') ||
-    lowerType.includes('gym')
-  ) {
-    return 'strength';
-  }
-  if (
-    lowerType.includes('cardio') ||
-    lowerType.includes('hiit') ||
-    lowerType.includes('aerobic')
-  ) {
-    return 'cardio';
-  }
-  return 'default';
-}
-
-function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds) return '-';
-  const secs = Number(seconds);
-  const hours = Math.floor(secs / 3600);
-  const mins = Math.floor((secs % 3600) / 60);
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
-}
-
-function formatCalories(kcal: number | null | undefined): string {
-  if (!kcal) return '-';
-  return `${Math.round(Number(kcal))} kcal`;
 }
 
 // Expandable workout row with HR time series
@@ -258,7 +53,6 @@ function WorkoutRow({
   const [isExpanded, setIsExpanded] = useState(false);
   const style = getWorkoutStyle(workout.type || workout.category || '');
   const category = getWorkoutCategory(workout.type || workout.category || '');
-  const fieldKeys = WORKOUT_FIELD_CONFIG[category];
 
   // Get workout start and end times
   const startTime = workout.start_time || workout.start_datetime || '';
@@ -273,29 +67,14 @@ function WorkoutRow({
     limit: 100,
   });
 
-  // Prepare HR chart data
-  const hrChartData = useMemo(() => {
-    if (!hrData?.data?.length) return [];
-    return hrData.data
-      .filter((d) => d.type === 'heart_rate')
-      .sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      )
-      .map((d) => ({
-        time: format(new Date(d.timestamp), 'HH:mm'),
-        hr: d.value,
-      }));
-  }, [hrData]);
+  // Prepare HR chart data using utility function
+  const hrChartData = useMemo(() => prepareHrChartData(hrData?.data), [hrData]);
 
-  // Get fields that have actual data
-  const fieldsWithData = fieldKeys
-    .map((key) => FIELD_DEFINITIONS[key])
-    .filter((field) => {
-      if (!field) return false;
-      const value = workout[field.key];
-      return value !== null && value !== undefined && value !== '';
-    });
+  // Get detail fields using utility function
+  const detailFields = useMemo(
+    () => getWorkoutDetailFields(workout, category),
+    [workout, category]
+  );
 
   const workoutDate = workout.start_time || workout.start_datetime;
 
@@ -386,7 +165,7 @@ function WorkoutRow({
               </div>
             ) : hrChartData.length > 0 ? (
               <ChartContainer
-                config={workoutHrChartConfig}
+                config={HR_CHART_CONFIG}
                 className="h-[160px] w-full"
               >
                 <LineChart
@@ -433,28 +212,25 @@ function WorkoutRow({
           </div>
 
           {/* Detail Fields */}
-          {fieldsWithData.length > 0 && (
+          {detailFields.length > 0 && (
             <div className="flex gap-6 pt-2 border-t border-zinc-800/50">
               {/* Left column */}
               <div className="flex-1 space-y-2">
-                {fieldsWithData
-                  .slice(0, Math.ceil(fieldsWithData.length / 2))
-                  .map((field) => {
-                    const value = workout[field.key];
-                    return (
-                      <div
-                        key={field.key}
-                        className="flex items-center justify-between py-1"
-                      >
-                        <span className="text-sm text-zinc-500">
-                          {field.label}
-                        </span>
-                        <span className="text-sm font-medium text-white">
-                          {field.format(value)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                {detailFields
+                  .slice(0, Math.ceil(detailFields.length / 2))
+                  .map((field) => (
+                    <div
+                      key={field.label}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <span className="text-sm text-zinc-500">
+                        {field.label}
+                      </span>
+                      <span className="text-sm font-medium text-white">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
               </div>
 
               {/* Divider */}
@@ -462,24 +238,21 @@ function WorkoutRow({
 
               {/* Right column */}
               <div className="flex-1 space-y-2">
-                {fieldsWithData
-                  .slice(Math.ceil(fieldsWithData.length / 2))
-                  .map((field) => {
-                    const value = workout[field.key];
-                    return (
-                      <div
-                        key={field.key}
-                        className="flex items-center justify-between py-1"
-                      >
-                        <span className="text-sm text-zinc-500">
-                          {field.label}
-                        </span>
-                        <span className="text-sm font-medium text-white">
-                          {field.format(value)}
-                        </span>
-                      </div>
-                    );
-                  })}
+                {detailFields
+                  .slice(Math.ceil(detailFields.length / 2))
+                  .map((field) => (
+                    <div
+                      key={field.label}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <span className="text-sm text-zinc-500">
+                        {field.label}
+                      </span>
+                      <span className="text-sm font-medium text-white">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -534,15 +307,9 @@ export function WorkoutSection({
   // Cursor-based pagination for workouts
   const pagination = useCursorPagination();
 
-  // Wide date range to fetch "all" workouts (backend requires start/end dates)
-  const allTimeRange = useMemo(() => {
-    const start = new Date('2000-01-01');
-    const end = new Date();
-    return {
-      start_date: Math.floor(start.getTime() / 1000).toString(),
-      end_date: Math.floor(end.getTime() / 1000).toString(),
-    };
-  }, []);
+  // Date range hooks
+  const allTimeRange = useAllTimeRangeTimestamp();
+  const { startDate, endDate } = useDateRangeDates(dateRange);
 
   // Fetch workouts for current page
   const {
@@ -563,50 +330,22 @@ export function WorkoutSection({
   const handleNextPage = () => pagination.goToNextPage(nextCursor);
   const handlePrevPage = pagination.goToPrevPage;
 
-  // Calculate date range for summary
-  const { startDate, endDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dateRange);
-    return { startDate: start, endDate: end };
-  }, [dateRange]);
-
   // Fetch workouts for summary (with date filter, larger limit)
   const { data: summaryWorkouts, isLoading: summaryLoading } = useWorkouts(
     userId,
     {
-      start_date: Math.floor(startDate.getTime() / 1000).toString(),
-      end_date: Math.floor(endDate.getTime() / 1000).toString(),
+      start_date: dateToTimestamp(startDate),
+      end_date: dateToTimestamp(endDate),
       limit: 100,
       sort_order: 'desc',
     }
   );
 
   // Calculate summary stats from date-filtered workouts
-  const stats = useMemo(() => {
-    const data = summaryWorkouts?.data || [];
-    if (data.length === 0) return null;
-
-    const totalDuration = data.reduce(
-      (sum, w) => sum + (Number(w.duration_seconds) || 0),
-      0
-    );
-    const totalCalories = data.reduce(
-      (sum, w) => sum + (Number(w.calories_kcal) || 0),
-      0
-    );
-    const totalDistance = data.reduce(
-      (sum, w) => sum + (Number(w.distance_meters) || 0),
-      0
-    );
-
-    return {
-      count: data.length,
-      totalDuration,
-      totalCalories,
-      totalDistance,
-    };
-  }, [summaryWorkouts]);
+  const stats = useMemo(
+    () => calculateWorkoutStats(summaryWorkouts?.data || []),
+    [summaryWorkouts]
+  );
 
   const workouts = workoutsResponse?.data || [];
   const hasData = workouts.length > 0 || (stats?.count ?? 0) > 0;
@@ -615,10 +354,11 @@ export function WorkoutSection({
     <div className="space-y-6">
       {/* Summary Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">Summary</h3>
-          <DateRangeSelector value={dateRange} onChange={onDateRangeChange} />
-        </div>
+        <SectionHeader
+          title="Summary"
+          dateRange={dateRange}
+          onDateRangeChange={onDateRangeChange}
+        />
 
         <div className="p-6">
           {summaryLoading ? (
@@ -697,15 +437,16 @@ export function WorkoutSection({
 
       {/* Workout List Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-white">All Workouts</h3>
-          {/* Pagination info */}
-          {!isLoading && hasData && (
-            <span className="text-xs text-zinc-500">
-              Page {pagination.currentPage}
-            </span>
-          )}
-        </div>
+        <SectionHeader
+          title="All Workouts"
+          rightContent={
+            !isLoading && hasData ? (
+              <span className="text-xs text-zinc-500">
+                Page {pagination.currentPage}
+              </span>
+            ) : undefined
+          }
+        />
 
         <div className="p-6">
           {isLoading ? (
@@ -728,39 +469,14 @@ export function WorkoutSection({
               </div>
 
               {/* Pagination Controls */}
-              {(pagination.hasPrevPage || hasNextPage) && (
-                <div className="pt-4 border-t border-zinc-800">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={handlePrevPage}
-                          className={
-                            !pagination.hasPrevPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationLink isActive>
-                          {pagination.currentPage}
-                        </PaginationLink>
-                      </PaginationItem>
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={handleNextPage}
-                          className={
-                            !hasNextPage || isFetching
-                              ? 'pointer-events-none opacity-50'
-                              : 'cursor-pointer'
-                          }
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+              <CursorPagination
+                currentPage={pagination.currentPage}
+                hasPrevPage={pagination.hasPrevPage}
+                hasNextPage={hasNextPage}
+                isFetching={isFetching}
+                onPrevPage={handlePrevPage}
+                onNextPage={handleNextPage}
+              />
             </div>
           )}
         </div>

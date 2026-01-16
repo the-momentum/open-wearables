@@ -14,12 +14,12 @@ import {
   Scale,
   type LucideIcon,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import {
   useUser,
   useDeleteUser,
   useAppleXmlUpload,
 } from '@/hooks/api/use-users';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ProfileSection } from '@/components/user/profile-section';
 import { SleepSection } from '@/components/user/sleep-section';
@@ -128,10 +128,14 @@ function UserDetailPage() {
 
   const handleCopyPairLink = async () => {
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    await navigator.clipboard.writeText(pairLink);
-    setCopied(true);
-    toast.success('Pairing link copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(
+      pairLink,
+      'Pairing link copied to clipboard'
+    );
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleUploadClick = () => {

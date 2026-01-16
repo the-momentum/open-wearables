@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Plus, Eye, EyeOff, Copy, Trash2, Key } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   useApiKeys,
   useCreateApiKey,
   useDeleteApiKey,
 } from '@/hooks/api/use-credentials';
-import { toast } from 'sonner';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 
 export function CredentialsTab() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -49,15 +50,6 @@ export function CredentialsTab() {
       }
       return next;
     });
-  };
-
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success('Copied to clipboard');
-    } catch {
-      toast.error('Failed to copy to clipboard');
-    }
   };
 
   const maskKey = (key: string) => {

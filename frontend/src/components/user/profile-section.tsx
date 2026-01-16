@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link as LinkIcon, Check, Pencil, X } from 'lucide-react';
-import { toast } from 'sonner';
 import { useUserConnections } from '@/hooks/api/use-health';
 import { useUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatDate, truncateId } from '@/lib/utils/format';
+import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ConnectionCard } from '@/components/user/connection-card';
 
 interface ProfileSectionProps {
@@ -40,13 +40,13 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
 
   const handleCopyPairLink = async () => {
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    try {
-      await navigator.clipboard.writeText(pairLink);
+    const success = await copyToClipboard(
+      pairLink,
+      'Pairing link copied to clipboard'
+    );
+    if (success) {
       setCopied(true);
-      toast.success('Pairing link copied to clipboard');
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error('Failed to copy link to clipboard');
     }
   };
 

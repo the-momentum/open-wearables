@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { format } from 'date-fns';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import {
   Scale,
@@ -12,56 +11,29 @@ import {
   Thermometer,
 } from 'lucide-react';
 import { useBodySummaries } from '@/hooks/api/use-health';
+import { useDateRange } from '@/hooks/use-date-range';
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartConfig,
 } from '@/components/ui/chart';
-import type { BodySummary } from '@/lib/api/types';
-
-const weightChartConfig = {
-  weight: {
-    label: 'Weight (kg)',
-    color: '#3b82f6',
-  },
-} satisfies ChartConfig;
+import { WEIGHT_CHART_CONFIG } from '@/lib/utils/chart-config';
+import {
+  formatWeight,
+  formatHeight,
+  formatPercentDecimal,
+  formatBmi,
+  formatTemperature,
+} from '@/lib/utils/format';
+import {
+  getBmiCategory,
+  getLatestBodySummary,
+  getBodyComposition,
+  prepareWeightChartData,
+} from '@/lib/utils/body';
 
 interface BodySectionProps {
   userId: string;
-}
-
-function formatWeight(kg: number | null): string {
-  if (kg === null) return '-';
-  return `${kg.toFixed(1)} kg`;
-}
-
-function formatHeight(cm: number | null): string {
-  if (cm === null) return '-';
-  return `${Math.round(cm)} cm`;
-}
-
-function formatPercent(value: number | null): string {
-  if (value === null) return '-';
-  return `${value.toFixed(1)}%`;
-}
-
-function formatBmi(bmi: number | null): string {
-  if (bmi === null) return '-';
-  return bmi.toFixed(1);
-}
-
-function formatTemperature(celsius: number | null): string {
-  if (celsius === null) return '-';
-  return `${celsius.toFixed(1)}°C`;
-}
-
-function getBmiCategory(bmi: number | null): { label: string; color: string } {
-  if (bmi === null) return { label: '', color: 'text-zinc-500' };
-  if (bmi < 18.5) return { label: 'Underweight', color: 'text-sky-400' };
-  if (bmi < 25) return { label: 'Normal', color: 'text-emerald-400' };
-  if (bmi < 30) return { label: 'Overweight', color: 'text-amber-400' };
-  return { label: 'Obese', color: 'text-rose-400' };
 }
 
 // Loading skeleton
@@ -98,15 +70,7 @@ function BodySectionSkeleton() {
 
 export function BodySection({ userId }: BodySectionProps) {
   // Fetch last 30 days to ensure we get latest data
-  const { startDate, endDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 30);
-    return {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-    };
-  }, []);
+  const { startDate, endDate } = useDateRange(30);
 
   const { data: bodySummaries, isLoading } = useBodySummaries(userId, {
     start_date: startDate,
@@ -115,71 +79,25 @@ export function BodySection({ userId }: BodySectionProps) {
   });
 
   // Get the most recent summary (which contains latest body composition + 7-day vitals)
-  const latestSummary = useMemo(() => {
-    const summaries = bodySummaries?.data || [];
-    if (summaries.length === 0) return null;
-
-    // Sort by date descending and get the first one with data
-    const sorted = [...summaries].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-
-    // Find the most recent summary that has at least some data
-    for (const s of sorted) {
-      if (
-        s.weight_kg !== null ||
-        s.resting_heart_rate_bpm !== null ||
-        s.avg_hrv_sdnn_ms !== null
-      ) {
-        return s;
-      }
-    }
-    return sorted[0] || null;
-  }, [bodySummaries]);
+  const latestSummary = useMemo(
+    () => getLatestBodySummary(bodySummaries?.data || []),
+    [bodySummaries]
+  );
 
   // For body composition, find the latest non-null value for each metric
-  // (they might come from different days)
-  const bodyComposition = useMemo(() => {
-    const summaries = bodySummaries?.data || [];
-    if (summaries.length === 0) return null;
-
-    const sorted = [...summaries].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-
-    const findLatest = <T,>(getter: (s: BodySummary) => T | null): T | null => {
-      for (const s of sorted) {
-        const val = getter(s);
-        if (val !== null) return val;
-      }
-      return null;
-    };
-
-    return {
-      weight: findLatest((s) => s.weight_kg),
-      height: findLatest((s) => s.height_cm),
-      bodyFat: findLatest((s) => s.body_fat_percent),
-      muscleMass: findLatest((s) => s.muscle_mass_kg),
-      bmi: findLatest((s) => s.bmi),
-    };
-  }, [bodySummaries]);
+  const bodyComposition = useMemo(
+    () => getBodyComposition(bodySummaries?.data || []),
+    [bodySummaries]
+  );
 
   const hasData = latestSummary !== null;
-  const bmiCategory = getBmiCategory(bodyComposition?.bmi ?? null);
+  const bmiCategory = getBmiCategory(bodyComposition?.bmi);
 
   // Prepare weight trend chart data
-  const weightChartData = useMemo(() => {
-    const summaries = bodySummaries?.data || [];
-    const withWeight = summaries.filter((s) => s.weight_kg != null);
-    if (withWeight.length === 0) return [];
-
-    return [...withWeight]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
-        weight: s.weight_kg,
-      }));
-  }, [bodySummaries]);
+  const weightChartData = useMemo(
+    () => prepareWeightChartData(bodySummaries?.data || []),
+    [bodySummaries]
+  );
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
@@ -237,7 +155,7 @@ export function BodySection({ userId }: BodySectionProps) {
                     </div>
                   </div>
                   <p className="text-2xl font-semibold text-white">
-                    {formatPercent(bodyComposition?.bodyFat ?? null)}
+                    {formatPercentDecimal(bodyComposition?.bodyFat ?? null)}
                   </p>
                   <p className="text-xs text-zinc-500 mt-1">Body Fat</p>
                 </div>
@@ -355,7 +273,7 @@ export function BodySection({ userId }: BodySectionProps) {
                   Weight Trend
                 </h4>
                 <ChartContainer
-                  config={weightChartConfig}
+                  config={WEIGHT_CHART_CONFIG}
                   className="h-[200px] w-full"
                 >
                   <LineChart
