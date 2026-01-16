@@ -53,6 +53,7 @@ services:
       - ENVIRONMENT=local
       - FRONTEND_URL=http://localhost:3001
       - CORS_ORIGINS=["http://localhost:3001"]
+      - CORS_ALLOW_ALL=true
     ports:
       - "8001:8000"
     depends_on:
