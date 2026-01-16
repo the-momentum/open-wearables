@@ -13,6 +13,7 @@ import {
   Armchair,
 } from 'lucide-react';
 import { useActivitySummaries } from '@/hooks/api/use-health';
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -285,8 +286,8 @@ export function ActivitySection({
   dateRange,
   onDateRangeChange,
 }: ActivitySectionProps) {
-  // State for activity days pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  // Cursor-based pagination for activity days
+  const pagination = useCursorPagination();
 
   // Calculate date range for summary
   const { startDate, endDate } = useMemo(() => {
@@ -299,7 +300,7 @@ export function ActivitySection({
     };
   }, [dateRange]);
 
-  // Wide date range for fetching all activity days
+  // Wide date range for fetching activity days
   const allTimeRange = useMemo(() => {
     const start = new Date('2000-01-01');
     const end = new Date();
@@ -319,14 +320,23 @@ export function ActivitySection({
     }
   );
 
-  // Fetch all activity days for the scrollable list
-  const { data: allDaysData, isLoading: daysLoading } = useActivitySummaries(
-    userId,
-    {
-      ...allTimeRange,
-      limit: 100,
-    }
-  );
+  // Fetch activity days with cursor-based pagination
+  const {
+    data: daysData,
+    isLoading: daysLoading,
+    isFetching,
+  } = useActivitySummaries(userId, {
+    ...allTimeRange,
+    limit: DAYS_PER_PAGE,
+    cursor: pagination.currentCursor ?? undefined,
+  });
+
+  // Derive pagination state from response
+  const nextCursor = daysData?.pagination?.next_cursor ?? null;
+  const hasNextPage = daysData?.pagination?.has_more ?? false;
+
+  const handleNextPage = () => pagination.goToNextPage(nextCursor);
+  const handlePrevPage = pagination.goToPrevPage;
 
   // Calculate aggregate statistics from date-range filtered data
   const stats = useMemo(() => {
@@ -388,37 +398,9 @@ export function ActivitySection({
     };
   }, [summaryData]);
 
-  // Get all days sorted by date descending
-  const allDays = useMemo(() => {
-    const summaries = allDaysData?.data || [];
-    return [...summaries].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-  }, [allDaysData]);
-
-  // Calculate total pages
-  const totalPages = Math.ceil(allDays.length / DAYS_PER_PAGE);
-
-  // Days to display based on current page
-  const displayedDays = allDays.slice(
-    (currentPage - 1) * DAYS_PER_PAGE,
-    currentPage * DAYS_PER_PAGE
-  );
-
-  const hasPrevPage = currentPage > 1;
-  const hasNextPage = currentPage < totalPages;
-
-  const handlePrevPage = () => {
-    if (hasPrevPage) {
-      setCurrentPage((p) => p - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (hasNextPage) {
-      setCurrentPage((p) => p + 1);
-    }
-  };
+  // Get displayed days from current page data
+  const displayedDays = daysData?.data || [];
+  const hasData = displayedDays.length > 0;
 
   return (
     <div className="space-y-6">
@@ -562,9 +544,9 @@ export function ActivitySection({
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">Activity Days</h3>
-          {!daysLoading && allDays.length > 0 && (
+          {!daysLoading && hasData && (
             <span className="text-xs text-zinc-500">
-              Page {currentPage} of {totalPages}
+              Page {pagination.currentPage}
             </span>
           )}
         </div>
@@ -611,7 +593,7 @@ export function ActivitySection({
               </div>
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
+              {(pagination.hasPrevPage || hasNextPage) && (
                 <div className="pt-4 border-t border-zinc-800">
                   <Pagination>
                     <PaginationContent>
@@ -619,20 +601,22 @@ export function ActivitySection({
                         <PaginationPrevious
                           onClick={handlePrevPage}
                           className={
-                            !hasPrevPage
+                            !pagination.hasPrevPage || isFetching
                               ? 'pointer-events-none opacity-50'
                               : 'cursor-pointer'
                           }
                         />
                       </PaginationItem>
                       <PaginationItem>
-                        <PaginationLink isActive>{currentPage}</PaginationLink>
+                        <PaginationLink isActive>
+                          {pagination.currentPage}
+                        </PaginationLink>
                       </PaginationItem>
                       <PaginationItem>
                         <PaginationNext
                           onClick={handleNextPage}
                           className={
-                            !hasNextPage
+                            !hasNextPage || isFetching
                               ? 'pointer-events-none opacity-50'
                               : 'cursor-pointer'
                           }

@@ -40,10 +40,14 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
 
   const handleCopyPairLink = async () => {
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    await navigator.clipboard.writeText(pairLink);
-    setCopied(true);
-    toast.success('Pairing link copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(pairLink);
+      setCopied(true);
+      toast.success('Pairing link copied to clipboard');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy link to clipboard');
+    }
   };
 
   const handleEditSubmit = () => {

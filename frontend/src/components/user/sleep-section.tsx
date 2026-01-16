@@ -9,6 +9,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useSleepSessions, useSleepSummaries } from '@/hooks/api/use-health';
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -403,8 +404,8 @@ export function SleepSection({
   dateRange,
   onDateRangeChange,
 }: SleepSectionProps) {
-  // State for sessions pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  // Cursor-based pagination for sleep sessions
+  const pagination = useCursorPagination();
 
   // Calculate date range for summary
   const { startDate, endDate } = useMemo(() => {
@@ -417,7 +418,7 @@ export function SleepSection({
     };
   }, [dateRange]);
 
-  // Wide date range for fetching all sessions
+  // Wide date range for fetching sleep sessions
   const allTimeRange = useMemo(() => {
     const start = new Date('2000-01-01');
     const end = new Date();
@@ -437,12 +438,23 @@ export function SleepSection({
     }
   );
 
-  // Fetch all sleep sessions for the list
-  const { data: allSessionsData, isLoading: sessionsLoading } =
-    useSleepSessions(userId, {
-      ...allTimeRange,
-      limit: 100,
-    });
+  // Fetch sleep sessions with cursor-based pagination
+  const {
+    data: sessionsData,
+    isLoading: sessionsLoading,
+    isFetching,
+  } = useSleepSessions(userId, {
+    ...allTimeRange,
+    limit: SESSIONS_PER_PAGE,
+    cursor: pagination.currentCursor ?? undefined,
+  });
+
+  // Derive pagination state from response
+  const nextCursor = sessionsData?.pagination?.next_cursor ?? null;
+  const hasNextPage = sessionsData?.pagination?.has_more ?? false;
+
+  const handleNextPage = () => pagination.goToNextPage(nextCursor);
+  const handlePrevPage = pagination.goToPrevPage;
 
   // Calculate aggregate statistics from date-range filtered summaries
   const stats = useMemo(() => {
@@ -527,38 +539,9 @@ export function SleepSection({
     };
   }, [sleepSummaries]);
 
-  // Get all sessions sorted by date descending
-  const allSessions = useMemo(() => {
-    const sessions = allSessionsData?.data || [];
-    return [...sessions].sort(
-      (a, b) =>
-        new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
-    );
-  }, [allSessionsData]);
-
-  // Calculate total pages
-  const totalPages = Math.ceil(allSessions.length / SESSIONS_PER_PAGE);
-
-  // Sessions to display based on current page
-  const displayedSessions = allSessions.slice(
-    (currentPage - 1) * SESSIONS_PER_PAGE,
-    currentPage * SESSIONS_PER_PAGE
-  );
-
-  const hasPrevPage = currentPage > 1;
-  const hasNextPage = currentPage < totalPages;
-
-  const handlePrevPage = () => {
-    if (hasPrevPage) {
-      setCurrentPage((p) => p - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (hasNextPage) {
-      setCurrentPage((p) => p + 1);
-    }
-  };
+  // Get displayed sessions from current page data
+  const displayedSessions = sessionsData?.data || [];
+  const hasData = displayedSessions.length > 0;
 
   return (
     <div className="space-y-6">
@@ -684,9 +667,9 @@ export function SleepSection({
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">Sleep Sessions</h3>
-          {!sessionsLoading && allSessions.length > 0 && (
+          {!sessionsLoading && hasData && (
             <span className="text-xs text-zinc-500">
-              Page {currentPage} of {totalPages}
+              Page {pagination.currentPage}
             </span>
           )}
         </div>
@@ -708,7 +691,7 @@ export function SleepSection({
               </div>
 
               {/* Pagination Controls */}
-              {totalPages > 1 && (
+              {(pagination.hasPrevPage || hasNextPage) && (
                 <div className="pt-4 border-t border-zinc-800">
                   <Pagination>
                     <PaginationContent>
@@ -716,20 +699,22 @@ export function SleepSection({
                         <PaginationPrevious
                           onClick={handlePrevPage}
                           className={
-                            !hasPrevPage
+                            !pagination.hasPrevPage || isFetching
                               ? 'pointer-events-none opacity-50'
                               : 'cursor-pointer'
                           }
                         />
                       </PaginationItem>
                       <PaginationItem>
-                        <PaginationLink isActive>{currentPage}</PaginationLink>
+                        <PaginationLink isActive>
+                          {pagination.currentPage}
+                        </PaginationLink>
                       </PaginationItem>
                       <PaginationItem>
                         <PaginationNext
                           onClick={handleNextPage}
                           className={
-                            !hasNextPage
+                            !hasNextPage || isFetching
                               ? 'pointer-events-none opacity-50'
                               : 'cursor-pointer'
                           }

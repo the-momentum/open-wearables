@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import {
   ChevronDown,
@@ -10,6 +10,7 @@ import {
   Timer,
 } from 'lucide-react';
 import { useWorkouts } from '@/hooks/api/use-health';
+import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   DateRangeSelector,
   type DateRangeValue,
@@ -423,12 +424,8 @@ export function WorkoutSection({
   dateRange,
   onDateRangeChange,
 }: WorkoutSectionProps) {
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
-
-  // Current cursor is based on page
-  const currentCursor = cursorHistory[currentPage - 1] ?? null;
+  // Cursor-based pagination for workouts
+  const pagination = useCursorPagination();
 
   // Wide date range to fetch "all" workouts (backend requires start/end dates)
   const allTimeRange = useMemo(() => {
@@ -448,30 +445,16 @@ export function WorkoutSection({
   } = useWorkouts(userId, {
     ...allTimeRange,
     limit: PAGE_SIZE,
-    cursor: currentCursor ?? undefined,
+    cursor: pagination.currentCursor ?? undefined,
     sort_order: 'desc',
   });
 
-  // Store next cursor when we get new data
+  // Derive pagination state from response
   const nextCursor = workoutsResponse?.pagination?.next_cursor ?? null;
   const hasNextPage = workoutsResponse?.pagination?.has_more ?? false;
-  const hasPrevPage = currentPage > 1;
 
-  const handleNextPage = () => {
-    if (hasNextPage && nextCursor) {
-      // Store the next cursor if we haven't visited this page yet
-      if (cursorHistory.length === currentPage) {
-        setCursorHistory((prev) => [...prev, nextCursor]);
-      }
-      setCurrentPage((p) => p + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (hasPrevPage) {
-      setCurrentPage((p) => p - 1);
-    }
-  };
+  const handleNextPage = () => pagination.goToNextPage(nextCursor);
+  const handlePrevPage = pagination.goToPrevPage;
 
   // Calculate date range for summary
   const { startDate, endDate } = useMemo(() => {
@@ -611,7 +594,9 @@ export function WorkoutSection({
           <h3 className="text-sm font-medium text-white">All Workouts</h3>
           {/* Pagination info */}
           {!isLoading && hasData && (
-            <span className="text-xs text-zinc-500">Page {currentPage}</span>
+            <span className="text-xs text-zinc-500">
+              Page {pagination.currentPage}
+            </span>
           )}
         </div>
 
@@ -632,7 +617,7 @@ export function WorkoutSection({
               </div>
 
               {/* Pagination Controls */}
-              {(hasPrevPage || hasNextPage) && (
+              {(pagination.hasPrevPage || hasNextPage) && (
                 <div className="pt-4 border-t border-zinc-800">
                   <Pagination>
                     <PaginationContent>
@@ -640,14 +625,16 @@ export function WorkoutSection({
                         <PaginationPrevious
                           onClick={handlePrevPage}
                           className={
-                            !hasPrevPage || isFetching
+                            !pagination.hasPrevPage || isFetching
                               ? 'pointer-events-none opacity-50'
                               : 'cursor-pointer'
                           }
                         />
                       </PaginationItem>
                       <PaginationItem>
-                        <PaginationLink isActive>{currentPage}</PaginationLink>
+                        <PaginationLink isActive>
+                          {pagination.currentPage}
+                        </PaginationLink>
                       </PaginationItem>
                       <PaginationItem>
                         <PaginationNext
