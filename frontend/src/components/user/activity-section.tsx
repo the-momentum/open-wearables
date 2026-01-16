@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
   Activity,
   ChevronDown,
@@ -26,6 +27,11 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 import type { ActivitySummary } from '@/lib/api/types';
 
 interface ActivitySectionProps {
@@ -35,6 +41,148 @@ interface ActivitySectionProps {
 }
 
 const DAYS_PER_PAGE = 10;
+
+// Metric definitions for the summary cards
+type MetricKey =
+  | 'steps'
+  | 'calories'
+  | 'activeTime'
+  | 'heartRate'
+  | 'distance'
+  | 'floors'
+  | 'sedentary';
+
+interface MetricDefinition {
+  key: MetricKey;
+  label: string;
+  shortLabel: string;
+  icon: React.ElementType;
+  color: string;
+  bgColor: string;
+  glowColor: string;
+  getValue: (stats: Stats) => number | null;
+  formatValue: (value: number | null) => string;
+  getChartValue: (summary: ActivitySummary) => number;
+  unit: string;
+}
+
+interface Stats {
+  totalSteps: number;
+  avgSteps: number;
+  totalCalories: number;
+  avgCalories: number;
+  totalDistance: number;
+  totalActiveMinutes: number;
+  totalFloorsClimbed: number;
+  totalSedentaryMinutes: number;
+  avgHeartRate: number | null;
+  daysTracked: number;
+}
+
+const METRICS: MetricDefinition[] = [
+  {
+    key: 'steps',
+    label: 'Total Steps',
+    shortLabel: 'Steps',
+    icon: Footprints,
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
+    getValue: (stats) => stats.totalSteps,
+    formatValue: formatNumber,
+    getChartValue: (s) => s.steps || 0,
+    unit: '',
+  },
+  {
+    key: 'calories',
+    label: 'Active Calories',
+    shortLabel: 'Calories',
+    icon: Flame,
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(249,115,22,0.5)]',
+    getValue: (stats) => stats.totalCalories,
+    formatValue: formatNumber,
+    getChartValue: (s) => s.active_calories_kcal || 0,
+    unit: 'kcal',
+  },
+  {
+    key: 'activeTime',
+    label: 'Active Time',
+    shortLabel: 'Active',
+    icon: Timer,
+    color: 'text-sky-400',
+    bgColor: 'bg-sky-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(14,165,233,0.5)]',
+    getValue: (stats) => stats.totalActiveMinutes,
+    formatValue: formatMinutes,
+    getChartValue: (s) => s.active_minutes || 0,
+    unit: 'min',
+  },
+  {
+    key: 'heartRate',
+    label: 'Avg Heart Rate',
+    shortLabel: 'Heart Rate',
+    icon: Heart,
+    color: 'text-rose-400',
+    bgColor: 'bg-rose-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(244,63,94,0.5)]',
+    getValue: (stats) => stats.avgHeartRate,
+    formatValue: (v) => (v != null ? Math.round(v).toString() : '-'),
+    getChartValue: (s) => s.heart_rate?.avg_bpm || 0,
+    unit: 'bpm',
+  },
+  {
+    key: 'distance',
+    label: 'Total Distance',
+    shortLabel: 'Distance',
+    icon: MoveHorizontal,
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(168,85,247,0.5)]',
+    getValue: (stats) => stats.totalDistance,
+    formatValue: formatDistance,
+    getChartValue: (s) => (s.distance_meters || 0) / 1000,
+    unit: 'km',
+  },
+  {
+    key: 'floors',
+    label: 'Floors Climbed',
+    shortLabel: 'Floors',
+    icon: TrendingUp,
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(245,158,11,0.5)]',
+    getValue: (stats) => stats.totalFloorsClimbed,
+    formatValue: formatNumber,
+    getChartValue: (s) => s.floors_climbed || 0,
+    unit: '',
+  },
+  {
+    key: 'sedentary',
+    label: 'Sedentary Time',
+    shortLabel: 'Sedentary',
+    icon: Armchair,
+    color: 'text-zinc-400',
+    bgColor: 'bg-zinc-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(113,113,122,0.5)]',
+    getValue: (stats) => stats.totalSedentaryMinutes,
+    formatValue: formatMinutes,
+    getChartValue: (s) => s.sedentary_minutes || 0,
+    unit: 'min',
+  },
+];
+
+// Map metric colors to hex for chart
+const METRIC_CHART_COLORS: Record<MetricKey, string> = {
+  steps: '#10b981',
+  calories: '#f97316',
+  activeTime: '#0ea5e9',
+  heartRate: '#f43f5e',
+  distance: '#a855f7',
+  floors: '#f59e0b',
+  sedentary: '#71717a',
+};
 
 function formatNumber(value: number | null): string {
   if (value === null) return '-';
@@ -402,6 +550,26 @@ export function ActivitySection({
   const displayedDays = daysData?.data || [];
   const hasData = displayedDays.length > 0;
 
+  // Selected metric for the chart
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey>('steps');
+
+  // Get the selected metric definition
+  const currentMetric =
+    METRICS.find((m) => m.key === selectedMetric) || METRICS[0];
+
+  // Prepare chart data from summary data (sorted by date ascending)
+  const chartData = useMemo(() => {
+    const summaries = summaryData?.data || [];
+    if (summaries.length === 0) return [];
+
+    return [...summaries]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((s) => ({
+        date: format(new Date(s.date), 'MMM d'),
+        value: currentMetric.getChartValue(s),
+      }));
+  }, [summaryData, currentMetric]);
+
   return (
     <div className="space-y-6">
       {/* Summary Section */}
@@ -420,109 +588,38 @@ export function ActivitySection({
             </p>
           ) : (
             <div className="space-y-6">
-              {/* Summary Stats - Top Row */}
+              {/* Clickable Metric Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Total Steps */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                      <Footprints className="h-5 w-5 text-emerald-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatNumber(stats.totalSteps)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Total Steps ({stats.avgSteps.toLocaleString()}/day avg)
-                  </p>
-                </div>
-
-                {/* Active Calories */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-orange-500/10 rounded-lg">
-                      <Flame className="h-5 w-5 text-orange-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatNumber(stats.totalCalories)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Active Calories ({stats.avgCalories.toLocaleString()}/day)
-                  </p>
-                </div>
-
-                {/* Active Time */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-sky-500/10 rounded-lg">
-                      <Timer className="h-5 w-5 text-sky-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatMinutes(stats.totalActiveMinutes)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Total Active Time
-                  </p>
-                </div>
-
-                {/* Avg Heart Rate */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-rose-500/10 rounded-lg">
-                      <Heart className="h-5 w-5 text-rose-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {stats.avgHeartRate ? Math.round(stats.avgHeartRate) : '-'}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Avg Heart Rate</p>
-                </div>
-              </div>
-
-              {/* Additional Summary Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Distance */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-purple-500/10 rounded-lg">
-                      <MoveHorizontal className="h-5 w-5 text-purple-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatDistance(stats.totalDistance)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Total Distance</p>
-                </div>
-
-                {/* Floors Climbed */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-amber-500/10 rounded-lg">
-                      <TrendingUp className="h-5 w-5 text-amber-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatNumber(stats.totalFloorsClimbed)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Floors Climbed</p>
-                </div>
-
-                {/* Sedentary Time */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-zinc-500/10 rounded-lg">
-                      <Armchair className="h-5 w-5 text-zinc-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {formatMinutes(stats.totalSedentaryMinutes)}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Sedentary Time</p>
-                </div>
-
-                {/* Days Tracked */}
+                {METRICS.map((metric) => {
+                  const Icon = metric.icon;
+                  const isSelected = selectedMetric === metric.key;
+                  return (
+                    <button
+                      key={metric.key}
+                      onClick={() => setSelectedMetric(metric.key)}
+                      className={`p-4 border rounded-lg bg-zinc-900/30 text-left transition-all duration-200 cursor-pointer
+                        ${
+                          isSelected
+                            ? `border-zinc-600 ${metric.glowColor}`
+                            : 'border-zinc-800 hover:border-zinc-700 hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`p-2 ${metric.bgColor} rounded-lg`}>
+                          <Icon className={`h-5 w-5 ${metric.color}`} />
+                        </div>
+                      </div>
+                      <p className="text-2xl font-semibold text-white">
+                        {metric.formatValue(metric.getValue(stats))}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {metric.label}
+                      </p>
+                    </button>
+                  );
+                })}
+                {/* Days Tracked - non-clickable */}
                 <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 bg-indigo-500/10 rounded-lg">
@@ -535,6 +632,56 @@ export function ActivitySection({
                   <p className="text-xs text-zinc-500 mt-1">Days Tracked</p>
                 </div>
               </div>
+
+              {/* Dynamic Chart for Selected Metric */}
+              {chartData.length > 1 && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <h4 className="text-sm font-medium text-white mb-4">
+                    Daily {currentMetric.shortLabel}
+                  </h4>
+                  <ChartContainer
+                    config={{
+                      value: {
+                        label: currentMetric.shortLabel,
+                        color: METRIC_CHART_COLORS[selectedMetric],
+                      },
+                    }}
+                    className="h-[200px] w-full"
+                  >
+                    <BarChart accessibilityLayer data={chartData}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                        tick={{ fill: '#71717a', fontSize: 11 }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tick={{ fill: '#71717a', fontSize: 11 }}
+                        tickFormatter={(value) =>
+                          value >= 1000
+                            ? `${(value / 1000).toFixed(0)}k`
+                            : String(value)
+                        }
+                      />
+                      <ChartTooltip
+                        cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+                        content={<ChartTooltipContent />}
+                      />
+                      <Bar
+                        dataKey="value"
+                        fill="var(--color-value)"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+              )}
             </div>
           )}
         </div>

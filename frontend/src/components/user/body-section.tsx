@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { format } from 'date-fns';
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import {
   Scale,
   Percent,
@@ -10,7 +12,20 @@ import {
   Thermometer,
 } from 'lucide-react';
 import { useBodySummaries } from '@/hooks/api/use-health';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
 import type { BodySummary } from '@/lib/api/types';
+
+const weightChartConfig = {
+  weight: {
+    label: 'Weight (kg)',
+    color: '#3b82f6',
+  },
+} satisfies ChartConfig;
 
 interface BodySectionProps {
   userId: string;
@@ -151,6 +166,20 @@ export function BodySection({ userId }: BodySectionProps) {
 
   const hasData = latestSummary !== null;
   const bmiCategory = getBmiCategory(bodyComposition?.bmi ?? null);
+
+  // Prepare weight trend chart data
+  const weightChartData = useMemo(() => {
+    const summaries = bodySummaries?.data || [];
+    const withWeight = summaries.filter((s) => s.weight_kg != null);
+    if (withWeight.length === 0) return [];
+
+    return [...withWeight]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((s) => ({
+        date: format(new Date(s.date), 'MMM d'),
+        weight: s.weight_kg,
+      }));
+  }, [bodySummaries]);
 
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
@@ -318,6 +347,55 @@ export function BodySection({ userId }: BodySectionProps) {
                 </div>
               </div>
             </div>
+
+            {/* Weight Trend Chart */}
+            {weightChartData.length > 1 && (
+              <div className="pt-4 border-t border-zinc-800">
+                <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
+                  Weight Trend
+                </h4>
+                <ChartContainer
+                  config={weightChartConfig}
+                  className="h-[200px] w-full"
+                >
+                  <LineChart
+                    accessibilityLayer
+                    data={weightChartData}
+                    margin={{ left: 12, right: 12 }}
+                  >
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      interval="preserveStartEnd"
+                      tick={{ fill: '#71717a', fontSize: 11 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={{ fill: '#71717a', fontSize: 11 }}
+                      domain={['dataMin - 1', 'dataMax + 1']}
+                      tickFormatter={(value) => `${value}kg`}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={<ChartTooltipContent />}
+                    />
+                    <Line
+                      dataKey="weight"
+                      type="monotone"
+                      stroke="var(--color-weight)"
+                      strokeWidth={2}
+                      dot={{ fill: 'var(--color-weight)', r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              </div>
+            )}
           </div>
         )}
       </div>

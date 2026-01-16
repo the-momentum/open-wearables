@@ -1,6 +1,15 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
   Moon,
   Zap,
   Clock,
@@ -8,7 +17,11 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { useSleepSessions, useSleepSummaries } from '@/hooks/api/use-health';
+import {
+  useSleepSessions,
+  useSleepSummaries,
+  useTimeSeries,
+} from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   DateRangeSelector,
@@ -27,7 +40,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { SleepSession, SleepStagesSummary } from '@/lib/api/types';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
+import type {
+  SleepSession,
+  SleepStagesSummary,
+  SleepSummary,
+} from '@/lib/api/types';
 
 interface SleepSectionProps {
   userId: string;
@@ -51,6 +74,78 @@ const STAGE_LABELS = {
   light: 'Light',
   awake: 'Awake',
 } as const;
+
+const sleepHrChartConfig = {
+  hr: {
+    label: 'Heart Rate (bpm)',
+    color: '#f43f5e',
+  },
+  avgHr: {
+    label: 'Avg HR (bpm)',
+    color: '#f43f5e',
+  },
+} satisfies ChartConfig;
+
+// Metric definitions for clickable sleep cards
+type SleepMetricKey = 'efficiency' | 'duration';
+
+interface SleepStats {
+  avgDuration: number | null;
+  avgEfficiency: number | null;
+  nightsTracked: number;
+  avgBedtime: number | null;
+  stages: SleepStagesSummary | null;
+  stagesTotal: number;
+}
+
+interface SleepMetricDefinition {
+  key: SleepMetricKey;
+  label: string;
+  shortLabel: string;
+  icon: React.ElementType;
+  color: string;
+  bgColor: string;
+  glowColor: string;
+  getValue: (stats: SleepStats) => number | null;
+  formatValue: (value: number | null) => string;
+  getChartValue: (summary: SleepSummary) => number;
+  unit: string;
+}
+
+const SLEEP_METRICS: SleepMetricDefinition[] = [
+  {
+    key: 'efficiency',
+    label: 'Avg Efficiency',
+    shortLabel: 'Efficiency',
+    icon: Zap,
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
+    getValue: (stats) => stats.avgEfficiency,
+    formatValue: (v) => (v != null ? `${Math.round(v)}%` : '-'),
+    getChartValue: (s) => s.efficiency_percent || 0,
+    unit: '%',
+  },
+  {
+    key: 'duration',
+    label: 'Avg Duration',
+    shortLabel: 'Duration',
+    icon: Moon,
+    color: 'text-indigo-400',
+    bgColor: 'bg-indigo-500/10',
+    glowColor: 'shadow-[0_0_15px_rgba(99,102,241,0.5)]',
+    getValue: (stats) => stats.avgDuration,
+    formatValue: (v) => formatMinutes(v),
+    getChartValue: (s) => s.duration_minutes || 0,
+    unit: 'min',
+  },
+];
+
+// Map sleep metric colors to hex for chart
+const SLEEP_METRIC_CHART_COLORS: Record<SleepMetricKey, string> = {
+  efficiency: '#10b981',
+  duration: '#6366f1',
+};
 
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -166,9 +261,39 @@ function SleepStagesBar({
   );
 }
 
-// Expandable sleep session row
-function SleepSessionRow({ session }: { session: SleepSession }) {
+// Expandable sleep session row with HR time series
+function SleepSessionRow({
+  session,
+  userId,
+}: {
+  session: SleepSession;
+  userId: string;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Fetch heart rate time series data when expanded
+  const { data: hrData, isLoading: hrLoading } = useTimeSeries(userId, {
+    start_time: session.start_time,
+    end_time: session.end_time,
+    types: ['heart_rate'],
+    resolution: '5min',
+    limit: 100,
+  });
+
+  // Prepare HR chart data
+  const hrChartData = useMemo(() => {
+    if (!hrData?.data?.length) return [];
+    return hrData.data
+      .filter((d) => d.type === 'heart_rate')
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
+      .map((d) => ({
+        time: format(new Date(d.timestamp), 'HH:mm'),
+        hr: d.value,
+      }));
+  }, [hrData]);
 
   // Collect all available detail fields (expanded view)
   const detailFields = useMemo(() => {
@@ -208,7 +333,8 @@ function SleepSessionRow({ session }: { session: SleepSession }) {
     return fields;
   }, [session]);
 
-  const hasDetails = detailFields.length > 0;
+  // Always expandable - we'll show HR chart even without detail fields
+  const hasDetails = true;
 
   return (
     <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
@@ -303,46 +429,110 @@ function SleepSessionRow({ session }: { session: SleepSession }) {
       </button>
 
       {/* Expanded details */}
-      {isExpanded && detailFields.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
-          <div className="flex gap-6">
-            {/* Left column */}
-            <div className="flex-1 space-y-2">
-              {detailFields
-                .slice(0, Math.ceil(detailFields.length / 2))
-                .map((field) => (
-                  <div
-                    key={field.label}
-                    className="flex items-center justify-between py-1"
-                  >
-                    <span className="text-sm text-zinc-500">{field.label}</span>
-                    <span className="text-sm font-medium text-white">
-                      {field.value}
-                    </span>
-                  </div>
-                ))}
-            </div>
-
-            {/* Divider */}
-            <div className="w-px bg-zinc-800" />
-
-            {/* Right column */}
-            <div className="flex-1 space-y-2">
-              {detailFields
-                .slice(Math.ceil(detailFields.length / 2))
-                .map((field) => (
-                  <div
-                    key={field.label}
-                    className="flex items-center justify-between py-1"
-                  >
-                    <span className="text-sm text-zinc-500">{field.label}</span>
-                    <span className="text-sm font-medium text-white">
-                      {field.value}
-                    </span>
-                  </div>
-                ))}
-            </div>
+      {isExpanded && (
+        <div className="px-4 pb-4 pt-2 border-t border-zinc-800 space-y-4">
+          {/* Heart Rate During Sleep Chart */}
+          <div>
+            <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">
+              Heart Rate During Sleep
+            </h4>
+            {hrLoading ? (
+              <div className="h-[160px] flex items-center justify-center">
+                <div className="h-5 w-5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : hrChartData.length > 0 ? (
+              <ChartContainer
+                config={sleepHrChartConfig}
+                className="h-[160px] w-full"
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={hrChartData}
+                  margin={{ left: 8, right: 8 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="time"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    interval="preserveStartEnd"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                    domain={['dataMin - 5', 'dataMax + 5']}
+                    width={35}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent />}
+                  />
+                  <Line
+                    dataKey="hr"
+                    type="monotone"
+                    stroke="var(--color-avgHr)"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, fill: 'var(--color-avgHr)' }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <p className="text-xs text-zinc-500 text-center py-4">
+                No heart rate data available for this session
+              </p>
+            )}
           </div>
+
+          {/* Detail Fields */}
+          {detailFields.length > 0 && (
+            <div className="flex gap-6 pt-2 border-t border-zinc-800/50">
+              {/* Left column */}
+              <div className="flex-1 space-y-2">
+                {detailFields
+                  .slice(0, Math.ceil(detailFields.length / 2))
+                  .map((field) => (
+                    <div
+                      key={field.label}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <span className="text-sm text-zinc-500">
+                        {field.label}
+                      </span>
+                      <span className="text-sm font-medium text-white">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+
+              {/* Divider */}
+              <div className="w-px bg-zinc-800" />
+
+              {/* Right column */}
+              <div className="flex-1 space-y-2">
+                {detailFields
+                  .slice(Math.ceil(detailFields.length / 2))
+                  .map((field) => (
+                    <div
+                      key={field.label}
+                      className="flex items-center justify-between py-1"
+                    >
+                      <span className="text-sm text-zinc-500">
+                        {field.label}
+                      </span>
+                      <span className="text-sm font-medium text-white">
+                        {field.value}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -543,6 +733,27 @@ export function SleepSection({
   const displayedSessions = sessionsData?.data || [];
   const hasData = displayedSessions.length > 0;
 
+  // Selected metric for the chart (default to efficiency)
+  const [selectedMetric, setSelectedMetric] =
+    useState<SleepMetricKey>('efficiency');
+
+  // Get the selected metric definition
+  const currentMetric =
+    SLEEP_METRICS.find((m) => m.key === selectedMetric) || SLEEP_METRICS[0];
+
+  // Prepare chart data from summary data (sorted by date ascending)
+  const chartData = useMemo(() => {
+    const summaries = sleepSummaries?.data || [];
+    if (summaries.length === 0) return [];
+
+    return [...summaries]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((s) => ({
+        date: format(new Date(s.date), 'MMM d'),
+        value: currentMetric.getChartValue(s),
+      }));
+  }, [sleepSummaries, currentMetric]);
+
   return (
     <div className="space-y-6">
       {/* Summary Section */}
@@ -563,7 +774,7 @@ export function SleepSection({
             <div className="space-y-6">
               {/* Summary Stats - Top Row */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Nights Tracked */}
+                {/* Nights Tracked - non-clickable */}
                 <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 bg-purple-500/10 rounded-lg">
@@ -576,35 +787,38 @@ export function SleepSection({
                   <p className="text-xs text-zinc-500 mt-1">Nights Tracked</p>
                 </div>
 
-                {/* Average Efficiency */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                      <Zap className="h-5 w-5 text-emerald-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {stats.avgEfficiency != null
-                      ? `${Math.round(stats.avgEfficiency)}%`
-                      : '-'}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Avg Efficiency</p>
-                </div>
+                {/* Clickable Metric Cards */}
+                {SLEEP_METRICS.map((metric) => {
+                  const Icon = metric.icon;
+                  const isSelected = selectedMetric === metric.key;
+                  return (
+                    <button
+                      key={metric.key}
+                      onClick={() => setSelectedMetric(metric.key)}
+                      className={`p-4 border rounded-lg bg-zinc-900/30 text-left transition-all duration-200 cursor-pointer
+                        ${
+                          isSelected
+                            ? `border-zinc-600 ${metric.glowColor}`
+                            : 'border-zinc-800 hover:border-zinc-700 hover:shadow-[0_0_10px_rgba(255,255,255,0.1)]'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`p-2 ${metric.bgColor} rounded-lg`}>
+                          <Icon className={`h-5 w-5 ${metric.color}`} />
+                        </div>
+                      </div>
+                      <p className="text-2xl font-semibold text-white">
+                        {metric.formatValue(metric.getValue(stats))}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {metric.label}
+                      </p>
+                    </button>
+                  );
+                })}
 
-                {/* Average Duration */}
-                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 bg-indigo-500/10 rounded-lg">
-                      <Moon className="h-5 w-5 text-indigo-400" />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-semibold text-white">
-                    {stats.avgDuration ? formatMinutes(stats.avgDuration) : '-'}
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Avg Duration</p>
-                </div>
-
-                {/* Average Bedtime */}
+                {/* Average Bedtime - non-clickable */}
                 <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 bg-sky-500/10 rounded-lg">
@@ -617,6 +831,68 @@ export function SleepSection({
                   <p className="text-xs text-zinc-500 mt-1">Avg Bedtime</p>
                 </div>
               </div>
+
+              {/* Dynamic Chart for Selected Metric */}
+              {chartData.length > 1 && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <h4 className="text-sm font-medium text-white mb-4">
+                    Daily {currentMetric.shortLabel}
+                  </h4>
+                  <ChartContainer
+                    config={{
+                      value: {
+                        label: currentMetric.shortLabel,
+                        color: SLEEP_METRIC_CHART_COLORS[selectedMetric],
+                      },
+                    }}
+                    className="h-[200px] w-full"
+                  >
+                    <BarChart accessibilityLayer data={chartData}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="date"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        interval="preserveStartEnd"
+                        tick={{ fill: '#71717a', fontSize: 11 }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={8}
+                        tick={{ fill: '#71717a', fontSize: 11 }}
+                        tickFormatter={(value) =>
+                          selectedMetric === 'duration'
+                            ? `${Math.round(value / 60)}h`
+                            : `${value}%`
+                        }
+                        domain={
+                          selectedMetric === 'efficiency' ? [0, 100] : undefined
+                        }
+                        width={40}
+                      />
+                      <ChartTooltip
+                        cursor={false}
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value) =>
+                              selectedMetric === 'duration'
+                                ? formatMinutes(Number(value))
+                                : `${Math.round(Number(value))}%`
+                            }
+                          />
+                        }
+                      />
+                      <Bar
+                        dataKey="value"
+                        fill="var(--color-value)"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+              )}
 
               {/* Sleep Stages Breakdown */}
               {stats.stages && stats.stagesTotal > 0 && (
@@ -686,7 +962,11 @@ export function SleepSection({
               {/* Sessions List */}
               <div className="space-y-3">
                 {displayedSessions.map((session) => (
-                  <SleepSessionRow key={session.id} session={session} />
+                  <SleepSessionRow
+                    key={session.id}
+                    session={session}
+                    userId={userId}
+                  />
                 ))}
               </div>
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import {
   ChevronDown,
   ChevronUp,
@@ -9,7 +10,7 @@ import {
   MoveHorizontal,
   Timer,
 } from 'lucide-react';
-import { useWorkouts } from '@/hooks/api/use-health';
+import { useWorkouts, useTimeSeries } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   DateRangeSelector,
@@ -23,8 +24,20 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from '@/components/ui/chart';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
 import type { EventRecordResponse } from '@/lib/api/types';
+
+const workoutHrChartConfig = {
+  hr: {
+    label: 'Heart Rate (bpm)',
+    color: '#f43f5e',
+  },
+};
 
 interface WorkoutSectionProps {
   userId: string;
@@ -234,12 +247,46 @@ function formatCalories(kcal: number | null | undefined): string {
   return `${Math.round(Number(kcal))} kcal`;
 }
 
-// Expandable workout row
-function WorkoutRow({ workout }: { workout: EventRecordResponse }) {
+// Expandable workout row with HR time series
+function WorkoutRow({
+  workout,
+  userId,
+}: {
+  workout: EventRecordResponse;
+  userId: string;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
   const style = getWorkoutStyle(workout.type || workout.category || '');
   const category = getWorkoutCategory(workout.type || workout.category || '');
   const fieldKeys = WORKOUT_FIELD_CONFIG[category];
+
+  // Get workout start and end times
+  const startTime = workout.start_time || workout.start_datetime || '';
+  const endTime = workout.end_time || workout.end_datetime || '';
+
+  // Fetch heart rate time series data when expanded
+  const { data: hrData, isLoading: hrLoading } = useTimeSeries(userId, {
+    start_time: startTime,
+    end_time: endTime,
+    types: ['heart_rate'],
+    resolution: '1min',
+    limit: 100,
+  });
+
+  // Prepare HR chart data
+  const hrChartData = useMemo(() => {
+    if (!hrData?.data?.length) return [];
+    return hrData.data
+      .filter((d) => d.type === 'heart_rate')
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
+      .map((d) => ({
+        time: format(new Date(d.timestamp), 'HH:mm'),
+        hr: d.value,
+      }));
+  }, [hrData]);
 
   // Get fields that have actual data
   const fieldsWithData = fieldKeys
@@ -326,56 +373,116 @@ function WorkoutRow({ workout }: { workout: EventRecordResponse }) {
       </button>
 
       {/* Expanded details */}
-      {isExpanded && fieldsWithData.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
-          <div className="flex gap-6">
-            {/* Left column */}
-            <div className="flex-1 space-y-2">
-              {fieldsWithData
-                .slice(0, Math.ceil(fieldsWithData.length / 2))
-                .map((field) => {
-                  const value = workout[field.key];
-                  return (
-                    <div
-                      key={field.key}
-                      className="flex items-center justify-between py-1"
-                    >
-                      <span className="text-sm text-zinc-500">
-                        {field.label}
-                      </span>
-                      <span className="text-sm font-medium text-white">
-                        {field.format(value)}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-
-            {/* Divider */}
-            <div className="w-px bg-zinc-800" />
-
-            {/* Right column */}
-            <div className="flex-1 space-y-2">
-              {fieldsWithData
-                .slice(Math.ceil(fieldsWithData.length / 2))
-                .map((field) => {
-                  const value = workout[field.key];
-                  return (
-                    <div
-                      key={field.key}
-                      className="flex items-center justify-between py-1"
-                    >
-                      <span className="text-sm text-zinc-500">
-                        {field.label}
-                      </span>
-                      <span className="text-sm font-medium text-white">
-                        {field.format(value)}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
+      {isExpanded && (
+        <div className="px-4 pb-4 pt-2 border-t border-zinc-800 space-y-4">
+          {/* Heart Rate During Workout Chart */}
+          <div>
+            <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">
+              Heart Rate During Workout
+            </h4>
+            {hrLoading ? (
+              <div className="h-[160px] flex items-center justify-center">
+                <div className="h-5 w-5 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : hrChartData.length > 0 ? (
+              <ChartContainer
+                config={workoutHrChartConfig}
+                className="h-[160px] w-full"
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={hrChartData}
+                  margin={{ left: 8, right: 8 }}
+                >
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="time"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    interval="preserveStartEnd"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tick={{ fill: '#71717a', fontSize: 10 }}
+                    domain={['dataMin - 10', 'dataMax + 10']}
+                    width={35}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent />}
+                  />
+                  <Line
+                    dataKey="hr"
+                    type="monotone"
+                    stroke="var(--color-hr)"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4, fill: 'var(--color-hr)' }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            ) : (
+              <p className="text-xs text-zinc-500 text-center py-4">
+                No heart rate data available for this workout
+              </p>
+            )}
           </div>
+
+          {/* Detail Fields */}
+          {fieldsWithData.length > 0 && (
+            <div className="flex gap-6 pt-2 border-t border-zinc-800/50">
+              {/* Left column */}
+              <div className="flex-1 space-y-2">
+                {fieldsWithData
+                  .slice(0, Math.ceil(fieldsWithData.length / 2))
+                  .map((field) => {
+                    const value = workout[field.key];
+                    return (
+                      <div
+                        key={field.key}
+                        className="flex items-center justify-between py-1"
+                      >
+                        <span className="text-sm text-zinc-500">
+                          {field.label}
+                        </span>
+                        <span className="text-sm font-medium text-white">
+                          {field.format(value)}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Divider */}
+              <div className="w-px bg-zinc-800" />
+
+              {/* Right column */}
+              <div className="flex-1 space-y-2">
+                {fieldsWithData
+                  .slice(Math.ceil(fieldsWithData.length / 2))
+                  .map((field) => {
+                    const value = workout[field.key];
+                    return (
+                      <div
+                        key={field.key}
+                        className="flex items-center justify-between py-1"
+                      >
+                        <span className="text-sm text-zinc-500">
+                          {field.label}
+                        </span>
+                        <span className="text-sm font-medium text-white">
+                          {field.format(value)}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -612,7 +719,11 @@ export function WorkoutSection({
               {/* Workout List */}
               <div className="space-y-3">
                 {workouts.map((workout) => (
-                  <WorkoutRow key={workout.id} workout={workout} />
+                  <WorkoutRow
+                    key={workout.id}
+                    workout={workout}
+                    userId={userId}
+                  />
                 ))}
               </div>
 
