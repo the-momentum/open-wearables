@@ -91,6 +91,10 @@ class DataPointSeriesRepository(
     @handle_exceptions
     def bulk_create(self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]) -> list[DataPointSeries]:
         """Bulk create data point samples."""
+        if not creators:
+            return []
+        
+        values_list = []
         creations = []
         for creator in creators:
             mapping = self.create_mapping(db_session, creator)
@@ -101,12 +105,19 @@ class DataPointSeriesRepository(
 
             for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
                 creation_data.pop(redundant_key, None)
+            
+            values_list.append(creation_data)
+            creations.append(self.model(**creation_data))
 
-            creation = self.model(**creation_data)
-            creations.append(creation)
-
-        insert_stmt = insert(self.model).prefix_with("OR REPLACE")
-        db_session.execute(insert_stmt, creations)
+        stmt = (
+            insert(self.model)
+            .values(values_list)
+            .on_conflict_do_nothing(
+                index_elements=["external_device_mapping_id", "series_type_definition_id", "recorded_at"]
+            )
+        )
+        
+        db_session.execute(stmt)
         db_session.commit()
         return creations
 
