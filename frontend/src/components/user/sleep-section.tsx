@@ -1,11 +1,31 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Moon, Zap, Clock, BedDouble } from 'lucide-react';
+import {
+  Moon,
+  Zap,
+  Clock,
+  BedDouble,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { useSleepSessions, useSleepSummaries } from '@/hooks/api/use-health';
 import {
   DateRangeSelector,
   type DateRangeValue,
 } from '@/components/ui/date-range-selector';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { SleepSession, SleepStagesSummary } from '@/lib/api/types';
 
 interface SleepSectionProps {
@@ -13,6 +33,8 @@ interface SleepSectionProps {
   dateRange: DateRangeValue;
   onDateRangeChange: (value: DateRangeValue) => void;
 }
+
+const SESSIONS_PER_PAGE = 10;
 
 // Color mapping for sleep stages
 const STAGE_COLORS = {
@@ -85,73 +107,243 @@ function SleepStagesBar({
     );
   }
 
-  const deepPct = ((stages.deep_minutes || 0) / total) * 100;
-  const remPct = ((stages.rem_minutes || 0) / total) * 100;
-  const lightPct = ((stages.light_minutes || 0) / total) * 100;
-  const awakePct = ((stages.awake_minutes || 0) / total) * 100;
+  const stageData = [
+    {
+      key: 'deep',
+      minutes: stages.deep_minutes || 0,
+      pct: ((stages.deep_minutes || 0) / total) * 100,
+      color: STAGE_COLORS.deep,
+      label: STAGE_LABELS.deep,
+    },
+    {
+      key: 'rem',
+      minutes: stages.rem_minutes || 0,
+      pct: ((stages.rem_minutes || 0) / total) * 100,
+      color: STAGE_COLORS.rem,
+      label: STAGE_LABELS.rem,
+    },
+    {
+      key: 'light',
+      minutes: stages.light_minutes || 0,
+      pct: ((stages.light_minutes || 0) / total) * 100,
+      color: STAGE_COLORS.light,
+      label: STAGE_LABELS.light,
+    },
+    {
+      key: 'awake',
+      minutes: stages.awake_minutes || 0,
+      pct: ((stages.awake_minutes || 0) / total) * 100,
+      color: STAGE_COLORS.awake,
+      label: STAGE_LABELS.awake,
+    },
+  ];
 
   return (
     <div
       className={`h-2 bg-zinc-700 rounded-full overflow-hidden flex ${className}`}
     >
-      {deepPct > 0 && (
-        <div
-          className={`${STAGE_COLORS.deep}`}
-          style={{ width: `${deepPct}%` }}
-        />
-      )}
-      {remPct > 0 && (
-        <div
-          className={`${STAGE_COLORS.rem}`}
-          style={{ width: `${remPct}%` }}
-        />
-      )}
-      {lightPct > 0 && (
-        <div
-          className={`${STAGE_COLORS.light}`}
-          style={{ width: `${lightPct}%` }}
-        />
-      )}
-      {awakePct > 0 && (
-        <div
-          className={`${STAGE_COLORS.awake}`}
-          style={{ width: `${awakePct}%` }}
-        />
+      {stageData.map(
+        (stage) =>
+          stage.pct > 0 && (
+            <Tooltip key={stage.key}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`${stage.color} cursor-pointer hover:opacity-80 transition-opacity`}
+                  style={{ width: `${stage.pct}%` }}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {stage.label}: {formatMinutes(stage.minutes)} (
+                  {Math.round(stage.pct)}%)
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )
       )}
     </div>
   );
 }
 
-// Component for a single sleep session card
-function SleepSessionCard({ session }: { session: SleepSession }) {
+// Expandable sleep session row
+function SleepSessionRow({ session }: { session: SleepSession }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Collect all available detail fields (expanded view)
+  const detailFields = useMemo(() => {
+    const fields: { label: string; value: string }[] = [];
+
+    // Stage details
+    if (session.stages?.deep_minutes != null) {
+      fields.push({
+        label: 'Deep Sleep',
+        value: formatMinutes(session.stages.deep_minutes),
+      });
+    }
+    if (session.stages?.rem_minutes != null) {
+      fields.push({
+        label: 'REM Sleep',
+        value: formatMinutes(session.stages.rem_minutes),
+      });
+    }
+    if (session.stages?.light_minutes != null) {
+      fields.push({
+        label: 'Light Sleep',
+        value: formatMinutes(session.stages.light_minutes),
+      });
+    }
+    if (session.stages?.awake_minutes != null) {
+      fields.push({
+        label: 'Time Awake',
+        value: formatMinutes(session.stages.awake_minutes),
+      });
+    }
+
+    // Source
+    if (session.source?.provider) {
+      fields.push({ label: 'Source', value: session.source.provider });
+    }
+
+    return fields;
+  }, [session]);
+
+  const hasDetails = detailFields.length > 0;
+
   return (
-    <div className="p-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-zinc-200">
-            {format(new Date(session.start_time), 'MMM d')}
-          </span>
+    <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
+      {/* Main row - always visible */}
+      <button
+        onClick={() => hasDetails && setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center text-left"
+        disabled={!hasDetails}
+      >
+        {/* Date */}
+        <div className="w-28 flex-shrink-0">
           {session.is_nap && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">
               NAP
             </span>
           )}
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-white">
+              {format(new Date(session.start_time), 'EEE, MMM d')}
+            </p>
+          </div>
+          <p className="text-xs text-zinc-500">
+            {format(new Date(session.start_time), 'yyyy')}
+          </p>
         </div>
-        <div className="flex items-center gap-3 text-xs text-zinc-400">
-          <span>{formatDuration(session.duration_seconds)}</span>
-          {session.efficiency_percent !== null && (
-            <span className="text-emerald-400">
-              {Math.round(session.efficiency_percent)}%
-            </span>
-          )}
+
+        {/* Right side - Top: Stages bar, Bottom: Stats */}
+        <div className="flex-1 flex flex-col gap-2 mx-4">
+          {/* Top: Sleep Stages Bar */}
+          <SleepStagesBar stages={session.stages} className="h-3 mb-4" />
+
+          {/* Bottom: Stats - evenly spaced */}
+          <div className="flex items-center justify-around">
+            {/* Efficiency */}
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-emerald-400" />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {session.efficiency_percent != null
+                    ? `${Math.round(session.efficiency_percent)}%`
+                    : '-'}
+                </p>
+                <p className="text-xs text-zinc-500">Efficiency</p>
+              </div>
+            </div>
+
+            {/* Duration */}
+            <div className="flex items-center gap-2">
+              <Moon className="h-4 w-4 text-indigo-400" />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {formatDuration(session.duration_seconds)}
+                </p>
+                <p className="text-xs text-zinc-500">Duration</p>
+              </div>
+            </div>
+
+            {/* Bedtime */}
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-sky-400" />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {format(new Date(session.start_time), 'h:mm a')}
+                </p>
+                <p className="text-xs text-zinc-500">Bedtime</p>
+              </div>
+            </div>
+
+            {/* Wake Time */}
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-amber-400" />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {format(new Date(session.end_time), 'h:mm a')}
+                </p>
+                <p className="text-xs text-zinc-500">Wake</p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <SleepStagesBar stages={session.stages} />
-      <div className="mt-2 flex items-center gap-1 text-[10px] text-zinc-500">
-        <span>{format(new Date(session.start_time), 'h:mm a')}</span>
-        <span>→</span>
-        <span>{format(new Date(session.end_time), 'h:mm a')}</span>
-      </div>
+
+        {/* Expand indicator */}
+        {hasDetails && (
+          <div className="w-8 flex-shrink-0 flex justify-end ml-2">
+            {isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-zinc-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-zinc-400" />
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Expanded details */}
+      {isExpanded && detailFields.length > 0 && (
+        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
+          <div className="flex gap-6">
+            {/* Left column */}
+            <div className="flex-1 space-y-2">
+              {detailFields
+                .slice(0, Math.ceil(detailFields.length / 2))
+                .map((field) => (
+                  <div
+                    key={field.label}
+                    className="flex items-center justify-between py-1"
+                  >
+                    <span className="text-sm text-zinc-500">{field.label}</span>
+                    <span className="text-sm font-medium text-white">
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px bg-zinc-800" />
+
+            {/* Right column */}
+            <div className="flex-1 space-y-2">
+              {detailFields
+                .slice(Math.ceil(detailFields.length / 2))
+                .map((field) => (
+                  <div
+                    key={field.label}
+                    className="flex items-center justify-between py-1"
+                  >
+                    <span className="text-sm text-zinc-500">{field.label}</span>
+                    <span className="text-sm font-medium text-white">
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -159,19 +351,49 @@ function SleepSessionCard({ session }: { session: SleepSession }) {
 // Loading skeleton
 function SleepSectionSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30"
-          >
-            <div className="h-5 w-5 bg-zinc-800 rounded animate-pulse mb-3" />
-            <div className="h-7 w-20 bg-zinc-800 rounded animate-pulse mb-1" />
-            <div className="h-4 w-24 bg-zinc-800/50 rounded animate-pulse" />
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30"
+        >
+          <div className="h-5 w-5 bg-zinc-800 rounded animate-pulse mb-3" />
+          <div className="h-7 w-20 bg-zinc-800 rounded animate-pulse mb-1" />
+          <div className="h-4 w-24 bg-zinc-800/50 rounded animate-pulse" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SessionsListSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          className="px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/30"
+        >
+          <div className="flex items-center">
+            <div className="w-28 flex-shrink-0">
+              <div className="h-5 w-20 bg-zinc-800 rounded animate-pulse" />
+              <div className="h-3 w-12 bg-zinc-800/50 rounded animate-pulse mt-1" />
+            </div>
+            <div className="flex-1 flex items-center justify-around">
+              {[1, 2, 3].map((j) => (
+                <div key={j} className="flex items-center gap-2">
+                  <div className="h-4 w-4 bg-zinc-800 rounded animate-pulse" />
+                  <div>
+                    <div className="h-4 w-12 bg-zinc-800 rounded animate-pulse" />
+                    <div className="h-3 w-10 bg-zinc-800/50 rounded animate-pulse mt-1" />
+                  </div>
+                </div>
+              ))}
+              <div className="w-24 h-2 bg-zinc-800 rounded-full animate-pulse" />
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -181,7 +403,10 @@ export function SleepSection({
   dateRange,
   onDateRangeChange,
 }: SleepSectionProps) {
-  // Calculate date range
+  // State for sessions pagination
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Calculate date range for summary
   const { startDate, endDate } = useMemo(() => {
     const end = new Date();
     const start = new Date();
@@ -192,27 +417,34 @@ export function SleepSection({
     };
   }, [dateRange]);
 
-  // Fetch sleep sessions
-  const { data: sleepSessions, isLoading: sessionsLoading } = useSleepSessions(
+  // Wide date range for fetching all sessions
+  const allTimeRange = useMemo(() => {
+    const start = new Date('2000-01-01');
+    const end = new Date();
+    return {
+      start_date: start.toISOString(),
+      end_date: end.toISOString(),
+    };
+  }, []);
+
+  // Fetch sleep summaries for summary stats (date range filtered)
+  const { data: sleepSummaries, isLoading: summaryLoading } = useSleepSummaries(
     userId,
     {
       start_date: startDate,
       end_date: endDate,
-      limit: 50,
+      limit: 100,
     }
   );
 
-  // Fetch sleep summaries for aggregate stats
-  const { data: sleepSummaries, isLoading: summariesLoading } =
-    useSleepSummaries(userId, {
-      start_date: startDate,
-      end_date: endDate,
+  // Fetch all sleep sessions for the list
+  const { data: allSessionsData, isLoading: sessionsLoading } =
+    useSleepSessions(userId, {
+      ...allTimeRange,
       limit: 100,
     });
 
-  const isLoading = sessionsLoading || summariesLoading;
-
-  // Calculate aggregate statistics from summaries
+  // Calculate aggregate statistics from date-range filtered summaries
   const stats = useMemo(() => {
     const summaries = sleepSummaries?.data || [];
     if (summaries.length === 0) {
@@ -227,7 +459,7 @@ export function SleepSection({
       .map((s) => s.efficiency_percent)
       .filter((e): e is number => e !== null);
 
-    // Aggregate sleep stages
+    // Aggregate sleep stages (calculate averages)
     const totalDeep = summaries.reduce(
       (acc, s) => acc + (s.stages?.deep_minutes || 0),
       0
@@ -244,7 +476,12 @@ export function SleepSection({
       (acc, s) => acc + (s.stages?.awake_minutes || 0),
       0
     );
-    const totalStages = totalDeep + totalRem + totalLight + totalAwake;
+    const nightCount = summaries.length;
+    const avgDeep = nightCount > 0 ? totalDeep / nightCount : 0;
+    const avgRem = nightCount > 0 ? totalRem / nightCount : 0;
+    const avgLight = nightCount > 0 ? totalLight / nightCount : 0;
+    const avgAwake = nightCount > 0 ? totalAwake / nightCount : 0;
+    const avgStagesTotal = avgDeep + avgRem + avgLight + avgAwake;
 
     // Calculate average bedtime
     const bedtimes = summaries
@@ -273,211 +510,238 @@ export function SleepSection({
         efficiencies.length > 0
           ? efficiencies.reduce((a, b) => a + b, 0) / efficiencies.length
           : null,
-      sessionCount: sleepSessions?.data?.filter((s) => !s.is_nap).length || 0,
+      nightsTracked: summaries.length,
       avgBedtime: avgBedtimeMinutes,
+      // Use SleepStagesSummary format so we can reuse SleepStagesBar
+      // Store averages (not totals) so tooltip shows avg per night
       stages:
-        totalStages > 0
+        avgStagesTotal > 0
           ? {
-              deep: {
-                minutes: totalDeep,
-                percent: (totalDeep / totalStages) * 100,
-              },
-              rem: {
-                minutes: totalRem,
-                percent: (totalRem / totalStages) * 100,
-              },
-              light: {
-                minutes: totalLight,
-                percent: (totalLight / totalStages) * 100,
-              },
-              awake: {
-                minutes: totalAwake,
-                percent: (totalAwake / totalStages) * 100,
-              },
+              deep_minutes: avgDeep,
+              rem_minutes: avgRem,
+              light_minutes: avgLight,
+              awake_minutes: avgAwake,
             }
           : null,
+      stagesTotal: avgStagesTotal,
     };
-  }, [sleepSummaries, sleepSessions]);
+  }, [sleepSummaries]);
 
-  // Get recent sessions (non-naps first, limited to 5)
-  const recentSessions = useMemo(() => {
-    const sessions = sleepSessions?.data || [];
-    // Sort by start_time descending and take first 5
-    return [...sessions]
-      .sort(
-        (a, b) =>
-          new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
-      )
-      .slice(0, 5);
-  }, [sleepSessions]);
+  // Get all sessions sorted by date descending
+  const allSessions = useMemo(() => {
+    const sessions = allSessionsData?.data || [];
+    return [...sessions].sort(
+      (a, b) =>
+        new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+    );
+  }, [allSessionsData]);
 
-  const hasData = useMemo(
-    () =>
-      (sleepSessions?.data?.length || 0) > 0 ||
-      (sleepSummaries?.data?.length || 0) > 0,
-    [sleepSessions?.data?.length, sleepSummaries?.data?.length]
+  // Calculate total pages
+  const totalPages = Math.ceil(allSessions.length / SESSIONS_PER_PAGE);
+
+  // Sessions to display based on current page
+  const displayedSessions = allSessions.slice(
+    (currentPage - 1) * SESSIONS_PER_PAGE,
+    currentPage * SESSIONS_PER_PAGE
   );
 
+  const hasPrevPage = currentPage > 1;
+  const hasNextPage = currentPage < totalPages;
+
+  const handlePrevPage = () => {
+    if (hasPrevPage) {
+      setCurrentPage((p) => p - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (hasNextPage) {
+      setCurrentPage((p) => p + 1);
+    }
+  };
+
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h3 className="text-sm font-medium text-white">Sleep</h3>
+    <div className="space-y-6">
+      {/* Summary Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white">Sleep Summary</h3>
           <DateRangeSelector value={dateRange} onChange={onDateRangeChange} />
         </div>
-        <Moon className="h-4 w-4 text-zinc-500" />
-      </div>
 
-      <div className="p-6">
-        {isLoading ? (
-          <SleepSectionSkeleton />
-        ) : !hasData ? (
-          <p className="text-sm text-zinc-500 text-center py-8">
-            No sleep data available yet
-          </p>
-        ) : (
-          <div className="space-y-6">
-            {/* Summary Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Average Duration */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-indigo-500/10 rounded-lg">
-                    <Moon className="h-5 w-5 text-indigo-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {stats?.avgDuration ? formatMinutes(stats.avgDuration) : '-'}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Avg Duration</p>
-              </div>
-
-              {/* Average Efficiency */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-emerald-500/10 rounded-lg">
-                    <Zap className="h-5 w-5 text-emerald-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {stats?.avgEfficiency !== null &&
-                  stats?.avgEfficiency !== undefined
-                    ? `${Math.round(stats.avgEfficiency)}%`
-                    : '-'}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Avg Efficiency</p>
-              </div>
-
-              {/* Session Count */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-purple-500/10 rounded-lg">
-                    <BedDouble className="h-5 w-5 text-purple-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {stats?.sessionCount || 0}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Nights Tracked</p>
-              </div>
-
-              {/* Average Bedtime */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-sky-500/10 rounded-lg">
-                    <Clock className="h-5 w-5 text-sky-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {formatBedtime(stats?.avgBedtime || null)}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Avg Bedtime</p>
-              </div>
-            </div>
-
-            {/* Two-column layout: Stages + Recent Sessions */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Sleep Stages Breakdown */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
-                  Sleep Stages (Average)
-                </h4>
-                {stats?.stages ? (
-                  <div className="space-y-4">
-                    {/* Visual bar */}
-                    <div className="h-3 bg-zinc-700 rounded-full overflow-hidden flex">
-                      {stats.stages.deep.percent > 0 && (
-                        <div
-                          className={STAGE_COLORS.deep}
-                          style={{ width: `${stats.stages.deep.percent}%` }}
-                        />
-                      )}
-                      {stats.stages.rem.percent > 0 && (
-                        <div
-                          className={STAGE_COLORS.rem}
-                          style={{ width: `${stats.stages.rem.percent}%` }}
-                        />
-                      )}
-                      {stats.stages.light.percent > 0 && (
-                        <div
-                          className={STAGE_COLORS.light}
-                          style={{ width: `${stats.stages.light.percent}%` }}
-                        />
-                      )}
-                      {stats.stages.awake.percent > 0 && (
-                        <div
-                          className={STAGE_COLORS.awake}
-                          style={{ width: `${stats.stages.awake.percent}%` }}
-                        />
-                      )}
+        <div className="p-6">
+          {summaryLoading ? (
+            <SleepSectionSkeleton />
+          ) : !stats ? (
+            <p className="text-sm text-zinc-500 text-center py-4">
+              No sleep data in this period
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary Stats - Top Row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Nights Tracked */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-purple-500/10 rounded-lg">
+                      <BedDouble className="h-5 w-5 text-purple-400" />
                     </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {stats.nightsTracked}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Nights Tracked</p>
+                </div>
+
+                {/* Average Efficiency */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-emerald-500/10 rounded-lg">
+                      <Zap className="h-5 w-5 text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {stats.avgEfficiency != null
+                      ? `${Math.round(stats.avgEfficiency)}%`
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Avg Efficiency</p>
+                </div>
+
+                {/* Average Duration */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-indigo-500/10 rounded-lg">
+                      <Moon className="h-5 w-5 text-indigo-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {stats.avgDuration ? formatMinutes(stats.avgDuration) : '-'}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Avg Duration</p>
+                </div>
+
+                {/* Average Bedtime */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-sky-500/10 rounded-lg">
+                      <Clock className="h-5 w-5 text-sky-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatBedtime(stats.avgBedtime)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Avg Bedtime</p>
+                </div>
+              </div>
+
+              {/* Sleep Stages Breakdown */}
+              {stats.stages && stats.stagesTotal > 0 && (
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
+                    Average Sleep Stages
+                  </h4>
+                  <div className="space-y-4">
+                    {/* Visual bar - reusing SleepStagesBar component */}
+                    <SleepStagesBar stages={stats.stages} className="h-3" />
 
                     {/* Legend */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(['deep', 'rem', 'light', 'awake'] as const).map(
-                        (stage) => (
-                          <div key={stage} className="flex items-center gap-2">
+                        (stage) => {
+                          const key =
+                            `${stage}_minutes` as keyof typeof stats.stages;
+                          const minutes = stats.stages![key] || 0;
+                          const percent = (minutes / stats.stagesTotal) * 100;
+                          return (
                             <div
-                              className={`w-3 h-3 rounded-sm ${STAGE_COLORS[stage]}`}
-                            />
-                            <div className="flex-1">
+                              key={stage}
+                              className="flex items-center gap-2"
+                            >
+                              <div
+                                className={`w-3 h-3 rounded-sm ${STAGE_COLORS[stage]}`}
+                              />
                               <span className="text-xs text-zinc-300">
                                 {STAGE_LABELS[stage]}
                               </span>
+                              <span className="text-xs text-zinc-500 ml-auto">
+                                {Math.round(percent)}%
+                              </span>
                             </div>
-                            <span className="text-xs text-zinc-500">
-                              {Math.round(stats.stages![stage].percent)}%
-                            </span>
-                          </div>
-                        )
+                          );
+                        }
                       )}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-zinc-500">
-                    No stage data available
-                  </p>
-                )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sleep Sessions Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white">Sleep Sessions</h3>
+          {!sessionsLoading && allSessions.length > 0 && (
+            <span className="text-xs text-zinc-500">
+              Page {currentPage} of {totalPages}
+            </span>
+          )}
+        </div>
+
+        <div className="p-6">
+          {sessionsLoading ? (
+            <SessionsListSkeleton />
+          ) : displayedSessions.length === 0 ? (
+            <p className="text-sm text-zinc-500 text-center py-8">
+              No sleep sessions available
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Sessions List */}
+              <div className="space-y-3">
+                {displayedSessions.map((session) => (
+                  <SleepSessionRow key={session.id} session={session} />
+                ))}
               </div>
 
-              {/* Recent Sessions */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
-                  Recent Sessions
-                </h4>
-                {recentSessions.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentSessions.map((session) => (
-                      <SleepSessionCard key={session.id} session={session} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-zinc-500">No recent sessions</p>
-                )}
-              </div>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={handlePrevPage}
+                          className={
+                            !hasPrevPage
+                              ? 'pointer-events-none opacity-50'
+                              : 'cursor-pointer'
+                          }
+                        />
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationLink isActive>{currentPage}</PaginationLink>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={handleNextPage}
+                          className={
+                            !hasNextPage
+                              ? 'pointer-events-none opacity-50'
+                              : 'cursor-pointer'
+                          }
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

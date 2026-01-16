@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Activity,
+  ChevronDown,
+  ChevronUp,
   Flame,
   Footprints,
   Heart,
@@ -15,6 +17,14 @@ import {
   DateRangeSelector,
   type DateRangeValue,
 } from '@/components/ui/date-range-selector';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 import type { ActivitySummary } from '@/lib/api/types';
 
 interface ActivitySectionProps {
@@ -22,6 +32,8 @@ interface ActivitySectionProps {
   dateRange: DateRangeValue;
   onDateRangeChange: (value: DateRangeValue) => void;
 }
+
+const DAYS_PER_PAGE = 10;
 
 function formatNumber(value: number | null): string {
   if (value === null) return '-';
@@ -65,55 +77,205 @@ function ActivitySectionSkeleton() {
   );
 }
 
-// Recent activity day card
-function ActivityDayCard({ summary }: { summary: ActivitySummary }) {
+// Activity day row (expandable)
+function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Collect all available detail fields
+  const detailFields = useMemo(() => {
+    const fields: { label: string; value: string }[] = [];
+
+    if (summary.distance_meters != null) {
+      fields.push({
+        label: 'Distance',
+        value: formatDistance(summary.distance_meters),
+      });
+    }
+    if (summary.floors_climbed != null) {
+      fields.push({
+        label: 'Floors Climbed',
+        value: formatNumber(summary.floors_climbed),
+      });
+    }
+    if (summary.elevation_meters != null) {
+      fields.push({
+        label: 'Elevation',
+        value: `${Math.round(summary.elevation_meters)} m`,
+      });
+    }
+    if (summary.total_calories_kcal != null) {
+      fields.push({
+        label: 'Total Calories',
+        value: formatNumber(summary.total_calories_kcal),
+      });
+    }
+    if (summary.sedentary_minutes != null) {
+      fields.push({
+        label: 'Sedentary Time',
+        value: formatMinutes(summary.sedentary_minutes),
+      });
+    }
+    if (summary.heart_rate?.max_bpm != null) {
+      fields.push({
+        label: 'Max Heart Rate',
+        value: `${summary.heart_rate.max_bpm} bpm`,
+      });
+    }
+    if (summary.heart_rate?.min_bpm != null) {
+      fields.push({
+        label: 'Min Heart Rate',
+        value: `${summary.heart_rate.min_bpm} bpm`,
+      });
+    }
+    if (summary.intensity_minutes?.light != null) {
+      fields.push({
+        label: 'Light Activity',
+        value: formatMinutes(summary.intensity_minutes.light),
+      });
+    }
+    if (summary.intensity_minutes?.moderate != null) {
+      fields.push({
+        label: 'Moderate Activity',
+        value: formatMinutes(summary.intensity_minutes.moderate),
+      });
+    }
+    if (summary.intensity_minutes?.vigorous != null) {
+      fields.push({
+        label: 'Vigorous Activity',
+        value: formatMinutes(summary.intensity_minutes.vigorous),
+      });
+    }
+    if (summary.source?.provider) {
+      fields.push({ label: 'Source', value: summary.source.provider });
+    }
+
+    return fields;
+  }, [summary]);
+
+  const hasDetails = detailFields.length > 0;
+
   return (
-    <div className="p-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg">
-      {/* Header: Date */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-medium text-zinc-200">
-          {format(new Date(summary.date), 'EEE, MMM d')}
-        </span>
-      </div>
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-4 gap-3">
-        {/* Steps */}
-        <div className="flex flex-col items-center text-center">
-          <Footprints className="h-3.5 w-3.5 text-emerald-400 mb-1" />
-          <span className="text-sm font-medium text-white">
-            {formatNumber(summary.steps)}
-          </span>
-          <span className="text-[10px] text-zinc-500">steps</span>
+    <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
+      {/* Main row - always visible */}
+      <button
+        onClick={() => hasDetails && setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center text-left"
+        disabled={!hasDetails}
+      >
+        {/* Date */}
+        <div className="w-28 flex-shrink-0">
+          <p className="text-sm font-medium text-white">
+            {format(new Date(summary.date), 'EEE, MMM d')}
+          </p>
+          <p className="text-xs text-zinc-500">
+            {format(new Date(summary.date), 'yyyy')}
+          </p>
         </div>
 
-        {/* Calories */}
-        <div className="flex flex-col items-center text-center">
-          <Flame className="h-3.5 w-3.5 text-orange-400 mb-1" />
-          <span className="text-sm font-medium text-white">
-            {formatNumber(summary.active_calories_kcal)}
-          </span>
-          <span className="text-[10px] text-zinc-500">cal</span>
+        {/* Stats - evenly spaced */}
+        <div className="flex-1 flex items-center justify-around">
+          {/* Steps */}
+          <div className="flex items-center gap-2">
+            <Footprints className="h-4 w-4 text-emerald-400" />
+            <div>
+              <p className="text-sm font-medium text-white">
+                {formatNumber(summary.steps)}
+              </p>
+              <p className="text-xs text-zinc-500">Steps</p>
+            </div>
+          </div>
+
+          {/* Calories */}
+          <div className="flex items-center gap-2">
+            <Flame className="h-4 w-4 text-orange-400" />
+            <div>
+              <p className="text-sm font-medium text-white">
+                {formatNumber(summary.active_calories_kcal)}
+              </p>
+              <p className="text-xs text-zinc-500">Calories</p>
+            </div>
+          </div>
+
+          {/* Avg Heart Rate */}
+          <div className="flex items-center gap-2">
+            <Heart className="h-4 w-4 text-rose-400" />
+            <div>
+              <p className="text-sm font-medium text-white">
+                {summary.heart_rate?.avg_bpm
+                  ? `${Math.round(summary.heart_rate.avg_bpm)} bpm`
+                  : '-'}
+              </p>
+              <p className="text-xs text-zinc-500">Avg HR</p>
+            </div>
+          </div>
+
+          {/* Active Time */}
+          <div className="flex items-center gap-2">
+            <Timer className="h-4 w-4 text-sky-400" />
+            <div>
+              <p className="text-sm font-medium text-white">
+                {formatMinutes(summary.active_minutes)}
+              </p>
+              <p className="text-xs text-zinc-500">Active</p>
+            </div>
+          </div>
         </div>
 
-        {/* Distance */}
-        <div className="flex flex-col items-center text-center">
-          <MoveHorizontal className="h-3.5 w-3.5 text-purple-400 mb-1" />
-          <span className="text-sm font-medium text-white">
-            {formatDistance(summary.distance_meters)}
-          </span>
-          <span className="text-[10px] text-zinc-500">distance</span>
-        </div>
+        {/* Expand indicator */}
+        {hasDetails && (
+          <div className="w-8 flex-shrink-0 flex justify-end">
+            {isExpanded ? (
+              <ChevronUp className="h-5 w-5 text-zinc-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-zinc-400" />
+            )}
+          </div>
+        )}
+      </button>
 
-        {/* Active Time */}
-        <div className="flex flex-col items-center text-center">
-          <Timer className="h-3.5 w-3.5 text-sky-400 mb-1" />
-          <span className="text-sm font-medium text-white">
-            {formatMinutes(summary.active_minutes)}
-          </span>
-          <span className="text-[10px] text-zinc-500">active</span>
+      {/* Expanded details */}
+      {isExpanded && detailFields.length > 0 && (
+        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
+          <div className="flex gap-6">
+            {/* Left column */}
+            <div className="flex-1 space-y-2">
+              {detailFields
+                .slice(0, Math.ceil(detailFields.length / 2))
+                .map((field) => (
+                  <div
+                    key={field.label}
+                    className="flex items-center justify-between py-1"
+                  >
+                    <span className="text-sm text-zinc-500">{field.label}</span>
+                    <span className="text-sm font-medium text-white">
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            {/* Divider */}
+            <div className="w-px bg-zinc-800" />
+
+            {/* Right column */}
+            <div className="flex-1 space-y-2">
+              {detailFields
+                .slice(Math.ceil(detailFields.length / 2))
+                .map((field) => (
+                  <div
+                    key={field.label}
+                    className="flex items-center justify-between py-1"
+                  >
+                    <span className="text-sm text-zinc-500">{field.label}</span>
+                    <span className="text-sm font-medium text-white">
+                      {field.value}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -123,7 +285,10 @@ export function ActivitySection({
   dateRange,
   onDateRangeChange,
 }: ActivitySectionProps) {
-  // Calculate date range
+  // State for activity days pagination
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Calculate date range for summary
   const { startDate, endDate } = useMemo(() => {
     const end = new Date();
     const start = new Date();
@@ -134,16 +299,38 @@ export function ActivitySection({
     };
   }, [dateRange]);
 
-  // Fetch activity summaries
-  const { data: activitySummaries, isLoading } = useActivitySummaries(userId, {
-    start_date: startDate,
-    end_date: endDate,
-    limit: 100,
-  });
+  // Wide date range for fetching all activity days
+  const allTimeRange = useMemo(() => {
+    const start = new Date('2000-01-01');
+    const end = new Date();
+    return {
+      start_date: start.toISOString(),
+      end_date: end.toISOString(),
+    };
+  }, []);
 
-  // Calculate aggregate statistics
+  // Fetch activity summaries for summary stats (date range filtered)
+  const { data: summaryData, isLoading: summaryLoading } = useActivitySummaries(
+    userId,
+    {
+      start_date: startDate,
+      end_date: endDate,
+      limit: 100,
+    }
+  );
+
+  // Fetch all activity days for the scrollable list
+  const { data: allDaysData, isLoading: daysLoading } = useActivitySummaries(
+    userId,
+    {
+      ...allTimeRange,
+      limit: 100,
+    }
+  );
+
+  // Calculate aggregate statistics from date-range filtered data
   const stats = useMemo(() => {
-    const summaries = activitySummaries?.data || [];
+    const summaries = summaryData?.data || [];
     if (summaries.length === 0) {
       return null;
     }
@@ -199,170 +386,265 @@ export function ActivitySection({
       avgHeartRate,
       daysTracked: summaries.length,
     };
-  }, [activitySummaries]);
+  }, [summaryData]);
 
-  // Get recent days (sorted by date descending)
-  const recentDays = useMemo(() => {
-    const summaries = activitySummaries?.data || [];
-    return [...summaries]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 5);
-  }, [activitySummaries]);
+  // Get all days sorted by date descending
+  const allDays = useMemo(() => {
+    const summaries = allDaysData?.data || [];
+    return [...summaries].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [allDaysData]);
 
-  const hasData = (activitySummaries?.data?.length || 0) > 0;
+  // Calculate total pages
+  const totalPages = Math.ceil(allDays.length / DAYS_PER_PAGE);
+
+  // Days to display based on current page
+  const displayedDays = allDays.slice(
+    (currentPage - 1) * DAYS_PER_PAGE,
+    currentPage * DAYS_PER_PAGE
+  );
+
+  const hasPrevPage = currentPage > 1;
+  const hasNextPage = currentPage < totalPages;
+
+  const handlePrevPage = () => {
+    if (hasPrevPage) {
+      setCurrentPage((p) => p - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (hasNextPage) {
+      setCurrentPage((p) => p + 1);
+    }
+  };
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h3 className="text-sm font-medium text-white">Activity</h3>
+    <div className="space-y-6">
+      {/* Summary Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white">Activity Summary</h3>
           <DateRangeSelector value={dateRange} onChange={onDateRangeChange} />
         </div>
-        <Activity className="h-4 w-4 text-zinc-500" />
+
+        <div className="p-6">
+          {summaryLoading ? (
+            <ActivitySectionSkeleton />
+          ) : !stats ? (
+            <p className="text-sm text-zinc-500 text-center py-4">
+              No activity data in this period
+            </p>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary Stats - Top Row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Total Steps */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-emerald-500/10 rounded-lg">
+                      <Footprints className="h-5 w-5 text-emerald-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatNumber(stats.totalSteps)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Total Steps ({stats.avgSteps.toLocaleString()}/day avg)
+                  </p>
+                </div>
+
+                {/* Active Calories */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-orange-500/10 rounded-lg">
+                      <Flame className="h-5 w-5 text-orange-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatNumber(stats.totalCalories)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Active Calories ({stats.avgCalories.toLocaleString()}/day)
+                  </p>
+                </div>
+
+                {/* Active Time */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-sky-500/10 rounded-lg">
+                      <Timer className="h-5 w-5 text-sky-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatMinutes(stats.totalActiveMinutes)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Total Active Time
+                  </p>
+                </div>
+
+                {/* Avg Heart Rate */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-rose-500/10 rounded-lg">
+                      <Heart className="h-5 w-5 text-rose-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {stats.avgHeartRate ? Math.round(stats.avgHeartRate) : '-'}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Avg Heart Rate</p>
+                </div>
+              </div>
+
+              {/* Additional Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Distance */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-purple-500/10 rounded-lg">
+                      <MoveHorizontal className="h-5 w-5 text-purple-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatDistance(stats.totalDistance)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Total Distance</p>
+                </div>
+
+                {/* Floors Climbed */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-amber-500/10 rounded-lg">
+                      <TrendingUp className="h-5 w-5 text-amber-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatNumber(stats.totalFloorsClimbed)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Floors Climbed</p>
+                </div>
+
+                {/* Sedentary Time */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-zinc-500/10 rounded-lg">
+                      <Armchair className="h-5 w-5 text-zinc-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {formatMinutes(stats.totalSedentaryMinutes)}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Sedentary Time</p>
+                </div>
+
+                {/* Days Tracked */}
+                <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 bg-indigo-500/10 rounded-lg">
+                      <Activity className="h-5 w-5 text-indigo-400" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-semibold text-white">
+                    {stats.daysTracked}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-1">Days Tracked</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="p-6">
-        {isLoading ? (
-          <ActivitySectionSkeleton />
-        ) : !hasData ? (
-          <p className="text-sm text-zinc-500 text-center py-8">
-            No activity data available yet
-          </p>
-        ) : (
-          <div className="space-y-6">
-            {/* Summary Stats - Top Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Total Steps */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-emerald-500/10 rounded-lg">
-                    <Footprints className="h-5 w-5 text-emerald-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {formatNumber(stats?.totalSteps || 0)}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Total Steps ({stats?.avgSteps?.toLocaleString() || 0}/day avg)
-                </p>
-              </div>
+      {/* Activity Days Section */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-white">Activity Days</h3>
+          {!daysLoading && allDays.length > 0 && (
+            <span className="text-xs text-zinc-500">
+              Page {currentPage} of {totalPages}
+            </span>
+          )}
+        </div>
 
-              {/* Active Calories */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-orange-500/10 rounded-lg">
-                    <Flame className="h-5 w-5 text-orange-400" />
+        <div className="p-6">
+          {daysLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="px-4 py-3 border border-zinc-800 rounded-lg bg-zinc-900/30"
+                >
+                  <div className="flex items-center">
+                    <div className="w-28 flex-shrink-0">
+                      <div className="h-5 w-20 bg-zinc-800 rounded animate-pulse" />
+                      <div className="h-3 w-12 bg-zinc-800/50 rounded animate-pulse mt-1" />
+                    </div>
+                    <div className="flex-1 flex items-center justify-around">
+                      {[1, 2, 3, 4].map((j) => (
+                        <div key={j} className="flex items-center gap-2">
+                          <div className="h-4 w-4 bg-zinc-800 rounded animate-pulse" />
+                          <div>
+                            <div className="h-4 w-12 bg-zinc-800 rounded animate-pulse" />
+                            <div className="h-3 w-10 bg-zinc-800/50 rounded animate-pulse mt-1" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <p className="text-2xl font-semibold text-white">
-                  {formatNumber(stats?.totalCalories || 0)}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Active Calories ({stats?.avgCalories?.toLocaleString() || 0}
-                  /day)
-                </p>
-              </div>
-
-              {/* Active Time */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-sky-500/10 rounded-lg">
-                    <Timer className="h-5 w-5 text-sky-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {formatMinutes(stats?.totalActiveMinutes || 0)}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Total Active Time</p>
-              </div>
-
-              {/* Avg Heart Rate */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-rose-500/10 rounded-lg">
-                    <Heart className="h-5 w-5 text-rose-400" />
-                  </div>
-                </div>
-                <p className="text-2xl font-semibold text-white">
-                  {stats?.avgHeartRate ? Math.round(stats.avgHeartRate) : '-'}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">Avg Heart Rate</p>
-              </div>
+              ))}
             </div>
+          ) : displayedDays.length === 0 ? (
+            <p className="text-sm text-zinc-500 text-center py-8">
+              No activity data available
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Activity Days List */}
+              <div className="space-y-3">
+                {displayedDays.map((summary) => (
+                  <ActivityDayRow key={summary.date} summary={summary} />
+                ))}
+              </div>
 
-            {/* Two-column layout: Distance + Recent Days */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Summary Stats */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
-                  Summary
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MoveHorizontal className="h-4 w-4 text-purple-400" />
-                      <span className="text-sm text-zinc-300">
-                        Total Distance
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium text-white">
-                      {formatDistance(stats?.totalDistance || 0)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-amber-400" />
-                      <span className="text-sm text-zinc-300">
-                        Floors Climbed
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium text-white">
-                      {formatNumber(stats?.totalFloorsClimbed || 0)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Armchair className="h-4 w-4 text-zinc-400" />
-                      <span className="text-sm text-zinc-300">
-                        Sedentary Time
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium text-white">
-                      {formatMinutes(stats?.totalSedentaryMinutes || 0)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Activity className="h-4 w-4 text-indigo-400" />
-                      <span className="text-sm text-zinc-300">
-                        Days Tracked
-                      </span>
-                    </div>
-                    <span className="text-sm font-medium text-white">
-                      {stats?.daysTracked || 0}
-                    </span>
-                  </div>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={handlePrevPage}
+                          className={
+                            !hasPrevPage
+                              ? 'pointer-events-none opacity-50'
+                              : 'cursor-pointer'
+                          }
+                        />
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationLink isActive>{currentPage}</PaginationLink>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={handleNextPage}
+                          className={
+                            !hasNextPage
+                              ? 'pointer-events-none opacity-50'
+                              : 'cursor-pointer'
+                          }
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
                 </div>
-              </div>
-
-              {/* Recent Days */}
-              <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
-                <h4 className="text-xs font-medium text-zinc-400 mb-4 uppercase tracking-wider">
-                  Recent Days
-                </h4>
-                {recentDays.length > 0 ? (
-                  <div className="space-y-3">
-                    {recentDays.map((summary) => (
-                      <ActivityDayCard key={summary.date} summary={summary} />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-zinc-500">No recent activity</p>
-                )}
-              </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

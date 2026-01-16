@@ -1,6 +1,14 @@
 import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronUp, Flame, Heart, Timer } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Dumbbell,
+  Flame,
+  Heart,
+  MoveHorizontal,
+  Timer,
+} from 'lucide-react';
 import { useWorkouts } from '@/hooks/api/use-health';
 import {
   DateRangeSelector,
@@ -537,25 +545,52 @@ export function WorkoutSection({
             </div>
           ) : stats ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Workouts Count */}
               <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-indigo-500/10 rounded-lg">
+                    <Dumbbell className="h-5 w-5 text-indigo-400" />
+                  </div>
+                </div>
                 <p className="text-2xl font-semibold text-white">
                   {stats.count}
                 </p>
                 <p className="text-xs text-zinc-500 mt-1">Workouts</p>
               </div>
+
+              {/* Total Time */}
               <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-sky-500/10 rounded-lg">
+                    <Timer className="h-5 w-5 text-sky-400" />
+                  </div>
+                </div>
                 <p className="text-2xl font-semibold text-white">
                   {formatDuration(stats.totalDuration)}
                 </p>
                 <p className="text-xs text-zinc-500 mt-1">Total Time</p>
               </div>
+
+              {/* Calories */}
               <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-orange-500/10 rounded-lg">
+                    <Flame className="h-5 w-5 text-orange-400" />
+                  </div>
+                </div>
                 <p className="text-2xl font-semibold text-white">
                   {Math.round(stats.totalCalories).toLocaleString()}
                 </p>
                 <p className="text-xs text-zinc-500 mt-1">Calories</p>
               </div>
+
+              {/* Distance */}
               <div className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-purple-500/10 rounded-lg">
+                    <MoveHorizontal className="h-5 w-5 text-purple-400" />
+                  </div>
+                </div>
                 <p className="text-2xl font-semibold text-white">
                   {(stats.totalDistance / 1000).toFixed(1)} km
                 </p>

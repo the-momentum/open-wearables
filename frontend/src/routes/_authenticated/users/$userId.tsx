@@ -9,7 +9,8 @@ import {
   Loader2,
   User,
   Dumbbell,
-  Calendar,
+  Activity,
+  Moon,
   Scale,
   type LucideIcon,
 } from 'lucide-react';
@@ -92,22 +93,27 @@ function UserDetailPage() {
         ),
       },
       {
-        id: 'daily',
-        label: 'Daily',
-        icon: Calendar,
+        id: 'activity',
+        label: 'Activity',
+        icon: Activity,
         content: (
-          <>
-            <ActivitySection
-              userId={userId}
-              dateRange={activityDateRange}
-              onDateRangeChange={setActivityDateRange}
-            />
-            <SleepSection
-              userId={userId}
-              dateRange={sleepDateRange}
-              onDateRangeChange={setSleepDateRange}
-            />
-          </>
+          <ActivitySection
+            userId={userId}
+            dateRange={activityDateRange}
+            onDateRangeChange={setActivityDateRange}
+          />
+        ),
+      },
+      {
+        id: 'sleep',
+        label: 'Sleep',
+        icon: Moon,
+        content: (
+          <SleepSection
+            userId={userId}
+            dateRange={sleepDateRange}
+            onDateRangeChange={setSleepDateRange}
+          />
         ),
       },
       {
