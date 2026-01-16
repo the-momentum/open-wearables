@@ -293,8 +293,17 @@ class Whoop247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
     ) -> dict[str, int]:
-        """Load and save all 247 data types (sleep, recovery, activity)."""
+        """Load and save all 247 data types (sleep, recovery, activity).
+
+        Args:
+            db: Database session
+            user_id: User UUID
+            start_time: Start of date range (defaults to 30 days ago)
+            end_time: End of date range (defaults to now)
+            is_first_sync: Whether this is the first sync (unused, for API compatibility)
+        """
         # Handle date defaults (last 30 days if not specified)
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
@@ -317,6 +326,11 @@ class Whoop247Data(Base247DataTemplate):
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
             self.logger.error(f"Failed to sync sleep data: {e}")
+
+        try:
+            results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
+        except Exception as e:
+            self.logger.error(f"Failed to sync recovery data: {e}")
 
         try:
             results["body_measurement_samples_synced"] = self.load_and_save_body_measurement(db, user_id)
@@ -439,16 +453,178 @@ class Whoop247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch recovery data from Whoop API."""
-        return []
+        """Fetch recovery data from Whoop API via v2 endpoint with pagination.
+
+        Returns list of recovery records containing recovery_score, resting_heart_rate,
+        hrv_rmssd_milli, spo2_percentage, and skin_temp_celsius.
+        """
+        all_recovery_data = []
+        next_token = None
+        max_limit = 25  # Whoop API limit
+
+        # Convert datetimes to ISO 8601 strings
+        start_iso = start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_iso = end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        while True:
+            params: dict[str, Any] = {
+                "start": start_iso,
+                "end": end_iso,
+                "limit": max_limit,
+            }
+
+            if next_token:
+                params["nextToken"] = next_token
+
+            try:
+                response = self._make_api_request(db, user_id, "/v2/recovery", params=params)
+
+                # Extract records from response
+                records = response.get("records", []) if isinstance(response, dict) else []
+                all_recovery_data.extend(records)
+
+                # Check for next page
+                next_token = response.get("next_token") if isinstance(response, dict) else None
+
+                # Stop if no more records or no next token
+                if not records or not next_token:
+                    break
+
+            except Exception as e:
+                self.logger.error(f"Error fetching Whoop recovery data: {e}")
+                # If we got some data, return what we have; otherwise re-raise
+                if all_recovery_data:
+                    self.logger.warning(f"Returning partial recovery data due to error: {e}")
+                    break
+                raise
+
+        return all_recovery_data
 
     def normalize_recovery(
         self,
         raw_recovery: dict[str, Any],
         user_id: UUID,
     ) -> dict[str, Any]:
-        """Normalize Whoop recovery data to our schema."""
-        return {}
+        """Normalize Whoop recovery data to our schema.
+
+        Extracts recovery metrics from the score object:
+        - recovery_score (0-100)
+        - resting_heart_rate (bpm)
+        - hrv_rmssd_milli (ms)
+        - spo2_percentage (%)
+        - skin_temp_celsius (°C)
+        """
+        cycle_id = raw_recovery.get("cycle_id")
+        sleep_id = raw_recovery.get("sleep_id")
+        created_at = raw_recovery.get("created_at")
+        score_state = raw_recovery.get("score_state")
+
+        # Extract score data (may be None if not scored yet)
+        score = raw_recovery.get("score", {}) or {}
+
+        # Only process scored records
+        if score_state != "SCORED":
+            return {}
+
+        # Parse timestamp
+        timestamp = None
+        if created_at:
+            try:
+                timestamp = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                timestamp = datetime.now(timezone.utc)
+
+        return {
+            "user_id": user_id,
+            "provider": self.provider_name,
+            "timestamp": timestamp,
+            "cycle_id": cycle_id,
+            "sleep_id": sleep_id,
+            "recovery_score": score.get("recovery_score"),
+            "resting_heart_rate": score.get("resting_heart_rate"),
+            "hrv_rmssd_milli": score.get("hrv_rmssd_milli"),
+            "spo2_percentage": score.get("spo2_percentage"),
+            "skin_temp_celsius": score.get("skin_temp_celsius"),
+            "raw": raw_recovery,
+        }
+
+    def save_recovery_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_recovery: dict[str, Any],
+    ) -> int:
+        """Save normalized recovery data to database as DataPointSeries.
+
+        Saves up to 5 metrics per recovery record:
+        - recovery_score
+        - resting_heart_rate
+        - heart_rate_variability_rmssd (from hrv_rmssd_milli)
+        - oxygen_saturation (from spo2_percentage)
+        - body_temperature (from skin_temp_celsius)
+
+        Returns the number of samples saved.
+        """
+        if not normalized_recovery:
+            return 0
+
+        timestamp = normalized_recovery.get("timestamp")
+        if not timestamp:
+            return 0
+
+        count = 0
+
+        # Map WHOOP fields to SeriesType
+        metrics = [
+            ("recovery_score", SeriesType.recovery_score),
+            ("resting_heart_rate", SeriesType.resting_heart_rate),
+            ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
+            ("spo2_percentage", SeriesType.oxygen_saturation),
+            ("skin_temp_celsius", SeriesType.body_temperature),
+        ]
+
+        for field_name, series_type in metrics:
+            value = normalized_recovery.get(field_name)
+            if value is not None:
+                try:
+                    sample = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        provider_name=self.provider_name,
+                        recorded_at=timestamp,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                    timeseries_service.crud.create(db, sample)
+                    count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to save recovery {field_name}: {e}")
+
+        return count
+
+    def load_and_save_recovery(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Load recovery data from API and save to database.
+
+        Returns the total number of data point samples saved.
+        """
+        raw_data = self.get_recovery_data(db, user_id, start_time, end_time)
+        total_count = 0
+
+        for item in raw_data:
+            try:
+                normalized = self.normalize_recovery(item, user_id)
+                if normalized:  # Skip unscored records
+                    total_count += self.save_recovery_data(db, user_id, normalized)
+            except Exception as e:
+                self.logger.warning(f"Failed to save recovery data: {e}")
+
+        return total_count
 
     # -------------------------------------------------------------------------
     # Activity Samples
