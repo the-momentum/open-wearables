@@ -137,13 +137,20 @@ class ImportService:
             yield record, detail, hr_samples
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
+        # Collect all HR samples from all workouts for a single batch insert
+        all_hr_samples: list[HeartRateSampleCreate] = []
+
         for record, detail, hr_samples in self._build_import_bundles(raw, user_id):
             created_record = self.event_record_service.create(db_session, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             self.event_record_service.create_detail(db_session, detail_for_record)
 
             if hr_samples:
-                self.timeseries_service.bulk_create_samples(db_session, hr_samples)
+                all_hr_samples.extend(hr_samples)
+
+        # Single batch insert for all HR samples
+        if all_hr_samples:
+            self.timeseries_service.bulk_create_samples(db_session, all_hr_samples)
 
         return True
 
