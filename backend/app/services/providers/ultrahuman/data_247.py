@@ -387,7 +387,6 @@ class Ultrahuman247Data(Base247DataTemplate):
                         value=Decimal(str(sample.get("value"))),
                         series_type=series_type,
                         external_device_mapping_id=None,
-                        # ultrahuman doesn't give a unique ID per sample, so we rely on unique constraint (user, provider, type, time)
                     )
 
                     self.data_point_repo.create(db, ts_sample)

@@ -38,7 +38,7 @@ class TestUltrahumanSleepDataIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -66,7 +66,7 @@ class TestUltrahumanSleepDataIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -130,7 +130,7 @@ class TestUltrahumanSleepDataIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -173,7 +173,7 @@ class TestUltrahumanSleepDataIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -228,7 +228,7 @@ class TestUltrahumanActivitySamplesIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -256,7 +256,7 @@ class TestUltrahumanActivitySamplesIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -306,7 +306,7 @@ class TestUltrahumanActivitySamplesIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -346,7 +346,7 @@ class TestUltrahumanActivitySamplesIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -386,7 +386,7 @@ class TestUltrahumanActivitySamplesIntegration:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -422,7 +422,7 @@ class TestUltrahumanAPIEndpoints:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -458,7 +458,7 @@ class TestUltrahumanAPIEndpoints:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -496,7 +496,7 @@ class TestUltrahumanErrorHandling:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -526,7 +526,7 @@ class TestUltrahumanErrorHandling:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
@@ -557,7 +557,7 @@ class TestUltrahumanErrorHandling:
         )
         ExternalDeviceMappingFactory(
             user_id=user.id,
-            provider="ultrahuman",
+            provider_name="ultrahuman",
         )
 
         factory = ProviderFactory()
