@@ -27,7 +27,7 @@ open-wearables/
 | SQLAlchemy 2.0 | React Hook Form + Zod |
 | PostgreSQL | Tailwind + shadcn/ui |
 | Celery + Redis | Vitest |
-| Ruff | oxlint + Prettier |
+| Ruff + ty| oxlint + Prettier |
 
 ## Development Workflow
 
@@ -71,7 +71,7 @@ make stop
 
 **Backend:**
 ```bash
-cd backend && uv run ruff check . --fix && uv run ruff format .
+cd backend && uv run pre-commit run --all-files
 ```
 
 **Frontend:**
