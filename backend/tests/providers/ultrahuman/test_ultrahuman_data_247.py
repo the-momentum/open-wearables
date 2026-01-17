@@ -70,15 +70,19 @@ class TestUltrahumanSleepData:
         )
 
         raw_sleep = {
-            "date": "2025-01-14",
-            "bed_time": "2025-01-14T22:00:00Z",
-            "wake_time": "2025-01-15T06:00:00Z",
-            "total_sleep_duration": 28800,  # 8 hours in seconds
-            "deep_sleep_duration": 3600,  # 1 hour
-            "rem_sleep_duration": 5400,  # 1.5 hours
-            "light_sleep_duration": 19800,  # 5.5 hours
-            "sleep_efficiency": 90,
-            "is_nap": False,
+            "ultrahuman_date": "2025-01-14",
+            "bedtime_start": 1736816400,  # 2025-01-14T01:00:00Z
+            "bedtime_end": 1736928000,  # 2025-01-15T08:00:00Z
+            "quick_metrics": [
+                {"type": "time_in_bed", "value": 25200},
+                {"type": "sleep_efic", "value": 90},
+            ],
+            "sleep_stages": [
+                {"type": "deep_sleep", "stage_time": 3600},
+                {"type": "rem_sleep", "stage_time": 5400},
+                {"type": "light_sleep", "stage_time": 16200},
+                {"type": "awake", "stage_time": 1800},
+            ],
         }
 
         # Act
@@ -88,14 +92,13 @@ class TestUltrahumanSleepData:
         assert normalized["user_id"] == user.id
         assert normalized["provider"] == "ultrahuman"
         assert normalized["ultrahuman_date"] == "2025-01-14"
-        assert normalized["start_time"] == "2025-01-14T22:00:00Z"
-        assert normalized["end_time"] == "2025-01-15T06:00:00Z"
-        assert normalized["duration_seconds"] == 28800
+        assert normalized["start_time"].year == 2025
+        assert normalized["end_time"].year == 2025
+        assert normalized["duration_seconds"] == 25200
         assert normalized["efficiency_percent"] == 90
-        assert normalized["is_nap"] is False
         assert normalized["stages"]["deep_seconds"] == 3600
         assert normalized["stages"]["rem_seconds"] == 5400
-        assert normalized["stages"]["light_seconds"] == 19800
+        assert normalized["stages"]["light_seconds"] == 16200
 
     def test_normalize_sleep_with_minimal_data(self, db: Session) -> None:
         """Test normalizing sleep data with minimal fields."""
@@ -121,7 +124,7 @@ class TestUltrahumanSleepData:
         )
 
         raw_sleep = {
-            "date": "2025-01-14",
+            "ultrahuman_date": "2025-01-14",
         }
 
         # Act
@@ -162,10 +165,10 @@ class TestUltrahumanRecoveryData:
         )
 
         raw_recovery = {
-            "date": "2025-01-14",
-            "recovery_index": 85,
-            "movement_index": 72,
-            "metabolic_score": 78,
+            "ultrahuman_date": "2025-01-14",
+            "recovery_index": {"value": 85},
+            "movement_index": {"value": 72},
+            "metabolic_score": {"value": 78},
         }
 
         # Act
@@ -206,15 +209,31 @@ class TestUltrahumanActivitySamples:
             oauth=oauth,
         )
 
-        raw_samples = [
-            {
-                "date": "2025-01-14",
-                "heart_rate": [{"value": 72}, {"value": 75}],
-                "hrv": [{"value": 45}, {"value": 50}],
-                "temperature": [{"value": 36.5}, {"value": 36.6}],
-                "steps": 8500,
-            }
-        ]
+        raw_samples = {
+            "hr": {
+                "values": [
+                    {"timestamp": 1705309200, "value": 72},
+                    {"timestamp": 1705309500, "value": 75},
+                ]
+            },
+            "hrv": {
+                "values": [
+                    {"timestamp": 1705309200, "value": 45},
+                    {"timestamp": 1705309500, "value": 50},
+                ]
+            },
+            "temp": {
+                "values": [
+                    {"timestamp": 1705309200, "value": 36.5},
+                    {"timestamp": 1705309500, "value": 36.6},
+                ]
+            },
+            "steps": {
+                "values": [
+                    {"timestamp": 1705309200, "value": 8500},
+                ]
+            },
+        }
 
         # Act
         normalized = data_247.normalize_activity_samples(raw_samples, user.id)

@@ -2,6 +2,48 @@
 
 This document provides a comprehensive testing procedure for the Ultrahuman integration. Follow these steps to verify that the integration is working correctly and all data is being properly synced and stored.
 
+## Ultrahuman Testing Agent
+
+The project includes a specialized testing agent for Ultrahuman integration with:
+
+### Test Files
+
+- **`backend/tests/providers/ultrahuman/test_ultrahuman_integration.py`** - End-to-end integration tests using real API calls
+- **`backend/tests/providers/ultrahuman/test_ultrahuman_data_247.py`** - Unit tests for data normalization
+- **`backend/tests/providers/ultrahuman/test_ultrahuman_oauth.py`** - OAuth flow tests
+- **`backend/tests/providers/ultrahuman/test_ultrahuman_strategy.py`** - Provider strategy tests
+
+### Automated Verification Script
+
+**`backend/scripts/verify_ultrahuman_integration.py`** - Comprehensive verification with console output
+
+```bash
+cd backend
+uv run python scripts/verify_ultrahuman_integration.py
+```
+
+This script runs:
+1. Provider registration check
+2. OAuth configuration validation
+3. Connected users verification
+4. Database schema validation
+5. Test sync execution
+6. Sleep records verification
+7. Activity samples verification
+8. Summary report with pass/fail status
+
+### Test Fixtures
+
+Ultrahuman-specific fixtures in `backend/tests/providers/conftest.py`:
+
+- `sample_ultrahuman_sleep_data()` - Complete sleep with all stages
+- `sample_ultrahuman_minimal_sleep()` - Minimal sleep data
+- `sample_ultrahuman_activity_samples()` - HR, HRV, temp, steps
+- `sample_ultrahuman_recovery_data()` - Recovery metrics
+- `sample_ultrahuman_api_response()` - Full API response
+
+---
+
 ## Prerequisites
 
 - Docker and Docker Compose installed

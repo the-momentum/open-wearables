@@ -8,6 +8,7 @@ Open Wearables is a health/wearable data aggregation platform with a Python/Fast
 - **[backend/AGENTS.md](backend/AGENTS.md)** - Backend-specific patterns and code examples
 - **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend-specific patterns and code examples
 - **[docs/dev-guides/how-to-add-new-provider.mdx](docs/dev-guides/how-to-add-new-provider.mdx)** - Adding wearable providers
+- **[backend/tests/providers/ultrahuman/README.md](backend/tests/providers/ultrahuman/README.md)** - Ultrahuman testing agent documentation
 
 ## Project Structure
 

@@ -346,3 +346,40 @@ app/api/routes/
 **Flow:**
 - Request: request → main.py → head_router → version_router → router → endpoint → service
 - Response: service → response_model validation → router → version_router → head_router → main.py → client
+
+## Provider Testing
+
+The project includes comprehensive testing agents for provider integrations. See [Provider Testing Guide](../tests/providers/ultrahuman/README.md) for detailed documentation.
+
+### Ultrahuman Testing Agent
+
+**Location:** `backend/tests/providers/ultrahuman/`
+
+**Components:**
+- Integration tests (`test_ultrahuman_integration.py`) - End-to-end tests with real API calls
+- Unit tests (`test_ultrahuman_data_247.py`) - Data normalization tests
+- OAuth tests (`test_ultrahuman_oauth.py`) - Authentication flow tests
+- Strategy tests (`test_ultrahuman_strategy.py`) - Provider setup tests
+- Verification script (`scripts/verify_ultrahuman_integration.py`) - Automated verification with console output
+
+**Running Tests:**
+```bash
+cd backend
+
+# Run all Ultrahuman tests
+uv run pytest tests/providers/ultrahuman/ -v
+
+# Run with coverage
+uv run pytest tests/providers/ultrahuman/ -v --cov=app
+
+# Run verification script
+uv run python scripts/verify_ultrahuman_integration.py
+```
+
+**Key Principles:**
+- Use real API calls (not mocked responses) for integration tests
+- Verify database state after sync operations
+- Test error scenarios (404, timeouts, expired tokens)
+- Validate data integrity (sleep stages, activity samples, efficiency scores)
+- Focus on end-to-end flow: API → Normalization → Database → API Response
+

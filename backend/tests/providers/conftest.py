@@ -191,3 +191,161 @@ def mock_provider_user_info() -> dict:
         "username": "test_user",
         "email": "test@example.com",
     }
+
+
+@pytest.fixture
+def sample_ultrahuman_sleep_data() -> dict:
+    """Sample Ultrahuman sleep data object from API."""
+    return {
+        "date": "2024-01-15",
+        "bedtime_start": 1705309200,  # 2024-01-15T01:00:00Z
+        "bedtime_end": 1705334400,  # 2024-01-15T08:00:00Z
+        "quick_metrics": [
+            {"type": "time_in_bed", "value": 25200},
+            {"type": "sleep_efic", "value": 90.5},
+            {"type": "total_sleep", "value": 23400},
+        ],
+        "sleep_stages": [
+            {"type": "deep_sleep", "stage_time": 3600},
+            {"type": "light_sleep", "value": 16200},
+            {"type": "rem_sleep", "stage_time": 3600},
+            {"type": "awake", "stage_time": 1800},
+        ],
+    }
+
+
+@pytest.fixture
+def sample_ultrahuman_minimal_sleep() -> dict:
+    """Sample Ultrahuman sleep data with minimal fields."""
+    return {
+        "date": "2024-01-15",
+    }
+
+
+@pytest.fixture
+def sample_ultrahuman_activity_samples() -> dict:
+    """Sample Ultrahuman activity samples from API."""
+    return {
+        "date": "2024-01-15",
+        "hr": {
+            "values": [
+                {"timestamp": 1705309200, "value": 62},
+                {"timestamp": 1705309500, "value": 65},
+                {"timestamp": 1705309800, "value": 68},
+                {"timestamp": 1705310100, "value": 72},
+                {"timestamp": 1705310400, "value": 75},
+            ]
+        },
+        "hrv": {
+            "values": [
+                {"timestamp": 1705309200, "value": 45},
+                {"timestamp": 1705309500, "value": 48},
+                {"timestamp": 1705309800, "value": 52},
+            ]
+        },
+        "temp": {
+            "values": [
+                {"timestamp": 1705309200, "value": 36.5},
+                {"timestamp": 1705309500, "value": 36.6},
+                {"timestamp": 1705309800, "value": 36.7},
+                {"timestamp": 1705310100, "value": 36.8},
+            ]
+        },
+        "steps": {
+            "values": [
+                {"timestamp": 1705309200, "value": 0},
+                {"timestamp": 1705309500, "value": 50},
+                {"timestamp": 1705309800, "value": 100},
+                {"timestamp": 1705310100, "value": 250},
+            ]
+        },
+    }
+
+
+@pytest.fixture
+def sample_ultrahuman_recovery_data() -> dict:
+    """Sample Ultrahuman recovery data."""
+    return {
+        "date": "2024-01-15",
+        "recovery_index": {"value": 85},
+        "movement_index": {"value": 72},
+        "metabolic_score": {"value": 78},
+    }
+
+
+@pytest.fixture
+def sample_ultrahuman_api_response() -> dict:
+    """Sample complete Ultrahuman /user_data/metrics API response."""
+    return {
+        "data": {
+            "metric_data": [
+                {
+                    "type": "Sleep",
+                    "object": {
+                        "date": "2024-01-15",
+                        "bedtime_start": 1705309200,
+                        "bedtime_end": 1705334400,
+                        "quick_metrics": [
+                            {"type": "time_in_bed", "value": 25200},
+                            {"type": "sleep_efic", "value": 90.5},
+                        ],
+                        "sleep_stages": [
+                            {"type": "deep_sleep", "stage_time": 3600},
+                            {"type": "light_sleep", "stage_time": 16200},
+                            {"type": "rem_sleep", "stage_time": 3600},
+                            {"type": "awake", "stage_time": 1800},
+                        ],
+                    },
+                },
+                {
+                    "type": "recovery_index",
+                    "object": {"value": 85},
+                },
+                {
+                    "type": "movement_index",
+                    "object": {"value": 72},
+                },
+                {
+                    "type": "metabolic_score",
+                    "object": {"value": 78},
+                },
+                {
+                    "type": "hr",
+                    "object": {
+                        "values": [
+                            {"timestamp": 1705309200, "value": 62},
+                            {"timestamp": 1705309500, "value": 65},
+                            {"timestamp": 1705309800, "value": 68},
+                        ]
+                    },
+                },
+                {
+                    "type": "hrv",
+                    "object": {
+                        "values": [
+                            {"timestamp": 1705309200, "value": 45},
+                            {"timestamp": 1705309500, "value": 48},
+                        ]
+                    },
+                },
+                {
+                    "type": "temp",
+                    "object": {
+                        "values": [
+                            {"timestamp": 1705309200, "value": 36.5},
+                            {"timestamp": 1705309500, "value": 36.6},
+                        ]
+                    },
+                },
+                {
+                    "type": "steps",
+                    "object": {
+                        "values": [
+                            {"timestamp": 1705309200, "value": 0},
+                            {"timestamp": 1705309500, "value": 50},
+                        ]
+                    },
+                },
+            ]
+        },
+    }
