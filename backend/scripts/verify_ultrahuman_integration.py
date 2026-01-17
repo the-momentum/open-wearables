@@ -212,12 +212,20 @@ def run_test_sync() -> bool:
         strategy = factory.get_provider("ultrahuman")
         provider_impl = strategy.data_247
 
+        if not provider_impl:
+            print_failure("Provider data_247 implementation not found")
+            return False
+
+        if not hasattr(provider_impl, "load_and_save_all"):
+            print_failure("Provider data_247 implementation does not have load_and_save_all method")
+            return False
+
         end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(days=2)
 
         print_info(f"Sync range: {start_time.date()} to {end_time.date()}")
 
-        results = provider_impl.load_and_save_all(db, user_id, start_time=start_time, end_time=end_time)
+        results = getattr(provider_impl, "load_and_save_all")(db, user_id, start_time=start_time, end_time=end_time)
         db.commit()
 
         print_success("Test sync completed")

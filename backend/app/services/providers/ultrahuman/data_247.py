@@ -258,12 +258,12 @@ class Ultrahuman247Data(Base247DataTemplate):
 
     def normalize_activity_samples(
         self,
-        raw_samples: dict[str, Any],
+        raw_samples: list[dict[str, Any]],
         user_id: UUID,
     ) -> dict[str, list[dict[str, Any]]]:
         """Normalize activity samples into categorized data.
 
-        raw_samples keys: 'hr', 'hrv', 'temp', 'steps'
+        raw_samples: List of sample dictionaries with type and values
         """
         result = {
             "heart_rate": [],
@@ -272,78 +272,77 @@ class Ultrahuman247Data(Base247DataTemplate):
             "steps": [],
         }
 
-        # Heart rate samples
-        if "hr" in raw_samples:
-            values = raw_samples["hr"].get("values", [])
-            for val in values:
-                ts = val.get("timestamp")
-                recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-                if recorded_at:
-                    result["heart_rate"].append(
-                        {
-                            "id": uuid4(),
-                            "user_id": user_id,
-                            "provider": self.provider_name,
-                            "recorded_at": recorded_at,
-                            "value": val.get("value"),
-                            "unit": "bpm",
-                        }
-                    )
+        for sample in raw_samples:
+            sample_type = sample.get("type")
 
-        # HRV samples
-        if "hrv" in raw_samples:
-            values = raw_samples["hrv"].get("values", [])
-            for val in values:
-                ts = val.get("timestamp")
-                recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-                if recorded_at:
-                    result["hrv"].append(
-                        {
-                            "id": uuid4(),
-                            "user_id": user_id,
-                            "provider": self.provider_name,
-                            "recorded_at": recorded_at,
-                            "value": val.get("value"),
-                            "unit": "ms",
-                        }
-                    )
+            if sample_type == "hr":
+                values = sample.get("values", [])
+                for val in values:
+                    ts = val.get("timestamp")
+                    recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+                    if recorded_at:
+                        result["heart_rate"].append(
+                            {
+                                "id": uuid4(),
+                                "user_id": user_id,
+                                "provider": self.provider_name,
+                                "recorded_at": recorded_at,
+                                "value": val.get("value"),
+                                "unit": "bpm",
+                            }
+                        )
 
-        # Temperature samples (type='temp')
-        if "temp" in raw_samples:
-            values = raw_samples["temp"].get("values", [])
-            for val in values:
-                ts = val.get("timestamp")
-                recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-                if recorded_at:
-                    result["temperature"].append(
-                        {
-                            "id": uuid4(),
-                            "user_id": user_id,
-                            "provider": self.provider_name,
-                            "recorded_at": recorded_at,
-                            "value": val.get("value"),
-                            "unit": "celsius",
-                        }
-                    )
+            elif sample_type == "hrv":
+                values = sample.get("values", [])
+                for val in values:
+                    ts = val.get("timestamp")
+                    recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+                    if recorded_at:
+                        result["hrv"].append(
+                            {
+                                "id": uuid4(),
+                                "user_id": user_id,
+                                "provider": self.provider_name,
+                                "recorded_at": recorded_at,
+                                "value": val.get("value"),
+                                "unit": "ms",
+                            }
+                        )
 
-        # Steps (type='steps')
-        if "steps" in raw_samples:
-            values = raw_samples["steps"].get("values", [])
-            for val in values:
-                ts = val.get("timestamp")
-                steps_val = val.get("value")
-                recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
-                if recorded_at and steps_val and steps_val > 0:
-                    result["steps"].append(
-                        {
-                            "id": uuid4(),
-                            "user_id": user_id,
-                            "provider": self.provider_name,
-                            "recorded_at": recorded_at,
-                            "value": steps_val,
-                            "unit": "count",
-                        }
-                    )
+            elif sample_type == "temp":
+                values = sample.get("values", [])
+                for val in values:
+                    ts = val.get("timestamp")
+                    recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+                    if recorded_at:
+                        result["temperature"].append(
+                            {
+                                "id": uuid4(),
+                                "user_id": user_id,
+                                "provider": self.provider_name,
+                                "recorded_at": recorded_at,
+                                "value": val.get("value"),
+                                "unit": "celsius",
+                            }
+                        )
+
+            elif sample_type == "steps":
+                values = sample.get("values", [])
+                for val in values:
+                    ts = val.get("timestamp")
+                    steps_val = val.get("value")
+                    recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat() if ts else None
+                    if recorded_at and steps_val and steps_val > 0:
+                        result["steps"].append(
+                            {
+                                "id": uuid4(),
+                                "user_id": user_id,
+                                "provider": self.provider_name,
+                                "recorded_at": recorded_at,
+                                "value": steps_val,
+                                "unit": "count",
+                            }
+                        )
 
         return result
 
@@ -459,11 +458,11 @@ class Ultrahuman247Data(Base247DataTemplate):
 
             # 3. Process Activity Samples
             try:
-                # Prepare dict for normalization
-                sample_inputs = {}
+                # Prepare list for normalization
+                sample_inputs = []
                 for t in ["hr", "hrv", "temp", "steps"]:
                     if t in items_by_type:
-                        sample_inputs[t] = items_by_type[t]
+                        sample_inputs.append({"type": t, "values": items_by_type[t]})
 
                 normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
                 saved_count = self.save_activity_samples(db, user_id, normalized_samples)

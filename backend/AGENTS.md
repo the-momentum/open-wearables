@@ -382,4 +382,3 @@ uv run python scripts/verify_ultrahuman_integration.py
 - Test error scenarios (404, timeouts, expired tokens)
 - Validate data integrity (sleep stages, activity samples, efficiency scores)
 - Focus on end-to-end flow: API → Normalization → Database → API Response
-
