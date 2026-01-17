@@ -33,10 +33,8 @@
 ### Backend Changes
 
 <!-- If your PR includes backend changes, please verify: -->
-
-- [ ] `uv run ruff check` passes
-- [ ] `uv run ruff format --check` passes
-- [ ] `uv run ty check` passes
+You have to be in `backend` directory to make it work:
+- [ ] `uv run pre-commit run --all-files` passes
 
 ### Frontend Changes
 
