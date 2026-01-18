@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from fastapi import HTTPException
+
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -62,7 +64,14 @@ class Ultrahuman247Data(Base247DataTemplate):
         user_id: UUID,
         date: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch all metrics for a specific day from Ultrahuman API."""
+        """Fetch all metrics for a specific day from Ultrahuman API.
+
+        Returns:
+            list[dict[str, Any]]: List of metrics for the day, or empty list on recoverable errors.
+
+        Raises:
+            HTTPException: For fatal errors (401, 403) that require token refresh/invalidate connection.
+        """
         date_str = date.strftime("%Y-%m-%d")
         try:
             response = self._make_api_request(
@@ -80,10 +89,18 @@ class Ultrahuman247Data(Base247DataTemplate):
                     if "object" in item and isinstance(item["object"], dict):
                         item["ultrahuman_date"] = date_str
                 return metrics
+        except HTTPException as e:
+            # Fatal errors - should be raised to trigger token refresh or invalidate connection
+            if e.status_code in (401, 403):
+                self.logger.error(f"Authorization failed for {date_str}: {e.detail}")
+                raise
+            # Recoverable errors - log and continue with next day
+            self.logger.warning(f"API error for {date_str}: {e.detail}")
+            return []
         except Exception as e:
+            # Network errors and other unexpected errors - log and continue
             self.logger.warning(f"Failed to fetch metrics for {date_str}: {e}")
-            # Don't swallow unexpected errors completely, but for daily sync we might want to continue
-            # If it's a critical auth error it might be better to raise, but the base class usually handles auth.
+            return []
 
         return []
 
@@ -409,8 +426,17 @@ class Ultrahuman247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-    ) -> dict[str, int]:
-        """Load and save all 247 data types by fetching daily metrics."""
+    ) -> dict[str, Any]:
+        """Load and save all 247 data types by fetching daily metrics.
+
+        Returns:
+            dict[str, Any]: Results containing:
+                - sleep_sessions_synced: int - Number of sleep sessions saved
+                - activity_samples: int - Number of activity samples saved
+                - recovery_days_synced: int - Number of recovery days processed
+                - failed_days: int - Number of days that failed to process
+                - errors: list[dict[str, str]] - List of errors with date and message
+        """
 
         # Handle date defaults (last 30 days if not specified)
         if isinstance(start_time, str):
@@ -424,70 +450,198 @@ class Ultrahuman247Data(Base247DataTemplate):
         if start_time is None:
             start_time = end_time - timedelta(days=30)
 
-        results = {
+        results: dict[str, Any] = {
             "sleep_sessions_synced": 0,
             "activity_samples": 0,
-            "recovery_days_synced": 0,  # Placeholder, though we don't save recovery separately currently
+            "recovery_days_synced": 0,
+            "failed_days": 0,
+            "errors": [],
         }
 
         current_date = start_time
         while current_date <= end_time:
-            metrics_list = self._fetch_daily_metrics(db, user_id, current_date)
             date_str = current_date.strftime("%Y-%m-%d")
+            day_error = None
 
-            # Group items by type
-            items_by_type = {}
-            for item in metrics_list:
-                t = item.get("type")
-                if t and "object" in item:
-                    items_by_type[t] = item["object"]
-
-            # 1. Process Sleep
-            if "Sleep" in items_by_type:
-                try:
-                    normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
-                    self.save_sleep_data(db, user_id, normalized_sleep)
-                    results["sleep_sessions_synced"] += 1
-                except Exception as e:
-                    self.logger.error(f"Failed to process sleep for {date_str}: {e}")
-
-            # 2. Process Recovery (Not saved to DB yet in this template, but logic is here)
-            # We don't have a generic "save_recovery" in Base247DataTemplate or a table for it yet?
-            # Actually EventRecord doesn't support generic daily recovery metrics easily without a specific type.
-            # But we can normalize it if we add support later.
-
-            # 3. Process Activity Samples
             try:
-                # Prepare list for normalization
-                sample_inputs = []
-                for t in ["hr", "hrv", "temp", "steps"]:
-                    if t in items_by_type:
-                        sample_inputs.append({"type": t, "values": items_by_type[t]})
+                metrics_list = self._fetch_daily_metrics(db, user_id, current_date)
 
-                normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
-                saved_count = self.save_activity_samples(db, user_id, normalized_samples)
-                results["activity_samples"] += saved_count
+                # Check if metrics fetch failed (returned empty for non-recoverable errors)
+                if not metrics_list:
+                    day_error = "No data available"
+
+                # Group items by type
+                items_by_type = {}
+                for item in metrics_list:
+                    t = item.get("type")
+                    if t and "object" in item:
+                        items_by_type[t] = item["object"]
+
+                # 1. Process Sleep
+                if "Sleep" in items_by_type:
+                    try:
+                        normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
+                        self.save_sleep_data(db, user_id, normalized_sleep)
+                        results["sleep_sessions_synced"] += 1
+                    except Exception as e:
+                        day_error = f"Sleep processing failed: {e}"
+
+                # 2. Process Recovery (Not saved to DB yet in this template, but logic is here)
+                # We don't have a generic "save_recovery" in Base247DataTemplate or a table for it yet?
+                # Actually EventRecord doesn't support generic daily recovery metrics easily without a specific type.
+                # But we can normalize it if we add support later.
+
+                # 3. Process Activity Samples
+                try:
+                    # Prepare list for normalization
+                    sample_inputs = []
+                    for t in ["hr", "hrv", "temp", "steps"]:
+                        if t in items_by_type:
+                            sample_inputs.append({"type": t, "values": items_by_type[t]})
+
+                    if sample_inputs:
+                        normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
+                        saved_count = self.save_activity_samples(db, user_id, normalized_samples)
+                        results["activity_samples"] += saved_count
+                except Exception as e:
+                    day_error = f"Activity samples processing failed: {e}"
+
+            except HTTPException:
+                # Fatal errors from _fetch_daily_metrics (401, 403) should be raised
+                raise
+
             except Exception as e:
-                self.logger.error(f"Failed to process samples for {date_str}: {e}")
+                # Any other error processing this day
+                day_error = f"Unexpected error: {e}"
+
+            # Track errors for this day
+            if day_error:
+                results["failed_days"] += 1
+                results["errors"].append({"date": date_str, "error": day_error})
 
             current_date += timedelta(days=1)
 
         return results
 
-    # Stub implementations for abstract methods that we don't use directly anymore
-    # but might be required by the interface if strictly enforced (though python is loose)
+    # -------------------------------------------------------------------------
+    # Abstract Method Implementations
+    # -------------------------------------------------------------------------
 
-    def get_sleep_data(self, *args, **kwargs) -> list[dict[str, Any]]:
+    def get_sleep_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch sleep data from provider API for a date range.
+
+        Returns:
+            list[dict[str, Any]]: List of sleep data objects from API.
+        """
+        sleep_data = []
+        current_date = start_time.date()
+        end_date = end_time.date()
+
+        while current_date <= end_date:
+            metrics_list = self._fetch_daily_metrics(db, user_id, datetime.combine(current_date, datetime.min.time()))
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            for item in metrics_list:
+                if item.get("type") == "Sleep" and "object" in item:
+                    item["object"]["ultrahuman_date"] = date_str
+                    sleep_data.append(item["object"])
+
+            current_date = current_date + timedelta(days=1)
+
+        return sleep_data
+
+    def get_recovery_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch recovery data from provider API for a date range.
+
+        Returns:
+            list[dict[str, Any]]: List of recovery data objects from API.
+        """
+        recovery_data = []
+        current_date = start_time.date()
+        end_date = end_time.date()
+
+        while current_date <= end_date:
+            metrics_list = self._fetch_daily_metrics(db, user_id, datetime.combine(current_date, datetime.min.time()))
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            for item in metrics_list:
+                item_type = item.get("type")
+                if item_type in ("recovery_index", "movement_index", "metabolic_score") and "object" in item:
+                    item["object"]["ultrahuman_date"] = date_str
+                    recovery_data.append(item["object"])
+
+            current_date = current_date + timedelta(days=1)
+
+        return recovery_data
+
+    def get_activity_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch activity samples (HR, steps, SpO2) from provider API for a date range.
+
+        Returns:
+            list[dict[str, Any]]: List of activity sample objects from API.
+        """
+        samples = []
+        current_date = start_time.date()
+        end_date = end_time.date()
+
+        while current_date <= end_date:
+            metrics_list = self._fetch_daily_metrics(db, user_id, datetime.combine(current_date, datetime.min.time()))
+            date_str = current_date.strftime("%Y-%m-%d")
+
+            for item in metrics_list:
+                item_type = item.get("type")
+                if item_type in ("hr", "hrv", "temp", "steps") and "object" in item:
+                    item["object"]["ultrahuman_date"] = date_str
+                    samples.append({"type": item_type, "object": item["object"]})
+
+            current_date = current_date + timedelta(days=1)
+
+        return samples
+
+    def get_daily_activity_statistics(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch aggregated daily activity statistics.
+
+        Ultrahuman does not provide daily activity statistics endpoint.
+
+        Returns:
+            list[dict[str, Any]]: Empty list as this is not available.
+        """
         return []
 
-    def get_recovery_data(self, *args, **kwargs) -> list[dict[str, Any]]:
-        return []
+    def normalize_daily_activity(
+        self,
+        raw_stats: dict[str, Any],
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        """Normalize daily activity statistics to our schema.
 
-    def get_activity_samples(self, *args, **kwargs) -> list[dict[str, Any]]:
-        return []
+        Ultrahuman does not provide daily activity statistics.
 
-    def get_daily_activity_statistics(self, *args, **kwargs) -> list[dict[str, Any]]:
-        return []
-
-    def normalize_daily_activity(self, *args, **kwargs) -> dict[str, Any]:
+        Returns:
+            dict[str, Any]: Empty dict as this is not available.
+        """
         return {}
