@@ -529,8 +529,8 @@ class TestUltrahumanErrorHandling:
         provider_impl = strategy.data_247
         assert isinstance(provider_impl, Ultrahuman247Data)
 
-        end_time = datetime(2024, 1, 10, tzinfo=timezone.utc)
-        start_time = datetime(2024, 1, 8, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 17, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
 
         with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
