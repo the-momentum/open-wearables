@@ -4,6 +4,7 @@ from typing import TypedDict
 class SleepState(TypedDict):
     """Schema for sleep state."""
 
+    uuid: str
     start_time: str
     last_type: int
     last_timestamp: str

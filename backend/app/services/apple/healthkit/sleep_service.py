@@ -1,15 +1,21 @@
-from datetime import datetime
 import json
-from uuid import UUID
+from datetime import datetime
+from uuid import UUID, uuid4
 
-
-from app.schemas.apple.healthkit.redis_sleep import SleepState, SLEEP_START_STATES
-from app.schemas import RootJSON, HKRecordJSON
-from app.constants.series_types import get_apple_sleep_type
-from app.schemas import UploadDataResponse
-from app.integrations.redis_client import get_redis_client
 from app.config import settings
-
+from app.constants.series_types import get_apple_sleep_type
+from app.integrations.redis_client import get_redis_client
+from app.schemas import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    HKRecordJSON,
+    RootJSON,
+    UploadDataResponse,
+)
+from app.schemas.apple.healthkit.redis_sleep import SLEEP_START_STATES, SleepState
+from app.constants import SleepType
+from app.services.event_record_service import event_record_service
+from app.database import DbSession
 
 redis_client = get_redis_client()
 
@@ -18,14 +24,17 @@ def key(user_id: str) -> str:
     """Generate a key for the sleep state."""
     return f"sleep:active:{user_id}"
 
+
 def active_users_key() -> str:
     """Generate a key for the active users."""
     return "sleep:active_users"
+
 
 def load_sleep_state(user_id: str) -> SleepState | None:
     """Load the sleep state from Redis."""
     key = key(user_id)
     return redis_client.hgetall(key)
+
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
     redis_client.set(key(user_id), json.dumps(state), ex=settings.redis_ttl_seconds)
@@ -37,22 +46,49 @@ def delete_sleep_state(user_id: str) -> None:
     redis_client.srem(active_users_key(), user_id)
 
 
-def _apply_transition(state: SleepState, sleep_state: SleepState, start_time: datetime) -> SleepState:
+def _create_new_sleep_state(start_time: datetime, sleep_state: SleepType) -> SleepState:
+    return SleepState(
+        start_time=start_time,
+        last_type=sleep_state,
+        last_timestamp=start_time,
+        in_bed=0,
+        awake=0,
+        light=0,
+        deep=0,
+        rem=0,
+    )
+
+def _apply_transition(
+    db_session: DbSession,
+    user_id: str,
+    state: SleepState,
+    sleep_state: SleepType,
+    start_time: datetime,
+) -> SleepState:
     """Apply a transition to the sleep state."""
-    
+
     last_timestamp = datetime.fromisoformat(state["last_timestamp"])
     delta_seconds = (start_time - last_timestamp).total_seconds()
-    
+
+    if delta_seconds <= 0:
+        return
+
+    if delta_seconds > 3600:
+        finish_sleep(db_session, user_id, state)
+        state = _create_new_sleep_state(start_time, sleep_state)
+        save_sleep_state(user_id, state)
+        return state
+
     last_type = get_apple_sleep_type(state["last_type"])
 
     match last_type:
-        case SleepState.IN_BED:
+        case SleepType.IN_BED:
             state["in_bed"] += delta_seconds
-        case SleepState.AWAKE:
+        case SleepType.AWAKE:
             state["awake"] += delta_seconds
-        case SleepState.ASLEEP_CORE:
+        case SleepType.ASLEEP_CORE:
             state["deep"] += delta_seconds
-        case SleepState.ASLEEP_REM:
+        case SleepType.ASLEEP_REM:
             state["rem"] += delta_seconds
         case _:
             pass
@@ -61,37 +97,70 @@ def _apply_transition(state: SleepState, sleep_state: SleepState, start_time: da
     state["last_timestamp"] = start_time.isoformat()
     return state
 
+
 def handle_sleep_data(
-        raw: dict,
-        user_id: str,
-    ) -> UploadDataResponse:
-        root = RootJSON(**raw)
-        sleep_raw = root.data.get("sleep", [])
+    raw: dict,
+    user_id: str,
+) -> UploadDataResponse:
+    root = RootJSON(**raw)
+    sleep_raw = root.data.get("sleep", [])
 
-        current_state = load_sleep_state(user_id)
+    current_state = load_sleep_state(user_id)
 
-        for s in sleep_raw:
-            sjson = HKRecordJSON(**s)
-            sleep_state = get_apple_sleep_type(sjson.value)
+    for s in sleep_raw:
+        sjson = HKRecordJSON(**s)
+        sleep_state = get_apple_sleep_type(sjson.value)
 
-            if not current_state:
-                if sleep_state not in SLEEP_START_STATES:
-                    return
-
-                current_state = SleepState(
-                    start_time=sjson.startDate,
-                    last_type=sleep_state,
-                    last_timestamp=sjson.startDate,
-                    in_bed=0,
-                    awake=0,
-                    light=0,
-                    deep=0,
-                    rem=0,
-                )
-                save_sleep_state(user_id, current_state)
+        if not current_state:
+            if sleep_state not in SLEEP_START_STATES:
                 return
 
-            current_state = _apply_transition(current_state, sleep_state, sjson.startDate)
+            current_state = _create_new_sleep_state(sjson.startDate, sleep_state)
             save_sleep_state(user_id, current_state)
+            return
+
+        current_state = _apply_transition(current_state, sleep_state, sjson.startDate)
+        save_sleep_state(user_id, current_state)
 
 
+def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None:
+    """Finish a sleep session."""
+
+    end_time = datetime.fromisoformat(state["last_timestamp"])
+    start_time = datetime.fromisoformat(state["start_time"])
+
+    total_sleep = state["light"] + state["deep"] + state["rem"]
+    in_bed = state["in_bed"]
+
+    efficiency = total_sleep / in_bed if in_bed > 0 else 0
+
+    sleep_record = EventRecordCreate(
+        id=UUID(state["uuid"]),
+        user_id=UUID(user_id),
+        start_datetime=start_time,
+        end_datetime=end_time,
+        category="sleep",
+        type="sleep",
+        source_name="apple",
+        device_id=None,
+        duration_seconds=total_sleep,
+    )
+
+    detail = EventRecordDetailCreate(
+        record_id=sleep_record.id,
+        sleep_total_duration_minutes=total_sleep,
+        sleep_time_in_bed_minutes=in_bed,
+        sleep_efficiency_score=efficiency,
+        sleep_deep_minutes=state["deep"],
+        sleep_rem_minutes=state["rem"],
+        sleep_light_minutes=state["light"],
+        sleep_awake_minutes=state["awake"],
+        is_nap=False,
+    )
+
+    delete_sleep_state(user_id)
+
+    created_or_existing_record = event_record_service.create(db_session, sleep_record)
+    # Always use the returned record's ID (whether newly created or existing)
+    detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
+    event_record_service.create_detail(db_session, detail_for_record)

@@ -1,7 +1,10 @@
 from .apple import (
-    get_series_type_from_healthion_type,
-    get_series_type_from_metric_type as get_series_type_from_apple_metric_type,
+    SleepType,
     get_apple_sleep_type,
+    get_series_type_from_healthion_type,
+)
+from .apple import (
+    get_series_type_from_metric_type as get_series_type_from_apple_metric_type,
 )
 
 __all__ = [
