@@ -13,6 +13,8 @@ import {
   Flame,
   Upload,
   Loader2,
+  Key,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -25,6 +27,7 @@ import {
   useDeleteUser,
   useUpdateUser,
   useAppleXmlUpload,
+  useGenerateUserToken,
 } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,6 +50,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const TIME_SERIES_TYPES = ['energy', 'steps', 'heart_rate'];
 
@@ -108,8 +119,11 @@ function UserDetailPage() {
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
+  const { mutate: generateToken, data: tokenData, isPending: isGeneratingToken } = useGenerateUserToken();
   const [copied, setCopied] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     first_name: '',
     last_name: '',
@@ -168,6 +182,23 @@ function UserDetailPage() {
         },
       }
     );
+  };
+
+  const handleGenerateToken = () => {
+    generateToken(userId, {
+      onSuccess: () => {
+        setIsTokenDialogOpen(true);
+      },
+    });
+  };
+
+  const handleCopyToken = async () => {
+    if (tokenData?.access_token) {
+      await navigator.clipboard.writeText(tokenData.access_token);
+      setTokenCopied(true);
+      toast.success('Token copied to clipboard');
+      setTimeout(() => setTokenCopied(false), 2000);
+    }
   };
 
   if (!userLoading && !user) {
@@ -254,6 +285,23 @@ function UserDetailPage() {
               <>
                 <LinkIcon className="h-4 w-4" />
                 Copy Pairing Link
+              </>
+            )}
+          </button>
+          <button
+            onClick={handleGenerateToken}
+            disabled={isGeneratingToken}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGeneratingToken ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Key className="h-4 w-4" />
+                Generate Token
               </>
             )}
           </button>
@@ -677,6 +725,49 @@ function UserDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Token Dialog */}
+      <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>User Token Generated</DialogTitle>
+            <DialogDescription>
+              This token is valid for 60 minutes and can be used to access SDK
+              endpoints for this user. Store it securely.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="token" className="text-zinc-300">
+                Access Token
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="token"
+                  readOnly
+                  value={tokenData?.access_token || ''}
+                  className="bg-zinc-800 border-zinc-700 font-mono text-sm"
+                />
+                <Button
+                  onClick={handleCopyToken}
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                >
+                  {tokenCopied ? (
+                    <Check className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Token type: {tokenData?.token_type || 'bearer'}
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

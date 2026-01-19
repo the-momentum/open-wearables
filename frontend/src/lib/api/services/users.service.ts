@@ -9,6 +9,7 @@ import type {
   PaginatedUsersResponse,
   PresignedURLRequest,
   PresignedURLResponse,
+  Token,
 } from '../types';
 
 export const usersService = {
@@ -94,5 +95,11 @@ export const usersService = {
     if (!response.ok) {
       throw new Error(`S3 upload failed: ${response.statusText}`);
     }
+  },
+
+  async generateToken(userId: string): Promise<Token> {
+    // Send no body - admin authentication via Bearer token will be used
+    const endpoint = API_ENDPOINTS.userToken(userId);
+    return apiClient.post<Token>(endpoint, null);
   },
 };

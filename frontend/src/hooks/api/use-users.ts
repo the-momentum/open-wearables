@@ -132,6 +132,20 @@ export function useDeleteUser() {
   });
 }
 
+export function useGenerateUserToken() {
+  return useMutation({
+    mutationFn: (userId: string) => usersService.generateToken(userId),
+    onSuccess: () => {
+      toast.success('User token generated successfully');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to generate user token';
+      toast.error(message);
+    },
+  });
+}
+
 export function useUploadAppleXml() {
   const queryClient = useQueryClient();
 
