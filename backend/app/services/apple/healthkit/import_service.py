@@ -4,6 +4,11 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
+from app.constants.series_types import (
+    get_series_type_from_apple_metric_type,
+    get_series_type_from_healthion_type,
+)
+from app.constants.workout_types import get_unified_apple_workout_type
 from app.constants.series_types import get_series_type_from_apple_metric_type, get_series_type_from_healthion_type
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
@@ -24,6 +29,7 @@ from app.schemas import (
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
+from .sleep_service import handle_sleep_data
 
 
 class ImportService:
@@ -77,6 +83,8 @@ class ImportService:
             )
 
             yield record, detail
+
+    
 
     def _build_statistic_bundles(
         self,
@@ -160,6 +168,8 @@ class ImportService:
 
         samples = self._build_statistic_bundles(raw, user_id)
         self.timeseries_service.bulk_create_samples(db_session, samples)
+
+        handle_sleep_data(raw, user_id)
 
         return True
 

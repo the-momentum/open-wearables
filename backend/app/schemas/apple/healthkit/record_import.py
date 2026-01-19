@@ -39,3 +39,5 @@ class RecordJSON(BaseModel):
     value: Decimal
     sourceName: str | None = None
     recordMetadata: list[dict[str, Any]] | None = None
+
+

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
+    # For sleep state expiration
+    redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
+
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
 
