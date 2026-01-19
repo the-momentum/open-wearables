@@ -113,7 +113,13 @@ async def get_sdk_auth(
     # Try SDK user token first
     if token:
         try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            # Allow tokens without exp claim (infinite tokens)
+            payload = jwt.decode(
+                token,
+                settings.secret_key,
+                algorithms=[settings.algorithm],
+                options={"verify_exp": False},
+            )
             if payload.get("scope") == "sdk":
                 sub = payload.get("sub")
                 return SDKAuthContext(
