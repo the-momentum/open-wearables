@@ -67,6 +67,7 @@ class Settings(BaseSettings):
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    sleep_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None

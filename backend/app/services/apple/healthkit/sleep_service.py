@@ -53,17 +53,17 @@ def delete_sleep_state(user_id: str) -> None:
 
 
 def _create_new_sleep_state(start_time: datetime, sleep_state: SleepType) -> SleepState:
-    return SleepState(
-        uuid=str(uuid4()),
-        start_time=start_time.isoformat(),
-        last_type=sleep_state,
-        last_timestamp=start_time.isoformat(),
-        in_bed=0,
-        awake=0,
-        light=0,
-        deep=0,
-        rem=0,
-    )
+    return {
+        "uuid": str(uuid4()),
+        "start_time": start_time.isoformat(),
+        "last_type": sleep_state,
+        "last_timestamp": start_time.isoformat(),
+        "in_bed": 0,
+        "awake": 0,
+        "light": 0,
+        "deep": 0,
+        "rem": 0,
+    }
 
 
 def _apply_transition(

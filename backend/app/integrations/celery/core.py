@@ -27,6 +27,12 @@ def create_celery() -> Celery:
             "args": (),  # No args - task calculates date range dynamically
             "kwargs": {"user_id": None},
         },
+        "finalize-stale-sleeps-periodic": {
+            "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
+            "schedule": float(settings.sleep_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app
