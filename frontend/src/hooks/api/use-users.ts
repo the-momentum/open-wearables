@@ -140,7 +140,9 @@ export function useGenerateUserToken() {
     },
     onError: (error: unknown) => {
       const message =
-        error instanceof Error ? error.message : 'Failed to generate user token';
+        error instanceof Error
+          ? error.message
+          : 'Failed to generate user token';
       toast.error(message);
     },
   });
