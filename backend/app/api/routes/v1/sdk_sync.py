@@ -57,7 +57,7 @@ async def sync_data_auto_health_export(
         source="auto-health-export",
     )
 
-    return UploadDataResponse(status_code=202, response="Import task queued successfully")
+    return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
 
 
 @router.post("/sdk/users/{user_id}/sync/apple/healthion")
@@ -87,4 +87,4 @@ async def sync_data_healthion(
         source="healthion",
     )
 
-    return UploadDataResponse(status_code=202, response="Import task queued successfully")
+    return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
