@@ -46,7 +46,7 @@ class TestSyncAllUsersTask:
         assert mock_sync_vendor_data.delay.call_count == 3
 
         # Verify each user was queued for sync
-        call_args_list = [call[0][0] for call in mock_sync_vendor_data.delay.call_args_list]
+        call_args_list = [call.kwargs["user_id"] for call in mock_sync_vendor_data.delay.call_args_list]
         assert str(user1.id) in call_args_list
         assert str(user2.id) in call_args_list
         assert str(user3.id) in call_args_list
@@ -77,9 +77,9 @@ class TestSyncAllUsersTask:
         # Assert
         assert result["users_for_sync"] == 1
         mock_sync_vendor_data.delay.assert_called_once_with(
-            str(user.id),
-            start_date,
-            end_date,
+            user_id=str(user.id),
+            start_date=start_date,
+            end_date=end_date,
         )
 
     @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
@@ -113,8 +113,8 @@ class TestSyncAllUsersTask:
         mock_sync_vendor_data.delay.assert_called_once()
 
         # Verify only user1 was queued
-        call_args = mock_sync_vendor_data.delay.call_args[0]
-        assert call_args[0] == str(user1.id)
+        call_kwargs = mock_sync_vendor_data.delay.call_args.kwargs
+        assert call_kwargs["user_id"] == str(user1.id)
 
     @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
@@ -164,7 +164,7 @@ class TestSyncAllUsersTask:
         # Assert
         # User should only be counted once despite having 3 connections
         assert result["users_for_sync"] == 1
-        mock_sync_vendor_data.delay.assert_called_once_with(str(user.id), None, None)
+        mock_sync_vendor_data.delay.assert_called_once_with(user_id=str(user.id), start_date=None, end_date=None)
 
     @patch("app.integrations.celery.tasks.periodic_sync_task.SessionLocal")
     @patch("app.integrations.celery.tasks.periodic_sync_task.sync_vendor_data")
@@ -201,7 +201,7 @@ class TestSyncAllUsersTask:
         assert result["users_for_sync"] == 2  # Only user1 and user2
         assert mock_sync_vendor_data.delay.call_count == 2
 
-        call_args_list = [call[0][0] for call in mock_sync_vendor_data.delay.call_args_list]
+        call_args_list = [call.kwargs["user_id"] for call in mock_sync_vendor_data.delay.call_args_list]
         assert str(user1.id) in call_args_list
         assert str(user2.id) in call_args_list
         assert str(user3.id) not in call_args_list
@@ -259,6 +259,6 @@ class TestSyncAllUsersTask:
         assert mock_sync_vendor_data.delay.call_count == 10
 
         # Verify all users were queued
-        call_args_list = [call[0][0] for call in mock_sync_vendor_data.delay.call_args_list]
+        call_args_list = [call.kwargs["user_id"] for call in mock_sync_vendor_data.delay.call_args_list]
         for user in users:
             assert str(user.id) in call_args_list
