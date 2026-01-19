@@ -1,5 +1,3 @@
-import re
-
 from app.schemas.workout_types import WorkoutType
 
 # HealthKit HKWorkoutActivityType mappings
