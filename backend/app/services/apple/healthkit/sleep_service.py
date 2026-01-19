@@ -38,11 +38,12 @@ def load_sleep_state(user_id: str) -> SleepState | None:
     state = redis_client.get(sleep_state_key)
     if not state:
         return None
-    return json.loads(state.decode("utf-8"))
+    return json.loads(state)
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    redis_client.set(key(user_id), json.dumps(state).encode("utf-8"))
+    # Redis with decode_responses=True expects strings, not bytes
+    redis_client.set(key(user_id), json.dumps(state))
     redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
     redis_client.sadd(active_users_key(), user_id)
 
@@ -57,7 +58,7 @@ def _create_new_sleep_state(start_time: datetime, sleep_state: SleepType) -> Sle
         "uuid": str(uuid4()),
         "start_time": start_time.isoformat(),
         "last_type": sleep_state,
-        "last_timestamp": start_time.isoformat(),
+        "last_timestamp": start_time.isoformat(),  # Will be updated with endDate immediately after
         "in_bed": 0,
         "awake": 0,
         "light": 0,
@@ -72,6 +73,7 @@ def _apply_transition(
     state: SleepState,
     sleep_state: SleepType,
     start_time: datetime,
+    end_time: datetime,
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
@@ -93,6 +95,8 @@ def _apply_transition(
         case SleepType.AWAKE:
             state["awake"] += delta_seconds
         case SleepType.ASLEEP_CORE:
+            state["light"] += delta_seconds
+        case SleepType.ASLEEP_DEEP:
             state["deep"] += delta_seconds
         case SleepType.ASLEEP_REM:
             state["rem"] += delta_seconds
@@ -100,7 +104,7 @@ def _apply_transition(
             pass
 
     state["last_type"] = int(sleep_state)
-    state["last_timestamp"] = start_time.isoformat()
+    state["last_timestamp"] = end_time.isoformat()
     return state
 
 
@@ -125,10 +129,13 @@ def handle_sleep_data(
                 continue
 
             current_state = _create_new_sleep_state(sjson.startDate, sleep_state)
+            # Store endDate as last_timestamp since that's when this period actually ends
+            current_state["last_timestamp"] = sjson.endDate.isoformat()
             save_sleep_state(user_id, current_state)
             continue
 
-        current_state = _apply_transition(db_session, user_id, current_state, sleep_state, sjson.startDate)
+        # Check if there's a gap between the last record's end and this record's start
+        current_state = _apply_transition(db_session, user_id, current_state, sleep_state, sjson.startDate, sjson.endDate)
         save_sleep_state(user_id, current_state)
 
 
@@ -172,4 +179,4 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     created_or_existing_record = event_record_service.create(db_session, sleep_record)
     # Always use the returned record's ID (whether newly created or existing)
     detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-    event_record_service.create_detail(db_session, detail_for_record)
+    event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")

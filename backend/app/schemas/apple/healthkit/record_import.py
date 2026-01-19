@@ -35,7 +35,7 @@ class RecordJSON(BaseModel):
     type: str | None = None
     startDate: datetime
     endDate: datetime
-    unit: str
+    unit: str | None
     value: Decimal
     sourceName: str | None = None
     recordMetadata: list[dict[str, Any]] | None = None
