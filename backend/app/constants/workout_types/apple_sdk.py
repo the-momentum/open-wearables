@@ -3,7 +3,7 @@ from app.schemas.workout_types import WorkoutType
 # HealthKit HKWorkoutActivityType mappings
 # Source: Apple HealthKit Framework Documentation
 # Format: (healthkit_activity_type, unified_type)
-HEALTHKIT_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
+SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     # Exercise and Fitness
     ("walking", WorkoutType.WALKING),
     ("running", WorkoutType.RUNNING),
@@ -103,17 +103,17 @@ HEALTHKIT_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
 ]
 
 
-HEALTHKIT_TO_UNIFIED: dict[str, WorkoutType] = {
-    activity_type: unified_type for activity_type, unified_type in HEALTHKIT_WORKOUT_TYPE_MAPPINGS
+SDK_TO_UNIFIED: dict[str, WorkoutType] = {
+    activity_type: unified_type for activity_type, unified_type in SDK_WORKOUT_TYPE_MAPPINGS
 }
 
 
-def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
+def get_unified_workout_type(sdk_activity_type: str) -> WorkoutType:
     """
-    Convert HealthKit HKWorkoutActivityType to unified WorkoutType.
+    Convert SDK activity type to unified WorkoutType.
 
     Args:
-        healthkit_activity_type: HealthKit activity type string in snake_case
+        sdk_activity_type: SDK activity type string in snake_case
                                 (e.g., "running", "cycling", "yoga")
 
     Returns:
@@ -134,18 +134,18 @@ def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
         - dance_inspired_training
         - mixed_metabolic_cardio_training
     """
-    return HEALTHKIT_TO_UNIFIED.get(healthkit_activity_type, WorkoutType.OTHER)
+    return SDK_TO_UNIFIED.get(sdk_activity_type, WorkoutType.OTHER)
 
 
-def get_healthkit_activity_name(healthkit_activity_type: str) -> str:
+def get_activity_name(sdk_activity_type: str) -> str:
     """
     Convert snake_case activity type to human-readable name.
     Examples:
-        >>> get_healthkit_activity_name("running")
+        >>> get_activity_name("running")
         "Running"
-        >>> get_healthkit_activity_name("hiit")
+        >>> get_activity_name("hiit")
         "Hiit"
-        >>> get_healthkit_activity_name("cross_country_skiing")
+        >>> get_activity_name("cross_country_skiing")
         "Cross Country Skiing"
     """
-    return healthkit_activity_type.replace("_", " ").title()
+    return sdk_activity_type.replace("_", " ").title()
