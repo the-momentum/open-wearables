@@ -135,7 +135,9 @@ def handle_sleep_data(
             continue
 
         # Check if there's a gap between the last record's end and this record's start
-        current_state = _apply_transition(db_session, user_id, current_state, sleep_state, sjson.startDate, sjson.endDate)
+        current_state = _apply_transition(
+            db_session, user_id, current_state, sleep_state, sjson.startDate, sjson.endDate
+        )
         save_sleep_state(user_id, current_state)
 
 
