@@ -7,101 +7,101 @@ from app.schemas.workout_types import WorkoutType
 # Format: (healthkit_activity_type, unified_type)
 HEALTHKIT_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [
     # Exercise and Fitness
-    ("HKWorkoutActivityTypeWalking", WorkoutType.WALKING),
-    ("HKWorkoutActivityTypeRunning", WorkoutType.RUNNING),
-    ("HKWorkoutActivityTypeCycling", WorkoutType.CYCLING),
-    ("HKWorkoutActivityTypeWheelchairWalkPace", WorkoutType.WALKING),
-    ("HKWorkoutActivityTypeWheelchairRunPace", WorkoutType.RUNNING),
-    ("HKWorkoutActivityTypeHandCycling", WorkoutType.CYCLING),
-    ("HKWorkoutActivityTypeElliptical", WorkoutType.ELLIPTICAL),
-    ("HKWorkoutActivityTypeStairClimbing", WorkoutType.STAIR_CLIMBING),
-    ("HKWorkoutActivityTypeStairs", WorkoutType.STAIR_CLIMBING),
-    ("HKWorkoutActivityTypeJumpRope", WorkoutType.CARDIO_TRAINING),
-    ("HKWorkoutActivityTypeCoreTraining", WorkoutType.STRENGTH_TRAINING),
-    ("HKWorkoutActivityTypeFunctionalStrengthTraining", WorkoutType.STRENGTH_TRAINING),
-    ("HKWorkoutActivityTypeTraditionalStrengthTraining", WorkoutType.STRENGTH_TRAINING),
-    ("HKWorkoutActivityTypeCrossTraining", WorkoutType.CARDIO_TRAINING),
-    ("HKWorkoutActivityTypeMixedCardio", WorkoutType.CARDIO_TRAINING),
-    ("HKWorkoutActivityTypeHighIntensityIntervalTraining", WorkoutType.CARDIO_TRAINING),
-    ("HKWorkoutActivityTypeStepTraining", WorkoutType.AEROBICS),
-    ("HKWorkoutActivityTypeFitnessGaming", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypePreparationAndRecovery", WorkoutType.STRETCHING),
-    ("HKWorkoutActivityTypeFlexibility", WorkoutType.STRETCHING),
-    ("HKWorkoutActivityTypeCooldown", WorkoutType.STRETCHING),
+    ("walking", WorkoutType.WALKING),
+    ("running", WorkoutType.RUNNING),
+    ("cycling", WorkoutType.CYCLING),
+    ("wheelchair_walk", WorkoutType.WALKING),
+    ("wheelchair_run", WorkoutType.RUNNING),
+    ("hand_cycling", WorkoutType.CYCLING),
+    ("elliptical", WorkoutType.ELLIPTICAL),
+    ("stair_climbing", WorkoutType.STAIR_CLIMBING),
+    ("stairs", WorkoutType.STAIR_CLIMBING),
+    ("jump_rope", WorkoutType.CARDIO_TRAINING),
+    ("core_training", WorkoutType.STRENGTH_TRAINING),
+    ("functional_strength_training", WorkoutType.STRENGTH_TRAINING),
+    ("strength_training", WorkoutType.STRENGTH_TRAINING),
+    ("cross_training", WorkoutType.CARDIO_TRAINING),
+    ("mixed_cardio", WorkoutType.CARDIO_TRAINING),
+    ("hiit", WorkoutType.CARDIO_TRAINING),
+    ("step_training", WorkoutType.AEROBICS),
+    ("fitness_gaming", WorkoutType.OTHER),
+    ("preparation_and_recovery", WorkoutType.STRETCHING),
+    ("flexibility", WorkoutType.STRETCHING),
+    ("cooldown", WorkoutType.STRETCHING),
     # Studio Activities
-    ("HKWorkoutActivityTypeBarre", WorkoutType.AEROBICS),
-    ("HKWorkoutActivityTypeCardioDance", WorkoutType.DANCE),
-    ("HKWorkoutActivityTypeSocialDance", WorkoutType.DANCE),
-    ("HKWorkoutActivityTypeYoga", WorkoutType.YOGA),
-    ("HKWorkoutActivityTypeMindAndBody", WorkoutType.STRETCHING),
-    ("HKWorkoutActivityTypePilates", WorkoutType.PILATES),
+    ("barre", WorkoutType.AEROBICS),
+    ("cardio_dance", WorkoutType.DANCE),
+    ("social_dance", WorkoutType.DANCE),
+    ("yoga", WorkoutType.YOGA),
+    ("mind_and_body", WorkoutType.STRETCHING),
+    ("pilates", WorkoutType.PILATES),
     # Team Sports
-    ("HKWorkoutActivityTypeAmericanFootball", WorkoutType.AMERICAN_FOOTBALL),
-    ("HKWorkoutActivityTypeAustralianFootball", WorkoutType.FOOTBALL),
-    ("HKWorkoutActivityTypeBaseball", WorkoutType.BASEBALL),
-    ("HKWorkoutActivityTypeBasketball", WorkoutType.BASKETBALL),
-    ("HKWorkoutActivityTypeCricket", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeDiscSports", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeHandball", WorkoutType.HANDBALL),
-    ("HKWorkoutActivityTypeHockey", WorkoutType.HOCKEY),
-    ("HKWorkoutActivityTypeLacrosse", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeRugby", WorkoutType.RUGBY),
-    ("HKWorkoutActivityTypeSoccer", WorkoutType.SOCCER),
-    ("HKWorkoutActivityTypeSoftball", WorkoutType.BASEBALL),
-    ("HKWorkoutActivityTypeVolleyball", WorkoutType.VOLLEYBALL),
+    ("american_football", WorkoutType.AMERICAN_FOOTBALL),
+    ("australian_football", WorkoutType.FOOTBALL),
+    ("baseball", WorkoutType.BASEBALL),
+    ("basketball", WorkoutType.BASKETBALL),
+    ("cricket", WorkoutType.OTHER),
+    ("disc_sports", WorkoutType.OTHER),
+    ("handball", WorkoutType.HANDBALL),
+    ("hockey", WorkoutType.HOCKEY),
+    ("lacrosse", WorkoutType.OTHER),
+    ("rugby", WorkoutType.RUGBY),
+    ("soccer", WorkoutType.SOCCER),
+    ("softball", WorkoutType.BASEBALL),
+    ("volleyball", WorkoutType.VOLLEYBALL),
     # Racket Sports
-    ("HKWorkoutActivityTypeBadminton", WorkoutType.BADMINTON),
-    ("HKWorkoutActivityTypePickleball", WorkoutType.PICKLEBALL),
-    ("HKWorkoutActivityTypeRacquetball", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeSquash", WorkoutType.SQUASH),
-    ("HKWorkoutActivityTypeTableTennis", WorkoutType.TABLE_TENNIS),
-    ("HKWorkoutActivityTypeTennis", WorkoutType.TENNIS),
+    ("badminton", WorkoutType.BADMINTON),
+    ("pickleball", WorkoutType.PICKLEBALL),
+    ("racquetball", WorkoutType.OTHER),
+    ("squash", WorkoutType.SQUASH),
+    ("table_tennis", WorkoutType.TABLE_TENNIS),
+    ("tennis", WorkoutType.TENNIS),
     # Outdoor Activities
-    ("HKWorkoutActivityTypeClimbing", WorkoutType.ROCK_CLIMBING),
-    ("HKWorkoutActivityTypeEquestrianSports", WorkoutType.HORSEBACK_RIDING),
-    ("HKWorkoutActivityTypeFishing", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeGolf", WorkoutType.GOLF),
-    ("HKWorkoutActivityTypeHiking", WorkoutType.HIKING),
-    ("HKWorkoutActivityTypeHunting", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypePlay", WorkoutType.OTHER),
+    ("climbing", WorkoutType.ROCK_CLIMBING),
+    ("equestrian", WorkoutType.HORSEBACK_RIDING),
+    ("fishing", WorkoutType.OTHER),
+    ("golf", WorkoutType.GOLF),
+    ("hiking", WorkoutType.HIKING),
+    ("hunting", WorkoutType.OTHER),
+    ("play", WorkoutType.OTHER),
     # Snow and Ice Sports
-    ("HKWorkoutActivityTypeCrossCountrySkiing", WorkoutType.CROSS_COUNTRY_SKIING),
-    ("HKWorkoutActivityTypeCurling", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeDownhillSkiing", WorkoutType.ALPINE_SKIING),
-    ("HKWorkoutActivityTypeSnowSports", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeSnowboarding", WorkoutType.SNOWBOARDING),
-    ("HKWorkoutActivityTypeSkatingSports", WorkoutType.ICE_SKATING),
+    ("cross_country_skiing", WorkoutType.CROSS_COUNTRY_SKIING),
+    ("curling", WorkoutType.OTHER),
+    ("downhill_skiing", WorkoutType.ALPINE_SKIING),
+    ("snow_sports", WorkoutType.OTHER),
+    ("snowboarding", WorkoutType.SNOWBOARDING),
+    ("skating", WorkoutType.ICE_SKATING),
     # Water Activities
-    ("HKWorkoutActivityTypePaddleSports", WorkoutType.PADDLING),
-    ("HKWorkoutActivityTypeRowing", WorkoutType.ROWING),
-    ("HKWorkoutActivityTypeSailing", WorkoutType.SAILING),
-    ("HKWorkoutActivityTypeSurfingSports", WorkoutType.SURFING),
-    ("HKWorkoutActivityTypeSwimming", WorkoutType.SWIMMING),
-    ("HKWorkoutActivityTypeUnderwaterDiving", WorkoutType.DIVING),
-    ("HKWorkoutActivityTypeWaterFitness", WorkoutType.SWIMMING),
-    ("HKWorkoutActivityTypeWaterPolo", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeWaterSports", WorkoutType.OTHER),
+    ("paddle_sports", WorkoutType.PADDLING),
+    ("rowing", WorkoutType.ROWING),
+    ("sailing", WorkoutType.SAILING),
+    ("surfing", WorkoutType.SURFING),
+    ("swimming", WorkoutType.SWIMMING),
+    ("underwater_diving", WorkoutType.DIVING),
+    ("water_fitness", WorkoutType.SWIMMING),
+    ("water_polo", WorkoutType.OTHER),
+    ("water_sports", WorkoutType.OTHER),
     # Martial Arts
-    ("HKWorkoutActivityTypeBoxing", WorkoutType.BOXING),
-    ("HKWorkoutActivityTypeKickboxing", WorkoutType.BOXING),
-    ("HKWorkoutActivityTypeMartialArts", WorkoutType.MARTIAL_ARTS),
-    ("HKWorkoutActivityTypeTaiChi", WorkoutType.MARTIAL_ARTS),
-    ("HKWorkoutActivityTypeWrestling", WorkoutType.MARTIAL_ARTS),
+    ("boxing", WorkoutType.BOXING),
+    ("kickboxing", WorkoutType.BOXING),
+    ("martial_arts", WorkoutType.MARTIAL_ARTS),
+    ("tai_chi", WorkoutType.MARTIAL_ARTS),
+    ("wrestling", WorkoutType.MARTIAL_ARTS),
     # Individual Sports
-    ("HKWorkoutActivityTypeArchery", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeBowling", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeFencing", WorkoutType.OTHER),
-    ("HKWorkoutActivityTypeGymnastics", WorkoutType.FITNESS_EQUIPMENT),
-    ("HKWorkoutActivityTypeTrackAndField", WorkoutType.RUNNING),
+    ("archery", WorkoutType.OTHER),
+    ("bowling", WorkoutType.OTHER),
+    ("fencing", WorkoutType.OTHER),
+    ("gymnastics", WorkoutType.FITNESS_EQUIPMENT),
+    ("track_and_field", WorkoutType.RUNNING),
     # Multisport Activities
-    ("HKWorkoutActivityTypeSwimBikeRun", WorkoutType.TRIATHLON),
-    ("HKWorkoutActivityTypeTransition", WorkoutType.TRANSITION),
+    ("swim_bike_run", WorkoutType.TRIATHLON),
+    ("transition", WorkoutType.TRANSITION),
     # Deprecated (but still supported for backward compatibility)
-    ("HKWorkoutActivityTypeDance", WorkoutType.DANCE),
-    ("HKWorkoutActivityTypeDanceInspiredTraining", WorkoutType.DANCE),
-    ("HKWorkoutActivityTypeMixedMetabolicCardioTraining", WorkoutType.CARDIO_TRAINING),
+    ("dance", WorkoutType.DANCE),
+    ("dance_inspired_training", WorkoutType.DANCE),
+    ("mixed_metabolic_cardio_training", WorkoutType.CARDIO_TRAINING),
     # Other
-    ("HKWorkoutActivityTypeOther", WorkoutType.OTHER),
+    ("other", WorkoutType.OTHER),
 ]
 
 
@@ -115,41 +115,39 @@ def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
     Convert HealthKit HKWorkoutActivityType to unified WorkoutType.
 
     Args:
-        healthkit_activity_type: HealthKit activity type string
-                                (e.g., "HKWorkoutActivityTypeRunning")
+        healthkit_activity_type: HealthKit activity type string in snake_case
+                                (e.g., "running", "cycling", "yoga")
 
     Returns:
         Unified WorkoutType enum value
 
     Examples:
-        >>> get_unified_workout_type("HKWorkoutActivityTypeRunning")
+        >>> get_unified_workout_type("running")
         WorkoutType.RUNNING
-        >>> get_unified_workout_type("HKWorkoutActivityTypeCycling")
+        >>> get_unified_workout_type("cycling")
         WorkoutType.CYCLING
-        >>> get_unified_workout_type("HKWorkoutActivityTypeYoga")
+        >>> get_unified_workout_type("yoga")
         WorkoutType.YOGA
-        >>> get_unified_workout_type("HKWorkoutActivityTypeOther")
+        >>> get_unified_workout_type("other")
         WorkoutType.OTHER
     Note:
         Some deprecated types are still supported for backward compatibility:
-        - HKWorkoutActivityTypeDance
-        - HKWorkoutActivityTypeDanceInspiredTraining
-        - HKWorkoutActivityTypeMixedMetabolicCardioTraining
+        - dance
+        - dance_inspired_training
+        - mixed_metabolic_cardio_training
     """
     return HEALTHKIT_TO_UNIFIED.get(healthkit_activity_type, WorkoutType.OTHER)
 
 
 def get_healthkit_activity_name(healthkit_activity_type: str) -> str:
     """
-    Extract human-readable name from HealthKit activity type.
+    Convert snake_case activity type to human-readable name.
     Examples:
-        >>> get_healthkit_activity_name("HKWorkoutActivityTypeRunning")
+        >>> get_healthkit_activity_name("running")
         "Running"
-        >>> get_healthkit_activity_name("HKWorkoutActivityTypeHighIntensityIntervalTraining")
-        "High Intensity Interval Training"
+        >>> get_healthkit_activity_name("hiit")
+        "Hiit"
+        >>> get_healthkit_activity_name("cross_country_skiing")
+        "Cross Country Skiing"
     """
-    # Remove prefix
-    if healthkit_activity_type.startswith("HKWorkoutActivityType"):
-        name = healthkit_activity_type[len("HKWorkoutActivityType") :]
-        return re.sub(r"([A-Z])", r" \1", name).strip()
-    return healthkit_activity_type
+    return healthkit_activity_type.replace("_", " ").title()
