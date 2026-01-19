@@ -2,8 +2,9 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   healthService,
   type WorkoutsParams,
+  type SummaryParams,
 } from '@/lib/api/services/health.service';
-import type { TimeSeriesParams } from '@/lib/api/types';
+import type { TimeSeriesParams, SleepSessionsParams } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { queryClient } from '@/lib/query/client';
@@ -41,6 +42,54 @@ export function useTimeSeries(userId: string, params: TimeSeriesParams) {
     queryKey: queryKeys.health.timeseries(userId, params),
     queryFn: () => healthService.getTimeSeries(userId, params),
     enabled: !!userId && !!params.start_time && !!params.end_time,
+  });
+}
+
+/**
+ * Get sleep sessions for a user
+ * Uses GET /api/v1/users/{user_id}/events/sleep
+ */
+export function useSleepSessions(userId: string, params: SleepSessionsParams) {
+  return useQuery({
+    queryKey: queryKeys.health.sleepSessions(userId, params),
+    queryFn: () => healthService.getSleepSessions(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get sleep summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/sleep
+ */
+export function useSleepSummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.sleepSummaries(userId, params),
+    queryFn: () => healthService.getSleepSummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get activity summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/activity
+ */
+export function useActivitySummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.activitySummaries(userId, params),
+    queryFn: () => healthService.getActivitySummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Get body summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/body
+ */
+export function useBodySummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.bodySummaries(userId, params),
+    queryFn: () => healthService.getBodySummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
   });
 }
 

@@ -77,5 +77,13 @@ async def get_body_summary(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[BodySummary]:
-    """Returns daily body metrics."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    """Returns daily body composition and vital statistics.
+
+    Aggregates include:
+    - Body composition: weight, height, body fat %, muscle mass, BMI
+    - Vitals (7-day rolling avg): resting HR, HRV, blood pressure
+    - Static: age (calculated from birth date)
+    """
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return await summaries_service.get_body_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)

@@ -67,7 +67,9 @@ class TestPollSqsMessages:
 
         # Assert
         assert result == {"messages_processed": 1, "messages_failed": 0, "total_messages": 1}
-        mock_process_upload.delay.assert_called_once_with("test-bucket", "test-key")
+        mock_process_upload.delay.assert_called_once_with(
+            bucket_name="test-bucket", object_key="test-key", user_id=None
+        )
         mock_sqs.delete_message.assert_called_once()
 
     def test_poll_sqs_multiple_messages_processed(self, mock_sqs: MagicMock, mock_process_upload: MagicMock) -> None:
@@ -221,9 +223,13 @@ class TestPollSqsTask:
             # Assert
             assert result == {"status": "scheduled", "iteration": 1}
             mock_apply_async.assert_called_once()
-            call_args = mock_apply_async.call_args
-            assert call_args.kwargs["args"] == [60, 1]
-            assert call_args.kwargs["countdown"] == 20
+            call_kwargs = mock_apply_async.call_args.kwargs
+            assert call_kwargs["kwargs"] == {
+                "expiration_seconds": 60,
+                "iterations_done": 1,
+                "user_id": None,
+            }
+            assert call_kwargs["countdown"] == 20
 
     def test_poll_sqs_task_stops_after_max_iterations(self, mock_sqs: MagicMock) -> None:
         """Test poll_sqs_task stops after reaching max iterations."""

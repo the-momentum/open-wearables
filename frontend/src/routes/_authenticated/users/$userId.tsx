@@ -1,44 +1,35 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useRef, useMemo, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Link as LinkIcon,
-  Activity,
   Trash2,
   Check,
-  Pencil,
-  X,
-  Heart,
-  Footprints,
-  Flame,
   Upload,
   Loader2,
   Key,
   Copy,
+  User,
+  Dumbbell,
+  Activity,
+  Moon,
+  Scale,
+  type LucideIcon,
 } from 'lucide-react';
-import { toast } from 'sonner';
-import {
-  useUserConnections,
-  useWorkouts,
-  useTimeSeries,
-} from '@/hooks/api/use-health';
 import {
   useUser,
   useDeleteUser,
-  useUpdateUser,
   useAppleXmlUpload,
   useGenerateUserToken,
 } from '@/hooks/api/use-users';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { formatDate, truncateId } from '@/lib/utils/format';
-import { getWorkoutStyle } from '@/lib/utils/workout-styles';
-import { ConnectionCard } from '@/components/user/connection-card';
-import {
-  DateRangeSelector,
-  type DateRangeValue,
-} from '@/components/ui/date-range-selector';
-import { DataSummaryCard } from '@/components/pages/dashboard';
+import { copyToClipboard } from '@/lib/utils/clipboard';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ProfileSection } from '@/components/user/profile-section';
+import { SleepSection } from '@/components/user/sleep-section';
+import { ActivitySection } from '@/components/user/activity-section';
+import { BodySection } from '@/components/user/body-section';
+import { WorkoutSection } from '@/components/user/workout-section';
+import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,65 +50,32 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-const TIME_SERIES_TYPES = ['energy', 'steps', 'heart_rate'];
-
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
 });
+
+interface TabConfig {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  content: ReactNode;
+}
 
 function UserDetailPage() {
   const { userId } = Route.useParams();
   const navigate = useNavigate();
   const { data: user, isLoading: userLoading } = useUser(userId);
 
-  const [dateRange, setDateRange] = useState<DateRangeValue>(30);
-  const [dataPointsDateRange, setDataPointsDateRange] =
+  // Tab state
+  const [activeTab, setActiveTab] = useState('profile');
+
+  // Date range states for different sections
+  const [workoutDateRange, setWorkoutDateRange] = useState<DateRangeValue>(30);
+  const [activityDateRange, setActivityDateRange] =
     useState<DateRangeValue>(30);
+  const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
 
-  // Calculate dates for workouts
-  const { workoutStartDate, workoutEndDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dateRange);
-    return { workoutStartDate: start, workoutEndDate: end };
-  }, [dateRange]);
-
-  const { data: workouts, isLoading: workoutsLoading } = useWorkouts(userId, {
-    start_date: Math.floor(workoutStartDate.getTime() / 1000).toString(),
-    end_date: Math.floor(workoutEndDate.getTime() / 1000).toString(),
-    limit: 100,
-    sort_order: 'desc',
-  });
-
-  // Calculate dates for time series
-  const { tsStartDate, tsEndDate } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - dataPointsDateRange);
-    return { tsStartDate: start, tsEndDate: end };
-  }, [dataPointsDateRange]);
-
-  const { data: timeSeries, isLoading: timeSeriesLoading } = useTimeSeries(
-    userId,
-    {
-      start_time: tsStartDate.toISOString(),
-      end_time: tsEndDate.toISOString(),
-      types: TIME_SERIES_TYPES,
-      limit: 100,
-    }
-  );
-
-  // Process time series data for display
-  const processedTimeSeries = {
-    energy: timeSeries?.data.filter((d) => d.type === 'energy') || [],
-    steps: timeSeries?.data.filter((d) => d.type === 'steps') || [],
-    heartRate: timeSeries?.data.filter((d) => d.type === 'heart_rate') || [],
-  };
-
-  const { data: connections, isLoading: connectionsLoading } =
-    useUserConnections(userId);
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
-  const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
   const { mutate: generateToken, data: tokenData, isPending: isGeneratingToken } = useGenerateUserToken();
   const [copied, setCopied] = useState(false);
@@ -134,23 +92,71 @@ function UserDetailPage() {
 
   const isUploading = isUploadingFile(userId);
 
-  useEffect(() => {
-    if (user) {
-      setEditForm({
-        first_name: user.first_name || '',
-        last_name: user.last_name || '',
-        email: user.email || '',
-        external_user_id: user.external_user_id || '',
-      });
-    }
-  }, [user]);
+  // Tab configuration
+  const tabs: TabConfig[] = useMemo(
+    () => [
+      {
+        id: 'profile',
+        label: 'Profile',
+        icon: User,
+        content: <ProfileSection userId={userId} />,
+      },
+      {
+        id: 'workouts',
+        label: 'Workouts',
+        icon: Dumbbell,
+        content: (
+          <WorkoutSection
+            userId={userId}
+            dateRange={workoutDateRange}
+            onDateRangeChange={setWorkoutDateRange}
+          />
+        ),
+      },
+      {
+        id: 'activity',
+        label: 'Activity',
+        icon: Activity,
+        content: (
+          <ActivitySection
+            userId={userId}
+            dateRange={activityDateRange}
+            onDateRangeChange={setActivityDateRange}
+          />
+        ),
+      },
+      {
+        id: 'sleep',
+        label: 'Sleep',
+        icon: Moon,
+        content: (
+          <SleepSection
+            userId={userId}
+            dateRange={sleepDateRange}
+            onDateRangeChange={setSleepDateRange}
+          />
+        ),
+      },
+      {
+        id: 'body',
+        label: 'Body',
+        icon: Scale,
+        content: <BodySection userId={userId} />,
+      },
+    ],
+    [userId, workoutDateRange, activityDateRange, sleepDateRange]
+  );
 
   const handleCopyPairLink = async () => {
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    await navigator.clipboard.writeText(pairLink);
-    setCopied(true);
-    toast.success('Pairing link copied to clipboard');
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(
+      pairLink,
+      'Pairing link copied to clipboard'
+    );
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const handleUploadClick = () => {
@@ -337,192 +343,22 @@ function UserDetailPage() {
         </div>
       </div>
 
-      {/* User Information */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-white">User Information</h2>
-          <button
-            onClick={() => setIsEditDialogOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </button>
-        </div>
-        <div className="p-6">
-          {userLoading ? (
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
-                <div className="h-5 w-48 bg-zinc-800 rounded animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
-                <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse" />
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">User ID</p>
-                <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
-                  {truncateId(user?.id ?? '')}
-                </code>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">External User ID</p>
-                <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
-                  {user?.external_user_id || '—'}
-                </code>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Email</p>
-                <p className="text-sm text-zinc-300">{user?.email || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-zinc-500 mb-1">Created</p>
-                <p className="text-sm text-zinc-300">
-                  {formatDate(user?.created_at)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Connected Providers */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-medium text-white">
-            Connected Providers
-          </h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Wearable devices and health platforms connected to this user
-          </p>
-        </div>
-        <div className="p-6">
-          {connectionsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="p-4 border border-zinc-800 rounded-lg space-y-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-6 w-24 bg-zinc-800 rounded animate-pulse" />
-                    <div className="h-5 w-16 bg-zinc-800/50 rounded animate-pulse" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-4 w-40 bg-zinc-800/50 rounded animate-pulse" />
-                    <div className="h-4 w-36 bg-zinc-800/50 rounded animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : connections && connections.length > 0 ? (
-            <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
-              {connections.map((connection) => (
-                <ConnectionCard key={connection.id} connection={connection} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-zinc-500 mb-4">No providers connected yet</p>
-              <button
-                onClick={handleCopyPairLink}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-500" />
-                    Link Copied!
-                  </>
-                ) : (
-                  <>
-                    <LinkIcon className="h-4 w-4" />
-                    Copy Pairing Link
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Health Stats */}
-      <div className="grid gap-6">
-        {/* Activity / Workouts */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h3 className="text-sm font-medium text-white">Workouts</h3>
-              <DateRangeSelector value={dateRange} onChange={setDateRange} />
-            </div>
-            <Activity className="h-4 w-4 text-zinc-500" />
-          </div>
-          <div className="p-6">
-            {workoutsLoading ? (
-              <div className="space-y-3">
-                <div className="h-8 w-20 bg-zinc-800 rounded animate-pulse" />
-                <div className="h-4 w-28 bg-zinc-800/50 rounded animate-pulse" />
-              </div>
-            ) : workouts?.data && workouts.data.length > 0 ? (
-              <div className="flex flex-col lg:flex-row gap-8">
-                {/* Summary Section */}
-                <div className="lg:w-64 flex-shrink-0">
-                  <DataSummaryCard
-                    count={workouts.data.length}
-                    label="Total workouts"
-                    mostRecentDate={
-                      workouts.data[0].start_time ||
-                      workouts.data[0].start_datetime
-                    }
-                  />
-                </div>
-
-                {/* Recent Workouts Grid */}
-                <div className="flex-1">
-                  <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">
-                    Recent Activity
-                  </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {workouts.data.slice(0, 8).map((workout) => {
-                      const style = getWorkoutStyle(
-                        workout.type || workout.category || ''
-                      );
-
-                      return (
-                        <div
-                          key={workout.id}
-                          className={`p-3 border rounded-lg flex flex-col items-center justify-center text-center gap-2 transition-colors ${style.color.replace('text-', 'border-').split(' ')[1]} ${style.color.split(' ')[0]}`}
-                        >
-                          <div className="text-xl">{style.icon}</div>
-                          <div>
-                            <p
-                              className={`text-xs font-medium ${style.color.split(' ').pop()}`}
-                            >
-                              {style.label}
-                            </p>
-                            <p className="text-[10px] text-zinc-500 mt-0.5">
-                              {new Date(
-                                workout.start_time ||
-                                  workout.start_datetime ||
-                                  ''
-                              ).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-500">No workout data available</p>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="gap-2">
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+                {tabs.map((tab) => (
+          <TabsContent key={tab.id} value={tab.id} className="space-y-6">
+            {tab.content}
+          </TabsContent>
+        ))}
+      </Tabs>
 
       {/* Data Points Section */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">

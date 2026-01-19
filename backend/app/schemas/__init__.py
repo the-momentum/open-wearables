@@ -122,7 +122,9 @@ from .sdk import SDKAuthContext, SDKTokenRequest
 from .series_types import SeriesType
 from .summaries import (
     ActivitySummary,
+    BloodPressure,
     BodySummary,
+    HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
     SleepStagesSummary,
@@ -288,7 +290,9 @@ __all__ = [
     "WorkoutDetailed",
     # Summaries
     "ActivitySummary",
+    "BloodPressure",
     "BodySummary",
+    "HeartRateStats",
     "IntensityMinutes",
     "RecoverySummary",
     "SleepStagesSummary",

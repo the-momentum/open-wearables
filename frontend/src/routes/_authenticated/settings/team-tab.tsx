@@ -16,9 +16,11 @@ import {
   useRevokeInvitation,
   useResendInvitation,
 } from '@/hooks/api/use-invitations';
-import { useAuth } from '@/hooks/use-auth';
-import { isValidEmail, truncateId } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/use-auth';
+import { isValidEmail } from '@/lib/utils';
+import { copyToClipboard } from '@/lib/utils/clipboard';
+import { truncateId } from '@/lib/utils/format';
 import {
   Dialog,
   DialogContent,
@@ -54,17 +56,10 @@ export function TeamTab() {
   const isLoading = isLoadingDevelopers || isLoadingInvitations;
 
   const handleCopyId = async (id: string) => {
-    try {
-      if (!navigator.clipboard) {
-        toast.error('Clipboard API not supported');
-        return;
-      }
-      await navigator.clipboard.writeText(id);
+    const success = await copyToClipboard(id, 'ID copied to clipboard');
+    if (success) {
       setCopiedId(id);
-      toast.success('ID copied to clipboard');
       setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      toast.error('Failed to copy ID to clipboard');
     }
   };
 

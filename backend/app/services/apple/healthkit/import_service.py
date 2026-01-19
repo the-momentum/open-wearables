@@ -178,16 +178,16 @@ class ImportService:
                 data = self._parse_json_content(request_content)
 
             if not data:
-                return UploadDataResponse(status_code=400, response="No valid data found")
+                return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Load data using provided database session
             self.load_data(db_session, data, user_id=user_id)
 
         except Exception as e:
             log_and_capture_error(e, self.log, f"Import failed for user {user_id}: {e}", extra={"user_id": user_id})
-            return UploadDataResponse(status_code=400, response=f"Import failed: {str(e)}")
+            return UploadDataResponse(status_code=400, response=f"Import failed: {str(e)}", user_id=user_id)
 
-        return UploadDataResponse(status_code=200, response="Import successful")
+        return UploadDataResponse(status_code=200, response="Import successful", user_id=user_id)
 
     def _parse_multipart_content(self, content: str) -> dict | None:
         """Parse multipart form data to extract JSON."""

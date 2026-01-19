@@ -17,7 +17,7 @@ logger = getLogger(__name__)
 
 
 @shared_task()
-def poll_sqs_messages() -> dict[str, Any]:
+def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
     try:
         response = sqs.receive_message(
             QueueUrl=QUEUE_URL,
@@ -65,8 +65,14 @@ def poll_sqs_messages() -> dict[str, Any]:
                         bucket_name = record["s3"]["bucket"]["name"]
                         object_key = record["s3"]["object"]["key"]
 
+                        object_key_parts = object_key.split("/")
+                        object_key_user_id = object_key_parts[-3] if len(object_key_parts) >= 3 else None
                         # Enqueue Celery task
-                        process_aws_upload.delay(bucket_name, object_key)
+                        process_aws_upload.delay(
+                            bucket_name=bucket_name,
+                            object_key=object_key,
+                            user_id=object_key_user_id,
+                        )
                         processed_count += 1
 
                 # Delete message from queue after processing
@@ -94,17 +100,21 @@ def poll_sqs_messages() -> dict[str, Any]:
 
 
 @shared_task()
-def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0) -> dict:
+def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0, user_id: str | None = None) -> dict:
     num_polls = expiration_seconds // 20
 
     if iterations_done >= num_polls:
         return {"polls_completed": num_polls}
 
-    poll_sqs_messages()
+    poll_sqs_messages(user_id=user_id)
 
     # Schedule next iteration
     poll_sqs_task.apply_async(
-        args=[expiration_seconds, iterations_done + 1],
+        kwargs={
+            "expiration_seconds": expiration_seconds,
+            "iterations_done": iterations_done + 1,
+            "user_id": user_id,
+        },
         countdown=20,
     )
     return {"status": "scheduled", "iteration": iterations_done + 1}

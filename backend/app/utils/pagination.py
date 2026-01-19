@@ -2,7 +2,7 @@
 
 import base64
 import binascii
-from datetime import datetime
+from datetime import date, datetime
 from typing import Generic, Protocol, TypeVar
 from uuid import UUID
 
@@ -20,6 +20,53 @@ class CursorItem(Protocol):
 T = TypeVar("T", bound=CursorItem)
 
 
+# -----------------------------------------------------------------------------
+# Generic cursor helpers (internal)
+# -----------------------------------------------------------------------------
+
+
+def _encode_cursor_fields(fields: list[str], direction: str = "next") -> str:
+    """Encode a list of fields into a cursor string.
+
+    Internal helper used by all cursor encoding functions.
+    """
+    cursor_str = "|".join(fields)
+    encoded = base64.urlsafe_b64encode(cursor_str.encode("utf-8")).decode("utf-8")
+
+    if direction == "prev":
+        return f"prev_{encoded}"
+    return encoded
+
+
+def _decode_cursor_fields(cursor: str) -> tuple[list[str], str]:
+    """Decode a cursor string into fields and direction.
+
+    Internal helper used by all cursor decoding functions.
+
+    Returns:
+        Tuple of (fields, direction) where direction is 'next' or 'prev'
+
+    Raises:
+        InvalidCursorError: If cursor format is invalid
+    """
+    try:
+        direction = "next"
+        if cursor.startswith("prev_"):
+            direction = "prev"
+            cursor = cursor[5:]
+
+        decoded = base64.urlsafe_b64decode(cursor).decode("utf-8")
+        fields = decoded.split("|")
+        return fields, direction
+    except (ValueError, TypeError, binascii.Error):
+        raise InvalidCursorError(cursor=cursor)
+
+
+# -----------------------------------------------------------------------------
+# Typed cursor functions
+# -----------------------------------------------------------------------------
+
+
 def encode_cursor(timestamp: datetime, item_id: UUID, direction: str = "next") -> str:
     """Encode a cursor from timestamp and ID.
 
@@ -31,12 +78,7 @@ def encode_cursor(timestamp: datetime, item_id: UUID, direction: str = "next") -
     Returns:
         Base64 encoded cursor, prefixed with 'prev_' if direction is 'prev'
     """
-    cursor_str = f"{timestamp.isoformat()}|{item_id}"
-    encoded = base64.urlsafe_b64encode(cursor_str.encode("utf-8")).decode("utf-8")
-
-    if direction == "prev":
-        return f"prev_{encoded}"
-    return encoded
+    return _encode_cursor_fields([timestamp.isoformat(), str(item_id)], direction)
 
 
 def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
@@ -51,19 +93,15 @@ def decode_cursor(cursor: str) -> tuple[datetime, UUID, str]:
     Raises:
         InvalidCursorError: If cursor format is invalid
     """
-    try:
-        # Check for direction prefix
-        direction = "next"
-        if cursor.startswith("prev_"):
-            direction = "prev"
-            cursor = cursor[5:]  # Remove "prev_" prefix
+    fields, direction = _decode_cursor_fields(cursor)
+    if len(fields) != 2:
+        raise InvalidCursorError(cursor=cursor)
 
-        decoded_cursor = base64.urlsafe_b64decode(cursor).decode("utf-8")
-        cursor_ts_str, cursor_id_str = decoded_cursor.split("|")
-        cursor_ts = parse_query_datetime(cursor_ts_str)
-        cursor_id = UUID(cursor_id_str)
+    try:
+        cursor_ts = parse_query_datetime(fields[0])
+        cursor_id = UUID(fields[1])
         return cursor_ts, cursor_id, direction
-    except (ValueError, TypeError, binascii.Error):
+    except (ValueError, TypeError):
         raise InvalidCursorError(cursor=cursor)
 
 
@@ -134,3 +172,86 @@ def process_paginated_results(
         previous_cursor=previous_cursor,
         has_more=has_more,
     )
+
+
+def encode_date_cursor(cursor_date: date, direction: str = "next") -> str:
+    """Encode a date-based cursor for date-keyed pagination.
+
+    Args:
+        cursor_date: The date to encode
+        direction: Either 'next' or 'prev' to indicate pagination direction
+
+    Returns:
+        Base64 encoded cursor, prefixed with 'prev_' if direction is 'prev'
+    """
+    return _encode_cursor_fields([cursor_date.isoformat()], direction)
+
+
+def decode_date_cursor(cursor: str) -> tuple[date, str]:
+    """Decode a date-based cursor.
+
+    Args:
+        cursor: The cursor string to decode
+
+    Returns:
+        Tuple of (date, direction) where direction is 'next' or 'prev'
+
+    Raises:
+        InvalidCursorError: If cursor format is invalid
+    """
+    fields, direction = _decode_cursor_fields(cursor)
+    if len(fields) != 1:
+        raise InvalidCursorError(cursor=cursor)
+
+    try:
+        cursor_date = date.fromisoformat(fields[0])
+        return cursor_date, direction
+    except ValueError:
+        raise InvalidCursorError(cursor=cursor)
+
+
+def encode_activity_cursor(
+    activity_date: date, provider_name: str, device_id: str | None, direction: str = "next"
+) -> str:
+    """Encode a compound cursor for activity summaries.
+
+    Activity summaries are keyed by (date, provider, device), so the cursor
+    must include all three components to avoid skipping records when multiple
+    providers/devices exist for the same date.
+
+    Args:
+        activity_date: The date of the activity
+        provider_name: Provider name (e.g., 'garmin', 'apple')
+        device_id: Device ID (may be None)
+        direction: Either 'next' or 'prev' for pagination direction
+
+    Returns:
+        Base64 encoded cursor, prefixed with 'prev_' if direction is 'prev'
+    """
+    device_str = device_id or ""
+    return _encode_cursor_fields([activity_date.isoformat(), provider_name, device_str], direction)
+
+
+def decode_activity_cursor(cursor: str) -> tuple[date, str, str | None, str]:
+    """Decode a compound activity cursor.
+
+    Args:
+        cursor: The cursor string to decode
+
+    Returns:
+        Tuple of (date, provider_name, device_id, direction)
+
+    Raises:
+        InvalidCursorError: If cursor format is invalid
+    """
+    fields, direction = _decode_cursor_fields(cursor)
+    if len(fields) != 3:
+        raise InvalidCursorError(cursor=cursor)
+
+    try:
+        cursor_date = date.fromisoformat(fields[0])
+        provider_name = fields[1]
+        device_id = fields[2] if fields[2] else None
+        return cursor_date, provider_name, device_id, direction
+    except ValueError:
+        raise InvalidCursorError(cursor=cursor)

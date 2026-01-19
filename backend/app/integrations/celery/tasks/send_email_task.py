@@ -61,6 +61,7 @@ def send_invitation_email_task(
     to_email: str,
     invite_url: str,
     invited_by_email: str | None = None,
+    user_id: str | None = None,
 ) -> dict[str, str]:
     """
     Send invitation email asynchronously with retry logic.

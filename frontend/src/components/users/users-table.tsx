@@ -24,8 +24,9 @@ import {
   Upload,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { toast } from 'sonner';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
+import { copyToClipboard } from '@/lib/utils/clipboard';
+import { truncateId } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
 import { useAppleXmlUpload } from '@/hooks/api/use-users';
 import {
@@ -121,43 +122,27 @@ export function UsersTable({
   }, [pagination, sorting, debouncedSearch]);
 
   const handleCopyId = async (id: string) => {
-    if (!navigator.clipboard) {
-      toast.error('Clipboard API not available');
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(id);
+    const success = await copyToClipboard(id, 'User ID copied to clipboard');
+    if (success) {
       setCopiedId(id);
-      toast.success('User ID copied to clipboard');
       setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      toast.error('Failed to copy user ID to clipboard');
     }
   };
 
   const handleCopyPairLink = async (userId: string) => {
-    if (!navigator.clipboard) {
-      toast.error('Clipboard API not available');
-      return;
-    }
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
-    try {
-      await navigator.clipboard.writeText(pairLink);
+    const success = await copyToClipboard(
+      pairLink,
+      'Pairing link copied to clipboard'
+    );
+    if (success) {
       setCopiedPairLink(userId);
-      toast.success('Pairing link copied to clipboard');
       setTimeout(() => setCopiedPairLink(null), 2000);
-    } catch {
-      toast.error('Failed to copy pairing link to clipboard');
     }
   };
 
   const handleUploadClick = (userId: string) => {
     fileInputRefs.current[userId]?.click();
-  };
-
-  const truncateId = (id: string) => {
-    if (id.length <= 12) return id;
-    return `${id.slice(0, 8)}...${id.slice(-4)}`;
   };
 
   const SortableHeader = ({
@@ -318,7 +303,9 @@ export function UsersTable({
             )}
           </Button>
           <input
-            ref={(el) => (fileInputRefs.current[row.original.id] = el)}
+            ref={(el) => {
+              fileInputRefs.current[row.original.id] = el;
+            }}
             type="file"
             accept=".xml"
             onChange={(e) => handleUpload(row.original.id, e)}

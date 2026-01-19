@@ -133,6 +133,7 @@ export interface TimeSeriesParams {
   resolution?: 'raw' | '1min' | '5min' | '15min' | '1hour';
   cursor?: string;
   limit?: number;
+  [key: string]: string | string[] | number | undefined;
 }
 
 export interface ResetPasswordRequest {
@@ -198,60 +199,91 @@ export interface UserConnection {
   updated_at: string;
 }
 
-export interface SleepData {
-  id: string;
-  userId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  totalMinutes: number;
-  deepMinutes: number;
-  lightMinutes: number;
-  remMinutes: number;
-  awakeMinutes: number;
-  efficiency: number;
-  quality: 'excellent' | 'good' | 'fair' | 'poor';
-  source: string;
-}
+// ============================================================================
+// Summary Types - Match backend schemas for /users/{userId}/summaries/* endpoints
+// ============================================================================
 
-export interface ActivityData {
-  id: string;
-  userId: string;
-  date: string;
-  steps: number;
-  activeMinutes: number;
-  calories: number;
-  distance: number; // km
-  floors: number;
-  source: string;
-}
-
-export interface HealthDataSummary {
-  userId: string;
-  period: string;
-  sleep: {
-    averageMinutes: number;
-    averageEfficiency: number;
-    data: SleepData[];
-  };
-  activity: {
-    averageSteps: number;
-    totalActiveMinutes: number;
-    data: ActivityData[];
-  };
-  lastUpdated: string;
+export interface SleepStagesSummary {
+  awake_minutes: number | null;
+  light_minutes: number | null;
+  deep_minutes: number | null;
+  rem_minutes: number | null;
 }
 
 export interface SleepSession {
+  id: string;
+  start_time: string;
+  end_time: string;
+  source: DataSource;
+  duration_seconds: number;
+  efficiency_percent: number | null;
+  stages: SleepStagesSummary | null;
+  is_nap: boolean;
+}
+
+export interface SleepSessionsParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
+}
+
+export interface SleepSummary {
   date: string;
-  duration: number; // minutes
-  efficiency: number; // percentage
-  stages: {
-    deep: number;
-    light: number;
-    rem: number;
-    awake: number;
-  };
+  source: DataSource;
+  start_time: string | null;
+  end_time: string | null;
+  duration_minutes: number | null;
+  time_in_bed_minutes: number | null;
+  efficiency_percent: number | null;
+  stages: SleepStagesSummary | null;
+  interruptions_count: number | null;
+  nap_count: number | null;
+  nap_duration_minutes: number | null;
+  avg_heart_rate_bpm: number | null;
+  avg_hrv_sdnn_ms: number | null;
+  avg_respiratory_rate: number | null;
+  avg_spo2_percent: number | null;
+}
+
+export interface BloodPressure {
+  avg_systolic_mmhg: number | null;
+  avg_diastolic_mmhg: number | null;
+  max_systolic_mmhg: number | null;
+  max_diastolic_mmhg: number | null;
+  min_systolic_mmhg: number | null;
+  min_diastolic_mmhg: number | null;
+  reading_count: number | null;
+}
+
+export interface BodySummary {
+  date: string;
+  source: DataSource;
+  // Static/demographic
+  age: number | null;
+  // Body composition (latest values)
+  height_cm: number | null;
+  weight_kg: number | null;
+  body_fat_percent: number | null;
+  muscle_mass_kg: number | null;
+  bmi: number | null;
+  // Vitals (7-day rolling averages)
+  resting_heart_rate_bpm: number | null;
+  avg_hrv_sdnn_ms: number | null;
+  blood_pressure: BloodPressure | null;
+  basal_body_temperature_celsius: number | null;
+}
+
+export interface RecoverySummary {
+  date: string;
+  source: DataSource;
+  sleep_duration_seconds: number | null;
+  sleep_efficiency_percent: number | null;
+  resting_heart_rate_bpm: number | null;
+  avg_hrv_sdnn_ms: number | null;
+  avg_spo2_percent: number | null;
+  recovery_score: number | null;
 }
 
 export interface DataSource {

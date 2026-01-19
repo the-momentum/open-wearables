@@ -313,7 +313,10 @@ class TestDataPointSeriesRepository:
             assert sample.series_type_definition_id == expected_type_id
 
     def test_get_samples_by_date_range(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test filtering samples by date range."""
+        """Test filtering samples by date range.
+
+        Uses half-open interval [start, end) - start is inclusive, end is exclusive.
+        """
         # Arrange
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, device_id="device1")
@@ -336,21 +339,23 @@ class TestDataPointSeriesRepository:
             )
             series_repo.create(db, sample)
 
+        # Query with half-open interval [yesterday, now + 1s) to include both yesterday and now
+        end_datetime = now + timedelta(seconds=1)
         query_params = TimeSeriesQueryParams(
             device_id="device1",
             start_datetime=yesterday,
-            end_datetime=now,
+            end_datetime=end_datetime,
         )
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
 
-        # Assert
+        # Assert - should get yesterday and now (2 samples), excluding two_days_ago
         assert len(results) == 2
         assert total_count == 2
         for sample, _ in results:
             assert sample.recorded_at >= yesterday
-            assert sample.recorded_at <= now
+            assert sample.recorded_at < end_datetime
 
     def test_get_samples_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test filtering samples by provider ID."""
