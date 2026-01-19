@@ -86,7 +86,7 @@ async def oauth_callback(
 
     # schedule sync task
     sync_vendor_data.delay(
-        str(oauth_state.user_id),
+        user_id=str(oauth_state.user_id),
         start_date=None,
         end_date=None,
         providers=[provider.value],

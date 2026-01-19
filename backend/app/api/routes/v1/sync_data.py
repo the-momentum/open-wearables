@@ -126,7 +126,7 @@ async def sync_user_data(
         end_date_iso = summary_end_time  # May be None
 
         task = sync_vendor_data.delay(
-            str(user_id),
+            user_id=str(user_id),
             start_date=start_date_iso,
             end_date=end_date_iso,
             providers=[provider.value],

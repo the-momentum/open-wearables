@@ -84,7 +84,7 @@ class TestSyncDataEndpoint:
         mock_celery_task.delay.assert_called_once()
         call_kwargs = mock_celery_task.delay.call_args[1]
         assert call_kwargs["providers"] == ["garmin"]
-        assert str(user.id) in mock_celery_task.delay.call_args[0]
+        assert call_kwargs["user_id"] == str(user.id)
 
     def test_sync_garmin_unauthorized(self, client: TestClient, db: Session) -> None:
         """Test that missing API key returns 401."""

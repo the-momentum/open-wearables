@@ -14,9 +14,11 @@ from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from celery import shared_task
 
+logger = getLogger(__name__)
+
 
 @shared_task
-def process_aws_upload(bucket_name: str, object_key: str) -> dict[str, str]:
+def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = None) -> dict[str, str]:
     """
     Process XML file uploaded to S3 and import to Postgres database.
 
@@ -32,14 +34,26 @@ def process_aws_upload(bucket_name: str, object_key: str) -> dict[str, str]:
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
 
-            user_id_str = object_key.split("/")[-3]
+            object_key_parts = object_key.split("/")
+            if user_id:
+                user_id_str = user_id
+            elif len(object_key_parts) >= 3:
+                user_id_str = object_key_parts[-3]
+            else:
+                raise ValueError(f"Cannot determine user_id from object key: {object_key}")
+            if user_id and user_id_str != user_id:
+                logger.warning(
+                    "[process_aws_upload] Provided user_id does not match object key user_id: %s vs %s",
+                    user_id,
+                    user_id_str,
+                )
             try:
-                user_id = UUID(user_id_str)
+                user_uuid = UUID(user_id_str)
             except ValueError as e:
                 raise ValueError(f"Invalid user_id format in object key: {user_id_str}") from e
 
             # Validate that the user exists before processing
-            _ = user_service.get(db, user_id, raise_404=True)
+            _ = user_service.get(db, user_uuid, raise_404=True)
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 

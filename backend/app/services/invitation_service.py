@@ -46,6 +46,7 @@ class InvitationService:
             to_email=invitation.email,
             invite_url=invite_url,
             invited_by_email=invited_by_email,
+            user_id=str(invitation.invited_by_id) if invitation.invited_by_id else None,
         )
         self.logger.info(f"Queued invitation email for {invitation.id}")
 
