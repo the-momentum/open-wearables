@@ -28,11 +28,11 @@ def sync_all_users(
     user_connection_repo = UserConnectionRepository()
 
     with SessionLocal() as db:
-        user_ids = user_connection_repo.get_all_active_users(db)
+        active_user_ids = user_connection_repo.get_all_active_users(db)
 
-        logger.info(f"[sync_all_users] Found {len(user_ids)} users with active connections")
+        logger.info(f"[sync_all_users] Found {len(active_user_ids)} users with active connections")
 
-        for user_id in user_ids:
-            sync_vendor_data.delay(user_id=str(user_id), start_date=start_date, end_date=end_date)
+        for active_user_id in active_user_ids:
+            sync_vendor_data.delay(user_id=str(active_user_id), start_date=start_date, end_date=end_date)
 
-        return SyncAllUsersResult(users_for_sync=len(user_ids)).model_dump()
+        return SyncAllUsersResult(users_for_sync=len(active_user_ids)).model_dump()

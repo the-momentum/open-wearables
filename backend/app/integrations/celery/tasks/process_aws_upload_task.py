@@ -48,12 +48,12 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
                     user_id_str,
                 )
             try:
-                user_id = UUID(user_id_str)
+                user_uuid = UUID(user_id_str)
             except ValueError as e:
                 raise ValueError(f"Invalid user_id format in object key: {user_id_str}") from e
 
             # Validate that the user exists before processing
-            _ = user_service.get(db, user_id, raise_404=True)
+            _ = user_service.get(db, user_uuid, raise_404=True)
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 
