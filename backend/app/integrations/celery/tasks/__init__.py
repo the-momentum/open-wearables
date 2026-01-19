@@ -1,3 +1,4 @@
+from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
     continue_garmin_backfill,
     get_backfill_status,
@@ -10,7 +11,6 @@ from .process_apple_upload_task import process_apple_upload
 from .process_aws_upload_task import process_aws_upload
 from .process_xml_upload_task import process_xml_upload
 from .send_email_task import send_invitation_email_task
-from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .sync_vendor_data_task import sync_vendor_data
 
 __all__ = [
