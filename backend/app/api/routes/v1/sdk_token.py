@@ -18,8 +18,8 @@ ADMIN_APP_ID = "admin"
 @router.post("/users/{user_id}/token")
 async def create_user_token(
     user_id: UUID,
-    payload: Annotated[SDKTokenRequest | None, Body(None)],
     db: DbSession,
+    payload: Annotated[SDKTokenRequest | None, Body()] = None,
     developer: DeveloperOptionalDep = None,
 ) -> Token:
     """Exchange app credentials or admin auth for user-scoped access token.
