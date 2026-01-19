@@ -80,7 +80,11 @@ function UserDetailPage() {
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
-  const { mutate: generateToken, data: tokenData, isPending: isGeneratingToken } = useGenerateUserToken();
+  const {
+    mutate: generateToken,
+    data: tokenData,
+    isPending: isGeneratingToken,
+  } = useGenerateUserToken();
   const [copied, setCopied] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
@@ -329,7 +333,6 @@ function UserDetailPage() {
             </TabsTrigger>
           ))}
         </TabsList>
-
         {tabs.map((tab) => (
           <TabsContent key={tab.id} value={tab.id} className="space-y-6">
             {tab.content}
