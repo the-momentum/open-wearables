@@ -166,7 +166,7 @@ class ImportService:
         samples = self._build_statistic_bundles(raw, user_id)
         self.timeseries_service.bulk_create_samples(db_session, samples)
 
-        handle_sleep_data(raw, user_id)
+        handle_sleep_data(db_session, raw, user_id)
 
         return True
 

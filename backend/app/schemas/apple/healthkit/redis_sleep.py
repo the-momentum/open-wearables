@@ -1,5 +1,7 @@
 from typing import TypedDict
 
+from app.constants.series_types import SleepType
+
 
 class SleepState(TypedDict):
     """Schema for sleep state."""
@@ -17,9 +19,9 @@ class SleepState(TypedDict):
 
 
 SLEEP_START_STATES = {
-    SleepState.IN_BED,
-    SleepState.ASLEEP_UNSPECIFIED,
-    SleepState.ASLEEP_CORE,
-    SleepState.ASLEEP_DEEP,
-    SleepState.ASLEEP_REM,
+    SleepType.IN_BED,
+    SleepType.ASLEEP_UNSPECIFIED,
+    SleepType.ASLEEP_CORE,
+    SleepType.ASLEEP_DEEP,
+    SleepType.ASLEEP_REM,
 }

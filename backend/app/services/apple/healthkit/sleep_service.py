@@ -1,21 +1,23 @@
 import json
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.constants.series_types import get_apple_sleep_type
+from app.constants.series_types import (
+    SleepType,
+    get_apple_sleep_type,
+)
+from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
     HKRecordJSON,
     RootJSON,
-    UploadDataResponse,
 )
 from app.schemas.apple.healthkit.redis_sleep import SLEEP_START_STATES, SleepState
-from app.constants import SleepType
 from app.services.event_record_service import event_record_service
-from app.database import DbSession
 
 redis_client = get_redis_client()
 
@@ -32,12 +34,15 @@ def active_users_key() -> str:
 
 def load_sleep_state(user_id: str) -> SleepState | None:
     """Load the sleep state from Redis."""
-    key = key(user_id)
-    return redis_client.hgetall(key)
+    sleep_state_key = key(user_id)
+    state = redis_client.get(sleep_state_key)
+    if not state:
+        return None
+    return json.loads(state.decode("utf-8"))
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    redis_client.set(key(user_id), json.dumps(state))
+    redis_client.set(key(user_id), json.dumps(state).encode("utf-8"))
     redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
     redis_client.sadd(active_users_key(), user_id)
 
@@ -49,15 +54,17 @@ def delete_sleep_state(user_id: str) -> None:
 
 def _create_new_sleep_state(start_time: datetime, sleep_state: SleepType) -> SleepState:
     return SleepState(
-        start_time=start_time,
+        uuid=str(uuid4()),
+        start_time=start_time.isoformat(),
         last_type=sleep_state,
-        last_timestamp=start_time,
+        last_timestamp=start_time.isoformat(),
         in_bed=0,
         awake=0,
         light=0,
         deep=0,
         rem=0,
     )
+
 
 def _apply_transition(
     db_session: DbSession,
@@ -72,13 +79,11 @@ def _apply_transition(
     delta_seconds = (start_time - last_timestamp).total_seconds()
 
     if delta_seconds <= 0:
-        return
+        return state
 
     if delta_seconds > 3600:
         finish_sleep(db_session, user_id, state)
-        state = _create_new_sleep_state(start_time, sleep_state)
-        save_sleep_state(user_id, state)
-        return state
+        return _create_new_sleep_state(start_time, sleep_state)
 
     last_type = get_apple_sleep_type(state["last_type"])
 
@@ -100,9 +105,10 @@ def _apply_transition(
 
 
 def handle_sleep_data(
+    db_session: DbSession,
     raw: dict,
     user_id: str,
-) -> UploadDataResponse:
+) -> None:
     root = RootJSON(**raw)
     sleep_raw = root.data.get("sleep", [])
 
@@ -110,17 +116,19 @@ def handle_sleep_data(
 
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
-        sleep_state = get_apple_sleep_type(sjson.value)
+        sleep_state = get_apple_sleep_type(int(sjson.value))
+        if sleep_state is None:
+            continue
 
         if not current_state:
             if sleep_state not in SLEEP_START_STATES:
-                return
+                continue
 
             current_state = _create_new_sleep_state(sjson.startDate, sleep_state)
             save_sleep_state(user_id, current_state)
-            return
+            continue
 
-        current_state = _apply_transition(current_state, sleep_state, sjson.startDate)
+        current_state = _apply_transition(db_session, user_id, current_state, sleep_state, sjson.startDate)
         save_sleep_state(user_id, current_state)
 
 
@@ -151,7 +159,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         record_id=sleep_record.id,
         sleep_total_duration_minutes=total_sleep,
         sleep_time_in_bed_minutes=in_bed,
-        sleep_efficiency_score=efficiency,
+        sleep_efficiency_score=Decimal(efficiency),
         sleep_deep_minutes=state["deep"],
         sleep_rem_minutes=state["rem"],
         sleep_light_minutes=state["light"],
