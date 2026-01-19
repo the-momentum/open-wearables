@@ -37,7 +37,8 @@ def load_sleep_state(user_id: str) -> SleepState | None:
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    redis_client.set(key(user_id), json.dumps(state), ex=settings.redis_ttl_seconds)
+    redis_client.set(key(user_id), json.dumps(state))
+    redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
     redis_client.sadd(active_users_key(), user_id)
 
 
