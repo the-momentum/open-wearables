@@ -5,10 +5,13 @@ from pydantic import BaseModel
 
 
 class SDKTokenRequest(BaseModel):
-    """Request schema for exchanging app credentials for user token."""
+    """Request schema for exchanging app credentials for user token.
 
-    app_id: str
-    app_secret: str
+    Both fields are optional - if not provided, admin authentication is required.
+    """
+
+    app_id: str | None = None
+    app_secret: str | None = None
 
 
 class SDKAuthContext(BaseModel):
