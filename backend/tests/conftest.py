@@ -143,9 +143,19 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, No
     mock.lock.return_value.__exit__ = MagicMock(return_value=None)
     mock.get.return_value = None
     mock.set.return_value = True
+    mock.setex.return_value = True
+    mock.expire.return_value = True
     mock.delete.return_value = True
+    mock.sadd.return_value = 1
+    mock.srem.return_value = 1
+    mock.smembers.return_value = set()
+    
+    # Return mock for redis.from_url (used by get_redis_client)
+    # We also need to clear lru_cache of get_redis_client to ensure it picks up the mock
+    from app.integrations.redis_client import get_redis_client
+    get_redis_client.cache_clear()
 
-    with patch("app.integrations.redis_client.redis", mock):
+    with patch("redis.from_url", return_value=mock):
         yield mock
 
 
@@ -161,13 +171,23 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
         patch("celery.current_app") as mock_celery,
         patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
+        # Patch the new finalize_stale_sleeps task that was added in this PR
+        patch("app.integrations.celery.tasks.process_apple_upload_task.finalize_stale_sleeps", mock_task),
     ):
-        mock_celery.conf = {
+        # Configure Celery to use in-memory broker and result backend
+        # We Mock the conf object to return our test settings
+        mock_conf = MagicMock()
+        mock_conf.__getitem__ = lambda s, k: {
             "task_always_eager": True,
             "task_eager_propagates": True,
             "broker_url": "memory://",
             "result_backend": "cache+memory://",
-        }
+        }.get(k)
+        
+        # When update is called, we don't want to actually connect to Redis
+        mock_conf.update = MagicMock()
+        mock_celery.conf = mock_conf
+        
         yield mock_task
 
 
