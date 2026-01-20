@@ -42,7 +42,7 @@ jobs:
             frontend
             api
             auth
-            providers
+            integrations
             dashboard
             settings
             users
