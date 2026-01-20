@@ -183,8 +183,8 @@ All providers that support workouts provide these common fields:
 | Max heart rate | ◐ | ✅ | ✅ | ✅ | ✅ |
 | Min heart rate | ◐ | 🔜 | ❌ | ✅ | ❌ |
 | **Activity Metrics** | | | | | |
-| Calories burned | ◐ | 🔜 | 🔜 | 🔜 | ✅ |
-| Distance | ◐ | 🔜 | 🔜 | 🔜 | ✅ |
+| Calories burned | ◐ | ✅ | ✅ | ✅ | ✅ |
+| Distance | ◐ | ✅ | ✅ | ✅ | ✅ |
 | Steps | ◐ | ✅ | ❌ | ✅ | ❌ |
 | Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ |
 | **Speed & Power** | | | | | |
@@ -233,7 +233,7 @@ Key differences and limitations to be aware of when working with each provider:
   - Webhooks push data for activities, sleep, dailies, and epochs
   - Sleep and daily summaries received via webhook but processing not yet implemented
   - 135+ workout type mappings to unified taxonomy
-  - Distance and calories available in API but not yet extracted from workouts
+  - Distance and calories extracted from workout data
 </Accordion>
 
 <Accordion title="Polar">
@@ -242,7 +242,7 @@ Key differences and limitations to be aware of when working with each provider:
   - No webhooks or 24/7 continuous data — workouts only
   - "Sleep" in API is activity zone detection (lying down), **not** sleep stage analysis
   - RR interval (HRV) data requires Polar H6, H7, H9, or H10 chest strap sensors
-  - Calories and distance available in exercise data but not yet extracted
+  - Calories and distance extracted from exercise data
   - 75+ workout type mappings to unified taxonomy
 </Accordion>
 
