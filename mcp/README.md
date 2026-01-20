@@ -5,7 +5,7 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 ## Features
 
 - **list_users**: Discover users accessible via your API key
-- **get_sleep_records**: Get sleep data for a user over the last X days
+- **list_sleep**: Get sleep data for a user within a date range
 
 ## Prerequisites
 
@@ -99,8 +99,9 @@ Claude: "I found 2 users: John Doe and Jane Smith."
 ### Querying sleep data
 
 ```
-User: "How much sleep did John get this week?"
-Claude: [calls get_sleep_records(user_name="John", days=7)]
+User: "How much sleep did John get last week?"
+Claude: [calls list_users() to get John's user_id]
+Claude: [calls list_sleep(user_id="uuid-1", start_date="2025-01-13", end_date="2025-01-20")]
 Claude: "John slept an average of 7 hours and 45 minutes over the last week.
 His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
 ```
@@ -108,8 +109,8 @@ His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
 ### Specifying time range
 
 ```
-User: "Show me Jane's sleep for the last month"
-Claude: [calls get_sleep_records(user_name="Jane", days=30)]
+User: "Show me Jane's sleep for January 2025"
+Claude: [calls list_sleep(user_id="uuid-2", start_date="2025-01-01", end_date="2025-01-31")]
 ```
 
 ## Available Tools
@@ -131,14 +132,14 @@ List all users accessible via the configured API key.
 }
 ```
 
-### get_sleep_records
+### list_sleep
 
-Get sleep records for a user over the last X days.
+Get sleep records for a user within a date range.
 
 **Parameters:**
-- `user_id` (optional): UUID of the user
-- `user_name` (optional): First name to search for
-- `days` (optional): Number of days to look back (default: 7, max: 90)
+- `user_id` (required): UUID of the user
+- `start_date` (required): Start date in YYYY-MM-DD format
+- `end_date` (required): End date in YYYY-MM-DD format
 
 **Returns:**
 ```json
@@ -148,8 +149,8 @@ Get sleep records for a user over the last X days.
   "records": [
     {
       "date": "2025-01-11",
-      "start_time": "23:15",
-      "end_time": "07:30",
+      "start_datetime": "2025-01-11T23:15:00+00:00",
+      "end_datetime": "2025-01-12T07:30:00+00:00",
       "duration_minutes": 495,
       "duration_formatted": "8h 15m",
       "source": "whoop"
@@ -159,7 +160,9 @@ Get sleep records for a user over the last X days.
     "total_nights": 7,
     "nights_with_data": 6,
     "avg_duration_minutes": 465,
-    "avg_duration_formatted": "7h 45m"
+    "avg_duration_formatted": "7h 45m",
+    "min_duration_minutes": 360,
+    "max_duration_minutes": 540
   }
 }
 ```
@@ -173,7 +176,7 @@ mcp/
 │   ├── config.py         # Settings (API URL, API key)
 │   ├── tools/
 │   │   ├── users.py      # list_users tool
-│   │   └── sleep.py      # get_sleep_records tool
+│   │   └── sleep.py      # list_sleep tool
 │   └── services/
 │       └── api_client.py # HTTP client for backend API
 ├── config/
@@ -199,6 +202,18 @@ docker compose up -d
 cd mcp
 uv run start
 ```
+
+### Testing with MCPJam
+
+[MCPJam](https://www.mcpjam.com/) is a local inspector for testing MCP servers. It provides a UI to explore tools, test calls, and debug responses.
+
+```bash
+npx @mcpjam/inspector@latest
+```
+
+Then configure the connection:
+- **Command**: `uv`
+- **Arguments**: `run --frozen --directory /path/to/open-wearables/mcp start`
 
 ### Code quality
 
