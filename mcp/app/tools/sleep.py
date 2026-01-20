@@ -17,14 +17,14 @@ def _format_duration(minutes: int | None) -> str | None:
     return f"{hours}h {mins}m"
 
 
-def _format_time(dt_str: str | None) -> str | None:
-    """Extract time portion from ISO datetime string."""
+def _normalize_datetime(dt_str: str | None) -> str | None:
+    """Normalize datetime string to ISO 8601 format."""
     if not dt_str:
         return None
     try:
-        # Parse ISO format and return just the time
+        # Parse and normalize to consistent ISO format
         dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        return dt.strftime("%H:%M")
+        return dt.isoformat()
     except (ValueError, AttributeError):
         return dt_str
 
@@ -51,7 +51,7 @@ async def get_sleep_records(
         A dictionary containing:
         - user: Information about the user (id, first_name, last_name)
         - period: The date range queried (start, end)
-        - records: List of sleep records with date, start_time, end_time, duration
+        - records: List of sleep records with date, start_datetime, end_datetime, duration
         - summary: Aggregate statistics (avg_duration, total_nights, etc.)
 
     Example response:
@@ -61,8 +61,8 @@ async def get_sleep_records(
             "records": [
                 {
                     "date": "2025-01-11",
-                    "start_time": "23:15",
-                    "end_time": "07:30",
+                    "start_datetime": "2025-01-11T23:15:00+00:00",
+                    "end_datetime": "2025-01-12T07:30:00+00:00",
                     "duration_minutes": 495,
                     "duration_formatted": "8h 15m",
                     "source": "whoop"
@@ -82,7 +82,9 @@ async def get_sleep_records(
         - If user_id is not provided and multiple users exist, this will return
           an error with available_users list. Use list_users to discover users first.
         - Duration is in minutes. Use duration_formatted for human-readable output.
-        - start_time and end_time may be null if not recorded by the device.
+        - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
+        - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
+          spans midnight, so end_datetime is often the day after start_datetime.
         - The 'source' field indicates which wearable provided the data (whoop, garmin, etc.)
         - For questions about sleep quality, check if stages data is available in the backend.
     """
@@ -194,8 +196,8 @@ async def get_sleep_records(
             records.append(
                 {
                     "date": str(record.get("date")),
-                    "start_time": _format_time(record.get("start_time")),
-                    "end_time": _format_time(record.get("end_time")),
+                    "start_datetime": _normalize_datetime(record.get("start_time")),
+                    "end_datetime": _normalize_datetime(record.get("end_time")),
                     "duration_minutes": duration,
                     "duration_formatted": _format_duration(duration),
                     "source": source.get("provider") if isinstance(source, dict) else source,
