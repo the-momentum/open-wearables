@@ -445,6 +445,12 @@ export interface EventRecordResponse {
   };
   calories_kcal?: number | null;
   distance_meters?: number | null;
+  // Heart rate fields (matching backend Workout schema)
+  avg_heart_rate_bpm?: number | null;
+  max_heart_rate_bpm?: number | null;
+  // Elevation and pace
+  elevation_gain_meters?: number | null;
+  avg_pace_sec_per_km?: number | null;
 
   // Legacy fields (keeping for compatibility if needed, but marked optional)
   user_id?: string;
@@ -454,27 +460,23 @@ export interface EventRecordResponse {
   device_id?: string | null;
   start_datetime?: string;
   end_datetime?: string;
-  heart_rate_min?: number | string | null;
-  heart_rate_max?: number | string | null;
-  heart_rate_avg?: number | string | null;
   steps_min?: number | string | null;
   steps_max?: number | string | null;
   steps_avg?: number | string | null;
   max_speed?: number | string | null;
   max_watts?: number | string | null;
-  moving_time_seconds: number | string | null;
-  total_elevation_gain: number | string | null;
-  average_speed: number | string | null;
-  average_watts: number | string | null;
-  elev_high: number | string | null;
-  elev_low: number | string | null;
-  sleep_total_duration_minutes: number | string | null;
-  sleep_time_in_bed_minutes: number | string | null;
-  sleep_efficiency_score: number | string | null;
-  sleep_deep_minutes: number | string | null;
-  sleep_rem_minutes: number | string | null;
-  sleep_light_minutes: number | string | null;
-  sleep_awake_minutes: number | string | null;
+  moving_time_seconds?: number | string | null;
+  average_speed?: number | string | null;
+  average_watts?: number | string | null;
+  elev_high?: number | string | null;
+  elev_low?: number | string | null;
+  sleep_total_duration_minutes?: number | string | null;
+  sleep_time_in_bed_minutes?: number | string | null;
+  sleep_efficiency_score?: number | string | null;
+  sleep_deep_minutes?: number | string | null;
+  sleep_rem_minutes?: number | string | null;
+  sleep_light_minutes?: number | string | null;
+  sleep_awake_minutes?: number | string | null;
 }
 
 export interface HealthDataParams {
