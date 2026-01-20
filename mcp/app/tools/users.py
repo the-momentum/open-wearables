@@ -1,12 +1,18 @@
-"""MCP tool for listing users."""
+"""MCP tools for user management."""
 
 import logging
+
+from fastmcp import FastMCP
 
 from app.services.api_client import client
 
 logger = logging.getLogger(__name__)
 
+# Create router for user-related tools
+users_router = FastMCP(name="Users Tools")
 
+
+@users_router.tool
 async def list_users(search: str | None = None, limit: int = 10) -> dict:
     """
     List users accessible via the configured API key.

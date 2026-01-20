@@ -1,11 +1,16 @@
-"""MCP tool for querying sleep records."""
+"""MCP tools for querying sleep records."""
 
 import logging
 from datetime import datetime
 
+from fastmcp import FastMCP
+
 from app.services.api_client import client
 
 logger = logging.getLogger(__name__)
+
+# Create router for sleep-related tools
+sleep_router = FastMCP(name="Sleep Tools")
 
 
 def _format_duration(minutes: int | None) -> str | None:
@@ -29,6 +34,7 @@ def _normalize_datetime(dt_str: str | None) -> str | None:
         return dt_str
 
 
+@sleep_router.tool
 async def get_sleep_records(
     user_id: str | None = None,
     user_name: str | None = None,

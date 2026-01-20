@@ -5,8 +5,8 @@ import logging
 from fastmcp import FastMCP
 
 from app.config import settings
-from app.tools.sleep import get_sleep_records
-from app.tools.users import list_users
+from app.tools.sleep import sleep_router
+from app.tools.users import users_router
 
 # Configure logging
 logging.basicConfig(
@@ -56,9 +56,9 @@ mcp = FastMCP(
     """,
 )
 
-# Register tools
-mcp.tool(list_users)
-mcp.tool(get_sleep_records)
+# Mount tool routers
+mcp.mount("users", users_router)
+mcp.mount("sleep", sleep_router)
 
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
