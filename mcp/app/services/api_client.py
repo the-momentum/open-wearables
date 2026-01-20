@@ -21,9 +21,10 @@ class OpenWearablesClient:
     def _ensure_configured(self) -> None:
         """Raise an error if the API key is not configured."""
         if not self._api_key:
-            from app.config import _ENV_FILE
+            from app.config import Settings
 
-            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {_ENV_FILE}")
+            env_file = Settings.model_config.get("env_file")
+            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
 
     @property
     def headers(self) -> dict[str, str]:

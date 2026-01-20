@@ -7,9 +7,9 @@ from app.services.api_client import client
 logger = logging.getLogger(__name__)
 
 
-async def list_users(search: str | None = None) -> dict:
+async def list_users(search: str | None = None, limit: int = 10) -> dict:
     """
-    List all users accessible via the configured API key.
+    List users accessible via the configured API key.
 
     Use this tool to discover available Open Wearables users before querying their health data.
     The API key determines which users are visible (personal, team, or enterprise scope).
@@ -17,11 +17,14 @@ async def list_users(search: str | None = None) -> dict:
     Args:
         search: Optional search term to filter users by first name, last name, or email.
                 Example: "John" will match users with "John" in their name.
+        limit: Maximum number of users to return (default: 10).
+               Use the 'search' parameter to find specific users in large organizations
+               rather than increasing this limit.
 
     Returns:
         A dictionary containing:
-        - users: List of user objects with id, first_name, last_name, email
-        - total: Total number of users matching the query
+        - users: List of user objects with id, first_name, last_name, email (up to 'limit' users)
+        - total: Total number of users matching the query (may be greater than returned users)
 
     Example response:
         {
@@ -37,9 +40,10 @@ async def list_users(search: str | None = None) -> dict:
         - Use the 'search' parameter to filter by name if the user mentions a specific person
         - The 'id' field is a UUID that can be used with other tools like get_sleep_records
         - If only one user exists, you can proceed directly with their data
+        - If 'total' exceeds the number of returned users, use 'search' to narrow results
     """
     try:
-        response = await client.get_users(search=search)
+        response = await client.get_users(search=search, limit=limit)
 
         # Extract user data from paginated response
         users = response.get("items", [])
