@@ -1,8 +1,8 @@
 import json
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
 from logging import getLogger
+from uuid import UUID, uuid4
 
 from app.config import settings
 from app.constants.series_types import (
@@ -153,7 +153,7 @@ def handle_sleep_data(
 
         if not current_state:
             if sleep_state not in SLEEP_START_STATES:
-                continue            
+                continue
 
             current_state = _create_new_sleep_state(sjson.startDate, sjson.uuid, source_name)
             # Store endDate as last_timestamp since that's when this period actually ends

@@ -29,7 +29,6 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 
 from .sleep_service import handle_sleep_data
-from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
 
 class ImportService:
@@ -168,8 +167,6 @@ class ImportService:
         self.timeseries_service.bulk_create_samples(db_session, samples)
 
         handle_sleep_data(db_session, raw, user_id)
-
-        finalize_stale_sleeps.delay()
 
         return True
 
