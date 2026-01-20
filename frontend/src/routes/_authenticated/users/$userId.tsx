@@ -51,7 +51,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { toast } from 'sonner';
 
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
@@ -181,10 +180,14 @@ function UserDetailPage() {
 
   const handleCopyToken = async () => {
     if (tokenData?.access_token) {
-      await navigator.clipboard.writeText(tokenData.access_token);
-      setTokenCopied(true);
-      toast.success('Token copied to clipboard');
-      setTimeout(() => setTokenCopied(false), 2000);
+      const success = await copyToClipboard(
+        tokenData.access_token,
+        'Token copied to clipboard'
+      );
+      if (success) {
+        setTokenCopied(true);
+        setTimeout(() => setTokenCopied(false), 2000);
+      }
     }
   };
   if (!userLoading && !user) {
@@ -277,7 +280,7 @@ function UserDetailPage() {
           <button
             onClick={handleGenerateToken}
             disabled={isGeneratingToken}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isGeneratingToken ? (
               <>
@@ -287,7 +290,7 @@ function UserDetailPage() {
             ) : (
               <>
                 <Key className="h-4 w-4" />
-                Generate Token
+                Generate SDK Token
               </>
             )}
           </button>
@@ -346,8 +349,8 @@ function UserDetailPage() {
           <DialogHeader>
             <DialogTitle>User Token Generated</DialogTitle>
             <DialogDescription>
-              This token is valid for 60 minutes and can be used to access SDK
-              endpoints for this user. Store it securely.
+              This token has infinite expiration time and can be used to access
+              SDK endpoints for this user. Store it securely.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
