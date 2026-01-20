@@ -11,6 +11,13 @@ dependencies = [
     "pydantic-settings>=2.0.0",
 ]
 
+[dependency-groups]
+code-quality = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.14.3",
+    "ty>=0.0.1a25",
+]
+
 [project.scripts]
 start = "app.main:main"
 
@@ -23,12 +30,30 @@ packages = ["app"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = 'py313'
+exclude = ["README.md", ".python-version", "LICENSE", "app/models/"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.14.11",
+select = [
+    "I",     # isort
+    "F",     # pyflakes
+    "FAST",  # FastApi
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "COM",   # flake8-commas
+    "T10",   # flake8-debugger
+    "PT",    # flake8-pytest-style
+    "RET",   # flake8-return
+    "SIM",   # flake8-simplify
+    "N",     # pep8-naming
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "ANN002", # missing-type-args
+    "ANN003", # missing-type-kwargs
+    "ANN204", # missing-return-type-special-method
+    "ANN401", # any-type
+    "RET503", # implicit-return
+    "COM812", # trailing-comma (conflicts with ruff format)
 ]

@@ -20,7 +20,7 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 
 ```bash
 cd mcp
-uv sync
+uv sync --group code-quality
 ```
 
 ### 2. Configure environment
@@ -218,8 +218,7 @@ Then configure the connection:
 ### Code quality
 
 ```bash
-uv run ruff check . --fix
-uv run ruff format .
+uv run pre-commit run --all-files
 ```
 
 ## Troubleshooting

@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths: &paths
+      - "mcp/**"
       - "backend/**"
       - "frontend/**"
   pull_request:
