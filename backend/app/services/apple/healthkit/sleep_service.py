@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
+from logging import getLogger
 
 from app.config import settings
 from app.constants.series_types import (
@@ -214,9 +215,13 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         is_nap=False,
     )
 
-    created_or_existing_record = event_record_service.create(db_session, sleep_record)
-    # Always use the returned record's ID (whether newly created or existing)
-    detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-    event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
-
     delete_sleep_state(user_id)
+
+    try:
+        created_or_existing_record = event_record_service.create(db_session, sleep_record)
+        # Always use the returned record's ID (whether newly created or existing)
+        detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
+        event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
+    except Exception as e:
+        logger = getLogger(__name__)
+        logger.warning(f"Sleep record {sleep_record.id} already exists for user {user_id}: {e}")
