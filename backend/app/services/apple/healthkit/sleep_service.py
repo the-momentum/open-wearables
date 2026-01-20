@@ -46,7 +46,6 @@ def load_sleep_state(user_id: str) -> SleepState | None:
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    # Redis with decode_responses=True expects strings, not bytes
     redis_client.set(key(user_id), json.dumps(state))
     redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
     redis_client.sadd(active_users_key(), user_id)
@@ -66,7 +65,7 @@ def _create_new_sleep_state(
         "uuid": uuid or str(uuid4()),
         "source_name": source_name or "Apple",
         "start_time": start_time.isoformat(),
-        "last_timestamp": start_time.isoformat(),  # Will be updated with endDate immediately after
+        "last_timestamp": start_time.isoformat(),
         "in_bed": 0,
         "awake": 0,
         "light": 0,

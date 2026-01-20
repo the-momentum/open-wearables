@@ -59,15 +59,15 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
-    # For sleep state expiration
+    # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
 
-    # For sleep end gap
+    # Time between sleep phases to conclude end of sleep session
     sleep_end_gap_minutes: int = 60  # 1 hour
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
-    sleep_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None

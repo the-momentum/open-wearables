@@ -29,7 +29,7 @@ def create_celery() -> Celery:
         },
         "finalize-stale-sleeps-periodic": {
             "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
-            "schedule": float(settings.sleep_interval_seconds),
+            "schedule": float(settings.sleep_sync_interval_seconds),
             "args": (),
             "kwargs": {},
         },
