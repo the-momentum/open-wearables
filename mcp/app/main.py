@@ -57,8 +57,8 @@ mcp = FastMCP(
 )
 
 # Mount tool routers
-mcp.mount("users", users_router)
-mcp.mount("sleep", sleep_router)
+mcp.mount(users_router, "users")
+mcp.mount(sleep_router, "sleep")
 
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
