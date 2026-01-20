@@ -8,13 +8,13 @@ from open_wearables.resources import UsersResource
 
 class OpenWearables:
     """Open Wearables API client.
-    
+
     A typed, async-ready Python SDK for the Open Wearables API.
-    
+
     Example:
         ```python
         from open_wearables import OpenWearables
-        
+
         # Sync usage
         client = OpenWearables(api_key="ow_your_api_key")
         user = client.users.create(
@@ -22,10 +22,10 @@ class OpenWearables:
             email="john@example.com"
         )
         workouts = client.users.get_workouts(user_id=user.id, limit=50)
-        
+
         # Async usage
         import asyncio
-        
+
         async def main():
             client = OpenWearables(api_key="ow_your_api_key")
             user = await client.users.acreate(
@@ -34,10 +34,10 @@ class OpenWearables:
             )
             workouts = await client.users.aget_workouts(user_id=user.id, limit=50)
             await client.aclose()
-        
+
         asyncio.run(main())
         ```
-    
+
     Args:
         api_key: Your Open Wearables API key.
         base_url: Optional base URL for the API (defaults to https://api.openwearables.io).
@@ -53,7 +53,7 @@ class OpenWearables:
     ):
         if not api_key:
             raise ValueError("api_key is required")
-        
+
         self._http = HttpClient(api_key=api_key, base_url=base_url, timeout=timeout)
         self.users = UsersResource(self._http)
 

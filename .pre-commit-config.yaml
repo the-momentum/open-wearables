@@ -5,10 +5,8 @@ repos:
       # Run the linter
       - id: ruff-check
         args: [--fix]
-        files: ^backend/.*\.py$
       # Run the formatter
       - id: ruff-format
-        files: ^backend/.*\.py$
 
   - repo: local
     hooks:

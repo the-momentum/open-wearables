@@ -149,10 +149,11 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, No
     mock.sadd.return_value = 1
     mock.srem.return_value = 1
     mock.smembers.return_value = set()
-    
+
     # Return mock for redis.from_url (used by get_redis_client)
     # We also need to clear lru_cache of get_redis_client to ensure it picks up the mock
     from app.integrations.redis_client import get_redis_client
+
     get_redis_client.cache_clear()
 
     with patch("redis.from_url", return_value=mock):
@@ -183,11 +184,11 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
             "broker_url": "memory://",
             "result_backend": "cache+memory://",
         }.get(k)
-        
+
         # When update is called, we don't want to actually connect to Redis
         mock_conf.update = MagicMock()
         mock_celery.conf = mock_conf
-        
+
         yield mock_task
 
 

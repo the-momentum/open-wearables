@@ -1,6 +1,7 @@
 """Tests for the OpenWearables client."""
 
 import pytest
+
 from open_wearables import OpenWearables
 
 

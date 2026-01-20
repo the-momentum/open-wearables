@@ -28,7 +28,7 @@ class UsersResource:
 
     def list(self) -> list[User]:
         """List all users.
-        
+
         Returns:
             List of User objects.
         """
@@ -37,7 +37,7 @@ class UsersResource:
 
     async def alist(self) -> list[User]:
         """List all users (async).
-        
+
         Returns:
             List of User objects.
         """
@@ -46,10 +46,10 @@ class UsersResource:
 
     def get(self, user_id: str | UUID) -> User:
         """Get a user by ID.
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             User object.
         """
@@ -58,10 +58,10 @@ class UsersResource:
 
     async def aget(self, user_id: str | UUID) -> User:
         """Get a user by ID (async).
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             User object.
         """
@@ -77,13 +77,13 @@ class UsersResource:
         last_name: str | None = None,
     ) -> User:
         """Create a new user.
-        
+
         Args:
             external_user_id: Your application's user ID.
             email: User's email address.
             first_name: User's first name.
             last_name: User's last name.
-            
+
         Returns:
             Created User object.
         """
@@ -109,13 +109,13 @@ class UsersResource:
         last_name: str | None = None,
     ) -> User:
         """Create a new user (async).
-        
+
         Args:
             external_user_id: Your application's user ID.
             email: User's email address.
             first_name: User's first name.
             last_name: User's last name.
-            
+
         Returns:
             Created User object.
         """
@@ -142,14 +142,14 @@ class UsersResource:
         last_name: str | None = None,
     ) -> User:
         """Update a user.
-        
+
         Args:
             user_id: The user's UUID.
             external_user_id: Your application's user ID.
             email: User's email address.
             first_name: User's first name.
             last_name: User's last name.
-            
+
         Returns:
             Updated User object.
         """
@@ -176,14 +176,14 @@ class UsersResource:
         last_name: str | None = None,
     ) -> User:
         """Update a user (async).
-        
+
         Args:
             user_id: The user's UUID.
             external_user_id: Your application's user ID.
             email: User's email address.
             first_name: User's first name.
             last_name: User's last name.
-            
+
         Returns:
             Updated User object.
         """
@@ -202,10 +202,10 @@ class UsersResource:
 
     def delete(self, user_id: str | UUID) -> User:
         """Delete a user.
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             Deleted User object.
         """
@@ -214,10 +214,10 @@ class UsersResource:
 
     async def adelete(self, user_id: str | UUID) -> User:
         """Delete a user (async).
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             Deleted User object.
         """
@@ -240,7 +240,7 @@ class UsersResource:
         sort_order: Literal["asc", "desc"] | None = None,
     ) -> list[Workout]:
         """Get workouts for a user.
-        
+
         Args:
             user_id: The user's UUID.
             start_date: ISO 8601 start date filter.
@@ -253,7 +253,7 @@ class UsersResource:
             offset: Number of results to skip.
             sort_by: Field to sort by.
             sort_order: Sort order (asc/desc).
-            
+
         Returns:
             List of Workout objects.
         """
@@ -288,7 +288,7 @@ class UsersResource:
         sort_order: Literal["asc", "desc"] | None = None,
     ) -> list[Workout]:
         """Get workouts for a user (async).
-        
+
         Args:
             user_id: The user's UUID.
             start_date: ISO 8601 start date filter.
@@ -301,7 +301,7 @@ class UsersResource:
             offset: Number of results to skip.
             sort_by: Field to sort by.
             sort_order: Sort order (asc/desc).
-            
+
         Returns:
             List of Workout objects.
         """
@@ -322,10 +322,10 @@ class UsersResource:
 
     def get_connections(self, user_id: str | UUID) -> list[Connection]:
         """Get connections for a user.
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             List of Connection objects.
         """
@@ -334,10 +334,10 @@ class UsersResource:
 
     async def aget_connections(self, user_id: str | UUID) -> list[Connection]:
         """Get connections for a user (async).
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             List of Connection objects.
         """
@@ -346,10 +346,10 @@ class UsersResource:
 
     def get_heart_rate(self, user_id: str | UUID) -> list[WorkoutStatistic]:
         """Get heart rate data for a user.
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             List of WorkoutStatistic objects with heart rate data.
         """
@@ -358,10 +358,10 @@ class UsersResource:
 
     async def aget_heart_rate(self, user_id: str | UUID) -> list[WorkoutStatistic]:
         """Get heart rate data for a user (async).
-        
+
         Args:
             user_id: The user's UUID.
-            
+
         Returns:
             List of WorkoutStatistic objects with heart rate data.
         """
