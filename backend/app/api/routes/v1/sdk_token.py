@@ -11,9 +11,6 @@ from app.utils.auth import DeveloperOptionalDep
 
 router = APIRouter()
 
-# Default app_id for admin-generated tokens
-ADMIN_APP_ID = "admin"
-
 
 @router.post("/users/{user_id}/token")
 async def create_user_token(
@@ -54,8 +51,9 @@ async def create_user_token(
         app_id = application.app_id
     # Method 2: Admin authentication (developer token)
     elif developer:
-        # Use default admin app_id for admin-generated tokens
-        app_id = ADMIN_APP_ID
+        # Use developer ID as app_id for admin-generated tokens (enables audit trail)
+        # Format: "admin:{developer_id}" to distinguish from app-generated tokens
+        app_id = f"admin:{developer.id}"
     else:
         # Neither method provided
         raise HTTPException(
