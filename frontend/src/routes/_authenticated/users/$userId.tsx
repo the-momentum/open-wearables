@@ -179,15 +179,13 @@ function UserDetailPage() {
   };
 
   const handleCopyToken = async () => {
-    if (tokenData?.access_token) {
-      const success = await copyToClipboard(
-        tokenData.access_token,
-        'Token copied to clipboard'
-      );
-      if (success) {
-        setTokenCopied(true);
-        setTimeout(() => setTokenCopied(false), 2000);
-      }
+    const success = await copyToClipboard(
+      tokenData?.access_token || '',
+      'Token copied to clipboard'
+    );
+    if (success) {
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
     }
   };
   if (!userLoading && !user) {
