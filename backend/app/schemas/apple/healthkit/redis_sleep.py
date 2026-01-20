@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from app.constants.series_types import SleepType
+from app.constants.series_types import SleepPhase
 
 
 class SleepState(TypedDict):
@@ -19,9 +19,9 @@ class SleepState(TypedDict):
 
 
 SLEEP_START_STATES = {
-    SleepType.IN_BED,
-    SleepType.ASLEEP_UNSPECIFIED,
-    SleepType.ASLEEP_CORE,
-    SleepType.ASLEEP_DEEP,
-    SleepType.ASLEEP_REM,
+    SleepPhase.IN_BED,
+    SleepPhase.ASLEEP_UNSPECIFIED,
+    SleepPhase.ASLEEP_CORE,
+    SleepPhase.ASLEEP_DEEP,
+    SleepPhase.ASLEEP_REM,
 }

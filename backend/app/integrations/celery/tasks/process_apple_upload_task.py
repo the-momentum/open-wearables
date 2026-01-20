@@ -2,6 +2,7 @@ from logging import getLogger
 from uuid import UUID
 
 from app.database import SessionLocal
+from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 from app.models import User
 from app.repositories.user_repository import UserRepository
 from app.services.apple.auto_export.import_service import import_service as ae_import_service
@@ -45,4 +46,8 @@ def process_apple_upload(
         # Select the appropriate import service based on source
         import_service = hk_import_service if source == "healthion" else ae_import_service
 
-        return import_service.import_data_from_request(db, content, content_type, user_id).model_dump()
+        result = import_service.import_data_from_request(db, content, content_type, user_id).model_dump()
+
+        finalize_stale_sleeps.delay()
+
+        return result

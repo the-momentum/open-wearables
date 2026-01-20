@@ -86,7 +86,7 @@ HEALTHION_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
 }
 
 
-class SleepType(IntEnum):
+class SleepPhase(IntEnum):
     IN_BED = 0
     ASLEEP_UNSPECIFIED = 1
     AWAKE = 2
@@ -111,5 +111,8 @@ def get_series_type_from_healthion_type(healthion_type: str) -> SeriesType | Non
     return HEALTHION_TYPE_TO_SERIES_TYPE.get(healthion_type)
 
 
-def get_apple_sleep_type(apple_sleep_type: int) -> SleepType | None:
-    return SleepType(apple_sleep_type)
+def get_apple_sleep_phase(apple_sleep_phase: int) -> SleepPhase | None:
+    try:
+        return SleepPhase(apple_sleep_phase)
+    except ValueError:
+        return None

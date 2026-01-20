@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 
 from app.constants.series_types import (
     get_series_type_from_apple_metric_type,
-    get_series_type_from_healthion_type,
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
@@ -58,16 +57,17 @@ class ImportService:
             workout_id = uuid4()
             external_id = wjson.uuid if wjson.uuid else None
 
-            duration_seconds = int((wjson.endDate - wjson.startDate).total_seconds())
+            metrics, duration = self._extract_metrics_from_workout_stats(wjson.workoutStatistics)
 
-            metrics = self._extract_metrics_from_workout_stats(wjson.workoutStatistics)
+            if duration is None:
+                duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
                 source_name=wjson.sourceName or "Apple Health",
                 device_id=wjson.sourceName or None,
-                duration_seconds=duration_seconds,
+                duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
@@ -131,30 +131,41 @@ class ImportService:
         avg_v = sum(values, Decimal("0")) / Decimal(len(values))
         return min_v, max_v, avg_v
 
-    def _extract_metrics_from_workout_stats(self, stats: list[HKWorkoutStatisticJSON] | None) -> EventRecordMetrics:
-        stats_dict: dict[str, Decimal] = {}
-
+    def _extract_metrics_from_workout_stats(
+        self,
+        stats: list[HKWorkoutStatisticJSON] | None,
+    ) -> tuple[EventRecordMetrics, int | float | None]:
+        """
+        Returns a dictionary with the metrics and duration.
+        """
         if stats is None:
-            return EventRecordMetrics()
+            return EventRecordMetrics(), None
+
+        stats_dict: dict[str, Decimal] = {}
+        duration: float | None = None
 
         for stat in stats:
             value = self._dec(stat.value)
             if value is None or stat.type is None:
                 continue
-            series_type = get_series_type_from_healthion_type(stat.type)
-            if series_type is None:
-                continue
-            match series_type:
-                case SeriesType.energy:
+
+            match stat.type:
+                case "activeEnergyBurned":
                     stats_dict["energy_burned"] = value
-                case SeriesType.distance_walking_running:
-                    stats_dict["distance"] = value
-                case SeriesType.steps:
-                    stats_dict["steps_count"] = value
+                case "maxHeartRate":
+                    stats_dict["heart_rate_max"] = value
+                case "averageHeartRate":
+                    stats_dict["heart_rate_avg"] = value
+                case "duration":
+                    duration = float(value)
+                case "elevationGain":
+                    stats_dict["elevation_gain"] = value
+                case "totalEnergyBurned":
+                    stats_dict["energy_burned"] = value
                 case _:
                     continue
 
-        return EventRecordMetrics(**stats_dict)
+        return EventRecordMetrics(**stats_dict), duration
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
         for record, detail in self._build_workout_bundles(raw, user_id):

@@ -6,8 +6,8 @@ from uuid import UUID, uuid4
 
 from app.config import settings
 from app.constants.series_types import (
-    SleepType,
-    get_apple_sleep_type,
+    SleepPhase,
+    get_apple_sleep_phase,
 )
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
@@ -19,8 +19,11 @@ from app.schemas import (
 )
 from app.schemas.apple.healthkit.redis_sleep import SLEEP_START_STATES, SleepState
 from app.services.event_record_service import event_record_service
+from app.utils.sentry_helpers import log_and_capture_error
 
 redis_client = get_redis_client()
+
+logger = getLogger(__name__)
 
 
 def key(user_id: str) -> str:
@@ -76,7 +79,7 @@ def _apply_transition(
     db_session: DbSession,
     user_id: str,
     state: SleepState,
-    sleep_type: SleepType,
+    sleep_phase: SleepPhase,
     start_time: datetime,
     end_time: datetime,
     uuid: str | None = None,
@@ -96,18 +99,18 @@ def _apply_transition(
 
     duration_seconds = (end_time - start_time).total_seconds()
 
-    match sleep_type:
-        case SleepType.IN_BED:
+    match sleep_phase:
+        case SleepPhase.IN_BED:
             state["in_bed"] += duration_seconds
-        case SleepType.AWAKE:
+        case SleepPhase.AWAKE:
             state["awake"] += duration_seconds
-        case SleepType.ASLEEP_CORE:
+        case SleepPhase.ASLEEP_CORE:
             state["light"] += duration_seconds
-        case SleepType.ASLEEP_DEEP:
+        case SleepPhase.ASLEEP_DEEP:
             state["deep"] += duration_seconds
-        case SleepType.ASLEEP_REM:
+        case SleepPhase.ASLEEP_REM:
             state["rem"] += duration_seconds
-        case SleepType.ASLEEP_UNSPECIFIED:
+        case SleepPhase.ASLEEP_UNSPECIFIED:
             state["deep"] += duration_seconds
         case _:
             pass
@@ -146,13 +149,13 @@ def handle_sleep_data(
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
         source_name = sjson.sourceName
-        sleep_state = get_apple_sleep_type(int(sjson.value))
+        sleep_phase = get_apple_sleep_phase(int(sjson.value))
 
-        if sleep_state is None:
+        if sleep_phase is None:
             continue
 
         if not current_state:
-            if sleep_state not in SLEEP_START_STATES:
+            if sleep_phase not in SLEEP_START_STATES:
                 continue
 
             current_state = _create_new_sleep_state(sjson.startDate, sjson.uuid, source_name)
@@ -166,7 +169,7 @@ def handle_sleep_data(
             db_session,
             user_id,
             current_state,
-            sleep_state,
+            sleep_phase,
             sjson.startDate,
             sjson.endDate,
             sjson.uuid,
@@ -181,10 +184,11 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     end_time = datetime.fromisoformat(state["last_timestamp"])
     start_time = datetime.fromisoformat(state["start_time"])
 
-    total_sleep = state["light"] + state["deep"] + state["rem"]
+    total_duration = (end_time - start_time).total_seconds()
+    total_sleep_seconds = state["light"] + state["deep"] + state["rem"]
     in_bed = state["in_bed"]
 
-    efficiency = total_sleep / in_bed if in_bed > 0 else 0
+    efficiency = total_sleep_seconds / total_duration if total_duration > 0 else 0
 
     try:
         record_uuid = UUID(state["uuid"])
@@ -196,22 +200,22 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
-        duration_seconds=total_sleep,
+        duration_seconds=total_sleep_seconds,
         category="sleep",
         type="sleep_session",
-        source_name=state["source_name"],
+        source_name=state.get("source_name") or "Apple",
         device_id=None,
     )
 
     detail = EventRecordDetailCreate(
         record_id=sleep_record.id,
-        sleep_total_duration_minutes=total_sleep,
-        sleep_time_in_bed_minutes=in_bed,
+        sleep_total_duration_minutes=total_sleep_seconds // 60,
+        sleep_time_in_bed_minutes=in_bed // 60,
         sleep_efficiency_score=Decimal(efficiency),
-        sleep_deep_minutes=state["deep"],
-        sleep_rem_minutes=state["rem"],
-        sleep_light_minutes=state["light"],
-        sleep_awake_minutes=state["awake"],
+        sleep_deep_minutes=state["deep"] // 60,
+        sleep_rem_minutes=state["rem"] // 60,
+        sleep_light_minutes=state["light"] // 60,
+        sleep_awake_minutes=state["awake"] // 60,
         is_nap=False,
     )
 
@@ -223,5 +227,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
         event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
     except Exception as e:
-        logger = getLogger(__name__)
-        logger.warning(f"Sleep record {sleep_record.id} already exists for user {user_id}: {e}")
+        log_and_capture_error(
+            e,
+            logger,
+            f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
+            extra={"user_id": user_id},
+        )
