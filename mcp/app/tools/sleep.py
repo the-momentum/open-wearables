@@ -35,7 +35,7 @@ def _normalize_datetime(dt_str: str | None) -> str | None:
 
 
 @sleep_router.tool
-async def get_sleep_records(
+async def list_sleep(
     user_id: str | None = None,
     user_name: str | None = None,
     start_date: str | None = None,
@@ -243,8 +243,8 @@ async def get_sleep_records(
         }
 
     except ValueError as e:
-        logger.error(f"API error in get_sleep_records: {e}")
+        logger.error(f"API error in list_sleep: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in get_sleep_records: {e}")
+        logger.exception(f"Unexpected error in list_sleep: {e}")
         return {"error": f"Failed to fetch sleep records: {e}"}

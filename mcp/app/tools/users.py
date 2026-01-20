@@ -44,7 +44,7 @@ async def list_users(search: str | None = None, limit: int = 10) -> dict:
     Notes for LLMs:
         - Call this tool first if you don't know the user's ID
         - Use the 'search' parameter to filter by name if the user mentions a specific person
-        - The 'id' field is a UUID that can be used with other tools like get_sleep_records
+        - The 'id' field is a UUID that can be used with other tools like list_sleep
         - If only one user exists, you can proceed directly with their data
         - If 'total' exceeds the number of returned users, use 'search' to narrow results
     """

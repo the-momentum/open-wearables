@@ -26,7 +26,7 @@ mcp = FastMCP(
 
     Available tools:
     - list_users: Discover users accessible via your API key
-    - get_sleep_records: Get sleep data for a user over a specified time period
+    - list_sleep: Get sleep data for a user over a specified time period
 
     Workflow:
     1. If you don't know the user's ID, call list_users first and use the returned user IDs to identify the correct user
@@ -38,7 +38,7 @@ mcp = FastMCP(
     Assistant actions:
       1. Call list_users() to find the user's ID
       2. Calculate dates: start_date = 7 days ago, end_date = today
-      3. Call get_sleep_records(user_id="{user_id}", start_date="2025-01-13", end_date="2025-01-20")
+      3. Call list_sleep(user_id="{user_id}", start_date="2025-01-13", end_date="2025-01-20")
       4. Respond with: "Over the past week, you averaged 7.2 hours of sleep per night.
          Your best night was Tuesday (8.1 hours), and your shortest was Friday (5.9 hours).
          Your sleep efficiency averaged 89%, which is good."
@@ -47,7 +47,7 @@ mcp = FastMCP(
     User: "Compare my sleep this week vs last week"
     Assistant actions:
       1. Calculate dates for two-week period: start_date = 14 days ago, end_date = today
-      2. Call get_sleep_records(user_id="{user_id}", start_date="2025-01-06", end_date="2025-01-20")
+      2. Call list_sleep(user_id="{user_id}", start_date="2025-01-06", end_date="2025-01-20")
       3. Analyze the data, splitting into two 7-day periods
       4. Respond with a comparison highlighting trends and changes
 
@@ -57,8 +57,8 @@ mcp = FastMCP(
 )
 
 # Mount tool routers
-mcp.mount(users_router, "users")
-mcp.mount(sleep_router, "sleep")
+mcp.mount(users_router)
+mcp.mount(sleep_router)
 
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
