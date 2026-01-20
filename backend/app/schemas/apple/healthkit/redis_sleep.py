@@ -7,6 +7,7 @@ class SleepState(TypedDict):
     """Schema for sleep state."""
 
     uuid: str
+    source_name: str | None
     start_time: str
     last_type: int
     last_timestamp: str
