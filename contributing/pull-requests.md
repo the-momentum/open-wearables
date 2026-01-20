@@ -64,6 +64,24 @@ pagination in the workouts list endpoint.
 Closes #123
 ```
 
+## PR Title Convention
+
+**PR titles must follow the same [Conventional Commits](https://www.conventionalcommits.org/) format as commit messages.**
+
+The CI workflow automatically validates PR titles to ensure they follow this convention. Your PR title should use the format:
+
+```
+<type>(<optional scope>): <description>
+```
+
+### Examples
+
+- `feat: add user profile endpoint`
+- `fix(auth): resolve token refresh issue`
+- `docs: update API documentation`
+- `ci: add PR title validation to workflow`
+- `refactor(backend): simplify authentication logic`
+
 ## Creating a Pull Request
 
 1. **Create a branch** from `main`:
