@@ -12,7 +12,6 @@ on:
       - opened
       - edited
       - synchronize
-    paths: *paths
 
 jobs:
   # Validate PR title follows conventional commits
