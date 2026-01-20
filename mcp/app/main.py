@@ -29,7 +29,7 @@ mcp = FastMCP(
     - get_sleep_records: Get sleep data for a user over a specified time period
 
     Workflow:
-    1. If you don't know the user's ID, call list_users first to discover accessible users
+    1. If you don't know the user's ID, call list_users first and use the returned user IDs to identify the correct user
     2. Use the user's ID (or name) to query their health data with the appropriate tool
     3. Present the data in a human-friendly format, highlighting key insights
 
