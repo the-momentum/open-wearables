@@ -55,7 +55,6 @@ def delete_sleep_state(user_id: str) -> None:
 
 def _create_new_sleep_state(
     start_time: datetime,
-    sleep_state: SleepType,
     uuid: str | None = None,
     source_name: str | None = None,
 ) -> SleepState:
@@ -63,7 +62,6 @@ def _create_new_sleep_state(
         "uuid": uuid or str(uuid4()),
         "source_name": source_name or "Apple",
         "start_time": start_time.isoformat(),
-        "last_type": sleep_state,
         "last_timestamp": start_time.isoformat(),  # Will be updated with endDate immediately after
         "in_bed": 0,
         "awake": 0,
@@ -77,7 +75,7 @@ def _apply_transition(
     db_session: DbSession,
     user_id: str,
     state: SleepState,
-    sleep_state: SleepType,
+    sleep_type: SleepType,
     start_time: datetime,
     end_time: datetime,
     uuid: str | None = None,
@@ -88,18 +86,16 @@ def _apply_transition(
     last_timestamp = datetime.fromisoformat(state["last_timestamp"])
     delta_seconds = (start_time - last_timestamp).total_seconds()
 
-    if delta_seconds <= 0:
+    if delta_seconds < 0:
         return state
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
-        return _create_new_sleep_state(start_time, sleep_state, uuid, source_name)
-
-    last_type = get_apple_sleep_type(state["last_type"])
+        return _create_new_sleep_state(start_time, uuid, source_name)
 
     duration_seconds = (end_time - start_time).total_seconds()
 
-    match last_type:
+    match sleep_type:
         case SleepType.IN_BED:
             state["in_bed"] += duration_seconds
         case SleepType.AWAKE:
@@ -115,7 +111,6 @@ def _apply_transition(
         case _:
             pass
 
-    state["last_type"] = int(sleep_state)
     state["last_timestamp"] = end_time.isoformat()
     return state
 
@@ -159,7 +154,7 @@ def handle_sleep_data(
             if sleep_state not in SLEEP_START_STATES:
                 continue            
 
-            current_state = _create_new_sleep_state(sjson.startDate, sleep_state, sjson.uuid, source_name)
+            current_state = _create_new_sleep_state(sjson.startDate, sjson.uuid, source_name)
             # Store endDate as last_timestamp since that's when this period actually ends
             current_state["last_timestamp"] = sjson.endDate.isoformat()
             save_sleep_state(user_id, current_state)
@@ -200,11 +195,11 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
+        duration_seconds=total_sleep,
         category="sleep",
         type="sleep_session",
         source_name=state["source_name"],
         device_id=None,
-        duration_seconds=total_sleep,
     )
 
     detail = EventRecordDetailCreate(
