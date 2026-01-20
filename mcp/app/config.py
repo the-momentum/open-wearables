@@ -6,16 +6,12 @@ from pathlib import Path
 from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve the absolute path to the .env file
-# This ensures it works regardless of the current working directory
-_ENV_FILE = (Path(__file__).parent.parent / "config" / ".env").resolve()
-
 
 class Settings(BaseSettings):
     """MCP server configuration loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=_ENV_FILE,
+        env_file=str(Path(__file__).parent.parent / "config" / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -43,7 +39,7 @@ try:
     settings = Settings()
     if not settings.is_configured():
         print(
-            f"Warning: OPEN_WEARABLES_API_KEY not set. Expected .env file at: {_ENV_FILE}",
+            f"Warning: OPEN_WEARABLES_API_KEY not set. Expected .env file at: {Settings.model_config.get('env_file')}",
             file=sys.stderr,
         )
 except ValidationError as e:
