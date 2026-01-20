@@ -11,7 +11,7 @@ async def list_users(search: str | None = None) -> dict:
     """
     List all users accessible via the configured API key.
 
-    Use this tool to discover available users before querying their health data.
+    Use this tool to discover available Open Wearables users before querying their health data.
     The API key determines which users are visible (personal, team, or enterprise scope).
 
     Args:
