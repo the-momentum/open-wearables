@@ -205,6 +205,8 @@ class TestPolarWorkoutsMetricsBuilding:
         assert metrics["heart_rate_max"] == 175
         assert metrics["heart_rate_min"] == 145
         assert metrics["steps_count"] is None
+        assert metrics["energy_burned"] == Decimal("650")
+        assert metrics["distance"] == Decimal("10000")
 
     def test_build_metrics_without_heart_rate_data(self, db: Session) -> None:
         """Test building metrics when heart rate data is missing."""

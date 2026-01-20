@@ -108,11 +108,20 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         # Steps
         steps_count = int(raw_workout.stepCount) if raw_workout.stepCount is not None else None
 
+        energy_burned = (
+            Decimal(str(raw_workout.energyConsumption)) if raw_workout.energyConsumption is not None else None
+        )
+
+        distance = Decimal(str(raw_workout.totalDistance)) if raw_workout.totalDistance is not None else None
+
         return {
             "heart_rate_min": heart_rate_min,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
             "steps_count": steps_count,
+            # Energy and distance
+            "energy_burned": energy_burned,
+            "distance": distance,
             # Speed (convert from m/s to km/h for display)
             "max_speed": Decimal(str(raw_workout.maxSpeed * 3.6)) if raw_workout.maxSpeed else None,
             "average_speed": Decimal(str(raw_workout.avgSpeed * 3.6)) if raw_workout.avgSpeed else None,

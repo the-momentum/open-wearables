@@ -127,6 +127,8 @@ class TestSuuntoWorkouts:
         assert metrics["heart_rate_max"] == 175
         assert metrics["heart_rate_min"] == 120
         assert metrics["steps_count"] == 8500
+        assert metrics["energy_burned"] == Decimal("650")
+        assert metrics["distance"] == Decimal("10000")
 
     def test_build_metrics_with_missing_heart_rate(
         self,

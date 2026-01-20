@@ -62,7 +62,8 @@ def sample_polar_exercise() -> dict:
         "start_time": "2024-01-15T08:00:00",
         "start_time_utc_offset": 60,
         "duration": "PT1H0M0S",
-        "distance": 10000.0,
+        "calories": 650,
+        "distance": 10000,
         "heart_rate": {
             "average": 145,
             "maximum": 175,
