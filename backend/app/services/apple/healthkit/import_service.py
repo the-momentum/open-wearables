@@ -142,7 +142,9 @@ class ImportService:
             return EventRecordMetrics(), None
 
         stats_dict: dict[str, Decimal] = {}
+        stats_dict["energy_burned"] = Decimal("0")
         duration: float | None = None
+        
 
         for stat in stats:
             value = self._dec(stat.value)
@@ -151,17 +153,53 @@ class ImportService:
 
             match stat.type:
                 case "activeEnergyBurned":
-                    stats_dict["energy_burned"] = value
-                case "maxHeartRate":
-                    stats_dict["heart_rate_max"] = value
+                    stats_dict["energy_burned"] += value
+                case "averageGroundContactTime":
+                    pass  # No corresponding field in EventRecordMetrics
                 case "averageHeartRate":
                     stats_dict["heart_rate_avg"] = value
+                case "averageMETs":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "averageRunningPower":
+                    stats_dict["average_watts"] = value
+                case "averageRunningSpeed":
+                    stats_dict["average_speed"] = value
+                case "averageRunningStrideLength":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "averageSpeed":
+                    stats_dict["average_speed"] = value
+                case "averageVerticalOscillation":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "basalEnergyBurned":
+                    stats_dict["energy_burned"] += value
+                case "distance":
+                    stats_dict["distance"] = value
                 case "duration":
                     duration = float(value)
-                case "elevationGain":
-                    stats_dict["elevation_gain"] = value
-                case "totalEnergyBurned":
-                    stats_dict["energy_burned"] = value
+                case "elevationAscended":
+                    stats_dict["total_elevation_gain"] = value
+                case "elevationDescended":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "indoorWorkout":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "lapLength":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "maxHeartRate":
+                    stats_dict["heart_rate_max"] = int(value)
+                case "maxSpeed":
+                    stats_dict["max_speed"] = value
+                case "minHeartRate":
+                    stats_dict["heart_rate_min"] = int(value)
+                case "stepCount":
+                    stats_dict["steps_count"] = int(value)
+                case "swimmingLocationType":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "swimmingStrokeCount":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "weatherHumidity":
+                    pass  # No corresponding field in EventRecordMetrics
+                case "weatherTemperature":
+                    pass  # No corresponding field in EventRecordMetrics
                 case _:
                     continue
 
