@@ -213,7 +213,7 @@ class EventRecordService(
             if details.average_speed and details.average_speed > 0:
                 avg_pace_sec_per_km = 1000 / details.average_speed
             elif details.distance > 0:
-                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000 
+                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000
         else:
             avg_pace_sec_per_km = None
 
