@@ -23,8 +23,8 @@ from app.schemas.events import (
     Workout,
     WorkoutDetailed,
 )
-from app.schemas.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.summaries import SleepStagesSummary
+from app.schemas.workout_types import WORKOUTS_WITH_PACE
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -216,7 +216,6 @@ class EventRecordService(
                 avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000
         else:
             avg_pace_sec_per_km = None
-
 
         return WorkoutDetailed(
             id=record.id,

@@ -55,7 +55,6 @@ class IntensityMinutesResult(TypedDict):
     vigorous_minutes: int
 
 
-
 # --- Internal / CRUD Models ---
 
 

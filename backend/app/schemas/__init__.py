@@ -150,10 +150,10 @@ from .system_info import (
     SystemInfoResponse,
 )
 from .timeseries import (
-    ActivityAggregateResult,
     ActiveMinutesResult,
-    IntensityMinutesResult,
+    ActivityAggregateResult,
     HeartRateSampleCreate,
+    IntensityMinutesResult,
     StepSampleCreate,
     TimeSeriesQueryParams,
     TimeSeriesSample,

@@ -11,12 +11,12 @@ from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import (
+    ActiveMinutesResult,
+    ActivityAggregateResult,
+    IntensityMinutesResult,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
-    ActivityAggregateResult,
-    ActiveMinutesResult,
-    IntensityMinutesResult,
 )
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
 from app.utils.exceptions import handle_exceptions

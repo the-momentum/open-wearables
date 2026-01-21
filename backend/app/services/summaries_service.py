@@ -543,10 +543,7 @@ class SummariesService:
             basal_temp = temp_data[0] if temp_data else None
 
             # Calculate BMI
-            if bmi_data:
-                bmi = bmi_data[0] if bmi_data else None
-            else:
-                bmi = self._calculate_bmi(weight_kg, height_cm)
+            bmi = (bmi_data[0] if bmi_data else None) if bmi_data else self._calculate_bmi(weight_kg, height_cm)
 
             # Calculate age
             age = self._calculate_age(birth_date, summary_date) if birth_date else None
