@@ -17,7 +17,7 @@ export const Route = createFileRoute('/reset-password')({
   }),
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/users' });
+      throw redirect({ to: '/dashboard' });
     }
   },
 });
