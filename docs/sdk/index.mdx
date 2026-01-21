@@ -1,0 +1,94 @@
+---
+title: "Sync SDK"
+sidebarTitle: "Overview"
+description: "Native SDKs for syncing health data from Apple HealthKit"
+---
+
+## Introduction
+
+Open Wearables Sync SDKs enable seamless background synchronization of health data directly from Apple HealthKit to the Open Wearables platform.
+
+Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth, Apple HealthKit requires a **push-based model** where data is sent from the user's device to your backend.
+
+<Note>
+  **Why Push-Based?** Apple HealthKit doesn't expose a cloud API. Health data lives exclusively on the user's device, so the mobile app must actively push data to your backend.
+</Note>
+
+## Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         USER'S MOBILE DEVICE (iOS)                        │
+│  ┌────────────────┐      ┌─────────────────┐      ┌──────────────────┐   │
+│  │  Apple Health  │      │    Your App     │      │  Sync SDK        │   │
+│  │  (HealthKit)   │─────▶│    (Flutter)    │─────▶│  (Background)    │   │
+│  │                │      │                 │      │                  │   │
+│  └────────────────┘      └─────────────────┘      └────────┬─────────┘   │
+└───────────────────────────────────────────────────────────│──────────────┘
+                                                            │ Push data
+                                                            ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                           OPEN WEARABLES PLATFORM                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │  POST /sdk/users/{user_id}/sync/apple/healthkit                     │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Background Sync" icon="rotate">
+    Health data syncs automatically even when your app is in the background, using iOS Background App Refresh.
+  </Card>
+  <Card title="Incremental Updates" icon="bolt">
+    Uses anchored queries to sync only new data since the last sync, minimizing battery usage and network traffic.
+  </Card>
+  <Card title="Secure Storage" icon="shield">
+    Credentials stored securely in iOS Keychain. API keys never leave your backend.
+  </Card>
+  <Card title="Wide Data Support" icon="chart-line">
+    Steps, heart rate, workouts, sleep, body measurements, nutrition, and more - all normalized to Open Wearables data model.
+  </Card>
+</CardGroup>
+
+## Available SDKs
+
+<CardGroup cols={2}>
+  <Card title="Flutter" icon="mobile" href="/sdk/flutter">
+    Flutter SDK for iOS with Apple HealthKit support.
+  </Card>
+  <Card title="More Coming Soon" icon="clock">
+    Android Health Connect, native iOS (Swift), and Android (Kotlin) SDKs are on our roadmap.
+  </Card>
+</CardGroup>
+
+## How It Differs from Cloud Providers
+
+| Aspect | Cloud Providers (Garmin, Polar) | Apple HealthKit |
+|--------|--------------------------------|-----------------|
+| **Data Source** | Provider's cloud servers | User's device only |
+| **Sync Model** | Pull/Webhook (server-to-server) | Push (device-to-server) |
+| **OAuth** | Required for authorization | Not applicable |
+| **Connectivity** | Works anytime | Requires device to be online |
+| **Battery Impact** | None on device | Optimized background sync |
+| **Data Freshness** | Provider-dependent | Real-time from device |
+
+## Security Model
+
+The SDK uses a secure token-based authentication flow that keeps your API keys safe:
+
+1. **API Keys stay on your backend** - Never exposed to mobile apps
+2. **Short-lived access tokens** - Generated server-to-server, used by mobile SDK
+3. **Secure credential storage** - iOS Keychain
+4. **Optional token refresh** - SDK can automatically refresh expired tokens
+
+<Warning>
+  **Never embed your Open Wearables API Key in your mobile app.** Always generate access tokens on your backend and pass only the token to the mobile SDK.
+</Warning>
+
+## Next Steps
+
+<Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
+  Get started with the Flutter SDK
+</Card>

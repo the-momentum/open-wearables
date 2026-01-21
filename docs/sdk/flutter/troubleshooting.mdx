@@ -1,0 +1,252 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Common issues and solutions for the Flutter SDK on iOS"
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="HealthKit permissions not showing">
+    **Symptoms:** The health permissions dialog doesn't appear when calling `requestAuthorization()`.
+
+    **Solutions:**
+
+    1. **Verify Info.plist configuration:**
+       ```xml
+       <key>NSHealthShareUsageDescription</key>
+       <string>This app syncs your health data to your account.</string>
+       ```
+
+    2. **Check HealthKit capability in Xcode:**
+       - Open `ios/Runner.xcworkspace`
+       - Select target → Signing & Capabilities
+       - Ensure HealthKit is listed
+
+    3. **Run on physical device:**
+       HealthKit doesn't work in the iOS Simulator. Always test on a real device.
+
+    4. **Check provisioning profile:**
+       Your Apple Developer account must have HealthKit capability enabled for the App ID.
+  </Accordion>
+
+  <Accordion title="Background sync not working">
+    **Symptoms:** Data only syncs when the app is in the foreground.
+
+    **Solutions:**
+
+    1. **Verify background modes in Info.plist:**
+       ```xml
+       <key>UIBackgroundModes</key>
+       <array>
+           <string>fetch</string>
+           <string>processing</string>
+       </array>
+
+       <key>BGTaskSchedulerPermittedIdentifiers</key>
+       <array>
+           <string>com.healthbgsync.task.refresh</string>
+           <string>com.healthbgsync.task.process</string>
+       </array>
+       ```
+
+    2. **Check Background App Refresh setting:**
+       - Go to iOS Settings → Your App → Background App Refresh
+       - Ensure it's enabled
+
+    3. **Check Low Power Mode:**
+       Background tasks are suspended when Low Power Mode is active.
+
+    4. **Wait for system scheduling:**
+       iOS controls when background tasks run. Initial syncs may take 15+ minutes to trigger.
+  </Accordion>
+
+  <Accordion title="Sign-in fails with 'Invalid token'">
+    **Symptoms:** `SignInException` with message about invalid or expired token.
+
+    **Solutions:**
+
+    1. **Check token expiration:**
+       Access tokens expire. Ensure your backend generates fresh tokens.
+
+    2. **Verify API Key:**
+       Double-check your API Key on the backend is correct and active.
+
+    3. **Check network connectivity:**
+       Ensure the device can reach `api.openwearables.io`.
+
+    4. **Enable token refresh:**
+       ```dart
+       await HealthBgSync.signIn(
+         userId: userId,
+         accessToken: accessToken,
+         appId: 'your-app-id',
+         appSecret: 'your-app-secret',
+         baseUrl: 'https://api.openwearables.io',
+       );
+       ```
+  </Accordion>
+
+  <Accordion title="Data not appearing in Open Wearables">
+    **Symptoms:** Sync completes but data doesn't show up in the API.
+
+    **Solutions:**
+
+    1. **Check sync status:**
+       ```dart
+       final status = await HealthBgSync.getSyncStatus();
+       print('Sent count: ${status['sentCount']}');
+       ```
+
+    2. **Verify health data exists:**
+       Open Apple Health or Health Connect and confirm data exists for the requested types.
+
+    3. **Check date range:**
+       The SDK syncs data incrementally. New data may not exist yet.
+
+    4. **Reset anchors for full sync:**
+       ```dart
+       await HealthBgSync.resetAnchors();
+       await HealthBgSync.syncNow();
+       ```
+
+    5. **Check permissions:**
+       Users may have denied specific data types even if they approved the overall request.
+  </Accordion>
+
+  <Accordion title="NotConfiguredException thrown">
+    **Symptoms:** Exception when calling SDK methods.
+
+    **Solution:**
+    Ensure `configure()` is called before any other SDK methods:
+
+    ```dart
+    // ✅ Correct order
+    await HealthBgSync.configure();
+    await HealthBgSync.signIn(...);
+    await HealthBgSync.startBackgroundSync();
+
+    // ❌ Wrong - signIn before configure
+    await HealthBgSync.signIn(...); // Throws NotConfiguredException
+    ```
+  </Accordion>
+
+  <Accordion title="NotSignedInException thrown">
+    **Symptoms:** Exception when starting sync without signing in.
+
+    **Solution:**
+    Check sign-in status before sync operations:
+
+    ```dart
+    if (!HealthBgSync.isSignedIn) {
+      await HealthBgSync.signIn(...);
+    }
+    await HealthBgSync.startBackgroundSync();
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## HealthKit Entitlement Issues
+
+If you see "Missing HealthKit entitlement" errors:
+
+1. **In Xcode:**
+   - Target → Signing & Capabilities → Add HealthKit
+   - Check "Background Delivery" for background updates
+
+2. **In Apple Developer Portal:**
+   - App IDs → Your App → Capabilities
+   - Enable HealthKit
+
+3. **Regenerate provisioning profiles** after making changes
+
+### Background Delivery Limitations
+
+iOS has strict limits on background execution:
+
+| Factor | Impact |
+|--------|--------|
+| Battery Level | Background tasks paused below 20% |
+| Low Power Mode | All background tasks suspended |
+| User Behavior | iOS learns when you use the app and schedules accordingly |
+| Network | Background tasks require network connectivity |
+
+<Tip>
+  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+</Tip>
+
+## Testing Background Sync
+
+To test background sync during development:
+
+1. Run app on device
+2. Navigate to home screen
+3. Wait 15+ minutes (or use Xcode's debug menu)
+4. Check logs for sync activity
+
+In Xcode, you can simulate background fetch:
+- Debug → Simulate Background Fetch
+
+## Debugging Tips
+
+### Enable Debug Logging
+
+```dart
+// Log current state
+print('Status: ${HealthBgSync.status}');
+print('Is signed in: ${HealthBgSync.isSignedIn}');
+print('Is sync active: ${HealthBgSync.isSyncActive}');
+print('User: ${HealthBgSync.currentUser?.userId}');
+```
+
+### Check Stored Credentials
+
+```dart
+final creds = await HealthBgSync.getStoredCredentials();
+print('Stored credentials: $creds');
+```
+
+### Monitor Sync Progress
+
+```dart
+final status = await HealthBgSync.getSyncStatus();
+print('Has resumable session: ${status['hasResumableSession']}');
+print('Sent count: ${status['sentCount']}');
+print('Is full export: ${status['isFullExport']}');
+print('Created at: ${status['createdAt']}');
+```
+
+### Force Fresh Start
+
+If things are in a bad state:
+
+```dart
+// Clear everything and start fresh
+await HealthBgSync.stopBackgroundSync();
+await HealthBgSync.signOut();
+await HealthBgSync.clearSyncSession();
+await HealthBgSync.resetAnchors();
+
+// Re-initialize
+await HealthBgSync.configure();
+```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/health-bg-sync/issues">
+    Report bugs or request features on the SDK repository.
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">
+    Ask questions and get help from the community.
+  </Card>
+</CardGroup>
+
+When reporting issues, please include:
+- Flutter version (`flutter --version`)
+- SDK version (from `pubspec.lock`)
+- Device model and OS version
+- Relevant logs and error messages
+- Steps to reproduce

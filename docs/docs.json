@@ -52,6 +52,25 @@
         ]
       },
       {
+        "tab": "Sync SDK",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "sdk/index"
+            ]
+          },
+          {
+            "group": "Flutter",
+            "pages": [
+              "sdk/flutter/index",
+              "sdk/flutter/integration",
+              "sdk/flutter/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "API Reference",
         "openapi": "https://api.openwearables.io/openapi.json",
         "groups": [
