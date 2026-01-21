@@ -53,7 +53,11 @@ class DeviceRepository(CrudRepository[Device, DeviceCreate, DeviceUpdate]):
         else:
             device = self.create(
                 db,
-                DeviceCreate(provider_name=provider_name, serial_number=serial_number, name=name or "Unknown Device"),
+                DeviceCreate(
+                    provider_name=provider_name,
+                    serial_number=serial_number,
+                    name=name or "Unknown Device",
+                ),
             )
 
         if sw_version:
