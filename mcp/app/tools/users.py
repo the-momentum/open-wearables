@@ -44,8 +44,10 @@ async def list_users(search: str | None = None, limit: int = 10) -> dict:
     Notes for LLMs:
         - Call this tool first if you don't know the user's ID
         - Use the 'search' parameter to filter by name if the user mentions a specific person
-        - The 'id' field is a UUID that can be used with other tools like list_sleep
-        - If only one user exists, you can proceed directly with their data
+        - The 'id' field is a UUID that can be used with other tools like list_sleep, list_workouts
+        - If only ONE user is returned: use that user automatically (this indicates a personal API key)
+        - If MULTIPLE users are returned and user says "my/me": ask which user they mean
+        - If MULTIPLE users are returned with a name hint: match by name or use 'search'
         - If 'total' exceeds the number of returned users, use 'search' to narrow results
     """
     try:
