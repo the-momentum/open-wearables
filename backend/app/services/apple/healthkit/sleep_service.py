@@ -187,7 +187,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     total_sleep_seconds = state["light"] + state["deep"] + state["rem"]
     in_bed = state["in_bed"]
 
-    efficiency = total_sleep_seconds / total_duration if total_duration > 0 else 0
+    efficiency = (total_sleep_seconds / total_duration) * 100 if total_duration > 0 else None
+    efficiency_score = Decimal(str(efficiency)) if efficiency is not None else None
 
     try:
         record_uuid = UUID(state["uuid"])
@@ -210,7 +211,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         record_id=sleep_record.id,
         sleep_total_duration_minutes=total_sleep_seconds // 60,
         sleep_time_in_bed_minutes=in_bed // 60,
-        sleep_efficiency_score=Decimal(efficiency),
+        sleep_efficiency_score=efficiency_score,
         sleep_deep_minutes=state["deep"] // 60,
         sleep_rem_minutes=state["rem"] // 60,
         sleep_light_minutes=state["light"] // 60,
