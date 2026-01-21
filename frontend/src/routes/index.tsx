@@ -9,10 +9,10 @@ export const Route = createFileRoute('/')({
     if (typeof window === 'undefined') {
       return;
     }
-    // Redirect to users if authenticated, otherwise to login
+    // Redirect to dashboard if authenticated, otherwise to login
     if (isAuthenticated()) {
       throw redirect({
-        to: '/users',
+        to: '/dashboard',
       });
     } else {
       throw redirect({
@@ -29,7 +29,7 @@ function IndexRedirect() {
   // Handle client-side redirect after hydration
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate({ to: '/users' });
+      navigate({ to: '/dashboard' });
     } else {
       navigate({ to: '/login' });
     }
