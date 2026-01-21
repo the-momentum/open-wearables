@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .source_info import SourceInfo
+
 
 class MetadataEntryIn(BaseModel):
     """Schema for metadata entry."""
@@ -38,4 +40,5 @@ class RecordJSON(BaseModel):
     unit: str | None
     value: Decimal
     sourceName: str | None = None
+    source: SourceInfo | None = None
     recordMetadata: list[dict[str, Any]] | None = None

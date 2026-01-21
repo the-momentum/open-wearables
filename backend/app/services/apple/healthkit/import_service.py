@@ -9,6 +9,7 @@ from app.constants.series_types import (
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
+from app.repositories.device_repository import DeviceRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -27,6 +28,7 @@ from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 
+from .device_resolution import resolve_device
 from .sleep_service import handle_sleep_data
 
 
@@ -35,12 +37,14 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.device_repo = DeviceRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
         self,
+        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
@@ -62,11 +66,14 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
+            # Resolve device mapping
+            device_id = resolve_device(db, self.device_repo, wjson.source, wjson.sourceName)
+
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
                 source_name=wjson.sourceName or "Apple Health",
-                device_id=wjson.sourceName or None,
+                device_id=device_id,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
@@ -85,6 +92,7 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
+        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
@@ -105,12 +113,15 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
+            # Resolve device mapping
+            device_id = resolve_device(db, self.device_repo, rjson.source, rjson.sourceName)
+
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
                 provider_name="Apple",
-                device_id=rjson.sourceName or None,
+                device_id=device_id,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -209,13 +220,13 @@ class ImportService:
         return EventRecordMetrics(**stats_dict), duration
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
-        for record, detail in self._build_workout_bundles(raw, user_id):
+        for record, detail in self._build_workout_bundles(db_session, raw, user_id):
             created_or_existing_record = self.event_record_service.create(db_session, record)
             # Always use the returned record's ID (whether newly created or existing)
             detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
             self.event_record_service.create_detail(db_session, detail_for_record)
 
-        samples = self._build_statistic_bundles(raw, user_id)
+        samples = self._build_statistic_bundles(db_session, raw, user_id)
         self.timeseries_service.bulk_create_samples(db_session, samples)
 
         handle_sleep_data(db_session, raw, user_id)
