@@ -101,6 +101,11 @@ class ImportService:
             series_type = get_series_type_from_apple_metric_type(record_type)
             if series_type is None:
                 continue
+            # Convert from meters to centimeters
+            if series_type == SeriesType.height:
+                value = value * 100
+            if series_type == SeriesType.body_fat_percentage:
+                value = value * 100
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),

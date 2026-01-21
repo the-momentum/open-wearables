@@ -57,6 +57,7 @@ BODY_SLOW_CHANGING_SERIES = [
     SeriesType.weight,
     SeriesType.height,
     SeriesType.body_fat_percentage,
+    SeriesType.body_mass_index,
     SeriesType.lean_body_mass,
     SeriesType.body_temperature,
 ]
@@ -531,6 +532,7 @@ class SummariesService:
             weight_data = latest_values.get(SeriesType.weight)
             height_data = latest_values.get(SeriesType.height)
             body_fat_data = latest_values.get(SeriesType.body_fat_percentage)
+            bmi_data = latest_values.get(SeriesType.body_mass_index)
             lean_mass_data = latest_values.get(SeriesType.lean_body_mass)
             temp_data = latest_values.get(SeriesType.body_temperature)
 
@@ -541,7 +543,10 @@ class SummariesService:
             basal_temp = temp_data[0] if temp_data else None
 
             # Calculate BMI
-            bmi = self._calculate_bmi(weight_kg, height_cm)
+            if bmi_data:
+                bmi = bmi_data[0] if bmi_data else None
+            else:
+                bmi = self._calculate_bmi(weight_kg, height_cm)
 
             # Calculate age
             age = self._calculate_age(birth_date, summary_date) if birth_date else None
