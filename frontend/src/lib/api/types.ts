@@ -257,22 +257,58 @@ export interface BloodPressure {
   reading_count: number | null;
 }
 
-export interface BodySummary {
-  date: string;
-  source: DataSource;
-  // Static/demographic
-  age: number | null;
-  // Body composition (latest values)
-  height_cm: number | null;
+/**
+ * Slow-changing body composition metrics.
+ * Returns the most recent recorded value for each field.
+ */
+export interface BodySlowChanging {
   weight_kg: number | null;
+  height_cm: number | null;
   body_fat_percent: number | null;
   muscle_mass_kg: number | null;
   bmi: number | null;
-  // Vitals (7-day rolling averages)
+  age: number | null;
+}
+
+/**
+ * Vitals averaged over a configurable time period (1 or 7 days).
+ */
+export interface BodyAveraged {
+  period_days: number;
   resting_heart_rate_bpm: number | null;
   avg_hrv_sdnn_ms: number | null;
+  period_start: string;
+  period_end: string;
+}
+
+/**
+ * Point-in-time metrics only returned if measured within a time window.
+ */
+export interface BodyLatest {
+  body_temperature_celsius: number | null;
+  temperature_measured_at: string | null;
   blood_pressure: BloodPressure | null;
-  basal_body_temperature_celsius: number | null;
+  blood_pressure_measured_at: string | null;
+}
+
+/**
+ * Comprehensive body metrics with semantic grouping.
+ * Returns null from API if no body data exists.
+ */
+export interface BodySummary {
+  source: DataSource;
+  slow_changing: BodySlowChanging;
+  averaged: BodyAveraged;
+  latest: BodyLatest;
+}
+
+/**
+ * Query parameters for body summary endpoint.
+ */
+export interface BodySummaryParams {
+  average_period?: 1 | 7;
+  latest_window_hours?: number;
+  [key: string]: number | undefined;
 }
 
 export interface RecoverySummary {
