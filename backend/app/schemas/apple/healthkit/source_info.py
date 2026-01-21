@@ -4,19 +4,19 @@ from pydantic import BaseModel
 
 
 class OSVersion(BaseModel):
-    majorVersion: int
-    minorVersion: int
-    patchVersion: int
+    major_version: int
+    minor_version: int
+    patch_version: int
 
 
 class SourceInfo(BaseModel):
     name: str | None = None
-    bundleIdentifier: str | None = None
+    bundle_identifier: str | None = None
     version: str | None = None
-    productType: str | None = None
-    operatingSystemVersion: OSVersion | None = None
-    deviceName: str | None = None
-    deviceManufacturer: str | None = None
-    deviceModel: str | None = None
-    deviceHardwareVersion: str | None = None
-    deviceSoftwareVersion: str | None = None
+    product_type: str | None = None
+    operating_system_version: OSVersion | None = None
+    device_name: str | None = None
+    device_manufacturer: str | None = None
+    device_model: str | None = None
+    device_hardware_version: str | None = None
+    device_software_version: str | None = None

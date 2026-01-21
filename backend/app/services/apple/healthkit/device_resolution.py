@@ -181,7 +181,7 @@ def _format_os_version(os_version: OSVersion | None) -> str | None:
     """Format OS version as 'major.minor.patch' string."""
     if not os_version:
         return None
-    return f"{os_version.majorVersion}.{os_version.minorVersion}.{os_version.patchVersion}"
+    return f"{os_version.major_version}.{os_version.minor_version}.{os_version.patch_version}"
 
 
 def _get_device_name(product_type: str | None) -> str:
@@ -200,12 +200,12 @@ def resolve_device(
     if not source:
         return fallback_name
 
-    serial_number = source.bundleIdentifier or ""
-    provider_name = source.deviceManufacturer or "Apple Inc."
-    name = _get_device_name(source.productType)
-    sw_version = _format_os_version(source.operatingSystemVersion)
+    serial_number = source.bundle_identifier or ""
+    provider_name = source.device_manufacturer or "Apple Inc."
+    name = _get_device_name(source.product_type)
+    sw_version = _format_os_version(source.operating_system_version)
 
-    if serial_number or source.productType:
+    if serial_number or source.product_type:
         device_repo.ensure_device(
             db,
             provider_name=provider_name,
@@ -214,6 +214,6 @@ def resolve_device(
             sw_version=sw_version,
         )
 
-        return source.productType
+        return source.product_type
 
     return fallback_name
