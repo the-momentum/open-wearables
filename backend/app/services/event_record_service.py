@@ -1,8 +1,6 @@
 from logging import Logger, getLogger
 from uuid import UUID
 
-from sqlalchemy.orm import selectinload
-
 from app.database import DbSession
 from app.models import (
     EventRecord,
@@ -11,7 +9,7 @@ from app.models import (
     SleepDetails,
     WorkoutDetails,
 )
-from app.repositories import EventRecordDetailRepository, EventRecordRepository
+from app.repositories import EventRecordDetailRepository, EventRecordRepository, ExternalMappingRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -25,6 +23,7 @@ from app.schemas.events import (
     Workout,
     WorkoutDetailed,
 )
+from app.schemas.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.summaries import SleepStagesSummary
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -39,6 +38,7 @@ class EventRecordService(
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
+        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
 
     def _build_response(
         self,
@@ -195,29 +195,28 @@ class EventRecordService(
         user_id: UUID,
         workout_id: UUID,
     ) -> WorkoutDetailed | None:
-        # Fetch the record with details
-        # This is a simplified fetch, ideally we should have a dedicated repo method
-        record = (
-            db_session.query(EventRecord)
-            .options(selectinload(EventRecord.detail))
-            .filter(EventRecord.id == workout_id, EventRecord.category == "workout")
-            .first()
-        )
+        """Get a detailed workout record with all associated data."""
+        record = self.crud.get_record_with_details(db_session, workout_id, "workout")
 
         if not record:
             return None
 
-        # Ensure user matches (security check)
-        mapping = (
-            db_session.query(ExternalDeviceMapping)
-            .filter(ExternalDeviceMapping.id == record.external_mapping_id, ExternalDeviceMapping.user_id == user_id)
-            .first()
-        )
+        mapping = self.mapping_repo.get(db_session, record.external_device_mapping_id)
 
-        if not mapping:
+        if not mapping or mapping.user_id != user_id:
             return None
 
         details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
+
+        if details and record.type in WORKOUTS_WITH_PACE:
+            # Seconds per kilometer - speed is in meters per second
+            if details.average_speed:
+                avg_pace_sec_per_km = 1000 / details.average_speed
+            else:
+                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000
+        else:
+            avg_pace_sec_per_km = None
+
 
         return WorkoutDetailed(
             id=record.id,
@@ -231,7 +230,7 @@ class EventRecordService(
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
             max_heart_rate_bpm=details.heart_rate_max if details else None,
-            avg_pace_sec_per_km=None,
+            avg_pace_sec_per_km=avg_pace_sec_per_km,
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,

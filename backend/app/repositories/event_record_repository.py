@@ -63,6 +63,19 @@ class EventRecordRepository(
                 return existing
             raise
 
+    def get_record_with_details(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        category: str,
+    ) -> EventRecord | None:
+        return (
+            db_session.query(EventRecord)
+            .options(selectinload(EventRecord.detail))
+            .filter(EventRecord.id == record_id, EventRecord.category == category)
+            .first()
+        )
+
     def get_records_with_filters(
         self,
         db_session: DbSession,

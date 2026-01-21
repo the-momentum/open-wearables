@@ -128,3 +128,42 @@ class WorkoutType(StrEnum):
     GENERIC = "generic"
     OTHER = "other"
     SPORT = "sport"
+
+
+WORKOUTS_WITH_PACE = [
+    # Running & Walking
+    WorkoutType.RUNNING,
+    WorkoutType.TRAIL_RUNNING,
+    WorkoutType.TREADMILL,
+    WorkoutType.WALKING,
+    WorkoutType.HIKING,
+    WorkoutType.MOUNTAINEERING,
+    WorkoutType.TRAIL_HIKING,
+    WorkoutType.WALKING_FITNESS,
+    WorkoutType.CASUAL_WALKING,
+    # Cycling
+    WorkoutType.CYCLING,
+    WorkoutType.MOUNTAIN_BIKING,
+    WorkoutType.INDOOR_CYCLING,
+    WorkoutType.CYCLOCROSS,
+    WorkoutType.E_BIKING,
+    # Swimming
+    WorkoutType.SWIMMING,
+    WorkoutType.POOL_SWIMMING,
+    WorkoutType.OPEN_WATER_SWIMMING,
+    # Water Sports
+    WorkoutType.ROWING,
+    WorkoutType.KAYAKING,
+    WorkoutType.CANOEING,
+    WorkoutType.PADDLING,
+    WorkoutType.STAND_UP_PADDLEBOARDING,
+    # Winter Sports
+    WorkoutType.CROSS_COUNTRY_SKIING,
+    WorkoutType.BACKCOUNTRY_SKIING,
+    # Skating
+    WorkoutType.SKATING,
+    WorkoutType.INLINE_SKATING,
+    WorkoutType.ICE_SKATING,
+    # Multisport
+    WorkoutType.TRIATHLON,
+]
