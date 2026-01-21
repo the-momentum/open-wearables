@@ -99,12 +99,10 @@ class ImportService:
 
             record_type = rjson.type or ""
             series_type = get_series_type_from_apple_metric_type(record_type)
-            if series_type is None:
+            if not series_type:
                 continue
-            # Convert from meters to centimeters
-            if series_type == SeriesType.height:
-                value = value * 100
-            if series_type == SeriesType.body_fat_percentage:
+            # Convert from meters to centimeters or ratio to percentage
+            if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
             sample = TimeSeriesSampleCreate(

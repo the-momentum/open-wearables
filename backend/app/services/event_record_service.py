@@ -210,10 +210,10 @@ class EventRecordService(
 
         if details and record.type in WORKOUTS_WITH_PACE:
             # Seconds per kilometer - speed is in meters per second
-            if details.average_speed:
+            if details.average_speed and details.average_speed > 0:
                 avg_pace_sec_per_km = 1000 / details.average_speed
-            else:
-                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000
+            elif details.distance > 0:
+                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000 
         else:
             avg_pace_sec_per_km = None
 
