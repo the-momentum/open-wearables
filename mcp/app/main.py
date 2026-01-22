@@ -5,6 +5,8 @@ import logging
 from fastmcp import FastMCP
 
 from app.config import settings
+from app.prompts import prompts_router
+from app.tools.activity import activity_router
 from app.tools.sleep import sleep_router
 from app.tools.users import users_router
 from app.tools.workouts import workouts_router
@@ -27,8 +29,12 @@ mcp = FastMCP(
 
     Available tools:
     - list_users: Discover users accessible via your API key
+    - list_activity: Get daily activity data (steps, calories, heart rate, intensity minutes)
     - list_sleep: Get sleep data for a user over a specified time period
     - list_workouts: Get workout/exercise data for a user over a specified time period
+
+    Available prompts:
+    - present_health_data: Guidelines for formatting health data for human readability
 
     Workflow:
     1. If you don't know the user's ID, call list_users first to discover available users
@@ -38,6 +44,16 @@ mcp = FastMCP(
        - If MULTIPLE users with a name hint (e.g., "John's workouts"): match by name
     3. Use the user's ID to query their health data with the appropriate tool
     4. Present the data in a human-friendly format, highlighting key insights
+
+    Example interaction:
+    User: "How many steps did I take this week?"
+    Assistant actions:
+      1. Call list_users() to find the user's ID
+      2. Calculate dates: start_date = 7 days ago, end_date = today
+      3. Call list_activity(user_id="{user_id}", start_date="2025-01-13", end_date="2025-01-20")
+      4. Respond with: "This week you walked 58,500 steps total, averaging 8,357 steps per day.
+         Your best day was Saturday (12,432 steps), and you burned 2,450 active calories.
+         You accumulated 90 minutes of vigorous activity across the week."
 
     Example interaction:
     User: "How did I sleep last week?"
@@ -81,8 +97,12 @@ mcp = FastMCP(
 
 # Mount tool routers
 mcp.mount(users_router)
+mcp.mount(activity_router)
 mcp.mount(sleep_router)
 mcp.mount(workouts_router)
+
+# Mount prompts
+mcp.mount(prompts_router)
 
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
