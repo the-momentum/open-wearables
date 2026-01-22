@@ -79,16 +79,13 @@ class EventRecordRepository(
 
         # Use nested transaction (savepoint) to handle potential duplicates
         # without rolling back the entire batch
-        savepoint = db_session.begin_nested()
-        
         try:
-            db_session.add(creation)
-            db_session.flush()  # Flush to generate ID without committing
+            with db_session.begin_nested():
+                db_session.add(creation)
+                db_session.flush()  # Flush to generate ID without committing
             return creation
         except IntegrityError:
-            # Duplicate record - rollback just this savepoint
-            savepoint.rollback()
-            # Query for existing record
+            # Duplicate record - query for existing instead
             existing = (
                 db_session.query(self.model)
                 .filter(
