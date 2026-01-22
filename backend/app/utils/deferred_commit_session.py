@@ -9,15 +9,15 @@ class DeferredCommitSession:
     """Wraps a database session to defer commits until explicitly requested.
     
     Used for bulk import operations to batch multiple commits into one.
+    All commit() calls are no-ops until the context exits, then a single
+    commit is performed.
     """
     
     def __init__(self, session: DbSession):
         self._session = session
-        self._deferred = False
         self._original_commit = session.commit
     
     def __enter__(self) -> "DeferredCommitSession":
-        self._deferred = True
         # Replace commit with a no-op
         self._session.commit = lambda: None  # type: ignore[method-assign]
         return self
@@ -33,7 +33,6 @@ class DeferredCommitSession:
             # Exception occurred, rollback
             self._session.rollback()
         
-        self._deferred = False
         return False
     
     def __getattr__(self, name: str) -> Any:

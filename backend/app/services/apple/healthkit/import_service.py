@@ -237,7 +237,7 @@ class ImportService:
 
             handle_sleep_data(deferred_session, raw, user_id)
 
-        # All changes committed at once when exiting the context manager
+        # All changes are committed at once when exiting the DeferredCommitSession context
         return True
 
     def import_data_from_request(
