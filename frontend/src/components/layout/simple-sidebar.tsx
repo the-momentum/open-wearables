@@ -10,6 +10,7 @@ import {
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { Button } from '@/components/ui/button';
 
 const menuItems = [
   {
@@ -95,14 +96,15 @@ export function SimpleSidebar() {
 
       {/* Footer */}
       <div className="p-3">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => logout()}
           disabled={isLoggingOut}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-zinc-400 hover:bg-zinc-900/50 hover:text-red-400 transition-colors disabled:opacity-50"
+          className="w-full justify-start gap-3 px-3 text-zinc-400 hover:text-red-400"
         >
           <LogOut className="h-4 w-4" />
           {isLoggingOut ? 'Logging out...' : 'Logout'}
-        </button>
+        </Button>
       </div>
     </aside>
   );
