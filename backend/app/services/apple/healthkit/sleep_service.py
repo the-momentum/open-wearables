@@ -1,6 +1,5 @@
 import json
 from datetime import datetime
-from decimal import Decimal
 from logging import getLogger
 from uuid import UUID, uuid4
 
@@ -217,8 +216,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         sleep_rem_minutes=state["rem_seconds"] // 60,
         sleep_light_minutes=state["light_seconds"] // 60,
         sleep_awake_minutes=state["awake_seconds"] // 60,
-        sleep_efficiency_score=None, # TODO: Implement efficiency score
-        is_nap=False, #TODO: Infer if nap, maybe from sleep length < 1 hour / 2 hours?
+        sleep_efficiency_score=None,  # TODO: Implement efficiency score
+        is_nap=False,  # TODO: Infer if nap, maybe from sleep length < 1 hour / 2 hours?
     )
 
     delete_sleep_state(user_id)
