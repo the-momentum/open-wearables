@@ -16,7 +16,7 @@ class DeviceSoftwareRepository(CrudRepository[DeviceSoftware, DeviceSoftwareCrea
     def ensure_software(self, db: DbSession, device_id: UUID, version: str) -> DeviceSoftware:
         """Get existing software version or create new one."""
         query = select(self.model).where(self.model.device_id == device_id, self.model.version == version)
-        existing = db.execute(query).scalar_one_or_none()
+        existing = db.execute(query).scalars().first()
         if existing:
             return existing
 
@@ -38,9 +38,13 @@ class DeviceRepository(CrudRepository[Device, DeviceCreate, DeviceUpdate]):
     ) -> Device:
         """Get existing device or create new one. Also handles software version if provided."""
         query = select(self.model).where(
-            self.model.provider_name == provider_name, self.model.serial_number == serial_number
+            self.model.provider_name == provider_name,
+            self.model.serial_number == serial_number,
         )
-        existing = db.execute(query).scalar_one_or_none()
+        if name:
+            query = query.where(self.model.name == name)
+
+        existing = db.execute(query).scalars().first()
 
         if existing:
             device = existing

@@ -13,7 +13,7 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -106,15 +106,24 @@ class TimeSeriesService(
 
         # Map to response format
         data = []
-        for sample, mapping in samples:
+        for sample, mapping, device in samples:
             series_type = get_series_type_from_id(sample.series_type_definition_id)
             unit = get_series_type_unit(series_type)
+
+            # Build source from device info if available
+            source = None
+            if device:
+                source = DataSource(
+                    provider=device.provider_name,
+                    device=device.name,
+                )
 
             item = TimeSeriesSample(
                 timestamp=sample.recorded_at,
                 type=series_type,
                 value=float(sample.value),
                 unit=unit,
+                source=source,
             )
             data.append(item)
 

@@ -21,6 +21,7 @@ Unique = Annotated[T, mapped_column(unique=True)]
 # Relationship types
 type OneToMany[T] = list[T]
 type ManyToOne[T] = T
+type OneToOne[T] = T
 
 # Custom types
 datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
@@ -60,4 +61,5 @@ FKSeriesTypeDefinition = Annotated[
     int,
     mapped_column(ForeignKey("series_type_definition.id", ondelete="RESTRICT")),
 ]
-FKDevice = Annotated[UUID, mapped_column(ForeignKey("device.id", ondelete="CASCADE"))]
+FKDevice = Annotated[UUID | None, mapped_column(ForeignKey("device.id", ondelete="CASCADE"))]
+FKDeviceSoftware = Annotated[UUID | None, mapped_column(ForeignKey("device_software.id", ondelete="SET NULL"))]

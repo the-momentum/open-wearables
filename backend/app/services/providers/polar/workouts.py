@@ -126,7 +126,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             end_datetime=end_date,
             id=workout_id,
             external_id=raw_workout.id,
-            provider_name="Polar",
+            provider_name="polar",
             user_id=user_id,
         )
 

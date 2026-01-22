@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.schemas.oauth import ProviderName
 from app.schemas.series_types import SeriesType
 from app.schemas.timeseries import (
     HeartRateSampleCreate,
@@ -35,7 +36,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create heart rate samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_1")
+        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_1")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -43,7 +44,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             HeartRateSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
+                source=ProviderName.APPLE,
                 device_id="device_1",
                 recorded_at=now - timedelta(minutes=i),
                 value=70 + i,
@@ -63,7 +64,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create step samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_2")
+        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_2")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -71,7 +72,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             StepSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
+                source=ProviderName.APPLE,
                 device_id="device_2",
                 recorded_at=now - timedelta(hours=i),
                 value=1000 + i * 100,
@@ -91,7 +92,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create samples of different series types."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_3")
+        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_3")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -99,7 +100,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
+                source=ProviderName.APPLE,
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=1),
                 value=72,
@@ -108,7 +109,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
+                source=ProviderName.APPLE,
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=2),
                 value=5000,
@@ -246,8 +247,8 @@ class TestTimeSeriesServiceGetCountByProvider:
         """Should group and count data points by provider."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
 
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 

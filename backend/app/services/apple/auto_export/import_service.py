@@ -79,7 +79,7 @@ class ImportService:
                         id=uuid4(),
                         external_id=None,
                         user_id=user_id,
-                        provider_name="Apple",
+                        provider_name="apple",
                         device_id=source_name,
                         recorded_at=self._dt(entry.date),
                         value=self._dec(value) or 0,
@@ -125,7 +125,7 @@ class ImportService:
                 end_datetime=end_date,
                 id=workout_id,
                 external_id=wjson.id,
-                provider_name="Apple",
+                provider_name="apple",
                 user_id=user_uuid,
             )
 

@@ -85,7 +85,7 @@ class XMLService:
             id=uuid4(),
             external_id=None,
             user_id=user_id,
-            provider_name="Apple",
+            provider_name="apple",
             device_id=document.get("device", "")[:100],
             recorded_at=document["startDate"],
             value=value,
@@ -125,7 +125,7 @@ class XMLService:
             end_datetime=document["endDate"],
             external_id=None,
             id=workout_id,
-            provider_name="Apple",
+            provider_name="apple",
             user_id=user_id,
         )
 

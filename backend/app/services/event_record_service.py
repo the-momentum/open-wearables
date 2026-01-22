@@ -56,8 +56,8 @@ class EventRecordService(
             end_datetime=record.end_datetime,
             external_device_mapping_id=record.external_device_mapping_id,
             user_id=mapping.user_id,
-            provider_name=mapping.provider_name,
-            device_id=mapping.device_id,
+            provider_name=mapping.device.provider_name if mapping.device else "unknown",
+            device_id=str(mapping.device_id),
         )
 
     def create_detail(
@@ -100,8 +100,8 @@ class EventRecordService(
 
     def _map_source(self, mapping: ExternalDeviceMapping) -> DataSource:
         return DataSource(
-            provider=mapping.provider_name or "unknown",
-            device=mapping.device_id,
+            provider=str(mapping.source),
+            device=str(mapping.device_id) if mapping.device_id else None,
         )
 
     @handle_exceptions

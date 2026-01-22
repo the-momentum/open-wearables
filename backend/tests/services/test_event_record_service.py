@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.event_record import EventRecordQueryParams
 from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.oauth import ProviderName
 from app.services.event_record_service import event_record_service
 from tests.factories import EventRecordFactory, ExternalDeviceMappingFactory, UserFactory
 
@@ -109,7 +110,7 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should return formatted event records."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
         record = EventRecordFactory(
             mapping=mapping,
             category="workout",
@@ -196,8 +197,8 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should filter records by provider_name."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
+        apple_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        garmin_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
 
         apple_record = EventRecordFactory(mapping=apple_mapping)
         garmin_record = EventRecordFactory(mapping=garmin_mapping)

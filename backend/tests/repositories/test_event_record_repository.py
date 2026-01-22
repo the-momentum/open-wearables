@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.event_record import EventRecordCreate, EventRecordQueryParams
+from app.schemas.oauth import ProviderName
 from tests.factories import EventRecordFactory, ExternalDeviceMappingFactory, UserFactory
 
 
@@ -33,13 +34,13 @@ class TestEventRecordRepository:
         """Test creating an event record with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
+        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch123")
         now = datetime.now(timezone.utc)
 
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
+            source=ProviderName.APPLE,
             device_id="watch123",
             external_device_mapping_id=mapping.id,
             category="workout",
@@ -75,7 +76,7 @@ class TestEventRecordRepository:
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="garmin",  # Use provider_name for external mapping
+            source=ProviderName.GARMIN,  # Use provider_name for external mapping
             device_id="device456",
             external_device_mapping_id=None,
             category="workout",
@@ -99,8 +100,9 @@ class TestEventRecordRepository:
         mapping = mapping_repo.get(db, result.external_device_mapping_id)
         assert mapping is not None
         assert mapping.user_id == user.id
-        assert mapping.provider_name == "garmin"
-        assert mapping.device_id == "device456"
+        assert mapping.source == ProviderName.GARMIN
+        assert mapping.device is not None
+        assert mapping.device.serial_number == "device456"
 
     def test_get(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test retrieving an event record by ID."""
@@ -180,7 +182,7 @@ class TestEventRecordRepository:
 
         query_params = EventRecordQueryParams(
             category="workout",
-            device_id="device1",
+            device_id="device1",  # This filters by serial_number
             limit=10,
             offset=0,
         )
@@ -191,21 +193,22 @@ class TestEventRecordRepository:
         # Assert
         assert total_count == 2
         for _, mapping in results:
-            assert mapping.device_id == "device1"
+            assert mapping.device is not None
+            assert mapping.device.serial_number == "device1"
 
     def test_get_records_with_filters_by_provider(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by provider ID."""
         # Arrange
         user = UserFactory()
-        mapping_apple = ExternalDeviceMappingFactory(user=user, provider_name="apple")
-        mapping_garmin = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
+        mapping_apple = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping_garmin = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
 
         EventRecordFactory(mapping=mapping_apple, category="workout")
         EventRecordFactory(mapping=mapping_garmin, category="workout")
 
         query_params = EventRecordQueryParams(
             category="workout",
-            provider_name="apple",
+            source=ProviderName.APPLE,
             limit=10,
             offset=0,
         )
@@ -482,7 +485,7 @@ class TestEventRecordRepository:
         """Test combining multiple filters."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch1")
+        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch1")
 
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
@@ -507,7 +510,7 @@ class TestEventRecordRepository:
             category="workout",
             record_type="running",
             device_id="watch1",
-            provider_name="apple",
+            source=ProviderName.APPLE,
             source_name="Apple",
             min_duration=3000,
             limit=10,

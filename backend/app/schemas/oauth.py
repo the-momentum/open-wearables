@@ -20,6 +20,7 @@ class ProviderName(str, Enum):
     POLAR = "polar"
     SUUNTO = "suunto"
     WHOOP = "whoop"
+    UNKNOWN = "unknown"
 
 
 class ConnectionStatus(str, Enum):

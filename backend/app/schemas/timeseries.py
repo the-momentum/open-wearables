@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common_types import DataSource
 from app.schemas.series_types import SeriesType
 
 # --- API Response Models (Unified) ---
@@ -15,6 +16,7 @@ class TimeSeriesSample(BaseModel):
     type: SeriesType
     value: float | int
     unit: str
+    source: DataSource | None = None
 
 
 class ActivityAggregateResult(TypedDict):
@@ -22,7 +24,7 @@ class ActivityAggregateResult(TypedDict):
 
     activity_date: date
     provider_name: str
-    device_id: str | None
+    device_name: str | None
     steps_sum: int
     active_energy_sum: float
     basal_energy_sum: float
@@ -38,7 +40,7 @@ class ActiveMinutesResult(TypedDict):
 
     activity_date: date
     provider_name: str
-    device_id: str | None
+    device_name: str | None
     active_minutes: int
     tracked_minutes: int
     sedentary_minutes: int
@@ -49,7 +51,7 @@ class IntensityMinutesResult(TypedDict):
 
     activity_date: date
     provider_name: str
-    device_id: str | None
+    device_name: str | None
     light_minutes: int
     moderate_minutes: int
     vigorous_minutes: int
@@ -76,6 +78,9 @@ class TimeSeriesSampleCreate(TimeSeriesSampleBase):
 
     id: UUID
     external_id: str | None = None
+    device_name: str | None = None
+    device_manufacturer: str | None = None
+    device_software_version: str | None = None
 
 
 class TimeSeriesSampleUpdate(TimeSeriesSampleBase):

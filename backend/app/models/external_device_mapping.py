@@ -1,10 +1,12 @@
 from uuid import UUID
 
 from sqlalchemy import Index, UniqueConstraint
-from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, OneToMany, PrimaryKey, str_10, str_100
+from app.mappings import FKDevice, FKDeviceSoftware, FKUser, ManyToOne, OneToMany, PrimaryKey
+from app.models import Device, DeviceSoftware
+from app.schemas.oauth import ProviderName
 
 
 class ExternalDeviceMapping(BaseDbModel):
@@ -14,9 +16,8 @@ class ExternalDeviceMapping(BaseDbModel):
     __table_args__ = (
         UniqueConstraint(
             "user_id",
-            "provider_name",
             "device_id",
-            name="uq_external_mapping_user_provider_device",
+            name="uq_external_mapping_user_device",
         ),
         Index("idx_external_mapping_user", "user_id"),
         Index("idx_external_mapping_device", "device_id"),
@@ -24,8 +25,18 @@ class ExternalDeviceMapping(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    provider_name: Mapped[str_10]
-    device_id: Mapped[str_100 | None]
+    device_id: Mapped[FKDevice]
+    device_software_id: Mapped[FKDeviceSoftware]
+    source: Mapped[ProviderName]
+
+    device: Mapped[ManyToOne["Device"] | None] = relationship(
+        "Device",
+        foreign_keys="[ExternalDeviceMapping.device_id]",
+    )
+    device_software: Mapped[ManyToOne["DeviceSoftware"] | None] = relationship(
+        "DeviceSoftware",
+        foreign_keys="[ExternalDeviceMapping.device_software_id]",
+    )
 
     event_records: Mapped[OneToMany["EventRecord"]]
     data_points: Mapped[OneToMany["DataPointSeries"]]

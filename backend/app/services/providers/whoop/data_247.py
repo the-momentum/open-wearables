@@ -373,7 +373,7 @@ class Whoop247Data(Base247DataTemplate):
             .join(ExternalDeviceMapping, DataPointSeries.external_device_mapping_id == ExternalDeviceMapping.id)
             .filter(
                 ExternalDeviceMapping.user_id == user_id,
-                ExternalDeviceMapping.provider_name == self.provider_name,
+                ExternalDeviceMapping.source == self.provider_name,
                 DataPointSeries.series_type_definition_id == type_id,
             )
             .order_by(DataPointSeries.recorded_at.desc())

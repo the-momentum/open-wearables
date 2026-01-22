@@ -7,6 +7,7 @@ from app.database import DbSession
 from app.models import ExternalDeviceMapping
 from app.repositories.repositories import CrudRepository
 from app.schemas.external_mapping import ExternalMappingCreate, ExternalMappingUpdate
+from app.schemas.oauth import ProviderName
 
 
 class ExternalMappingRepository(
@@ -20,12 +21,15 @@ class ExternalMappingRepository(
     def _build_identity_filter(
         self,
         user_id: UUID,
-        provider_name: str,
-        device_id: str | None,
+        device_id: UUID | None,
     ) -> ColumnElement[bool]:
+        if not device_id:
+            return and_(
+                self.model.user_id == user_id,
+                self.model.device_id.is_(None),
+            )
         return and_(
             self.model.user_id == user_id,
-            self.model.provider_name == provider_name,
             self.model.device_id == device_id,
         )
 
@@ -33,21 +37,17 @@ class ExternalMappingRepository(
         self,
         db_session: DbSession,
         user_id: UUID,
-        provider_name: str,
-        device_id: str | None,
+        device_id: UUID | None,
     ) -> ExternalDeviceMapping | None:
-        return (
-            db_session.query(self.model)
-            .filter(self._build_identity_filter(user_id, provider_name, device_id))
-            .one_or_none()
-        )
+        return db_session.query(self.model).filter(self._build_identity_filter(user_id, device_id)).one_or_none()
 
     def ensure_mapping(
         self,
         db_session: DbSession,
         user_id: UUID,
-        provider_name: str,
-        device_id: str | None,
+        device_id: UUID | None,
+        source: str,
+        device_software_id: UUID | None = None,
         mapping_id: UUID | None = None,
     ) -> ExternalDeviceMapping:
         """
@@ -56,8 +56,9 @@ class ExternalMappingRepository(
         Args:
             db_session: Active database session.
             user_id: Internal user identifier.
-            provider_name: Name of the provider.
-            device_id: External device identifier.
+            device_id: External device identifier (UUID), optional.
+            source: Provider source (e.g., 'apple', 'garmin').
+            device_software_id: External device software identifier (UUID).
             mapping_id: Optional mapping identifier to reuse if provided.
         """
         if mapping_id:
@@ -65,13 +66,17 @@ class ExternalMappingRepository(
             if mapping:
                 return mapping
 
-        if mapping := self.get_by_identity(db_session, user_id, provider_name, device_id):
+        if device_id and (mapping := self.get_by_identity(db_session, user_id, device_id)):
             return mapping
+
+        # Convert string to ProviderName enum
+        provider_enum = ProviderName(source.lower())
 
         create_payload = ExternalMappingCreate(
             id=mapping_id or uuid4(),
             user_id=user_id,
-            provider_name=provider_name,
             device_id=device_id,
+            device_software_id=device_software_id,
+            source=provider_enum,
         )
         return self.create(db_session, create_payload)  # type: ignore[return-value]

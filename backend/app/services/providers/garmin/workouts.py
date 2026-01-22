@@ -219,7 +219,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             end_datetime=end_date,
             id=workout_id,
             external_id=str(raw_workout.activityId),  # Convert to str (push sends int)
-            provider_name="Garmin",
+            provider_name="garmin",
             user_id=user_id,
         )
 

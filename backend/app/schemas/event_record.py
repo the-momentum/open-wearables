@@ -66,6 +66,9 @@ class EventRecordCreate(EventRecordBase):
         None,
         description="Existing mapping identifier if the caller has already created one.",
     )
+    device_name: str | None = Field(None, description="Resolved device name/product type")
+    device_manufacturer: str | None = Field(None, description="Device manufacturer")
+    device_software_version: str | None = Field(None, description="Device OS version")
 
 
 class EventRecordUpdate(EventRecordBase):

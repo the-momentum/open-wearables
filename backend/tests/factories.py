@@ -22,6 +22,8 @@ from app.models import (
     Application,
     DataPointSeries,
     Developer,
+    Device,
+    DeviceSoftware,
     EventRecord,
     EventRecordDetail,
     ExternalDeviceMapping,
@@ -33,7 +35,7 @@ from app.models import (
     UserConnection,
     WorkoutDetails,
 )
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.oauth import ConnectionStatus, ProviderName
 from app.utils.security import get_password_hash
 
 
@@ -312,6 +314,29 @@ class ApplicationFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
+class DeviceFactory(BaseFactory):
+    """Factory for Device model."""
+
+    class Meta:
+        model = Device
+
+    id = LazyFunction(uuid4)
+    serial_number = LazyFunction(lambda: f"SN-{uuid4().hex[:12].upper()}")
+    provider_name = "apple"
+    name = LazyFunction(lambda: f"Test Device {uuid4().hex[:8]}")
+
+
+class DeviceSoftwareFactory(BaseFactory):
+    """Factory for DeviceSoftware model."""
+
+    class Meta:
+        model = DeviceSoftware
+
+    id = LazyFunction(uuid4)
+    device_id = LazyFunction(uuid4)
+    version = "1.0.0"
+
+
 class ExternalDeviceMappingFactory(BaseFactory):
     """Factory for ExternalDeviceMapping model."""
 
@@ -319,8 +344,8 @@ class ExternalDeviceMappingFactory(BaseFactory):
         model = ExternalDeviceMapping
 
     id = LazyFunction(uuid4)
-    provider_name = "apple"
-    device_id = LazyFunction(lambda: f"device_{uuid4().hex[:8]}")
+    source = ProviderName.APPLE
+    device_software_id = None
 
     @classmethod
     def _create(
@@ -329,13 +354,23 @@ class ExternalDeviceMappingFactory(BaseFactory):
         *args: Any,
         **kwargs: Any,
     ) -> ExternalDeviceMapping:
-        """Override create to handle user relationship."""
+        """Override create to handle user and device relationships."""
         user = kwargs.pop("user", None)
-        # Remove any stale user_id that might have been set
+        device = kwargs.pop("device", None)
+        device_serial = kwargs.pop("device_id", None)  # device_id is treated as serial_number for convenience
+
+        # Remove any stale IDs
         kwargs.pop("user_id", None)
+
         if user is None:
             user = UserFactory()
         kwargs["user_id"] = user.id
+
+        # Create device if not provided
+        if device is None:
+            device = DeviceFactory(serial_number=device_serial) if device_serial is not None else DeviceFactory()
+        kwargs["device_id"] = device.id
+
         return super()._create(model_class, *args, **kwargs)
 
 
@@ -538,6 +573,8 @@ __all__ = [
     "DeveloperFactory",
     "ApiKeyFactory",
     "ApplicationFactory",
+    "DeviceFactory",
+    "DeviceSoftwareFactory",
     "ExternalDeviceMappingFactory",
     "UserConnectionFactory",
     "EventRecordFactory",
