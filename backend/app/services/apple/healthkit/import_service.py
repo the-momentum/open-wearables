@@ -222,11 +222,41 @@ class ImportService:
         return EventRecordMetrics(**stats_dict), duration
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
+        # Collect all workout records and details for bulk insert
+        workout_records: list[EventRecordCreate] = []
+        workout_details: list[EventRecordDetailCreate] = []
+
+        # Build all workout bundles first
         for record, detail in self._build_workout_bundles(db_session, raw, user_id):
-            created_or_existing_record = self.event_record_service.create(db_session, record)
-            # Always use the returned record's ID (whether newly created or existing)
-            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-            self.event_record_service.create_detail(db_session, detail_for_record)
+            workout_records.append(record)
+            workout_details.append(detail)
+
+        # Bulk insert event records and get mapping of (mapping_id, start, end) -> record_id
+        if workout_records:
+            record_id_map, creator_index_to_constraint = self.event_record_service.crud.bulk_create(
+                db_session, workout_records
+            )
+
+            # Update detail record_ids using the returned mappings
+            details_with_record_ids: list[EventRecordDetailCreate] = []
+
+            for i, (record, detail) in enumerate(zip(workout_records, workout_details)):
+                # Get constraint key for this creator index
+                constraint_key = creator_index_to_constraint.get(i)
+                if not constraint_key:
+                    continue
+
+                # Look up record ID using constraint key
+                actual_record_id = record_id_map.get(constraint_key)
+
+                if actual_record_id:
+                    detail_with_id = detail.model_copy(update={"record_id": actual_record_id})
+                    details_with_record_ids.append(detail_with_id)
+
+            if details_with_record_ids:
+                self.event_record_service.event_record_detail_repo.bulk_create(
+                    db_session, details_with_record_ids, detail_type="workout"
+                )
 
         samples = self._build_statistic_bundles(db_session, raw, user_id)
         self.timeseries_service.bulk_create_samples(db_session, samples)
@@ -257,7 +287,7 @@ class ImportService:
 
         except Exception as e:
             log_and_capture_error(e, self.log, f"Import failed for user {user_id}: {e}", extra={"user_id": user_id})
-            return UploadDataResponse(status_code=400, response=f"Import failed: {str(e)}", user_id=user_id)
+            return UploadDataResponse(status_code=400, response=f": {str(e)}", user_id=user_id)
 
         return UploadDataResponse(status_code=200, response="Import successful", user_id=user_id)
 

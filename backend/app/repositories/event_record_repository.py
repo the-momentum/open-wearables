@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, tuple_
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
@@ -97,6 +98,201 @@ class EventRecordRepository(
             if existing:
                 return existing
             raise
+
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> tuple[dict[tuple[UUID, datetime, datetime], UUID], dict[int, tuple[UUID, datetime, datetime]]]:
+        """Bulk create event records.
+
+        Optimized for performance:
+        - Resolves devices (serial_number -> UUID) in batch
+        - Resolves mappings efficiently (batch fetch + batch insert missing)
+        - Inserts event records in a single batch with ON CONFLICT handling
+
+        Returns:
+            Tuple of:
+            - Dictionary mapping (external_device_mapping_id, start_datetime, end_datetime) to record_id
+            - Dictionary mapping creator index to (external_device_mapping_id, start_datetime, end_datetime)
+        """
+        if not creators:
+            return {}, {}
+
+        # 1. Resolve all devices in batch
+        device_map, device_software_map = self._resolve_devices_batch(db_session, creators)
+
+        # 2. Resolve all mappings in batch
+        mapping_map = self._resolve_mappings_batch(db_session, creators, device_map, device_software_map)
+
+        # 3. Bulk insert event records and return mappings
+        return self._bulk_insert_records(db_session, creators, mapping_map)
+
+    def _resolve_devices_batch(
+        self, db_session: DbSession, creators: list[EventRecordCreate]
+    ) -> tuple[dict[tuple[str, str], UUID], dict[tuple[UUID, str], UUID]]:
+        """Resolve all devices and software versions in batch."""
+        unique_devices: set[tuple[str, str, str | None, str | None]] = set()
+        for c in creators:
+            if c.device_id:
+                provider = c.provider_name or "unknown"
+                unique_devices.add((provider, c.device_id, c.device_name, c.device_software_version))
+
+        device_map: dict[tuple[str, str], UUID] = {}
+        device_software_map: dict[tuple[UUID, str], UUID] = {}
+
+        for provider, serial, name, sw_version in unique_devices:
+            device = self.device_repo.ensure_device(
+                db_session,
+                provider_name=provider,
+                serial_number=serial,
+                name=name,
+                sw_version=sw_version,
+            )
+            device_map[(provider, serial)] = device.id
+
+            if sw_version:
+                sw = self.device_repo.software_repo.ensure_software(db_session, device.id, sw_version)
+                device_software_map[(device.id, sw_version)] = sw.id
+
+        return device_map, device_software_map
+
+    def _resolve_mappings_batch(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+        device_map: dict[tuple[str, str], UUID],
+        device_software_map: dict[tuple[UUID, str], UUID],
+    ) -> dict[tuple[UUID, str, str | None], UUID]:
+        """Resolve all external device mappings in batch.
+
+        Returns a map from (user_id, provider, device_serial) to mapping_id.
+        """
+        # Build a map from (user_id, provider, device_serial) to (device_uuid, sw_id)
+        creator_to_device_info: dict[tuple[UUID, str, str | None], tuple[UUID | None, UUID | None]] = {}
+
+        for c in creators:
+            provider = c.provider_name or "unknown"
+            device_uuid = None
+            sw_id = None
+
+            if c.device_id:
+                device_uuid = device_map.get((provider, c.device_id))
+                if device_uuid and c.device_software_version:
+                    sw_id = device_software_map.get((device_uuid, c.device_software_version))
+
+            key = (c.user_id, provider, c.device_id)
+            creator_to_device_info[key] = (device_uuid, sw_id)
+
+        # Resolve mappings for each unique (user_id, provider, device_uuid) combination
+        mapping_map: dict[tuple[UUID, str, str | None], UUID] = {}
+
+        for (user_id, provider, device_serial), (device_uuid, sw_id) in creator_to_device_info.items():
+            key = (user_id, provider, device_serial)
+            if key in mapping_map:
+                continue  # Already resolved
+
+            mapping = self.mapping_repo.ensure_mapping(
+                db_session,
+                user_id,
+                device_uuid,
+                provider,
+                sw_id,
+                None,
+            )
+            mapping_map[key] = mapping.id
+
+        return mapping_map
+
+    def _bulk_insert_records(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+        mapping_map: dict[tuple[UUID, str, str | None], UUID],
+    ) -> tuple[dict[tuple[UUID, datetime, datetime], UUID], dict[int, tuple[UUID, datetime, datetime]]]:
+        """Bulk insert event records with ON CONFLICT handling.
+
+        Returns a tuple of:
+        - Dictionary mapping (external_device_mapping_id, start_datetime, end_datetime) to record_id
+        - Dictionary mapping creator index to (external_device_mapping_id, start_datetime, end_datetime)
+        """
+        from datetime import datetime
+
+        values_list = []
+        creator_index_to_constraint: dict[int, tuple[UUID, datetime, datetime]] = {}
+
+        for i, creator in enumerate(creators):
+            provider = creator.provider_name or "unknown"
+            key = (creator.user_id, provider, creator.device_id)
+            mapping_id = mapping_map.get(key)
+
+            if not mapping_id:
+                continue
+
+            creation_data = creator.model_dump()
+            creation_data["external_device_mapping_id"] = mapping_id
+            # Remove fields that aren't on the model
+            for redundant_key in (
+                "user_id",
+                "provider_name",
+                "device_id",
+                "device_name",
+                "device_manufacturer",
+                "device_software_version",
+            ):
+                creation_data.pop(redundant_key, None)
+
+            values_list.append(creation_data)
+            # Store mapping from index to constraint tuple for querying back
+            constraint_key = (mapping_id, creator.start_datetime, creator.end_datetime)
+            creator_index_to_constraint[i] = constraint_key
+
+        if not values_list:
+            return {}, {}
+
+        # Bulk insert
+        stmt = (
+            insert(self.model)
+            .values(values_list)
+            .on_conflict_do_nothing(index_elements=["external_device_mapping_id", "start_datetime", "end_datetime"])
+        )
+        db_session.execute(stmt)
+        db_session.commit()
+
+        # Query back the records to get their actual IDs (handles both new inserts and existing records)
+        result_map: dict[tuple[UUID, datetime, datetime], UUID] = {}
+
+        # Query in batches to avoid very large IN clauses
+        batch_size = 100
+        constraint_list = list(creator_index_to_constraint.values())
+        for batch_start in range(0, len(constraint_list), batch_size):
+            batch_end = min(batch_start + batch_size, len(constraint_list))
+            batch_constraints = constraint_list[batch_start:batch_end]
+
+            # Build query with OR conditions for each constraint
+            from sqlalchemy import or_
+
+            conditions = []
+            for mapping_id, start_dt, end_dt in batch_constraints:
+                conditions.append(
+                    and_(
+                        self.model.external_device_mapping_id == mapping_id,
+                        self.model.start_datetime == start_dt,
+                        self.model.end_datetime == end_dt,
+                    )
+                )
+
+            if conditions:
+                records = db_session.query(self.model).filter(or_(*conditions)).all()
+                for record in records:
+                    key = (
+                        record.external_device_mapping_id,
+                        record.start_datetime,
+                        record.end_datetime,
+                    )
+                    result_map[key] = record.id
+
+        return result_map, creator_index_to_constraint
 
     def get_record_with_details(
         self,
