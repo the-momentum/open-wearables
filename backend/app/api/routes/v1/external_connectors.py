@@ -9,8 +9,8 @@ from app.utils.auth import SDKAuthDep
 router = APIRouter()
 
 
-@router.post("/sdk/users/{user_id}/sync/apple")
-async def sync_sdk_data(
+@router.post("/users/{user_id}/import/apple/auto-health-export")
+async def sync_data_auto_health_export(
     user_id: str,
     body: dict,
     auth: SDKAuthDep,
@@ -27,12 +27,12 @@ async def sync_sdk_data(
 
     content_str = json.dumps(body)
 
-    # Queue the import task in Celery with healthion source
+    # Queue the import task in Celery with auto-health-export source
     process_apple_upload.delay(
         content=content_str,
         content_type="application/json",
         user_id=user_id,
-        source="healthion",
+        source="auto-health-export",
     )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
