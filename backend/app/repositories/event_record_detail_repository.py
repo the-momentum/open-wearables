@@ -43,7 +43,8 @@ class EventRecordDetailRepository(
             raise ValueError(f"Unknown detail type: {detail_type}")
 
         db_session.add(detail)
-        db_session.flush()  # Flush to generate ID without committing
+        db_session.commit()
+        db_session.refresh(detail)
         return detail
 
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:

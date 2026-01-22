@@ -13,14 +13,6 @@ class DeviceSoftwareRepository(CrudRepository[DeviceSoftware, DeviceSoftwareCrea
     def __init__(self):
         super().__init__(DeviceSoftware)
 
-    def _create_without_commit(self, db: DbSession, creator: DeviceSoftwareCreate) -> DeviceSoftware:
-        """Create device software without committing - flush only to get ID."""
-        creation_data = creator.model_dump()
-        creation = self.model(**creation_data)
-        db.add(creation)
-        db.flush()  # Flush to generate ID without committing
-        return creation
-
     def ensure_software(self, db: DbSession, device_id: UUID, version: str) -> DeviceSoftware:
         """Get existing software version or create new one. Uses Redis cache to avoid N+1 queries."""
         # Lazy import to avoid circular dependency
@@ -45,7 +37,7 @@ class DeviceSoftwareRepository(CrudRepository[DeviceSoftware, DeviceSoftwareCrea
             return existing
 
         # Create new software
-        software = self._create_without_commit(db, DeviceSoftwareCreate(device_id=device_id, version=version))
+        software = self.create(db, DeviceSoftwareCreate(device_id=device_id, version=version))
         # Cache the ID
         device_cache_service.cache_device_software(software.id, device_id, version)
         return software
@@ -55,14 +47,6 @@ class DeviceRepository(CrudRepository[Device, DeviceCreate, DeviceUpdate]):
     def __init__(self):
         super().__init__(Device)
         self.software_repo = DeviceSoftwareRepository()
-
-    def _create_without_commit(self, db: DbSession, creator: DeviceCreate) -> Device:
-        """Create device without committing - flush only to get ID."""
-        creation_data = creator.model_dump()
-        creation = self.model(**creation_data)
-        db.add(creation)
-        db.flush()  # Flush to generate ID without committing
-        return creation
 
     def ensure_device(
         self,
@@ -107,9 +91,10 @@ class DeviceRepository(CrudRepository[Device, DeviceCreate, DeviceUpdate]):
             if name and not device.name or name and device.name == "Unknown Device" and name != "Unknown Device":
                 device.name = name
                 db.add(device)
-                db.flush()  # Flush to get any changes without committing
+                db.commit()
+                db.refresh(device)
         else:
-            device = self._create_without_commit(
+            device = self.create(
                 db,
                 DeviceCreate(
                     provider_name=provider_name,

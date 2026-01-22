@@ -18,14 +18,6 @@ class ExternalMappingRepository(
     def __init__(self, model: type[ExternalDeviceMapping]):
         super().__init__(model)
 
-    def _create_without_commit(self, db_session: DbSession, creator: ExternalMappingCreate) -> ExternalDeviceMapping:
-        """Create mapping without committing - flush only to get ID."""
-        creation_data = creator.model_dump()
-        creation = self.model(**creation_data)
-        db_session.add(creation)
-        db_session.flush()  # Flush to generate ID without committing
-        return creation
-
     def _build_identity_filter(
         self,
         user_id: UUID,
@@ -87,4 +79,4 @@ class ExternalMappingRepository(
             device_software_id=device_software_id,
             source=provider_enum,
         )
-        return self._create_without_commit(db_session, create_payload)  # type: ignore[return-value]
+        return self.create(db_session, create_payload)  # type: ignore[return-value]

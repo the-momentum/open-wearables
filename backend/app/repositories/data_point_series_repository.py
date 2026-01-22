@@ -255,7 +255,7 @@ class DataPointSeriesRepository(
                 )
             )
             db_session.execute(stmt)
-            # Don't commit here - let parent transaction commit
+            db_session.commit()
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:
