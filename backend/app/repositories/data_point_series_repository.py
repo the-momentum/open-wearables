@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, time
+from datetime import datetime, time, timedelta
 from uuid import UUID, uuid4
 
 from psycopg.errors import UniqueViolation
