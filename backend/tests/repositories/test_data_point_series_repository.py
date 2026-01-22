@@ -15,7 +15,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries
+from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.oauth import ProviderName
 from app.schemas.series_types import SeriesType
@@ -35,13 +35,13 @@ class TestDataPointSeriesRepository:
         """Test creating a data point with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch123")
+        mapping = ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="watch123")
         now = datetime.now(timezone.utc)
 
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="watch123",
             external_device_mapping_id=mapping.id,
             recorded_at=now,
@@ -74,7 +74,7 @@ class TestDataPointSeriesRepository:
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.GARMIN,
+            provider_name="garmin",
             device_id="device456",
             external_device_mapping_id=None,
             recorded_at=now,
@@ -88,7 +88,6 @@ class TestDataPointSeriesRepository:
         # Assert
         assert result.external_device_mapping_id is not None
         # Verify mapping was created
-        from app.models import ExternalDeviceMapping
         from app.repositories.external_mapping_repository import ExternalMappingRepository
 
         mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
@@ -108,7 +107,7 @@ class TestDataPointSeriesRepository:
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="device1",
             external_device_mapping_id=mapping.id,
             recorded_at=datetime.now(timezone.utc),
@@ -131,14 +130,14 @@ class TestDataPointSeriesRepository:
         """Test that creating duplicate data points returns the existing record instead of raising error."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch123")
+        mapping = ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="watch123")
         recorded_time = datetime.now(timezone.utc)
 
         # Create first sample
         first_sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="watch123",
             external_device_mapping_id=mapping.id,
             recorded_at=recorded_time,
@@ -152,7 +151,7 @@ class TestDataPointSeriesRepository:
         duplicate_sample = TimeSeriesSampleCreate(
             id=uuid4(),  # Different ID
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="watch123",
             external_device_mapping_id=mapping.id,
             recorded_at=recorded_time,  # Same timestamp
@@ -197,7 +196,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping1.id,
                 recorded_at=now - timedelta(hours=i),
@@ -210,7 +209,7 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="device2",
             external_device_mapping_id=mapping2.id,
             recorded_at=now,
@@ -227,7 +226,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 3
         assert total_count == 3
-        for _, mapping in results:
+        for _, mapping, _ in results:
             assert mapping.device is not None
             assert mapping.device.serial_number == "device1"
 
@@ -246,7 +245,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=now - timedelta(hours=i),
@@ -264,7 +263,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 3
         assert total_count == 3
-        for sample, _ in results:
+        for sample, _, _ in results:
             assert sample.external_device_mapping_id == mapping.id
 
     def test_get_samples_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
@@ -279,7 +278,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=now - timedelta(hours=i),
@@ -292,7 +291,7 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="device1",
             external_device_mapping_id=mapping.id,
             recorded_at=now,
@@ -312,7 +311,7 @@ class TestDataPointSeriesRepository:
         from app.schemas.series_types import get_series_type_id
 
         expected_type_id = get_series_type_id(SeriesType.heart_rate)
-        for sample, _ in results:
+        for sample, _, _ in results:
             assert sample.series_type_definition_id == expected_type_id
 
     def test_get_samples_by_date_range(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
@@ -333,7 +332,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=dt,
@@ -356,12 +355,12 @@ class TestDataPointSeriesRepository:
         # Assert - should get yesterday and now (2 samples), excluding two_days_ago
         assert len(results) == 2
         assert total_count == 2
-        for sample, _ in results:
+        for sample, _, _ in results:
             assert sample.recorded_at >= yesterday
             assert sample.recorded_at < end_datetime
 
     def test_get_samples_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test filtering samples by provider ID."""
+        """Test getting samples filtered by provider."""
         # Arrange
         user = UserFactory()
         mapping_apple = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device1")
@@ -373,7 +372,7 @@ class TestDataPointSeriesRepository:
         sample1 = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="device1",
             external_device_mapping_id=mapping_apple.id,
             recorded_at=now,
@@ -385,7 +384,7 @@ class TestDataPointSeriesRepository:
         sample2 = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.GARMIN,
+            provider_name="garmin",
             device_id="device1",
             external_device_mapping_id=mapping_garmin.id,
             recorded_at=now,
@@ -394,7 +393,7 @@ class TestDataPointSeriesRepository:
         )
         series_repo.create(db, sample2)
 
-        query_params = TimeSeriesQueryParams(device_id="device1", source=ProviderName.APPLE)
+        query_params = TimeSeriesQueryParams(device_id="device1", provider_name="apple")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -402,8 +401,8 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 1
         assert total_count == 1
-        _, mapping = results[0]
-        assert mapping.provider_name == "apple"
+        _, mapping, _ = results[0]
+        assert mapping.source == ProviderName.APPLE
 
     def test_get_samples_ordered_by_recorded_at_asc(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that samples are ordered by recorded_at ascending."""
@@ -418,7 +417,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=dt,
@@ -468,7 +467,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -498,7 +497,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=dt,
@@ -535,7 +534,7 @@ class TestDataPointSeriesRepository:
                 sample = TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user.id,
-                    source=ProviderName.APPLE,
+                    provider_name="apple",
                     device_id="device1",
                     external_device_mapping_id=mapping.id,
                     recorded_at=dt + timedelta(seconds=i),
@@ -566,7 +565,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -580,7 +579,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -616,7 +615,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping_apple.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -630,7 +629,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.GARMIN,
+                provider_name="garmin",
                 device_id="device2",
                 external_device_mapping_id=mapping_garmin.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -662,7 +661,7 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user1.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device1",
                 external_device_mapping_id=mapping1.id,
                 recorded_at=now + timedelta(seconds=i),
@@ -675,7 +674,7 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user2.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="device1",
             external_device_mapping_id=mapping2.id,
             recorded_at=now,
@@ -692,5 +691,5 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 2
         assert total_count == 2
-        for _, mapping in results:
+        for _, mapping, _ in results:
             assert mapping.user_id == user1.id

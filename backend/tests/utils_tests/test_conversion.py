@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.schemas import ConnectionStatus
+from app.schemas.oauth import ProviderName
 from app.utils.conversion import base_to_dict
 from tests.factories import (
     DataPointSeriesFactory,
@@ -247,8 +248,8 @@ class TestBaseToDictExternalDeviceMapping:
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(
             user=user,
-            provider_name="apple",
-            device_id="device-123",
+            source=ProviderName.APPLE,
+            device_id="device_123",
         )
 
         # Act
@@ -258,8 +259,8 @@ class TestBaseToDictExternalDeviceMapping:
         assert isinstance(result, dict)
         assert result["id"] == mapping.id
         assert result["user_id"] == user.id
-        assert result["provider_name"] == "apple"
-        assert result["device_id"] == "device-123"
+        assert result["source"] == "apple"
+        assert result["device_id"] == mapping.device_id
 
 
 class TestBaseToDictDataPointSeries:

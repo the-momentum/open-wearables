@@ -14,6 +14,7 @@ from app.repositories.device_repository import DeviceRepository
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.schemas.oauth import ProviderName
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -142,7 +143,7 @@ class EventRecordRepository(
             filters.append(Device.serial_number == query_params.device_id)
 
         if getattr(query_params, "provider_name", None):
-            filters.append(Device.provider_name == query_params.provider_name)
+            filters.append(ExternalDeviceMapping.source == ProviderName(query_params.provider_name))
 
         if getattr(query_params, "external_device_mapping_id", None):
             filters.append(EventRecord.external_device_mapping_id == query_params.external_device_mapping_id)

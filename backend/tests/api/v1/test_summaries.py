@@ -1030,7 +1030,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_with_blood_pressure(self, client: TestClient, db: Session) -> None:
         """Test body summary includes blood pressure averages."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="withings")
+        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.UNKNOWN)
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         bp_sys_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()

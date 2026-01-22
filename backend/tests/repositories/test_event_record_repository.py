@@ -34,13 +34,13 @@ class TestEventRecordRepository:
         """Test creating an event record with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch123")
+        mapping = ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="watch123")
         now = datetime.now(timezone.utc)
 
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.APPLE,
+            provider_name="apple",
             device_id="watch123",
             external_device_mapping_id=mapping.id,
             category="workout",
@@ -76,7 +76,7 @@ class TestEventRecordRepository:
         event_data = EventRecordCreate(
             id=uuid4(),
             user_id=user.id,
-            source=ProviderName.GARMIN,  # Use provider_name for external mapping
+            provider_name="garmin",  # Use provider_name for external mapping
             device_id="device456",
             external_device_mapping_id=None,
             category="workout",
@@ -208,7 +208,7 @@ class TestEventRecordRepository:
 
         query_params = EventRecordQueryParams(
             category="workout",
-            source=ProviderName.APPLE,
+            provider_name="apple",
             limit=10,
             offset=0,
         )
@@ -219,7 +219,7 @@ class TestEventRecordRepository:
         # Assert
         assert total_count == 1
         _, mapping = results[0]
-        assert mapping.provider_name == "apple"
+        assert mapping.source == ProviderName.APPLE
 
     def test_get_records_with_filters_by_date_range(self, db: Session, event_repo: EventRecordRepository) -> None:
         """Test filtering event records by date range."""
@@ -510,7 +510,7 @@ class TestEventRecordRepository:
             category="workout",
             record_type="running",
             device_id="watch1",
-            source=ProviderName.APPLE,
+            provider_name="apple",
             source_name="Apple",
             min_duration=3000,
             limit=10,
@@ -526,4 +526,4 @@ class TestEventRecordRepository:
         assert event.category == "workout"
         assert event.type is not None
         assert "running" in event.type
-        assert mapping_result.device_id == "watch1"
+        assert mapping_result.device.serial_number == "watch1"

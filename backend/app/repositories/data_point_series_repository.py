@@ -20,6 +20,7 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
+from app.schemas.oauth import ProviderName
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
@@ -50,7 +51,15 @@ class DataPointSeriesRepository(
         creation_data["external_device_mapping_id"] = mapping.id
         creation_data["series_type_definition_id"] = get_series_type_id(creator.series_type)
 
-        for redundant_key in ("user_id", "provider_name", "device_id", "series_type"):
+        for redundant_key in (
+            "user_id",
+            "provider_name",
+            "device_id",
+            "device_name",
+            "device_manufacturer",
+            "device_software_version",
+            "series_type",
+        ):
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
@@ -329,7 +338,7 @@ class DataPointSeriesRepository(
             query = query.filter(Device.serial_number == params.device_id)
 
         if getattr(params, "provider_name", None):
-            query = query.filter(Device.provider_name == params.provider_name)
+            query = query.filter(ExternalDeviceMapping.source == ProviderName(params.provider_name))
 
         if params.start_datetime:
             query = query.filter(self.model.recorded_at >= params.start_datetime)
@@ -422,14 +431,13 @@ class DataPointSeriesRepository(
         Returns list of (provider_name, count) tuples ordered by count descending.
         """
         results = (
-            db_session.query(Device.provider_name, func.count(self.model.id).label("count"))
+            db_session.query(ExternalDeviceMapping.source, func.count(self.model.id).label("count"))
             .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
-            .outerjoin(ExternalDeviceMapping.device)
-            .group_by(Device.provider_name)
+            .group_by(ExternalDeviceMapping.source)
             .order_by(func.count(self.model.id).desc())
             .all()
         )
-        return [(provider_name, count) for provider_name, count in results]
+        return [(provider.value if hasattr(provider, "value") else provider, count) for provider, count in results]
 
     def get_averages_for_time_range(
         self,

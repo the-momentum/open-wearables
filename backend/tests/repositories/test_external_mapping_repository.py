@@ -33,11 +33,15 @@ class TestExternalMappingRepository:
         # Arrange
         user = UserFactory()
         mapping_id = uuid4()
+        from tests.factories import DeviceFactory
+
+        device = DeviceFactory()
+
         mapping_data = ExternalMappingCreate(
             id=mapping_id,
             user_id=user.id,
             source=ProviderName.APPLE,
-            device_id="watch123",
+            device_id=device.id,
         )
 
         # Act
@@ -46,14 +50,14 @@ class TestExternalMappingRepository:
         # Assert
         assert result.id == mapping_id
         assert result.user_id == user.id
-        assert result.provider_name == "apple"
-        assert result.device_id == "watch123"
+        assert result.source == ProviderName.APPLE
+        assert result.device_id == device.id
 
         # Verify in database
         db.expire_all()
         db_mapping = mapping_repo.get(db, mapping_id)
         assert db_mapping is not None
-        assert db_mapping.provider_name == "apple"
+        assert db_mapping.source == ProviderName.APPLE
 
     def test_get(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a mapping by ID."""
@@ -66,8 +70,8 @@ class TestExternalMappingRepository:
         # Assert
         assert result is not None
         assert result.id == mapping.id
-        assert result.provider_name == "garmin"
-        assert result.device_id == "edge530"
+        assert result.source == ProviderName.GARMIN
+        assert result.device_id == mapping.device_id
 
     def test_get_nonexistent(self, db: Session, mapping_repo: ExternalMappingRepository) -> None:
         """Test retrieving a nonexistent mapping returns None."""
@@ -101,7 +105,7 @@ class TestExternalMappingRepository:
         """Test get_by_identity returns None when no matching mapping exists."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch1")
+        ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="watch1")
 
         # Act - Query for non-existent device (None)
         result = mapping_repo.get_by_identity(db, user.id, None)
@@ -201,8 +205,8 @@ class TestExternalMappingRepository:
         result = mapping_repo.ensure_mapping(
             db,
             user_id=user.id,
-            source=ProviderName.GARMIN,
-            device_id="fenix7",
+            source="garmin",
+            device_id=existing_mapping.device_id,
             mapping_id=existing_mapping.id,
         )
 
@@ -219,13 +223,16 @@ class TestExternalMappingRepository:
         # Arrange
         user = UserFactory()
         specific_id = uuid4()
+        from tests.factories import DeviceFactory
+
+        device = DeviceFactory()
 
         # Act
         result = mapping_repo.ensure_mapping(
             db,
             user_id=user.id,
-            source=ProviderName.APPLE,
-            device_id="watch_new",
+            source="apple",
+            device_id=device.id,
             mapping_id=specific_id,
         )
 
@@ -238,21 +245,24 @@ class TestExternalMappingRepository:
         """Test that calling ensure_mapping multiple times is idempotent."""
         # Arrange
         user = UserFactory()
+        from tests.factories import DeviceFactory
+
+        device = DeviceFactory()
 
         # Act - Call ensure_mapping twice
         result1 = mapping_repo.ensure_mapping(
             db,
             user_id=user.id,
-            source=ProviderName.APPLE,
-            device_id="watch_test",
+            source="apple",
+            device_id=device.id,
             mapping_id=None,
         )
 
         result2 = mapping_repo.ensure_mapping(
             db,
             user_id=user.id,
-            source=ProviderName.APPLE,
-            device_id="watch_test",
+            source="apple",
+            device_id=device.id,
             mapping_id=None,
         )
 
@@ -285,7 +295,7 @@ class TestExternalMappingRepository:
         # Act
         results = mapping_repo.get_all(
             db,
-            filters={"provider_name": "apple"},
+            filters={"source": ProviderName.APPLE},
             offset=0,
             limit=10,
             sort_by=None,
@@ -293,7 +303,7 @@ class TestExternalMappingRepository:
 
         # Assert
         assert len(results) >= 1
-        apple_mappings = [m for m in results if m.provider_name == "apple"]
+        apple_mappings = [m for m in results if m.source == ProviderName.APPLE]
         assert len(apple_mappings) >= 1
         assert mapping1.id in [m.id for m in apple_mappings]
 
@@ -307,14 +317,14 @@ class TestExternalMappingRepository:
         # Act
         results = mapping_repo.get_all(
             db,
-            filters={"device_id": "device123"},
+            filters={"device_id": mapping1.device_id},
             offset=0,
             limit=10,
             sort_by=None,
         )
 
         # Assert
-        device_mappings = [m for m in results if m.device_id == "device123"]
+        device_mappings = [m for m in results if m.device_id == mapping1.device_id]
         assert len(device_mappings) >= 1
         assert mapping1.id in [m.id for m in device_mappings]
 
@@ -382,7 +392,7 @@ class TestExternalMappingRepository:
         """Test that both user_id and device_id must match for get_by_identity."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="watch1")
+        ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="watch1")
 
         # Create a Device with different ID
         from tests.factories import DeviceFactory

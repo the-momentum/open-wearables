@@ -36,7 +36,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create heart rate samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_1")
+        ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="device_1")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -44,7 +44,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             HeartRateSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device_1",
                 recorded_at=now - timedelta(minutes=i),
                 value=70 + i,
@@ -64,7 +64,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create step samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_2")
+        ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="device_2")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -72,7 +72,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             StepSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device_2",
                 recorded_at=now - timedelta(hours=i),
                 value=1000 + i * 100,
@@ -92,7 +92,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create samples of different series types."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE, device_id="device_3")
+        ExternalDeviceMappingFactory(source=ProviderName.APPLE, device_id="device_3")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -100,7 +100,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=1),
                 value=72,
@@ -109,7 +109,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
             TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                source=ProviderName.APPLE,
+                provider_name="apple",
                 device_id="device_3",
                 recorded_at=now - timedelta(minutes=2),
                 value=5000,
