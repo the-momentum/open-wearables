@@ -201,13 +201,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     efficiency = (total_sleep_seconds / total_duration) * 100 if total_duration > 0 else None
     efficiency_score = Decimal(str(efficiency)) if efficiency is not None else None
 
-    try:
-        record_uuid = UUID(state["uuid"])
-    except ValueError:
-        record_uuid = uuid4()
-
     sleep_record = EventRecordCreate(
-        id=record_uuid,
+        id=uuid4(),
+        external_id=state.get("uuid"),
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
