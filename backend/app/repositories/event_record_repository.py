@@ -77,9 +77,30 @@ class EventRecordRepository(
 
         creation = self.model(**creation_data)
 
-        db_session.add(creation)
-        db_session.flush()  # Flush to generate ID without committing
-        return creation
+        # Use nested transaction (savepoint) to handle potential duplicates
+        # without rolling back the entire batch
+        savepoint = db_session.begin_nested()
+        
+        try:
+            db_session.add(creation)
+            db_session.flush()  # Flush to generate ID without committing
+            return creation
+        except IntegrityError:
+            # Duplicate record - rollback just this savepoint
+            savepoint.rollback()
+            # Query for existing record
+            existing = (
+                db_session.query(self.model)
+                .filter(
+                    self.model.external_device_mapping_id == mapping.id,
+                    self.model.start_datetime == creation.start_datetime,
+                    self.model.end_datetime == creation.end_datetime,
+                )
+                .one_or_none()
+            )
+            if existing:
+                return existing
+            raise
 
     def get_record_with_details(
         self,
