@@ -12,11 +12,11 @@ class SleepState(TypedDict):
     start_time: str
     last_timestamp: str
 
-    in_bed: int
-    awake: int
-    light: int
-    deep: int
-    rem: int
+    in_bed_seconds: int
+    awake_seconds: int
+    light_seconds: int
+    deep_seconds: int
+    rem_seconds: int
 
 
 SLEEP_START_STATES = {
