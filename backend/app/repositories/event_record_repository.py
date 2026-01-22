@@ -77,26 +77,9 @@ class EventRecordRepository(
 
         creation = self.model(**creation_data)
 
-        try:
-            db_session.add(creation)
-            db_session.commit()
-            db_session.refresh(creation)
-            return creation
-        except IntegrityError:
-            db_session.rollback()
-            # Query using the mapping and other unique constraint fields
-            existing = (
-                db_session.query(self.model)
-                .filter(
-                    self.model.external_device_mapping_id == mapping.id,
-                    self.model.start_datetime == creation.start_datetime,
-                    self.model.end_datetime == creation.end_datetime,
-                )
-                .one_or_none()
-            )
-            if existing:
-                return existing
-            raise
+        db_session.add(creation)
+        db_session.flush()  # Flush to generate ID without committing
+        return creation
 
     def get_record_with_details(
         self,

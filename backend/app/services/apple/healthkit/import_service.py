@@ -233,6 +233,9 @@ class ImportService:
 
         handle_sleep_data(db_session, raw, user_id)
 
+        # Commit all changes in a single transaction
+        db_session.commit()
+
         return True
 
     def import_data_from_request(
