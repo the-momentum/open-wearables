@@ -7,7 +7,6 @@ from app.models.device import Device
 from app.models.device_software import DeviceSoftware
 from app.repositories.repositories import CrudRepository
 from app.schemas.device import DeviceCreate, DeviceSoftwareCreate, DeviceSoftwareUpdate, DeviceUpdate
-from app.services.device_cache_service import device_cache_service
 
 
 class DeviceSoftwareRepository(CrudRepository[DeviceSoftware, DeviceSoftwareCreate, DeviceSoftwareUpdate]):
@@ -16,6 +15,9 @@ class DeviceSoftwareRepository(CrudRepository[DeviceSoftware, DeviceSoftwareCrea
 
     def ensure_software(self, db: DbSession, device_id: UUID, version: str) -> DeviceSoftware:
         """Get existing software version or create new one. Uses Redis cache to avoid N+1 queries."""
+        # Lazy import to avoid circular dependency
+        from app.services.device_cache_service import device_cache_service
+
         # Check Redis cache first
         cached_id = device_cache_service.get_device_software_id(device_id, version)
         if cached_id:
@@ -55,6 +57,9 @@ class DeviceRepository(CrudRepository[Device, DeviceCreate, DeviceUpdate]):
         sw_version: str | None = None,
     ) -> Device:
         """Get existing device or create new one. Uses Redis cache to avoid N+1 queries."""
+        # Lazy import to avoid circular dependency
+        from app.services.device_cache_service import device_cache_service
+
         # Check Redis cache first
         cached_id = device_cache_service.get_device_id(provider_name, serial_number, name)
         if cached_id:
