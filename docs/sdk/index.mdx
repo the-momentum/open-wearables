@@ -16,24 +16,17 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                         USER'S MOBILE DEVICE (iOS)                        │
-│  ┌────────────────┐      ┌─────────────────┐      ┌──────────────────┐   │
-│  │  Apple Health  │      │    Your App     │      │  Sync SDK        │   │
-│  │  (HealthKit)   │─────▶│    (Flutter)    │─────▶│  (Background)    │   │
-│  │                │      │                 │      │                  │   │
-│  └────────────────┘      └─────────────────┘      └────────┬─────────┘   │
-└───────────────────────────────────────────────────────────│──────────────┘
-                                                            │ Push data
-                                                            ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│                           OPEN WEARABLES PLATFORM                          │
-│  ┌─────────────────────────────────────────────────────────────────────┐  │
-│  │  POST /sdk/users/{user_id}/sync/apple/healthkit                     │  │
-│  └─────────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────────────┘
-```
+<Steps>
+  <Step title="Apple Health (HealthKit)" icon="heart-pulse">
+    Health data is stored locally on the user's iOS device in Apple Health.
+  </Step>
+  <Step title="Your Flutter App + Sync SDK" icon="mobile">
+    The SDK reads data from HealthKit and handles background synchronization automatically.
+  </Step>
+  <Step title="Open Wearables Platform" icon="cloud-arrow-up">
+    Data is pushed to `POST /sdk/users/{user_id}/sync/apple/healthkit` and normalized to the unified data model.
+  </Step>
+</Steps>
 
 ## Key Features
 

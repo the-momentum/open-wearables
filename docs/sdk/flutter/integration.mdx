@@ -20,36 +20,27 @@ This guide walks you through the complete integration of the Open Wearables Flut
 
 The SDK uses a secure token-based flow that keeps your API keys safe on your backend:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              SECURE ZONE                                    │
-│                         (Server-to-Server, HTTPS)                           │
-│                                                                             │
-│  ┌──────────────────┐                      ┌─────────────────┐              │
-│  │  Your Backend    │   Generate Token     │  Open Wearables │              │
-│  │                  │   (with API Key)     │  Platform       │              │
-│  │  [API Key here]  │─────────────────────>│                 │              │
-│  │                  │                      │                 │              │
-│  │                  │<─────────────────────│                 │              │
-│  │                  │   { accessToken,     │                 │              │
-│  │                  │     userId }         │                 │              │
-│  └────────┬─────────┘                      └────────┬────────┘              │
-│           │                                         │                       │
-└───────────│─────────────────────────────────────────│───────────────────────┘
-            │                                         │
-            │ userId + accessToken                    │
-            │ (NO API Key!)                           │
-            ▼                                         │
-┌───────────────────────┐                             │
-│  Mobile App           │                             │
-│  (Flutter SDK)        │   Health data sync          │
-│                       │───────────────────────────> │
-│  [Keychain storage]   │   (Bearer accessToken)      │
-└───────────────────────┘                             │
-```
+<Steps>
+  <Step title="Mobile App requests credentials" icon="mobile">
+    User initiates health connection in your Flutter app. App calls your backend.
+  </Step>
+  <Step title="Your Backend generates token" icon="server">
+    Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
+    ```
+    POST https://api.openwearables.io/v1/tokens
+    X-API-Key: sk_live_your_secret_key
+    ```
+  </Step>
+  <Step title="Backend returns credentials" icon="key">
+    Open Wearables returns `userId` + `accessToken`. Your backend passes these to the mobile app (**not the API Key!**).
+  </Step>
+  <Step title="SDK stores & syncs" icon="lock">
+    Flutter SDK stores credentials in iOS Keychain and uses `accessToken` to sync health data directly to Open Wearables.
+  </Step>
+</Steps>
 
 <Warning>
-  **Never embed your API Key in the mobile app.** The API Key should only exist on your backend server.
+  **Never embed your API Key in the mobile app.** The API Key should only exist on your backend server. Only the `accessToken` is passed to the mobile app.
 </Warning>
 
 ## Step 1: Backend Setup
