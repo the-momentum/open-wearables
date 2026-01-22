@@ -26,7 +26,6 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.deferred_commit_session import DeferredCommitSession
 from app.utils.sentry_helpers import log_and_capture_error
 
 from .device_resolution import resolve_device
@@ -223,21 +222,17 @@ class ImportService:
         return EventRecordMetrics(**stats_dict), duration
 
     def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
-        # Use deferred commit session to batch all commits into one
-        # This prevents thousands of individual commits during bulk imports
-        with DeferredCommitSession(db_session) as deferred_session:
-            for record, detail in self._build_workout_bundles(deferred_session, raw, user_id):
-                created_or_existing_record = self.event_record_service.create(deferred_session, record)
-                # Always use the returned record's ID (whether newly created or existing)
-                detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-                self.event_record_service.create_detail(deferred_session, detail_for_record)
+        for record, detail in self._build_workout_bundles(db_session, raw, user_id):
+            created_or_existing_record = self.event_record_service.create(db_session, record)
+            # Always use the returned record's ID (whether newly created or existing)
+            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
+            self.event_record_service.create_detail(db_session, detail_for_record)
 
-            samples = self._build_statistic_bundles(deferred_session, raw, user_id)
-            self.timeseries_service.bulk_create_samples(deferred_session, samples)
+        samples = self._build_statistic_bundles(db_session, raw, user_id)
+        self.timeseries_service.bulk_create_samples(db_session, samples)
 
-            handle_sleep_data(deferred_session, raw, user_id)
+        handle_sleep_data(db_session, raw, user_id)
 
-        # All changes are committed at once when exiting the DeferredCommitSession context
         return True
 
     def import_data_from_request(
