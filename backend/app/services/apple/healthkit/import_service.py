@@ -67,12 +67,13 @@ class ImportService:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
             # Resolve device mapping
-            device_id = resolve_device(db, self.device_repo, wjson.source, wjson.sourceName)
+            source_name = wjson.source.name if wjson.source else None
+            device_id = resolve_device(db, self.device_repo, wjson.source, source_name)
 
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=wjson.sourceName or "Apple Health",
+                source_name=source_name or "Apple Health",
                 device_id=device_id,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
@@ -114,7 +115,8 @@ class ImportService:
                 value = value * 100
 
             # Resolve device mapping
-            device_id = resolve_device(db, self.device_repo, rjson.source, rjson.sourceName)
+            source_name = rjson.source.name if rjson.source else None
+            device_id = resolve_device(db, self.device_repo, rjson.source, source_name)
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),

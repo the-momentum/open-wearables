@@ -153,7 +153,7 @@ def handle_sleep_data(
 
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
-        source_name = sjson.sourceName
+        source_name = sjson.source.name if sjson.source else None
 
         # Resolve device mapping - this also saves to Device table
         device_id = resolve_device(db_session, device_repo, sjson.source, source_name)

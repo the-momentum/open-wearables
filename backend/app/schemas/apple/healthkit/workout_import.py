@@ -15,7 +15,6 @@ class WorkoutJSON(BaseModel):
     type: str | None = None
     startDate: datetime
     endDate: datetime
-    sourceName: str | None = None
     source: SourceInfo | None = None
     workoutStatistics: list[WorkoutStatisticJSON] | None = None
 
