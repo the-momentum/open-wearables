@@ -7,8 +7,6 @@ from app.models.device import Device
 from app.models.device_software import DeviceSoftware
 from app.repositories.repositories import CrudRepository
 from app.schemas.device import DeviceCreate, DeviceSoftwareCreate, DeviceSoftwareUpdate, DeviceUpdate
-
-# Import the service instance directly
 from app.services.device_cache_service import device_cache_service
 
 
