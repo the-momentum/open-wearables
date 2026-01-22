@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
 
+    # Time to live for device cache in Redis (5 minutes)
+    device_cache_ttl_seconds: int = 5 * 60  # 5 minutes
+
     # Time between sleep phases to conclude end of sleep session
     sleep_end_gap_minutes: int = 60  # 1 hour
 

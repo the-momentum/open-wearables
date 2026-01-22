@@ -6,6 +6,7 @@ from .apple.auto_export.import_service import import_service as ae_import_servic
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .application_service import application_service
 from .developer_service import developer_service
+from .device_cache_service import device_cache_service
 from .event_record_service import event_record_service
 from .invitation_service import invitation_service
 from .sdk_token_service import create_sdk_user_token
@@ -33,4 +34,5 @@ __all__ = [
     "timeseries_service",
     "pre_url_service",
     "system_info_service",
+    "device_cache_service",
 ]
