@@ -227,7 +227,12 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.recorded_at >= params.start_datetime)
 
         if params.end_datetime:
-            query = query.filter(self.model.recorded_at < params.end_datetime)
+            # If user didnt specify an hour, minute nor second, add 1 day to include the entire day
+            end_dt = params.end_datetime
+            # Check if the time part after the date is 00:00:00
+            if end_dt.time() == time.min:
+                end_dt = end_dt + timedelta(days=1)
+            query = query.filter(self.model.recorded_at < end_dt)
 
         # Calculate total count BEFORE applying cursor pagination
         # This gives us the total matching records (after all other filters)
