@@ -502,14 +502,15 @@ class SummariesService:
         height_data = slow_changing_values.get(SeriesType.height)
         body_fat_data = slow_changing_values.get(SeriesType.body_fat_percentage)
         muscle_mass_data = slow_changing_values.get(SeriesType.lean_body_mass)
+        bmi_data = slow_changing_values.get(SeriesType.body_mass_index)
 
         weight_kg = weight_data[0] if weight_data else None
         height_cm = height_data[0] if height_data else None
         body_fat_pct = body_fat_data[0] if body_fat_data else None
         muscle_mass_kg = muscle_mass_data[0] if muscle_mass_data else None
 
-        # Calculate BMI from latest weight and height
-        bmi = self._calculate_bmi(weight_kg, height_cm)
+        # Use stored BMI if available, otherwise calculate from weight and height
+        bmi = bmi_data[0] if bmi_data else self._calculate_bmi(weight_kg, height_cm)
 
         # Calculate age
         age = self._calculate_age(birth_date, now.date()) if birth_date else None
