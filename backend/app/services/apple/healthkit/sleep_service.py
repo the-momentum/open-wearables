@@ -147,7 +147,13 @@ def handle_sleep_data(
 
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
-        source_name = sjson.source.name
+
+        source = sjson.source
+        if source:
+            source_name = source.name or "Apple Health"
+        else:
+            source_name = "Apple Health"
+
         sleep_phase = get_apple_sleep_phase(int(sjson.value))
 
         if sleep_phase is None:

@@ -62,11 +62,19 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
+            source = wjson.source
+            if source:
+                source_name = source.name or "Apple Health"
+                device_id = source.device_name or None
+            else:
+                source_name = "Apple Health"
+                device_id = None
+
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=wjson.source.name or "Apple Health",
-                device_id=wjson.source.device_name or None,
+                source_name=source_name,
+                device_id=device_id,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,

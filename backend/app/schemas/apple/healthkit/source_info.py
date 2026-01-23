@@ -16,7 +16,6 @@ class SourceInfo(BaseModel):
     version: str | None = None
     product_type: str | None = Field(default=None, alias="productType")
     operating_system_version: OSVersion | None = Field(default=None, alias="operatingSystemVersion")
-    device_name: str | None = Field(default=None, alias="name")
     device_manufacturer: str | None = Field(default=None, alias="deviceManufacturer")
     device_model: str | None = Field(default=None, alias="deviceModel")
     device_hardware_version: str | None = Field(default=None, alias="deviceHardwareVersion")
