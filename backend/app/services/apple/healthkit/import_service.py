@@ -99,14 +99,13 @@ class ImportService:
 
             record_type = rjson.type or ""
             series_type = get_series_type_from_apple_metric_type(record_type)
-            # if not series_type:
-            #     continue
-            # # Convert from meters to centimeters or ratio to percentage
-            # if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
-            #     value = value * 100
 
-            if series_type is None:
+            if not series_type:
                 continue
+            # Convert from meters to centimeters or ratio to percentage
+            if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
+                value = value * 100
+
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -118,16 +117,14 @@ class ImportService:
                 value=value,
                 series_type=series_type,
             )
-
-            time_series_samples.append(sample)
-
-            # match series_type:
-            #     case SeriesType.heart_rate:
-            #         time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
-            #     case SeriesType.steps:
-            #         time_series_samples.append(StepSampleCreate(**sample.model_dump()))
-            #     case _:
-            #         time_series_samples.append(sample)
+            
+            match series_type:
+                case SeriesType.heart_rate:
+                    time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
+                case SeriesType.steps:
+                    time_series_samples.append(StepSampleCreate(**sample.model_dump()))
+                case _:
+                    time_series_samples.append(sample)
 
         return time_series_samples
 
