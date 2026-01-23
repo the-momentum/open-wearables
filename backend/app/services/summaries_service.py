@@ -51,6 +51,8 @@ HR_ZONE_MODERATE = (0.64, 0.76)  # 64-76% of max HR
 HR_ZONE_VIGOROUS = (0.77, 0.93)  # 77-93% of max HR
 
 # Body summary constants
+BP_TIMESTAMP_TOLERANCE_SECONDS = 5  # Max time difference for valid systolic/diastolic pair
+
 BODY_SLOW_CHANGING_SERIES = [
     SeriesType.weight,
     SeriesType.height,
@@ -572,27 +574,27 @@ class SummariesService:
             db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
         )
 
-        # Build blood pressure if we have recent readings
+        # Blood pressure readings are only meaningful as a pair recorded at the same time.
+        # Validate that both readings exist and their timestamps match within tolerance.
+        # This guards against inconsistent or corrupted data where systolic and diastolic
+        # might come from different measurement sessions.
         blood_pressure = None
         bp_measured_at = None
-        if bp_systolic_reading or bp_diastolic_reading:
-            blood_pressure = BloodPressure(
-                avg_systolic_mmhg=int(round(bp_systolic_reading[0])) if bp_systolic_reading else None,
-                avg_diastolic_mmhg=int(round(bp_diastolic_reading[0])) if bp_diastolic_reading else None,
-                # For single point-in-time reading, no min/max/count needed
-                max_systolic_mmhg=None,
-                max_diastolic_mmhg=None,
-                min_systolic_mmhg=None,
-                min_diastolic_mmhg=None,
-                reading_count=1,
-            )
-            # Use the most recent timestamp from either reading
-            if bp_systolic_reading and bp_diastolic_reading:
+
+        if bp_systolic_reading and bp_diastolic_reading:
+            time_diff = abs((bp_systolic_reading[1] - bp_diastolic_reading[1]).total_seconds())
+            if time_diff <= BP_TIMESTAMP_TOLERANCE_SECONDS:
+                blood_pressure = BloodPressure(
+                    avg_systolic_mmhg=int(round(bp_systolic_reading[0])),
+                    avg_diastolic_mmhg=int(round(bp_diastolic_reading[0])),
+                    # For single point-in-time reading, no min/max/count needed
+                    max_systolic_mmhg=None,
+                    max_diastolic_mmhg=None,
+                    min_systolic_mmhg=None,
+                    min_diastolic_mmhg=None,
+                    reading_count=1,
+                )
                 bp_measured_at = max(bp_systolic_reading[1], bp_diastolic_reading[1])
-            elif bp_systolic_reading:
-                bp_measured_at = bp_systolic_reading[1]
-            else:
-                bp_measured_at = bp_diastolic_reading[1] if bp_diastolic_reading else None
 
         body_latest = BodyLatest(
             body_temperature_celsius=temp_reading[0] if temp_reading else None,

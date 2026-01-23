@@ -82,9 +82,9 @@ async def get_body_summary(
     Response is organized into three categories:
     - **static**: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
       Returns the most recent recorded value for each field.
-    - **averaged**: Vitals averaged over a period (resting HR, HRV, blood pressure)
+    - **averaged**: Vitals averaged over a period (resting HR, HRV)
       Period is configurable via `average_period` parameter (1-7 days).
-    - **latest**: Point-in-time readings (body temperature)
+    - **latest**: Point-in-time readings (body temperature, blood pressure)
       Only returned if measured within `latest_window_hours` (default 4 hours).
 
     Returns null if no body data exists for the user.
