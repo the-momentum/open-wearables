@@ -114,12 +114,19 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
+
+            source = rjson.source
+            if source:
+                device_id = source.device_name or None
+            else:
+                device_id = None
+
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
                 provider_name="Apple",
-                device_id=rjson.source.device_name,
+                device_id=device_id,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
