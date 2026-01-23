@@ -42,6 +42,7 @@
                 "group": "Flutter",
                 "pages": [
                   "sdk/flutter/index",
+                  "sdk/flutter/example-app",
                   "sdk/flutter/integration",
                   "sdk/flutter/troubleshooting"
                 ]
