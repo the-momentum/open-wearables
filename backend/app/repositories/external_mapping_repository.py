@@ -1,3 +1,4 @@
+from logging import getLogger
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_
@@ -7,6 +8,8 @@ from app.database import DbSession
 from app.models import ExternalDeviceMapping
 from app.repositories.repositories import CrudRepository
 from app.schemas.external_mapping import ExternalMappingCreate, ExternalMappingUpdate
+
+logger = getLogger(__name__)
 
 
 class ExternalMappingRepository(
@@ -36,11 +39,30 @@ class ExternalMappingRepository(
         provider_name: str,
         device_id: str | None,
     ) -> ExternalDeviceMapping | None:
-        return (
-            db_session.query(self.model)
-            .filter(self._build_identity_filter(user_id, provider_name, device_id))
-            .one_or_none()
+        """
+        Get mapping by identity, returning the first match if duplicates exist.
+        
+        Note: Duplicates should not exist due to the unique constraint, but this
+        handles the case where they do exist in the database (e.g., from data
+        migration or constraint violation).
+        """
+        query = db_session.query(self.model).filter(
+            self._build_identity_filter(user_id, provider_name, device_id)
         )
+        
+        # Check if there are multiple results
+        results = query.all()
+        
+        if len(results) > 1:
+            logger.warning(
+                f"Found {len(results)} duplicate external device mappings for "
+                f"user_id={user_id}, provider={provider_name}, device_id={device_id}. "
+                f"Using first result (id={results[0].id}). This should not happen - "
+                f"consider running a data cleanup script."
+            )
+            return results[0]
+        
+        return results[0] if results else None
 
     def ensure_mapping(
         self,
