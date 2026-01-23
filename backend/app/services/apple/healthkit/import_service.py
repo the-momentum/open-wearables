@@ -106,7 +106,6 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
-
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
@@ -117,7 +116,7 @@ class ImportService:
                 value=value,
                 series_type=series_type,
             )
-            
+
             match series_type:
                 case SeriesType.heart_rate:
                     time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))

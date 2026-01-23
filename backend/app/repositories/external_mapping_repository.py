@@ -41,18 +41,16 @@ class ExternalMappingRepository(
     ) -> ExternalDeviceMapping | None:
         """
         Get mapping by identity, returning the first match if duplicates exist.
-        
+
         Note: Duplicates should not exist due to the unique constraint, but this
         handles the case where they do exist in the database (e.g., from data
         migration or constraint violation).
         """
-        query = db_session.query(self.model).filter(
-            self._build_identity_filter(user_id, provider_name, device_id)
-        )
-        
+        query = db_session.query(self.model).filter(self._build_identity_filter(user_id, provider_name, device_id))
+
         # Check if there are multiple results
         results = query.all()
-        
+
         if len(results) > 1:
             logger.warning(
                 f"Found {len(results)} duplicate external device mappings for "
@@ -61,7 +59,7 @@ class ExternalMappingRepository(
                 f"consider running a data cleanup script."
             )
             return results[0]
-        
+
         return results[0] if results else None
 
     def ensure_mapping(
