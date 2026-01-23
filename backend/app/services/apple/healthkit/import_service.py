@@ -119,13 +119,15 @@ class ImportService:
                 series_type=series_type,
             )
 
-            match series_type:
-                case SeriesType.heart_rate:
-                    time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
-                case SeriesType.steps:
-                    time_series_samples.append(StepSampleCreate(**sample.model_dump()))
-                case _:
-                    time_series_samples.append(sample)
+            time_series_samples.append(sample)
+
+            # match series_type:
+            #     case SeriesType.heart_rate:
+            #         time_series_samples.append(HeartRateSampleCreate(**sample.model_dump()))
+            #     case SeriesType.steps:
+            #         time_series_samples.append(StepSampleCreate(**sample.model_dump()))
+            #     case _:
+            #         time_series_samples.append(sample)
 
         return time_series_samples
 
