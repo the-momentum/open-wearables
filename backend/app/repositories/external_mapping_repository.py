@@ -1,4 +1,3 @@
-
 from uuid import UUID, uuid4
 
 from sqlalchemy import and_
@@ -8,7 +7,6 @@ from app.database import DbSession
 from app.models import ExternalDeviceMapping
 from app.repositories.repositories import CrudRepository
 from app.schemas.external_mapping import ExternalMappingCreate, ExternalMappingUpdate
-
 
 
 class ExternalMappingRepository(
