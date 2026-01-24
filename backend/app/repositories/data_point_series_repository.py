@@ -24,6 +24,16 @@ from app.utils.pagination import decode_cursor
 
 MappingIdentity = tuple[UUID, str, str | None]
 
+# PostgreSQL has a limit of 65,535 parameters per query.
+# We calculate safe batch sizes based on fields per record to stay well under this limit.
+POSTGRES_MAX_PARAMS = 65535
+DATA_POINT_FIELDS = 6  # id, external_id, external_device_mapping_id, recorded_at, value, series_type_definition_id
+MAPPING_FIELDS = 4  # id, user_id, provider_name, device_id
+
+# Safe batch sizes (with ~10% headroom)
+DATA_POINT_BATCH_SIZE = POSTGRES_MAX_PARAMS // DATA_POINT_FIELDS - 1000  # ~9,922
+MAPPING_BATCH_SIZE = POSTGRES_MAX_PARAMS // MAPPING_FIELDS - 1000  # ~15,383
+
 
 class DataPointSeriesRepository(
     CrudRepository[DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
@@ -125,7 +135,10 @@ class DataPointSeriesRepository(
         identities: list[MappingIdentity],
         creators_lookup: list[TimeSeriesSampleCreate],
     ) -> None:
-        """Insert missing mappings ignoring conflicts."""
+        """Insert missing mappings ignoring conflicts.
+
+        Batches inserts to stay within PostgreSQL's parameter limit.
+        """
         # Extract preferred IDs from creators if provided
         preferred_ids: dict[MappingIdentity, UUID] = {}
         for c in creators_lookup:
@@ -146,14 +159,19 @@ class DataPointSeriesRepository(
                 }
             )
 
+        # Batch insert to stay within PostgreSQL parameter limit
+        for i in range(0, len(mapping_values), MAPPING_BATCH_SIZE):
+            batch = mapping_values[i : i + MAPPING_BATCH_SIZE]
+            if batch:
+                stmt = (
+                    insert(ExternalDeviceMapping)
+                    .values(batch)
+                    .on_conflict_do_nothing(index_elements=["user_id", "provider_name", "device_id"])
+                )
+                db_session.execute(stmt)
+
+        # Flush to ensure visible for next select
         if mapping_values:
-            stmt = (
-                insert(ExternalDeviceMapping)
-                .values(mapping_values)
-                .on_conflict_do_nothing(index_elements=["user_id", "provider_name", "device_id"])
-            )
-            db_session.execute(stmt)
-            # Flush to ensure visible for next select
             db_session.flush()
 
     def _insert_data_points(
@@ -162,7 +180,11 @@ class DataPointSeriesRepository(
         creators: list[TimeSeriesSampleCreate],
         mapping_map: dict[MappingIdentity, UUID],
     ) -> None:
-        """Batch insert data points."""
+        """Batch insert data points.
+
+        Inserts data points in batches to stay within PostgreSQL's parameter limit
+        of 65,535 parameters per query. With 6 fields per record, we batch at ~10k records.
+        """
         values_list = []
         for creator in creators:
             identity = (creator.user_id, creator.provider_name, creator.device_id)
@@ -183,15 +205,20 @@ class DataPointSeriesRepository(
                 }
             )
 
-        if values_list:
-            stmt = (
-                insert(self.model)
-                .values(values_list)
-                .on_conflict_do_nothing(
-                    index_elements=["external_device_mapping_id", "series_type_definition_id", "recorded_at"]
+        # Batch insert to stay within PostgreSQL parameter limit
+        for i in range(0, len(values_list), DATA_POINT_BATCH_SIZE):
+            batch = values_list[i : i + DATA_POINT_BATCH_SIZE]
+            if batch:
+                stmt = (
+                    insert(self.model)
+                    .values(batch)
+                    .on_conflict_do_nothing(
+                        index_elements=["external_device_mapping_id", "series_type_definition_id", "recorded_at"]
+                    )
                 )
-            )
-            db_session.execute(stmt)
+                db_session.execute(stmt)
+
+        if values_list:
             db_session.commit()
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
