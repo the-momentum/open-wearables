@@ -20,6 +20,7 @@ services:
     build:
         context: ./backend
         dockerfile: Dockerfile
+    pull_policy: build
     container_name: backend__open-wearables
     image: open-wearables-platform:latest
     command: scripts/start/app.sh
@@ -135,6 +136,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.dev
+    pull_policy: build
     container_name: frontend__open-wearables
     image: open-wearables-frontend:dev
     ports:

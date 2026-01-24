@@ -4,9 +4,7 @@ FROM python:3.13-slim AS builder
     apt-get install -y --no-install-recommends build-essential libpq-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-    RUN pip install --no-cache-dir --upgrade pyopenssl
-
-    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+    RUN pip install --no-cache-dir --upgrade pip pyopenssl uv
 
     WORKDIR /root_project
 
@@ -24,10 +22,9 @@ FROM python:3.13-slim
     apt-get install -y --no-install-recommends libpq5 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+    RUN pip install --no-cache-dir uv
 
     WORKDIR /root_project
-
-    COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
     COPY --from=builder /opt/venv /opt/venv
     COPY --from=builder /root_project /root_project
