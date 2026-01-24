@@ -125,7 +125,11 @@ class DataPointSeriesRepository(
         creators: list[TimeSeriesSampleCreate],
         source_map: dict[DataSourceIdentity, UUID],
     ) -> None:
-        """Batch insert data points."""
+        """Batch insert data points.
+
+        Inserts data points in batches to stay within PostgreSQL's parameter limit
+        of 65,535 parameters per query. With 6 fields per record, we batch at ~10k records.
+        """
         values_list = []
         for creator in creators:
             identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
