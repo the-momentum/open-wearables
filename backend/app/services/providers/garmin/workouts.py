@@ -213,13 +213,13 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name=device_name,
-            device_id=device_name,
+            device_model=device_name,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
             external_id=str(raw_workout.activityId),  # Convert to str (push sends int)
-            provider_name="garmin",
+            source="garmin",
             user_id=user_id,
         )
 

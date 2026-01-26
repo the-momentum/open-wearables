@@ -131,31 +131,26 @@ def generate_workout(
 
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
-    device_id: str | None = None
     device_name: str | None = None
     manufacturer: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        # Generate stable serial per user per device model to simulate real world?
-        # For simplicity, just random string, assuming user has multiple devices or just one
-        device_id = f"SN-{str(config['provider']).upper()}-{fake_instance.random_int(1000, 9999)}"
         manufacturer = str(config["manufacturer"])
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=workout_id,
-        provider_name=str(config["provider"]),
+        source=str(config["provider"]),
         user_id=user_id,
         category="workout",
         type=fake_instance.random.choice(WORKOUT_TYPES),
         duration_seconds=duration_seconds,
         source_name=source_name,
-        device_id=device_id,
-        device_name=device_name,
-        device_manufacturer=manufacturer,
-        device_software_version=sw_version,
+        device_model=device_name,
+        manufacturer=manufacturer,
+        software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -209,29 +204,26 @@ def generate_sleep(
 
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
-    device_id: str | None = None
     device_name: str | None = None
     manufacturer: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        device_id = f"SN-{str(config['provider']).upper()}-{fake_instance.random_int(1000, 9999)}"
         manufacturer = str(config["manufacturer"])
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=sleep_id,
-        provider_name=str(config["provider"]),
+        source=str(config["provider"]),
         user_id=user_id,
         category="sleep",
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=source_name,
-        device_id=device_id,
-        device_name=device_name,
-        device_manufacturer=manufacturer,
-        device_software_version=sw_version,
+        device_model=device_name,
+        manufacturer=manufacturer,
+        software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -273,11 +265,10 @@ def generate_time_series_samples(
     fake_instance: Faker,
     *,
     user_id: UUID,
-    provider_name: str,
-    device_id: str | None = None,
-    device_name: str | None = None,
-    device_manufacturer: str | None = None,
-    device_sw_version: str | None = None,
+    source: str,
+    device_model: str | None = None,
+    manufacturer: str | None = None,
+    software_version: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time series samples for a workout period with realistic frequencies."""
     samples = []
@@ -305,11 +296,10 @@ def generate_time_series_samples(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=provider_name,
-                        device_id=device_id,
-                        device_name=device_name,
-                        device_manufacturer=device_manufacturer,
-                        device_software_version=device_sw_version,
+                        source=source,
+                        device_model=device_model,
+                        manufacturer=manufacturer,
+                        software_version=software_version,
                         recorded_at=current_time,
                         value=Decimal(str(value)),
                         series_type=series_type,
@@ -365,11 +355,10 @@ def seed_activity_data() -> None:
                         record.end_datetime,
                         fake,
                         user_id=user.id,
-                        provider_name=record.provider_name or "unknown",
-                        device_id=record.device_id,
-                        device_name=record.device_name,
-                        device_manufacturer=record.device_manufacturer,
-                        device_sw_version=record.device_software_version,
+                        source=record.source or "unknown",
+                        device_model=record.device_model,
+                        manufacturer=record.manufacturer,
+                        software_version=record.software_version,
                     )
                     if samples:
                         timeseries_service.bulk_create_samples(db, samples)

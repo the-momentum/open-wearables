@@ -53,13 +53,11 @@ FKEventRecordDetail = Annotated[
     UUID,
     mapped_column(ForeignKey("event_record_detail.record_id", ondelete="CASCADE"), primary_key=True),
 ]
-FKExternalMapping = Annotated[
+FKDataSource = Annotated[
     UUID,
-    mapped_column(ForeignKey("external_device_mapping.id", ondelete="CASCADE")),
+    mapped_column(ForeignKey("data_source.id", ondelete="CASCADE")),
 ]
 FKSeriesTypeDefinition = Annotated[
     int,
     mapped_column(ForeignKey("series_type_definition.id", ondelete="RESTRICT")),
 ]
-FKDevice = Annotated[UUID | None, mapped_column(ForeignKey("device.id", ondelete="CASCADE"))]
-FKDeviceSoftware = Annotated[UUID | None, mapped_column(ForeignKey("device_software.id", ondelete="SET NULL"))]

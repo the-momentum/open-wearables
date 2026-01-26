@@ -10,8 +10,8 @@ from app.schemas.oauth import ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
+    DataSourceFactory,
     EventRecordFactory,
-    ExternalDeviceMappingFactory,
     PersonalRecordFactory,
     SeriesTypeDefinitionFactory,
     SleepDetailsFactory,
@@ -27,7 +27,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_basic(self, client: TestClient, db: Session) -> None:
         """Test basic sleep summary returns start_time, end_time, and duration."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
         sleep_end = datetime(2025, 12, 26, 5, 0, 0, tzinfo=timezone.utc)
         EventRecordFactory(
@@ -54,7 +54,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_with_details(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns sleep stage details and efficiency."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
         sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
 
@@ -108,7 +108,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_with_physiological_metrics(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns physiological metrics from time-series data."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
         sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
 
@@ -168,7 +168,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_no_physiological_data(self, client: TestClient, db: Session) -> None:
         """Test sleep summary handles missing physiological data gracefully."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
         sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
 
@@ -203,7 +203,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_with_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary tracks naps separately from main sleep."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         # Main nighttime sleep: 10pm - 6am (8 hours)
         main_sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
@@ -279,7 +279,7 @@ class TestSleepSummaryEndpoint:
     def test_get_sleep_summary_no_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns null for nap fields when no naps exist."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
         sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
 
@@ -341,7 +341,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_steps(self, client: TestClient, db: Session) -> None:
         """Test activity summary aggregates step data by day."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
         # Create step data for a day (multiple data points)
@@ -384,7 +384,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_calories(self, client: TestClient, db: Session) -> None:
         """Test activity summary aggregates calorie data."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
+        mapping = DataSourceFactory(user=user, source="garmin")
         energy_type = SeriesTypeDefinitionFactory.get_or_create_energy()
         basal_type = SeriesTypeDefinitionFactory.get_or_create_basal_energy()
 
@@ -430,7 +430,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_heart_rate(self, client: TestClient, db: Session) -> None:
         """Test activity summary includes heart rate statistics."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.POLAR)
+        mapping = DataSourceFactory(user=user, source=ProviderName.POLAR)
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         base_time = datetime(2025, 12, 26, 9, 0, 0, tzinfo=timezone.utc)
@@ -464,7 +464,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_all_metrics(self, client: TestClient, db: Session) -> None:
         """Test activity summary with all available metrics."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
         energy_type = SeriesTypeDefinitionFactory.get_or_create_energy()
@@ -534,7 +534,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test activity summary returns data grouped by day."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.SUUNTO)
+        mapping = DataSourceFactory(user=user, source=ProviderName.SUUNTO)
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
         # Day 1 - Dec 26
@@ -573,7 +573,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_elevation(self, client: TestClient, db: Session) -> None:
         """Test activity summary includes elevation from workouts."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
+        mapping = DataSourceFactory(user=user, source="garmin")
 
         # Create a workout with elevation data
         workout_start = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
@@ -626,7 +626,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_floors_from_flights_preferred(self, client: TestClient, db: Session) -> None:
         """Test that flights_climbed is preferred over elevation for floors calculation."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         # Create workout with elevation
         workout_start = datetime(2025, 12, 26, 10, 0, 0, tzinfo=timezone.utc)
@@ -675,7 +675,7 @@ class TestActivitySummaryEndpoint:
     def test_get_activity_summary_with_active_sedentary_minutes(self, client: TestClient, db: Session) -> None:
         """Test activity summary calculates active/sedentary minutes from step data."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
         # Create step data at minute intervals
@@ -752,7 +752,7 @@ class TestActivitySummaryEndpoint:
         # Create personal record with birth_date for a 30-year-old
         PersonalRecordFactory(user=user, birth_date=date(1995, 1, 1))
 
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         base_time = datetime(2025, 12, 26, 9, 0, 0, tzinfo=timezone.utc)
@@ -822,7 +822,7 @@ class TestActivitySummaryEndpoint:
         user = UserFactory()
         # No personal record, so no birth_date
 
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         base_time = datetime(2025, 12, 26, 9, 0, 0, tzinfo=timezone.utc)
@@ -858,7 +858,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_basic_weight_height(self, client: TestClient, db: Session) -> None:
         """Test body summary returns weight, height, and calculated BMI."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         height_type = SeriesTypeDefinitionFactory.get_or_create_height()
@@ -904,7 +904,7 @@ class TestBodySummaryEndpoint:
             user=user,
             birth_date=datetime(1990, 6, 15).date(),
         )
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
 
         DataPointSeriesFactory(
@@ -932,7 +932,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_with_body_composition(self, client: TestClient, db: Session) -> None:
         """Test body summary includes body fat and muscle mass."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
+        mapping = DataSourceFactory(user=user, source="garmin")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         body_fat_type = SeriesTypeDefinitionFactory.get_or_create_body_fat_percentage()
@@ -978,7 +978,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_with_vitals(self, client: TestClient, db: Session) -> None:
         """Test body summary includes 7-day rolling average vitals."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
@@ -1030,7 +1030,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_with_blood_pressure(self, client: TestClient, db: Session) -> None:
         """Test body summary includes blood pressure averages."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.UNKNOWN)
+        mapping = DataSourceFactory(user=user, source=ProviderName.UNKNOWN)
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         bp_sys_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
@@ -1096,7 +1096,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_uses_latest_value(self, client: TestClient, db: Session) -> None:
         """Test body summary uses the most recent value for slow-changing metrics."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
 
@@ -1134,7 +1134,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_empty_when_no_data(self, client: TestClient, db: Session) -> None:
         """Test body summary returns empty list when no body data exists."""
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        DataSourceFactory(user=user, source="apple")
 
         api_key = ApiKeyFactory()
         response = client.get(
@@ -1151,7 +1151,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_multiple_days(self, client: TestClient, db: Session) -> None:
         """Test body summary returns data for multiple days."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
 

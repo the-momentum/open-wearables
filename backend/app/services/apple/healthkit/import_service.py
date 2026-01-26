@@ -9,7 +9,6 @@ from app.constants.series_types import (
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
-from app.repositories.device_repository import DeviceRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -28,7 +27,7 @@ from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 
-from .device_resolution import resolve_device
+from .device_resolution import extract_device_info
 from .sleep_service import handle_sleep_data
 
 
@@ -37,7 +36,6 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
-        self.device_repo = DeviceRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
@@ -66,21 +64,23 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
-            # Resolve device mapping
+            # Extract device info
             source_name = wjson.source.name if wjson.source else None
-            device_id = resolve_device(db, self.device_repo, wjson.source, source_name)
+            device_model, software_version, manufacturer = extract_device_info(wjson.source)
 
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
                 source_name=source_name or "Apple Health",
-                device_id=device_id,
+                device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                provider_name="apple",
+                source="apple_health_sdk",
+                software_version=software_version,
+                manufacturer=manufacturer,
                 user_id=user_uuid,
             )
 
@@ -114,16 +114,17 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
-            # Resolve device mapping
-            source_name = rjson.source.name if rjson.source else None
-            device_id = resolve_device(db, self.device_repo, rjson.source, source_name)
+            # Extract device info
+            device_model, software_version, manufacturer = extract_device_info(rjson.source)
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
-                provider_name="apple",
-                device_id=device_id,
+                source="apple_health_sdk",
+                device_model=device_model,
+                software_version=software_version,
+                manufacturer=manufacturer,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,

@@ -14,9 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.schemas.event_record import EventRecordQueryParams
 from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.oauth import ProviderName
 from app.services.event_record_service import event_record_service
-from tests.factories import EventRecordFactory, ExternalDeviceMappingFactory, UserFactory
+from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
 
 class TestEventRecordServiceCreateDetail:
@@ -110,7 +109,7 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should return formatted event records."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
+        mapping = DataSourceFactory(user=user, source="apple")
         record = EventRecordFactory(
             mapping=mapping,
             category="workout",
@@ -127,7 +126,7 @@ class TestEventRecordServiceGetRecordsResponse:
         matching_record = next((r for r in records if r.id == record.id), None)
         assert matching_record is not None
         assert matching_record.user_id == user.id
-        assert matching_record.provider_name == "apple"
+        assert matching_record.source == "apple"
         assert matching_record.category == "workout"
         assert matching_record.type == "running"
 
@@ -136,7 +135,7 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should filter records by category."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         workout_record = EventRecordFactory(mapping=mapping, category="workout")
         sleep_record = EventRecordFactory(mapping=mapping, category="sleep")
@@ -156,7 +155,7 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should filter records by type."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         running_record = EventRecordFactory(mapping=mapping, category="workout", type_="running")
         cycling_record = EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
@@ -176,13 +175,13 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should filter records by device_id."""
         # Arrange
         user = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user, device_id="device_1")
-        mapping2 = ExternalDeviceMappingFactory(user=user, device_id="device_2")
+        mapping1 = DataSourceFactory(user=user, device_model="device_1")
+        mapping2 = DataSourceFactory(user=user, device_model="device_2")
 
         record1 = EventRecordFactory(mapping=mapping1)
         record2 = EventRecordFactory(mapping=mapping2)
 
-        query_params = EventRecordQueryParams(category="workout", device_id="device_1")
+        query_params = EventRecordQueryParams(category="workout", device_model="device_1")
 
         # Act
         records = await event_record_service.get_records_response(db, query_params, str(user.id))
@@ -197,13 +196,13 @@ class TestEventRecordServiceGetRecordsResponse:
         """Should filter records by provider_name."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.APPLE)
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, source=ProviderName.GARMIN)
+        apple_mapping = DataSourceFactory(user=user, source="apple")
+        garmin_mapping = DataSourceFactory(user=user, source="garmin")
 
         apple_record = EventRecordFactory(mapping=apple_mapping)
         garmin_record = EventRecordFactory(mapping=garmin_mapping)
 
-        query_params = EventRecordQueryParams(category="workout", provider_name="apple")
+        query_params = EventRecordQueryParams(category="workout", source="apple")
 
         # Act
         records = await event_record_service.get_records_response(db, query_params, str(user.id))
@@ -220,8 +219,8 @@ class TestEventRecordServiceGetRecordsResponse:
         user1 = UserFactory(email="user1@example.com")
         user2 = UserFactory(email="user2@example.com")
 
-        mapping1 = ExternalDeviceMappingFactory(user=user1)
-        mapping2 = ExternalDeviceMappingFactory(user=user2)
+        mapping1 = DataSourceFactory(user=user1)
+        mapping2 = DataSourceFactory(user=user2)
 
         record1 = EventRecordFactory(mapping=mapping1)
         record2 = EventRecordFactory(mapping=mapping2)
@@ -256,7 +255,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
     def test_get_count_by_workout_type_groups_correctly(self, db: Session) -> None:
         """Should group and count workouts by type."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Create multiple workouts of different types
         EventRecordFactory(mapping=mapping, category="workout", type_="running")
@@ -278,7 +277,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
     def test_get_count_by_workout_type_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Create workouts with different counts
         EventRecordFactory(mapping=mapping, type_="running")
@@ -295,7 +294,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
     def test_get_count_by_workout_type_handles_null_type(self, db: Session) -> None:
         """Should handle records with null type."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         EventRecordFactory(mapping=mapping, type_=None)
         EventRecordFactory(mapping=mapping, type_=None)

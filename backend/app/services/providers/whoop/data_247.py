@@ -7,9 +7,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping
+from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.repositories.external_mapping_repository import ExternalMappingRepository
+from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.series_types import SeriesType, get_series_type_id
@@ -31,7 +31,7 @@ class Whoop247Data(Base247DataTemplate):
     ):
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+        self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
 
     def _make_api_request(
@@ -218,12 +218,12 @@ class Whoop247Data(Base247DataTemplate):
             category="sleep",
             type="sleep_session",
             source_name="Whoop",
-            device_id=None,
+            device_model=None,
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(normalized_sleep.get("whoop_sleep_id")) if normalized_sleep.get("whoop_sleep_id") else None,
-            provider_name=self.provider_name,
+            source=self.provider_name,
             user_id=user_id,
         )
 
@@ -370,10 +370,10 @@ class Whoop247Data(Base247DataTemplate):
         type_id = get_series_type_id(series_type)
         result = (
             db.query(DataPointSeries.value)
-            .join(ExternalDeviceMapping, DataPointSeries.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
             .filter(
-                ExternalDeviceMapping.user_id == user_id,
-                ExternalDeviceMapping.source == self.provider_name,
+                DataSource.user_id == user_id,
+                DataSource.source == self.provider_name,
                 DataPointSeries.series_type_definition_id == type_id,
             )
             .order_by(DataPointSeries.recorded_at.desc())
@@ -409,7 +409,7 @@ class Whoop247Data(Base247DataTemplate):
                     sample = TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=self.provider_name,
+                        source=self.provider_name,
                         recorded_at=recorded_at,
                         value=height_cm,
                         series_type=SeriesType.height,
@@ -430,7 +430,7 @@ class Whoop247Data(Base247DataTemplate):
                     sample = TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=self.provider_name,
+                        source=self.provider_name,
                         recorded_at=recorded_at,
                         value=weight,
                         series_type=SeriesType.weight,
@@ -590,7 +590,7 @@ class Whoop247Data(Base247DataTemplate):
                     sample = TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=self.provider_name,
+                        source=self.provider_name,
                         recorded_at=timestamp,
                         value=Decimal(str(value)),
                         series_type=series_type,

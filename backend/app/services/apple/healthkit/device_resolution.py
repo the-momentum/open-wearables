@@ -1,5 +1,9 @@
-from app.database import DbSession
-from app.repositories.device_repository import DeviceRepository
+"""Device resolution utilities for HealthKit data.
+
+With the simplified DataSource model, we no longer need to create separate Device records.
+This module now just extracts device_model and related info from SourceInfo.
+"""
+
 from app.schemas.apple.healthkit.source_info import OSVersion, SourceInfo
 
 
@@ -10,36 +14,28 @@ def _format_os_version(os_version: OSVersion | None) -> str | None:
     return f"{os_version.major_version}.{os_version.minor_version}.{os_version.patch_version}"
 
 
-def _get_device_name(product_type: str | None) -> str:
-    """Return the original productType code (e.g., 'iPhone14,5')."""
+def _get_device_model(product_type: str | None) -> str | None:
+    """Return the product type code (e.g., 'iPhone14,5')."""
     if not product_type:
-        return "Unknown Device"
+        return None
     return product_type
 
 
-def resolve_device(
-    db: DbSession,
-    device_repo: DeviceRepository,
-    source: SourceInfo | None,
-    fallback_name: str | None,
-) -> str | None:
+def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | None, str | None]:
+    """
+    Extract device information from SourceInfo.
+
+    Args:
+        source: HealthKit SourceInfo object.
+
+    Returns:
+        Tuple of (device_model, software_version, manufacturer).
+    """
     if not source:
-        return fallback_name
+        return None, None, None
 
-    serial_number = source.bundle_identifier or ""
-    provider_name = source.device_manufacturer or "Apple Inc."
-    name = _get_device_name(source.product_type)
-    sw_version = _format_os_version(source.operating_system_version)
+    device_model = _get_device_model(source.product_type)
+    software_version = _format_os_version(source.operating_system_version)
+    manufacturer = source.device_manufacturer or "Apple Inc." if device_model else None
 
-    if serial_number or source.product_type:
-        device_repo.ensure_device(
-            db,
-            provider_name=provider_name,
-            serial_number=serial_number,
-            name=name,
-            sw_version=sw_version,
-        )
-
-        return source.product_type
-
-    return fallback_name
+    return device_model, software_version, manufacturer

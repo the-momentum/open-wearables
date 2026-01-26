@@ -24,7 +24,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         super().__init__(
             workout_repo,
             connection_repo,
-            provider_name="apple",
+            provider_name="apple_health_sdk",
             api_base_url="",
             oauth=None,  # type: ignore[arg-type]
         )

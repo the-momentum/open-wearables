@@ -56,9 +56,9 @@ class TimeSeriesService(
         """Get count of data points grouped by series type ID."""
         return self.crud.get_count_by_series_type(db_session)
 
-    def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
-        """Get count of data points grouped by provider."""
-        return self.crud.get_count_by_provider(db_session)
+    def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
+        """Get count of data points grouped by source."""
+        return self.crud.get_count_by_source(db_session)
 
     @handle_exceptions
     async def get_timeseries(
@@ -106,16 +106,16 @@ class TimeSeriesService(
 
         # Map to response format
         data = []
-        for sample, mapping, device in samples:
+        for sample, data_source in samples:
             series_type = get_series_type_from_id(sample.series_type_definition_id)
             unit = get_series_type_unit(series_type)
 
-            # Build source from device info if available
+            # Build source from data source info if available
             source = None
-            if device:
+            if data_source:
                 source = DataSource(
-                    provider=device.provider_name,
-                    device=device.name,
+                    provider=data_source.source or "unknown",
+                    device=data_source.device_model,
                 )
 
             item = TimeSeriesSample(

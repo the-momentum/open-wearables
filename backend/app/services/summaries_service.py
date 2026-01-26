@@ -192,7 +192,7 @@ class SummariesService:
 
             summary = SleepSummary(
                 date=result["sleep_date"],
-                source=DataSource(provider=result["provider_name"], device=result.get("device_name")),
+                source=DataSource(provider=result["source"] or "unknown", device=result.get("device_model")),
                 start_time=result["min_start_time"],
                 end_time=result["max_end_time"],
                 duration_minutes=result["total_duration_minutes"],
@@ -259,7 +259,7 @@ class SummariesService:
         # Build lookup dict for workout data by (date, provider, device)
         workout_lookup: dict[tuple, dict] = {}
         for wa in workout_aggregates:
-            key = (wa["workout_date"], wa["provider_name"], wa.get("device_name"))
+            key = (wa["workout_date"], wa["source"], wa.get("device_model"))
             workout_lookup[key] = wa
 
         # Get active/sedentary minutes from step data
@@ -270,7 +270,7 @@ class SummariesService:
         # Build lookup for activity minutes
         activity_lookup: dict[tuple, ActiveMinutesResult] = {}
         for am in activity_minutes:
-            key = (am["activity_date"], am["provider_name"], am.get("device_name"))
+            key = (am["activity_date"], am["source"], am.get("device_model"))
             activity_lookup[key] = am
 
         # Get intensity minutes from HR data
@@ -291,7 +291,7 @@ class SummariesService:
         # Build lookup for intensity minutes
         intensity_lookup: dict[tuple, IntensityMinutesResult] = {}
         for im in intensity_minutes_data:
-            key = (im["activity_date"], im["provider_name"], im.get("device_name"))
+            key = (im["activity_date"], im["source"], im.get("device_model"))
             intensity_lookup[key] = im
 
         # Apply cursor-based pagination using compound key (date, provider, device)
@@ -305,7 +305,7 @@ class SummariesService:
                 results = [
                     r
                     for r in results
-                    if (r["activity_date"], r["provider_name"], r.get("device_name") or "") < cursor_key
+                    if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
                 ]
                 # Reverse to get correct order for backward pagination
                 results = list(reversed(results))
@@ -314,7 +314,7 @@ class SummariesService:
                 results = [
                     r
                     for r in results
-                    if (r["activity_date"], r["provider_name"], r.get("device_name") or "") > cursor_key
+                    if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
                 ]
 
         # Check for more data
@@ -331,21 +331,21 @@ class SummariesService:
             if has_more:
                 last = results[-1]
                 next_cursor = encode_activity_cursor(
-                    last["activity_date"], last["provider_name"], last.get("device_name"), "next"
+                    last["activity_date"], last["source"], last.get("device_model"), "next"
                 )
 
             # Previous cursor if we had a cursor (not first page)
             if cursor:
                 first = results[0]
                 previous_cursor = encode_activity_cursor(
-                    first["activity_date"], first["provider_name"], first.get("device_name"), "prev"
+                    first["activity_date"], first["source"], first.get("device_model"), "prev"
                 )
 
         # Transform to schema
         data = []
         for result in results:
             # Look up workout data for this day/provider/device
-            result_key = (result["activity_date"], result["provider_name"], result.get("device_name"))
+            result_key = (result["activity_date"], result["source"], result.get("device_model"))
             workout_data = workout_lookup.get(result_key, {})
             activity_data = activity_lookup.get(result_key, {})
             intensity_data = intensity_lookup.get(result_key, {})
@@ -405,7 +405,7 @@ class SummariesService:
             steps = result.get("steps_sum")
             summary = ActivitySummary(
                 date=result["activity_date"],
-                source=DataSource(provider=result["provider_name"], device=result.get("device_name")),
+                source=DataSource(provider=result["source"] or "unknown", device=result.get("device_model")),
                 steps=steps if steps is not None else None,
                 distance_meters=total_distance,
                 floors_climbed=floors_climbed,
@@ -589,16 +589,16 @@ class SummariesService:
             # Determine source - use the most recent data source from slow-changing values
             # Priority: weight > height > body_fat > lean_mass > temp
             provider = "unknown"
-            device_name = None
+            device_model = None
             for series_data in [weight_data, height_data, body_fat_data, lean_mass_data, temp_data]:
                 if series_data:
-                    provider = series_data[2]  # provider_name
-                    device_name = series_data[3]  # device_name
+                    provider = series_data[2]  # source
+                    device_model = series_data[3]  # device_model
                     break
 
             summary = BodySummary(
                 date=summary_date,
-                source=DataSource(provider=provider, device=device_name),
+                source=DataSource(provider=provider or "unknown", device=device_model),
                 age=age,
                 height_cm=height_cm,
                 weight_kg=weight_kg,
