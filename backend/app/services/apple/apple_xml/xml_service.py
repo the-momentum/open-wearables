@@ -82,12 +82,12 @@ class XMLService:
     )
 
     def _parse_date_fields(self, document: dict[str, Any]) -> dict[str, Any]:
-        for field in self.DATE_FIELDS:
-            if field in document:
+        for date_field in self.DATE_FIELDS:
+            if date_field in document:
                 try:
-                    document[field] = datetime.strptime(document[field], "%Y-%m-%d %H:%M:%S %z")
+                    document[date_field] = datetime.strptime(document[date_field], "%Y-%m-%d %H:%M:%S %z")
                 except ValueError as e:
-                    raise ValueError(f"Invalid date format for field {field}: {document[field]}") from e
+                    raise ValueError(f"Invalid date format for field {date_field}: {document[date_field]}") from e
         return document
 
     def _parse_decimal_value(self, raw_value: str | None, metric_type: str) -> Decimal | None:
