@@ -1,6 +1,7 @@
 """Structured logging utilities for JSON-compatible logs."""
 
 import json
+import sys
 from logging import Logger
 from typing import Any
 
@@ -23,13 +24,13 @@ def log_structured(
     - AWS Lambda (with CloudWatch)
     - Other platforms that collect logs from stdout/stderr
 
-    Log format requirements:
-    - `level`: Log level (debug, info, warn, error)
-    - `message`: Log message (required)
-    - Custom attributes: Any additional key-value pairs (queryable in log explorers)
+    According to Railway documentation, structured logs must be:
+    - Emitted as a single-line JSON string
+    - Include `level` and `message` fields
+    - Custom attributes are queryable via @name:value
 
     Args:
-        logger: Logger instance
+        logger: Logger instance (used for compatibility, but output goes directly to stdout)
         level: Log level (debug, info, warn, error)
         message: Log message (required)
         **attributes: Custom attributes to include (queryable via @name:value in log explorers)
@@ -57,6 +58,14 @@ def log_structured(
         **attributes,
     }
 
-    # Emit as single-line JSON (required by most log aggregation platforms)
-    log_func = getattr(logger, level.lower(), logger.info)
-    log_func(json.dumps(log_entry))
+    # Emit as single-line JSON directly to stdout
+    # This bypasses logger formatters (like Celery's) that add prefixes
+    # Railway will parse this JSON string correctly
+    json_str = json.dumps(log_entry)
+
+    # Write directly to stdout to avoid formatter interference
+    # Use appropriate stream based on level (stderr for errors, stdout for others)
+    if level.lower() == "error":
+        print(json_str, file=sys.stderr, flush=True)
+    else:
+        print(json_str, file=sys.stdout, flush=True)
