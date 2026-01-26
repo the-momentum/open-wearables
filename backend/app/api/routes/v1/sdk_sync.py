@@ -41,9 +41,8 @@ async def sync_sdk_data(
 @router.post("/sdk/users/{user_id}/sync/samsung", tags=["beta"])
 async def sync_data_samsung(
     user_id: str,
-    request: Request,
+    body: dict,
     auth: SDKAuthDep,
-    content: Annotated[tuple[str, str], Depends(get_content_type)],
 ) -> UploadDataResponse:
     """Import health data from Samsung SDK.
 
