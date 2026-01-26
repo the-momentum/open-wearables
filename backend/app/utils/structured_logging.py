@@ -24,10 +24,6 @@ def log_structured(
     - AWS Lambda (with CloudWatch)
     - Other platforms that collect logs from stdout/stderr
 
-    According to Railway documentation, structured logs must be:
-    - Emitted as a single-line JSON string
-    - Include `level` and `message` fields
-    - Custom attributes are queryable via @name:value
 
     Args:
         logger: Logger instance (used for compatibility, but output goes directly to stdout)
@@ -60,14 +56,16 @@ def log_structured(
 
     # Emit as single-line JSON directly to stdout
     # This bypasses logger formatters (like Celery's) that add prefixes
-    # Railway will parse this JSON string correctly
+    # Platforms will parse this JSON string correctly
     json_str = json.dumps(log_entry)
 
     # Always use stdout to avoid Railway's automatic level conversion
-    # Railway converts stderr logs to level.error automatically, which creates
+    # Platforms can convert stderr logs to level.error automatically, which creates
     # "attributes":{"level":"error"} that overrides our JSON level field.
-    # By using stdout, Railway sets level.info by default, but our JSON level
+    # By using stdout, platforms sets level.info by default, but our JSON level
     # field in the structured log should take precedence.
-    # Note: If Celery redirects stdout to stderr, we may still see this issue.
-    # In that case, the JSON level field should still be queryable via @level:info
+    #
+    # IMPORTANT: Celery workers and other services must redirect stderr to stdout
+    # in their startup scripts (using `exec 2>&1`) to prevent platforms from
+    # converting all logs to level.error. See scripts/start/*.sh for examples.
     print(json_str, file=sys.stdout, flush=True)
