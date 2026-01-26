@@ -1,12 +1,16 @@
 import json
+import uuid
+from logging import getLogger
 
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
 from app.schemas import UploadDataResponse
 from app.utils.auth import SDKAuthDep
+from app.utils.structured_logging import log_structured
 
 router = APIRouter()
+logger = getLogger(__name__)
 
 
 @router.post("/sdk/users/{user_id}/sync/apple")
@@ -25,14 +29,38 @@ async def sync_sdk_data(
             detail="Token does not match user_id",
         )
 
+    # Generate unique batch ID for tracking
+    batch_id = str(uuid.uuid4())
+
+    # Extract and count data types from payload
+    data = body.get("data", {})
+    records_count = len(data.get("records", []))
+    workouts_count = len(data.get("workouts", []))
+    sleep_count = len(data.get("sleep", []))
+
+    # Log initial batch receipt with counts
+    log_structured(
+        logger,
+        "info",
+        "Apple sync batch received",
+        batch_id=batch_id,
+        user_id=user_id,
+        records_count=records_count,
+        workouts_count=workouts_count,
+        sleep_count=sleep_count,
+        total_items=records_count + workouts_count + sleep_count,
+        source="healthion",
+    )
+
     content_str = json.dumps(body)
 
-    # Queue the import task in Celery with healthion source
+    # Queue the import task in Celery with batch_id
     process_apple_upload.delay(
         content=content_str,
         content_type="application/json",
         user_id=user_id,
         source="healthion",
+        batch_id=batch_id,
     )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
