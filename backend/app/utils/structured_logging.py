@@ -63,9 +63,11 @@ def log_structured(
     # Railway will parse this JSON string correctly
     json_str = json.dumps(log_entry)
 
-    # Write directly to stdout to avoid formatter interference
-    # Use appropriate stream based on level (stderr for errors, stdout for others)
-    if level.lower() == "error":
-        print(json_str, file=sys.stderr, flush=True)
-    else:
-        print(json_str, file=sys.stdout, flush=True)
+    # Always use stdout to avoid Railway's automatic level conversion
+    # Railway converts stderr logs to level.error automatically, which creates
+    # "attributes":{"level":"error"} that overrides our JSON level field.
+    # By using stdout, Railway sets level.info by default, but our JSON level
+    # field in the structured log should take precedence.
+    # Note: If Celery redirects stdout to stderr, we may still see this issue.
+    # In that case, the JSON level field should still be queryable via @level:info
+    print(json_str, file=sys.stdout, flush=True)
