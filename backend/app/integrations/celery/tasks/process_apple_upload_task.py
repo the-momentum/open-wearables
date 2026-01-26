@@ -4,6 +4,7 @@ from uuid import UUID
 from app.database import SessionLocal
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 from app.models import User
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.services.apple.auto_export.import_service import import_service as ae_import_service
 from app.services.apple.healthkit.import_service import import_service as hk_import_service
@@ -43,6 +44,10 @@ def process_apple_upload(
             return {"status": "skipped", "reason": "user_not_found"}
 
     with SessionLocal() as db:
+        # Ensure Apple connection exists for this user (SDK-based, no OAuth tokens)
+        connection_repo = UserConnectionRepository()
+        connection_repo.ensure_sdk_connection(db, user_uuid, "apple")
+
         # Select the appropriate import service based on source
         import_service = hk_import_service if source == "healthion" else ae_import_service
 

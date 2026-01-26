@@ -362,9 +362,9 @@ class UserConnectionFactory(BaseFactory):
     provider = "garmin"
     provider_user_id = LazyFunction(lambda: f"provider_{uuid4().hex[:8]}")
     provider_username = factory.Faker("user_name")
-    access_token = LazyFunction(lambda: f"access_{uuid4().hex}")
+    access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
     refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))
+    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
     scope = "read_all"
     status = ConnectionStatus.ACTIVE
     last_synced_at = None

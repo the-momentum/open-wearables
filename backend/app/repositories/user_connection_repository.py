@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func
 
@@ -216,3 +216,42 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .distinct()
             .all()
         ]
+
+    def ensure_sdk_connection(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        provider: str,
+    ) -> UserConnection:
+        """Ensure an SDK-based connection exists for a user and provider.
+
+        SDK-based providers (like Apple Health) don't use OAuth tokens.
+        This method creates or returns an existing connection without tokens.
+        """
+        existing = self.get_by_user_and_provider(db_session, user_id, provider)
+        if existing:
+            # Reactivate if revoked
+            if existing.status != ConnectionStatus.ACTIVE:
+                existing.status = ConnectionStatus.ACTIVE
+                existing.updated_at = datetime.now(timezone.utc)
+                db_session.add(existing)
+                db_session.commit()
+                db_session.refresh(existing)
+            return existing
+
+        # Create new SDK connection (no tokens needed)
+        connection = UserConnection(
+            id=uuid4(),
+            user_id=user_id,
+            provider=provider,
+            access_token=None,
+            refresh_token=None,
+            token_expires_at=None,
+            status=ConnectionStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+        return connection
