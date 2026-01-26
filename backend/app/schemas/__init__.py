@@ -12,6 +12,9 @@ from .apple.auto_export.json_schemas import (
 from .apple.healthkit.record_import import (
     RecordJSON as HKRecordJSON,
 )
+from .apple.healthkit.sdk_import import (
+    AppleHealthDataRequest,
+)
 from .apple.healthkit.workout_import import (
     WorkoutJSON as HKWorkoutJSON,
 )
@@ -263,6 +266,7 @@ __all__ = [
     "HKRecordJSON",
     "HKWorkoutJSON",
     "HKWorkoutStatisticJSON",
+    "AppleHealthDataRequest",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",
