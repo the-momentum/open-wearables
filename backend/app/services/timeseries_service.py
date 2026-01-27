@@ -13,7 +13,7 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -113,7 +113,7 @@ class TimeSeriesService(
             # Build source from data source info if available
             source = None
             if data_source:
-                source = DataSource(
+                source = SourceMetadata(
                     provider=data_source.source or "unknown",
                     device=data_source.device_model,
                 )

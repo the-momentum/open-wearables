@@ -817,12 +817,12 @@ class DataPointSeriesRepository(
             db_session.query(
                 self.model.value,
                 self.model.recorded_at,
-                ExternalDeviceMapping.provider_name,
-                ExternalDeviceMapping.device_id,
+                DataSource.source,
+                DataSource.device_model,
             )
-            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
-                ExternalDeviceMapping.user_id == user_id,
+                DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,

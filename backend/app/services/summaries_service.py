@@ -13,7 +13,7 @@ from app.repositories.data_point_series_repository import (
     IntensityMinutesResult,
 )
 from app.repositories.user_repository import UserRepository
-from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
 from app.schemas.series_types import SeriesType
 from app.schemas.summaries import (
     ActivitySummary,
@@ -192,7 +192,7 @@ class SummariesService:
 
             summary = SleepSummary(
                 date=result["sleep_date"],
-                source=DataSource(provider=result["source"] or "unknown", device=result.get("device_model")),
+                source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
                 start_time=result["min_start_time"],
                 end_time=result["max_end_time"],
                 duration_minutes=result["total_duration_minutes"],
@@ -405,7 +405,7 @@ class SummariesService:
             steps = result.get("steps_sum")
             summary = ActivitySummary(
                 date=result["activity_date"],
-                source=DataSource(provider=result["source"] or "unknown", device=result.get("device_model")),
+                source=SourceMetadata(provider=result["source"] or "unknown", device=result.get("device_model")),
                 steps=steps if steps is not None else None,
                 distance_meters=total_distance,
                 floors_climbed=floors_climbed,
@@ -522,7 +522,7 @@ class SummariesService:
         device_id = None
         for data in [weight_data, height_data, body_fat_data, muscle_mass_data]:
             if data:
-                provider = data[2]
+                provider = data[2] or "unknown"
                 device_id = data[3]
                 break
 
@@ -612,7 +612,7 @@ class SummariesService:
             return None
 
         return BodySummary(
-            source=DataSource(provider=provider, device=device_id),
+            source=SourceMetadata(provider=provider, device=device_id),
             slow_changing=body_slow_changing,
             averaged=body_averaged,
             latest=body_latest,

@@ -17,8 +17,8 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import DataSource as DataSourceSchema
 from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import SourceMetadata as DataSourceSchema
 from app.schemas.events import (
     SleepSession,
     Workout,

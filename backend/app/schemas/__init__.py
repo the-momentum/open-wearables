@@ -29,10 +29,10 @@ from .common import (
     RootJSON,
 )
 from .common_types import (
-    DataSource,
     ErrorDetails,
     PaginatedResponse,
     Pagination,
+    SourceMetadata,
     TimeseriesMetadata,
 )
 from .data_source import (
@@ -282,7 +282,7 @@ __all__ = [
     "SyncAllUsersResult",
     "SyncVendorDataResult",
     # Common Types
-    "DataSource",
+    "SourceMetadata",
     "ErrorDetails",
     "PaginatedResponse",
     "Pagination",

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common_types import DataSource
+from app.schemas.common_types import SourceMetadata
 from app.schemas.series_types import SeriesType
 
 # --- API Response Models (Unified) ---
@@ -16,7 +16,7 @@ class TimeSeriesSample(BaseModel):
     type: SeriesType
     value: float | int
     unit: str
-    source: DataSource | None = None
+    source: SourceMetadata | None = None
 
 
 class ActivityAggregateResult(TypedDict):

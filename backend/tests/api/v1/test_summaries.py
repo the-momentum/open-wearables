@@ -1030,7 +1030,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_averaged_vitals_1_day(self, client: TestClient, db: Session) -> None:
         """Test averaged section with 1-day period."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
@@ -1127,7 +1127,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_latest_blood_pressure_stale(self, client: TestClient, db: Session) -> None:
         """Test latest section returns null for blood pressure outside window."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="withings")
+        mapping = DataSourceFactory(user=user, source="withings")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         bp_sys_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
@@ -1211,7 +1211,7 @@ class TestBodySummaryEndpoint:
     def test_get_body_summary_latest_temperature_stale(self, client: TestClient, db: Session) -> None:
         """Test latest section returns null for temperature outside window."""
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+        mapping = DataSourceFactory(user=user, source="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         temp_type = SeriesTypeDefinitionFactory.get_or_create_body_temperature()
