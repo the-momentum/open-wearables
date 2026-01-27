@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
@@ -28,6 +29,8 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
+from app.repositories.user_connection_repository import UserConnectionRepository
+
 from .device_resolution import extract_device_info
 from .sleep_service import handle_sleep_data
 
@@ -37,13 +40,13 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
         self,
-        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
@@ -92,7 +95,6 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
-        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
@@ -297,6 +299,11 @@ class ImportService:
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
+
+            # Update last synced time
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), "apple")
+            if connection:
+                self.user_connection_repo.update_last_synced_at(db_session, connection)
 
             # Log detailed processing results
             log_structured(
