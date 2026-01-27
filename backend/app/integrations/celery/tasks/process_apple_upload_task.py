@@ -48,6 +48,7 @@ def process_apple_upload(
             logger,
             "warning",
             "Invalid user_id format",
+            action="validate_user_id",
             batch_id=batch_id,
             user_id=user_id,
         )
@@ -61,6 +62,7 @@ def process_apple_upload(
                 logger,
                 "warning",
                 "Skipping import for non-existent user",
+                action="validate_user_exists",
                 batch_id=batch_id,
                 user_id=user_id,
             )
@@ -71,6 +73,7 @@ def process_apple_upload(
         logger,
         "info",
         "Apple sync batch processing started",
+        action="apple_batch_processing_start",
         batch_id=batch_id,
         user_id=user_id,
         source=source,
@@ -93,6 +96,7 @@ def process_apple_upload(
             logger,
             "info",
             "Apple sync batch processing completed",
+            action="apple_batch_processing_complete",
             batch_id=batch_id,
             user_id=user_id,
             source=source,

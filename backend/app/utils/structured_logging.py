@@ -36,6 +36,7 @@ def log_structured(
             logger,
             "info",
             "Apple sync batch received",
+            action="batch_received",
             batch_id="abc-123",
             user_id="user-456",
             records_count=2000,
@@ -44,7 +45,7 @@ def log_structured(
         )
 
     Platform-specific query examples:
-        Railway: @batch_id:abc-123, @user_id:user-456 AND @level:info
+        Railway: @batch_id:abc-123, @user_id:user-456 AND @level:info, @action:batch_received
         Vercel: Filter by JSON attributes in dashboard
         GCP: Use Cloud Logging filters with jsonPayload.batch_id="abc-123"
     """

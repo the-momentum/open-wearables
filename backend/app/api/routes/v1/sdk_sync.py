@@ -43,6 +43,7 @@ async def sync_sdk_data(
         logger,
         "info",
         "Apple sync batch received",
+        action="apple_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,
         records_count=records_count,
