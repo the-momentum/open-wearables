@@ -272,6 +272,7 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
+                    action="apple_sdk_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
@@ -291,6 +292,7 @@ class ImportService:
                 self.log,
                 "info",
                 "Apple data import completed",
+                action="apple_sdk_import_complete",
                 batch_id=batch_id,
                 user_id=user_id,
                 incoming_records=incoming_records,
@@ -306,6 +308,7 @@ class ImportService:
                 self.log,
                 "error",
                 f"Import failed for user {user_id}: {e}",
+                action="apple_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,

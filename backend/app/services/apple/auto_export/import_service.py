@@ -196,6 +196,7 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
+                    action="apple_ae_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
@@ -213,6 +214,7 @@ class ImportService:
                 self.log,
                 "info",
                 "Apple Auto Export data import completed",
+                action="apple_ae_import_complete",
                 batch_id=batch_id,
                 user_id=user_id,
                 incoming_workouts=incoming_workouts,
@@ -226,6 +228,7 @@ class ImportService:
                 self.log,
                 "error",
                 f"Import failed for user {user_id}: {e}",
+                action="apple_ae_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,
