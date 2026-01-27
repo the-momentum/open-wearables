@@ -26,6 +26,7 @@ class RecordBase(BaseModel):
     endDate: datetime
     unit: str
     value: Decimal
+    source: SourceInfo | None = None
 
 
 class RecordJSON(BaseModel):

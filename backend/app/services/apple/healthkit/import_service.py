@@ -64,14 +64,12 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
-            # Extract device info
-            source_name = wjson.source.name if wjson.source else None
             device_model, software_version, manufacturer = extract_device_info(wjson.source)
 
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=source_name or "Apple Health",
+                source_name="apple_health_sdk",
                 device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
@@ -108,6 +106,7 @@ class ImportService:
 
             record_type = rjson.type or ""
             series_type = get_series_type_from_apple_metric_type(record_type)
+
             if not series_type:
                 continue
             # Convert from meters to centimeters or ratio to percentage

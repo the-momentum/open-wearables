@@ -151,7 +151,7 @@ def handle_sleep_data(
 
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
-        source_name = sjson.source.name if sjson.source else None
+        source_name = "apple_health_sdk"
 
         # Extract device info
         device_model, software_version, manufacturer = extract_device_info(sjson.source)

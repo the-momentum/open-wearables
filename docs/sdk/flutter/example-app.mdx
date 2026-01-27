@@ -1,0 +1,225 @@
+---
+title: "Example App"
+sidebarTitle: "Example App"
+description: "Try the SDK with our demo app and see health data sync in action"
+---
+
+## Overview
+
+The SDK repository includes a fully functional example app that demonstrates how to integrate health data synchronization with Open Wearables. Use it to test the SDK, explore the code, and see how everything works together.
+
+<Card title="Example App Source" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk/tree/main/example">
+  View the example app source code on GitHub.
+</Card>
+
+## What You'll See
+
+The example app demonstrates the complete integration flow:
+
+1. **SDK Configuration** - Initialize the SDK with proper environment settings
+2. **Authentication** - Sign in with credentials from the dashboard
+3. **Permission Request** - Request HealthKit permissions from the user
+4. **Background Sync** - Enable automatic health data synchronization
+5. **Sync Status** - Monitor sync progress and handle interruptions
+
+## Demo Videos
+
+### 1. Open Wearables Dashboard - Creating User Token
+
+First, you need to create a user and generate an access token in the Open Wearables dashboard. This video shows:
+- Creating a new user in the dashboard
+- Generating an `accessToken` for SDK authentication
+- Copying credentials to use in the mobile app
+
+<video
+  controls
+  className="w-full rounded-lg"
+  src="/images/sdk/open_wearables_dashboard.mp4"
+/>
+
+### 2. Mobile App - Connecting and Syncing
+
+After getting credentials from the dashboard, the mobile app connects to HealthKit and syncs data:
+
+<video
+  controls
+  className="rounded-lg mx-auto"
+  style={{ maxWidth: '300px' }}
+  src="/images/sdk/example_app.mp4"
+/>
+
+## Running the Example App
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/the-momentum/open_wearables_health_sdk.git
+    cd open_wearables_health_sdk/example
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    flutter pub get
+    ```
+  </Step>
+
+  <Step title="iOS Setup">
+    Open `ios/Runner.xcworkspace` in Xcode and:
+    
+    1. Select your development team in **Signing & Capabilities**
+    2. Ensure **HealthKit** capability is enabled
+    3. Update the bundle identifier if needed
+  </Step>
+
+  <Step title="Get credentials from Open Wearables Dashboard">
+    1. Go to your Open Wearables dashboard
+    2. Create a new user or select an existing one
+    3. Generate an access token for the user
+    4. Copy the `userId` and `accessToken`
+  </Step>
+
+  <Step title="Run the app">
+    ```bash
+    flutter run
+    ```
+    
+    <Note>
+      Run on a **physical iOS device** - HealthKit doesn't work in the simulator.
+    </Note>
+  </Step>
+
+  <Step title="Connect and sync">
+    1. Enter the `userId` and `accessToken` from the dashboard
+    2. Tap **Sign In**
+    3. Grant HealthKit permissions when prompted
+    4. Tap **Start Sync** to begin background synchronization
+    5. Check the dashboard to see your health data appear!
+  </Step>
+</Steps>
+
+## Example App Code Structure
+
+The example app demonstrates best practices for SDK integration:
+
+```
+example/
+├── lib/
+│   └── main.dart          # Main app with SDK integration
+├── ios/
+│   └── Runner/
+│       └── Info.plist     # HealthKit permissions & background modes
+└── pubspec.yaml           # Dependencies
+```
+
+### Key Code Sections
+
+**SDK Initialization:**
+
+```dart
+await HealthBgSync.configure(
+  environment: HealthBgSyncEnvironment.production,
+);
+```
+
+**Sign In:**
+
+```dart
+await HealthBgSync.signIn(
+  userId: userIdController.text,
+  accessToken: accessTokenController.text,
+);
+```
+
+**Request Permissions:**
+
+```dart
+await HealthBgSync.requestAuthorization(
+  types: [
+    HealthDataType.steps,
+    HealthDataType.heartRate,
+    HealthDataType.sleep,
+    HealthDataType.workout,
+    // ... more types
+  ],
+);
+```
+
+**Start Background Sync:**
+
+```dart
+await HealthBgSync.startBackgroundSync();
+```
+
+## Testing the Full Flow
+
+<Steps>
+  <Step title="Set up Open Wearables locally (optional)">
+    If you want to test with a local instance:
+    
+    ```bash
+    git clone https://github.com/the-momentum/open-wearables.git
+    cd open-wearables
+    docker compose up -d
+    make init
+    ```
+    
+    Then configure the SDK with your local URL:
+    
+    ```dart
+    await HealthBgSync.configure(
+      customSyncUrl: 'http://localhost:8000/sdk/users/{user_id}/sync/apple/healthkit',
+    );
+    ```
+  </Step>
+
+  <Step title="Create test data in Apple Health">
+    Add some health data to Apple Health on your device:
+    - Open the Health app
+    - Browse → Steps → Add Data
+    - Add a few data points
+  </Step>
+
+  <Step title="Trigger sync and verify">
+    1. In the example app, tap **Sync Now**
+    2. Check the Open Wearables dashboard
+    3. Your health data should appear under the user's timeseries!
+  </Step>
+</Steps>
+
+## Troubleshooting the Example App
+
+<AccordionGroup>
+  <Accordion title="App crashes on launch">
+    Make sure you're running on a **physical device**, not the simulator. HealthKit is not available in the iOS Simulator.
+  </Accordion>
+
+  <Accordion title="Sign-in fails">
+    - Verify your `userId` and `accessToken` are correct
+    - Check that your Open Wearables instance is running
+    - Ensure network connectivity
+  </Accordion>
+
+  <Accordion title="No data syncing">
+    - Confirm HealthKit permissions were granted (check iOS Settings → Privacy → Health)
+    - Make sure there's actual health data in Apple Health
+    - Try tapping **Sync Now** to trigger an immediate sync
+  </Accordion>
+
+  <Accordion title="Xcode signing errors">
+    - Select your development team in Xcode
+    - Update the bundle identifier to something unique
+    - Ensure your Apple Developer account has HealthKit capability
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="book" href="/sdk/flutter/integration">
+    Integrate the SDK into your own app.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/flutter/troubleshooting">
+    Common issues and solutions.
+  </Card>
+</CardGroup>

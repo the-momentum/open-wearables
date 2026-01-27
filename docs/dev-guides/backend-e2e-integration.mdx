@@ -133,7 +133,18 @@ curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/apple/healthi
   -d '{ ... health data ... }'
 ```
 
+```bash Samsung (Beta - Not Ready)
+curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/samsung \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{ ... health data ... }'
+```
+
 </CodeGroup>
+
+<Warning>
+**Samsung endpoint is in BETA**: The `/sync/samsung` endpoint is currently under development. It accepts authentication but does not process data yet. The endpoint path may change in future versions. Do not use in production.
+</Warning>
 
 <Note>
 SDK tokens are **only valid for `/sdk/` endpoints**. All other API endpoints will return 401 for SDK tokens. Use API keys for those endpoints. The `user_id` in the URL must match the user the token was issued for.

@@ -788,3 +788,51 @@ class DataPointSeriesRepository(
                 pass
 
         return aggregates
+
+    def get_latest_reading_within_window(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        series_type: SeriesType,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> tuple[float, datetime, str, str | None] | None:
+        """Get the most recent reading for a series type within a time window.
+
+        Used for point-in-time metrics like body temperature that are only
+        relevant if recently measured. Returns None if no reading exists
+        within the specified window.
+
+        Args:
+            series_type: The type of measurement to retrieve
+            window_start: Start of the valid time window
+            window_end: End of the valid time window (typically now)
+
+        Returns:
+            Tuple of (value, recorded_at, provider_name, device_id) or None if no recent reading
+        """
+        type_id = get_series_type_id(series_type)
+
+        result = (
+            db_session.query(
+                self.model.value,
+                self.model.recorded_at,
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                self.model.series_type_definition_id == type_id,
+                self.model.recorded_at >= window_start,
+                self.model.recorded_at <= window_end,
+            )
+            .order_by(self.model.recorded_at.desc())
+            .first()
+        )
+
+        if result is None:
+            return None
+
+        value, recorded_at, provider_name, device_id = result
+        return (float(value), recorded_at, provider_name, device_id)

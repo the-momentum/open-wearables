@@ -1,5 +1,5 @@
-import { format } from 'date-fns';
-import type { BodySummary } from '@/lib/api/types';
+import { formatDistanceToNow } from 'date-fns';
+import type { BloodPressure } from '@/lib/api/types';
 
 /**
  * BMI category with label and color class
@@ -23,92 +23,49 @@ export function getBmiCategory(bmi: number | null | undefined): BmiCategory {
 }
 
 /**
- * Body composition data extracted from summaries
+ * Format the last updated timestamp for display
  */
-export interface BodyComposition {
-  weight: number | null;
-  height: number | null;
-  bodyFat: number | null;
-  muscleMass: number | null;
-  bmi: number | null;
-}
-
-/**
- * Get the latest body summary that has meaningful data
- */
-export function getLatestBodySummary(
-  summaries: BodySummary[]
-): BodySummary | null {
-  if (summaries.length === 0) return null;
-
-  // Sort by date descending
-  const sorted = [...summaries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  // Find the most recent summary that has at least some data
-  for (const s of sorted) {
-    if (
-      s.weight_kg !== null ||
-      s.resting_heart_rate_bpm !== null ||
-      s.avg_hrv_sdnn_ms !== null
-    ) {
-      return s;
-    }
+export function formatLastUpdated(timestamp: string | null): string {
+  if (!timestamp) return 'Unknown';
+  try {
+    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+  } catch {
+    return 'Unknown';
   }
-  return sorted[0] || null;
 }
 
 /**
- * Extract body composition from summaries, finding the latest non-null value for each metric
+ * Format period for display (e.g., "7-day average")
  */
-export function getBodyComposition(
-  summaries: BodySummary[]
-): BodyComposition | null {
-  if (summaries.length === 0) return null;
-
-  const sorted = [...summaries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  const findLatest = <T>(getter: (s: BodySummary) => T | null): T | null => {
-    for (const s of sorted) {
-      const val = getter(s);
-      if (val !== null) return val;
-    }
-    return null;
-  };
-
-  return {
-    weight: findLatest((s) => s.weight_kg),
-    height: findLatest((s) => s.height_cm),
-    bodyFat: findLatest((s) => s.body_fat_percent),
-    muscleMass: findLatest((s) => s.muscle_mass_kg),
-    bmi: findLatest((s) => s.bmi),
-  };
+export function formatAveragePeriod(days: number): string {
+  return days === 1 ? 'Today' : `${days}-day average`;
 }
 
 /**
- * Weight chart data point
+ * Format blood pressure reading for display
  */
-export interface WeightChartDataPoint {
-  date: string;
-  weight: number | null;
+export function formatBloodPressure(
+  bp: BloodPressure | null | undefined
+): string {
+  if (!bp) return '-';
+  const sys = bp.avg_systolic_mmhg;
+  const dia = bp.avg_diastolic_mmhg;
+  if (sys === null || dia === null) return '-';
+  return `${sys}/${dia}`;
 }
 
 /**
- * Prepare weight data for chart display
+ * Format heart rate value for display
  */
-export function prepareWeightChartData(
-  summaries: BodySummary[]
-): WeightChartDataPoint[] {
-  const withWeight = summaries.filter((s) => s.weight_kg != null);
-  if (withWeight.length === 0) return [];
+export function formatHeartRate(bpm: number | null | undefined): string {
+  if (bpm === null || bpm === undefined) return '-';
+  return String(bpm);
+}
 
-  return [...withWeight]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map((s) => ({
-      date: format(new Date(s.date), 'MMM d'),
-      weight: s.weight_kg,
-    }));
+/**
+ * Format HRV value for display
+ */
+export function formatHrv(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return '-';
+  return String(Math.round(ms));
 }

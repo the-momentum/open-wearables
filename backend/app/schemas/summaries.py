@@ -80,28 +80,67 @@ class BloodPressure(BaseModel):
     reading_count: int | None = Field(None, description="Number of readings in period", example=5)
 
 
-class BodySummary(BaseModel):
-    """Daily body composition and vital statistics summary.
+class BodySlowChanging(BaseModel):
+    """Slow-changing body composition metrics.
 
-    Combines slow-changing measurements (weight, height, body fat) with
-    aggregated vitals (resting HR, HRV, blood pressure) over a rolling period.
+    These are metrics that change infrequently (days/weeks between measurements).
+    Returns the most recent recorded value for each field.
     """
 
-    date: date
-    source: DataSource
-    # Static/demographic
-    age: int | None = Field(None, description="Age in years calculated from birth date", example=32)
-    # Body composition (latest values)
-    height_cm: float | None = Field(None, description="Height in centimeters", example=175.5)
-    weight_kg: float | None = Field(None, description="Most recent weight", example=72.5)
+    weight_kg: float | None = Field(None, description="Most recent weight measurement", example=72.5)
+    height_cm: float | None = Field(None, description="Most recent height measurement", example=175.5)
     body_fat_percent: float | None = Field(None, description="Most recent body fat percentage", example=18.5)
-    muscle_mass_kg: float | None = Field(None, description="Most recent muscle mass", example=58.2)
-    bmi: float | None = Field(None, description="Calculated from weight and height", example=23.5)
-    # Vitals (7-day rolling averages)
-    resting_heart_rate_bpm: int | None = Field(None, description="Average resting heart rate over 7 days", example=62)
-    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN) over 7 days", example=45.2)
-    blood_pressure: BloodPressure | None = Field(None, description="Blood pressure averages over 7 days")
-    basal_body_temperature_celsius: float | None = Field(None, description="Most recent body temperature", example=36.6)
+    muscle_mass_kg: float | None = Field(None, description="Most recent muscle/lean body mass", example=58.2)
+    bmi: float | None = Field(None, description="Calculated from latest weight and height", example=23.5)
+    age: int | None = Field(None, description="Age in years calculated from birth date", example=32)
+
+
+class BodyAveraged(BaseModel):
+    """Vitals averaged over a configurable time period.
+
+    These metrics fluctuate daily and are more meaningful as averages.
+    Period can be 1 day (current state) or 7 days (baseline trend).
+    """
+
+    period_days: int = Field(..., description="Number of days averaged (1 or 7)", example=7)
+    resting_heart_rate_bpm: int | None = Field(None, description="Average resting heart rate", example=62)
+    avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN)", example=45.2)
+    period_start: datetime = Field(..., description="Start of averaging period")
+    period_end: datetime = Field(..., description="End of averaging period")
+
+
+class BodyLatest(BaseModel):
+    """Point-in-time metrics that are only relevant when recent.
+
+    These metrics are only returned if measured within a configurable time window.
+    Stale readings return null to avoid displaying outdated data.
+    """
+
+    body_temperature_celsius: float | None = Field(
+        None, description="Body temperature if measured within time window", example=36.6
+    )
+    temperature_measured_at: datetime | None = Field(
+        None, description="When temperature was measured (null if no recent reading)"
+    )
+    blood_pressure: BloodPressure | None = Field(None, description="Blood pressure if measured within time window")
+    blood_pressure_measured_at: datetime | None = Field(
+        None, description="When blood pressure was measured (null if no recent reading)"
+    )
+
+
+class BodySummary(BaseModel):
+    """Comprehensive body metrics with semantic grouping.
+
+    Metrics are grouped by their temporal characteristics:
+    - slow_changing: Slow-changing values (latest measurement)
+    - averaged: Vitals averaged over a period (1 or 7 days)
+    - latest: Point-in-time readings (only if recent)
+    """
+
+    source: DataSource
+    slow_changing: BodySlowChanging
+    averaged: BodyAveraged
+    latest: BodyLatest
 
 
 class RecoverySummary(BaseModel):
