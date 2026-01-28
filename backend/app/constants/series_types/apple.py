@@ -85,6 +85,15 @@ HEALTHION_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "totalSteps": SeriesType.steps,
 }
 
+# =========================================================================
+# Category Types
+# =========================================================================
+# Apple HealthKit category type identifiers (HKCategoryTypeIdentifier...)
+# These are used for categorical data like sleep analysis
+CATEGORY_TYPE_IDENTIFIERS: set[str] = {
+    "HKCategoryTypeIdentifierSleepAnalysis",
+}
+
 
 class SleepPhase(IntEnum):
     IN_BED = 0
