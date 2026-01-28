@@ -9,6 +9,7 @@ from app.constants.series_types import (
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -37,13 +38,13 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
 
     def _build_workout_bundles(
         self,
-        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
@@ -92,7 +93,6 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
-        db: DbSession,
         raw: dict,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
@@ -298,6 +298,10 @@ class ImportService:
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
+
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), "apple")
+            if connection:
+                self.user_connection_repo.update_last_synced_at(db_session, connection)
 
             # Log detailed processing results
             log_structured(
