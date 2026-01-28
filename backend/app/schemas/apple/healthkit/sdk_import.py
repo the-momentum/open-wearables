@@ -77,7 +77,7 @@ class DataSection(BaseModel):
                 "workouts": [
                     {
                         "uuid": "DEF456",
-                        "type": "HKWorkoutActivityTypeRunning",
+                        "type": "running",
                         "startDate": "2024-01-01T06:00:00Z",
                         "endDate": "2024-01-01T07:00:00Z",
                         "workoutStatistics": [
