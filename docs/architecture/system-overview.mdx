@@ -25,6 +25,10 @@ open-wearables/
 │       ├── routes/     # Route definitions
 │       ├── hooks/      # Custom React hooks
 │       └── lib/        # Utilities and API clients
+├── mcp/            # MCP server (Beta) - AI assistant integration
+│   └── app/
+│       ├── tools/     # MCP tool definitions
+│       └── services/  # API client for backend communication
 └── docs/            # Mintlify documentation
 ```
 
@@ -77,6 +81,22 @@ open-wearables/
 
 **Data Visualization:**
 - **Recharts** - Chart library for metrics visualization
+
+### MCP Server (Beta)
+
+**Model Context Protocol Integration:**
+- **FastMCP** - MCP server framework for AI assistant integration
+- **httpx** - Async HTTP client for backend API communication
+- **Pydantic** - Settings and data validation
+
+The MCP server enables AI assistants (Claude Desktop, Cursor) to query wearable health data through natural language. It's **decoupled from the backend** - communicating via REST API using API keys - and can be deployed independently.
+
+**Key Features:**
+- Natural language queries for health metrics (sleep, workouts, etc.)
+- User discovery and data retrieval tools
+- Unified data format regardless of wearable provider
+
+> **Note:** The MCP server is currently in **beta** and is actively being developed.
 
 ## Architecture Patterns
 
