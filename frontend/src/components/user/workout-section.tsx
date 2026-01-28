@@ -131,8 +131,8 @@ function WorkoutRow({
               <Heart className="h-4 w-4 text-rose-400" />
               <div>
                 <p className="text-sm font-medium text-white">
-                  {workout.heart_rate_avg
-                    ? `${Math.round(Number(workout.heart_rate_avg))} bpm`
+                  {workout.avg_heart_rate_bpm
+                    ? `${Math.round(Number(workout.avg_heart_rate_bpm))} bpm`
                     : '-'}
                 </p>
                 <p className="text-xs text-zinc-500">Avg HR</p>

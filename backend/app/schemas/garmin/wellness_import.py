@@ -35,7 +35,7 @@ class GarminSleepJSON(BaseModel):
     unmeasurableSleepDurationInSeconds: int | None = None
     deepSleepDurationInSeconds: int | None = None
     lightSleepDurationInSeconds: int | None = None
-    remSleepDurationInSeconds: int | None = None
+    remSleepInSeconds: int | None = None
     awakeDurationInSeconds: int | None = None
 
     # Sleep levels map - detailed sleep stages with timestamps

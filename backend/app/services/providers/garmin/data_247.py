@@ -156,7 +156,7 @@ class Garmin247Data(Base247DataTemplate):
         # Sleep stages (in seconds)
         deep_seconds = raw_sleep.get("deepSleepDurationInSeconds") or 0
         light_seconds = raw_sleep.get("lightSleepDurationInSeconds") or 0
-        rem_seconds = raw_sleep.get("remSleepDurationInSeconds") or 0
+        rem_seconds = raw_sleep.get("remSleepInSeconds") or 0
         awake_seconds = raw_sleep.get("awakeDurationInSeconds") or 0
 
         # Extract sleep score if available

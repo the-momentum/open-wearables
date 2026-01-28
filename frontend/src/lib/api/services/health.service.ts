@@ -12,6 +12,7 @@ import type {
   ActivitySummary,
   SleepSummary,
   BodySummary,
+  BodySummaryParams,
   RecoverySummary,
   SleepSession,
   SleepSessionsParams,
@@ -117,13 +118,22 @@ export const healthService = {
   },
 
   /**
-   * Get body composition and vitals summaries for a date range
+   * Get comprehensive body metrics with semantic grouping.
+   *
+   * Returns body data organized into three categories:
+   * - slow_changing: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
+   * - averaged: Vitals averaged over a period (resting HR, HRV)
+   * - latest: Point-in-time readings only if recent (body temperature, blood pressure)
+   *
+   * @param params.average_period - Days to average vitals (1 or 7, default 7)
+   * @param params.latest_window_hours - Hours for latest readings (default 4)
+   * @returns BodySummary or null if no data exists
    */
-  async getBodySummaries(
+  async getBodySummary(
     userId: string,
-    params: SummaryParams
-  ): Promise<PaginatedResponse<BodySummary>> {
-    return apiClient.get<PaginatedResponse<BodySummary>>(
+    params?: BodySummaryParams
+  ): Promise<BodySummary | null> {
+    return apiClient.get<BodySummary | null>(
       API_ENDPOINTS.userBodySummary(userId),
       { params }
     );

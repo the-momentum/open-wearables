@@ -65,8 +65,8 @@ class ImportService:
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=wjson.sourceName or "Apple Health",
-                device_id=wjson.sourceName or None,
+                source_name=wjson.source.name or "Apple Health",
+                device_id=wjson.source.device_name or None,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
@@ -99,15 +99,19 @@ class ImportService:
 
             record_type = rjson.type or ""
             series_type = get_series_type_from_apple_metric_type(record_type)
-            if series_type is None:
+
+            if not series_type:
                 continue
+            # Convert from meters to centimeters or ratio to percentage
+            if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
+                value = value * 100
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
                 provider_name="Apple",
-                device_id=rjson.sourceName or None,
+                device_id=rjson.source.device_name,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,

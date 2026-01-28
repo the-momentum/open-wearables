@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 export interface DashboardErrorStateProps {
   onRetry: () => void;
@@ -15,12 +16,9 @@ export function DashboardErrorState({
         <p className="text-zinc-400 mb-4">
           Failed to load dashboard data. Please try again.
         </p>
-        <button
-          onClick={onRetry}
-          className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
+        <Button variant="outline" onClick={onRetry}>
           Retry
-        </button>
+        </Button>
       </div>
     </div>
   );

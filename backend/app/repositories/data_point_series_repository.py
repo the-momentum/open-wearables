@@ -1,5 +1,4 @@
-from datetime import date, datetime
-from typing import TypedDict
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from psycopg.errors import UniqueViolation
@@ -12,6 +11,9 @@ from app.models import DataPointSeries, ExternalDeviceMapping
 from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import (
+    ActiveMinutesResult,
+    ActivityAggregateResult,
+    IntensityMinutesResult,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
@@ -21,44 +23,6 @@ from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
 MappingIdentity = tuple[UUID, str, str | None]
-
-
-class ActivityAggregateResult(TypedDict):
-    """Result from daily activity aggregation query."""
-
-    activity_date: date
-    provider_name: str
-    device_id: str | None
-    steps_sum: int
-    active_energy_sum: float
-    basal_energy_sum: float
-    hr_avg: int | None
-    hr_max: int | None
-    hr_min: int | None
-    distance_sum: float | None
-    flights_climbed_sum: int | None
-
-
-class ActiveMinutesResult(TypedDict):
-    """Result from daily active/sedentary minutes query."""
-
-    activity_date: date
-    provider_name: str
-    device_id: str | None
-    active_minutes: int
-    tracked_minutes: int
-    sedentary_minutes: int
-
-
-class IntensityMinutesResult(TypedDict):
-    """Result from daily intensity minutes query."""
-
-    activity_date: date
-    provider_name: str
-    device_id: str | None
-    light_minutes: int
-    moderate_minutes: int
-    vigorous_minutes: int
 
 
 class DataPointSeriesRepository(
@@ -882,3 +846,51 @@ class DataPointSeriesRepository(
                 pass
 
         return aggregates
+
+    def get_latest_reading_within_window(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        series_type: SeriesType,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> tuple[float, datetime, str, str | None] | None:
+        """Get the most recent reading for a series type within a time window.
+
+        Used for point-in-time metrics like body temperature that are only
+        relevant if recently measured. Returns None if no reading exists
+        within the specified window.
+
+        Args:
+            series_type: The type of measurement to retrieve
+            window_start: Start of the valid time window
+            window_end: End of the valid time window (typically now)
+
+        Returns:
+            Tuple of (value, recorded_at, provider_name, device_id) or None if no recent reading
+        """
+        type_id = get_series_type_id(series_type)
+
+        result = (
+            db_session.query(
+                self.model.value,
+                self.model.recorded_at,
+                ExternalDeviceMapping.provider_name,
+                ExternalDeviceMapping.device_id,
+            )
+            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .filter(
+                ExternalDeviceMapping.user_id == user_id,
+                self.model.series_type_definition_id == type_id,
+                self.model.recorded_at >= window_start,
+                self.model.recorded_at <= window_end,
+            )
+            .order_by(self.model.recorded_at.desc())
+            .first()
+        )
+
+        if result is None:
+            return None
+
+        value, recorded_at, provider_name, device_id = result
+        return (float(value), recorded_at, provider_name, device_id)

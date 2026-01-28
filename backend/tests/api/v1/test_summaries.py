@@ -852,52 +852,53 @@ class TestActivitySummaryEndpoint:
 
 
 class TestBodySummaryEndpoint:
-    """Test suite for body summaries endpoint."""
+    """Test suite for body summaries endpoint.
 
-    def test_get_body_summary_basic_weight_height(self, client: TestClient, db: Session) -> None:
-        """Test body summary returns weight, height, and calculated BMI."""
+    The body summary endpoint returns a structured response with three categories:
+    - slow_changing: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
+    - averaged: Vitals averaged over a period (resting HR, HRV)
+    - latest: Point-in-time readings only if recent (body temperature, blood pressure)
+    """
+
+    def test_get_body_summary_slow_changing_weight_height_bmi(self, client: TestClient, db: Session) -> None:
+        """Test static section returns weight, height, and calculated BMI."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
         height_type = SeriesTypeDefinitionFactory.get_or_create_height()
 
-        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
 
-        # Create weight and height data points
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
             value=Decimal("72.5"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=1),
         )
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=height_type,
             value=Decimal("175.0"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=30),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
-        assert body["date"] == "2025-12-26"
-        assert body["weight_kg"] == 72.5
-        assert body["height_cm"] == 175.0
-        # BMI = 72.5 / (1.75^2) = 72.5 / 3.0625 = 23.7 (rounded to 1 decimal)
-        assert body["bmi"] == 23.7
+        assert data["slow_changing"]["weight_kg"] == 72.5
+        assert data["slow_changing"]["height_cm"] == 175.0
+        # BMI = 72.5 / (1.75^2) = 72.5 / 3.0625 = 23.7
+        assert data["slow_changing"]["bmi"] == 23.7
 
-    def test_get_body_summary_with_age(self, client: TestClient, db: Session) -> None:
-        """Test body summary calculates age from birth_date."""
+    def test_get_body_summary_slow_changing_with_age(self, client: TestClient, db: Session) -> None:
+        """Test static section calculates age from birth_date."""
         user = UserFactory()
         PersonalRecordFactory(
             user=user,
@@ -910,26 +911,24 @@ class TestBodySummaryEndpoint:
             mapping=mapping,
             series_type=weight_type,
             value=Decimal("70.0"),
-            recorded_at=datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc),
+            recorded_at=datetime.now(timezone.utc) - timedelta(days=1),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
-        # Age on Dec 26, 2025 for someone born June 15, 1990 = 35
-        assert body["age"] == 35
+        # Age calculated from birth date
+        assert data["slow_changing"]["age"] is not None
+        assert data["slow_changing"]["age"] >= 35  # Born 1990, test in 2026
 
-    def test_get_body_summary_with_body_composition(self, client: TestClient, db: Session) -> None:
-        """Test body summary includes body fat and muscle mass."""
+    def test_get_body_summary_slow_changing_body_composition(self, client: TestClient, db: Session) -> None:
+        """Test static section includes body fat and muscle mass."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
 
@@ -937,45 +936,42 @@ class TestBodySummaryEndpoint:
         body_fat_type = SeriesTypeDefinitionFactory.get_or_create_body_fat_percentage()
         lean_mass_type = SeriesTypeDefinitionFactory.get_or_create_lean_body_mass()
 
-        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
 
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
             value=Decimal("80.0"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=1),
         )
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=body_fat_type,
             value=Decimal("18.5"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=1),
         )
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=lean_mass_type,
             value=Decimal("65.2"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=1),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
-        assert body["weight_kg"] == 80.0
-        assert body["body_fat_percent"] == 18.5
-        assert body["muscle_mass_kg"] == 65.2
+        assert data["slow_changing"]["weight_kg"] == 80.0
+        assert data["slow_changing"]["body_fat_percent"] == 18.5
+        assert data["slow_changing"]["muscle_mass_kg"] == 65.2
 
-    def test_get_body_summary_with_vitals(self, client: TestClient, db: Session) -> None:
-        """Test body summary includes 7-day rolling average vitals."""
+    def test_get_body_summary_averaged_vitals_7_day(self, client: TestClient, db: Session) -> None:
+        """Test averaged section returns 7-day rolling average vitals."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
 
@@ -983,21 +979,23 @@ class TestBodySummaryEndpoint:
         rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
         hrv_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
 
-        # Weight on the query date
+        now = datetime.now(timezone.utc)
+
+        # Weight so we have static data
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
             value=Decimal("72.0"),
-            recorded_at=datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc),
+            recorded_at=now - timedelta(days=1),
         )
 
-        # Resting HR over 7 days (Dec 20-26)
+        # Resting HR over 7 days
         for i in range(7):
             DataPointSeriesFactory(
                 mapping=mapping,
                 series_type=rhr_type,
                 value=Decimal(str(58 + i)),  # 58-64 bpm
-                recorded_at=datetime(2025, 12, 20 + i, 6, 0, 0, tzinfo=timezone.utc),
+                recorded_at=now - timedelta(days=i),
             )
 
         # HRV over 7 days
@@ -1006,28 +1004,77 @@ class TestBodySummaryEndpoint:
                 mapping=mapping,
                 series_type=hrv_type,
                 value=Decimal(str(40 + i * 2)),  # 40-52 ms
-                recorded_at=datetime(2025, 12, 20 + i, 6, 0, 0, tzinfo=timezone.utc),
+                recorded_at=now - timedelta(days=i),
             )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
+            params={"average_period": 7},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
+        # Averaged over 7 days
+        assert data["averaged"]["period_days"] == 7
         # Average of 58, 59, 60, 61, 62, 63, 64 = 61
-        assert body["resting_heart_rate_bpm"] == 61
+        assert data["averaged"]["resting_heart_rate_bpm"] == 61
         # Average of 40, 42, 44, 46, 48, 50, 52 = 46
-        assert body["avg_hrv_sdnn_ms"] == 46.0
+        assert data["averaged"]["avg_hrv_sdnn_ms"] == 46.0
+        assert data["averaged"]["period_start"] is not None
+        assert data["averaged"]["period_end"] is not None
 
-    def test_get_body_summary_with_blood_pressure(self, client: TestClient, db: Session) -> None:
-        """Test body summary includes blood pressure averages."""
+    def test_get_body_summary_averaged_vitals_1_day(self, client: TestClient, db: Session) -> None:
+        """Test averaged section with 1-day period."""
+        user = UserFactory()
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+
+        now = datetime.now(timezone.utc)
+
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=weight_type,
+            value=Decimal("72.0"),
+            recorded_at=now - timedelta(hours=1),
+        )
+
+        # RHR today
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=rhr_type,
+            value=Decimal("62"),
+            recorded_at=now - timedelta(hours=2),
+        )
+
+        # RHR from 2 days ago (should not be included in 1-day average)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=rhr_type,
+            value=Decimal("100"),  # Outlier that shouldn't be included
+            recorded_at=now - timedelta(days=2),
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body",
+            headers=api_key_headers(api_key.id),
+            params={"average_period": 1},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["averaged"]["period_days"] == 1
+        # Only today's value
+        assert data["averaged"]["resting_heart_rate_bpm"] == 62
+
+    def test_get_body_summary_latest_blood_pressure_recent(self, client: TestClient, db: Session) -> None:
+        """Test latest section returns blood pressure if measured within window."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="withings")
 
@@ -1035,103 +1082,172 @@ class TestBodySummaryEndpoint:
         bp_sys_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
         bp_dia_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_diastolic()
 
-        base_time = datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
 
-        # Weight so we have data to return
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
             value=Decimal("75.0"),
-            recorded_at=base_time,
+            recorded_at=now - timedelta(days=1),
         )
 
-        # Multiple BP readings over several days
-        bp_readings = [
-            (120, 80),
-            (118, 78),
-            (125, 82),
-            (122, 80),
-            (119, 79),
-        ]
-        for i, (sys, dia) in enumerate(bp_readings):
-            reading_time = datetime(2025, 12, 22 + i, 9, 0, 0, tzinfo=timezone.utc)
-            DataPointSeriesFactory(
-                mapping=mapping,
-                series_type=bp_sys_type,
-                value=Decimal(str(sys)),
-                recorded_at=reading_time,
-            )
-            DataPointSeriesFactory(
-                mapping=mapping,
-                series_type=bp_dia_type,
-                value=Decimal(str(dia)),
-                recorded_at=reading_time,
-            )
+        # BP reading within 4-hour window (2 hours ago)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=bp_sys_type,
+            value=Decimal("120"),
+            recorded_at=now - timedelta(hours=2),
+        )
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=bp_dia_type,
+            value=Decimal("80"),
+            recorded_at=now - timedelta(hours=2),
+        )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
+            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
-        assert body["blood_pressure"] is not None
-        # Average systolic: (120 + 118 + 125 + 122 + 119) / 5 = 120.8 -> 121
-        assert body["blood_pressure"]["avg_systolic_mmhg"] == 121
-        # Average diastolic: (80 + 78 + 82 + 80 + 79) / 5 = 79.8 -> 80
-        assert body["blood_pressure"]["avg_diastolic_mmhg"] == 80
-        # Max/min for both readings
-        assert body["blood_pressure"]["max_systolic_mmhg"] == 125  # max(120, 118, 125, 122, 119)
-        assert body["blood_pressure"]["max_diastolic_mmhg"] == 82  # max(80, 78, 82, 80, 79)
-        assert body["blood_pressure"]["min_systolic_mmhg"] == 118  # min(120, 118, 125, 122, 119)
-        assert body["blood_pressure"]["min_diastolic_mmhg"] == 78  # min(80, 78, 82, 80, 79)
-        assert body["blood_pressure"]["reading_count"] == 5
+        bp = data["latest"]["blood_pressure"]
+        assert bp is not None
+        assert bp["avg_systolic_mmhg"] == 120
+        assert bp["avg_diastolic_mmhg"] == 80
+        # Point-in-time reading, no min/max
+        assert bp["reading_count"] == 1
+        assert data["latest"]["blood_pressure_measured_at"] is not None
 
-    def test_get_body_summary_uses_latest_value(self, client: TestClient, db: Session) -> None:
-        """Test body summary uses the most recent value for slow-changing metrics."""
+    def test_get_body_summary_latest_blood_pressure_stale(self, client: TestClient, db: Session) -> None:
+        """Test latest section returns null for blood pressure outside window."""
+        user = UserFactory()
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="withings")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        bp_sys_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
+        bp_dia_type = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_diastolic()
+
+        now = datetime.now(timezone.utc)
+
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=weight_type,
+            value=Decimal("75.0"),
+            recorded_at=now - timedelta(days=1),
+        )
+
+        # BP reading outside 4-hour window (6 hours ago)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=bp_sys_type,
+            value=Decimal("120"),
+            recorded_at=now - timedelta(hours=6),
+        )
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=bp_dia_type,
+            value=Decimal("80"),
+            recorded_at=now - timedelta(hours=6),
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body",
+            headers=api_key_headers(api_key.id),
+            params={"latest_window_hours": 4},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # BP is stale, should be null
+        assert data["latest"]["blood_pressure"] is None
+        assert data["latest"]["blood_pressure_measured_at"] is None
+
+    def test_get_body_summary_latest_temperature_recent(self, client: TestClient, db: Session) -> None:
+        """Test latest section returns temperature if measured within window."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        temp_type = SeriesTypeDefinitionFactory.get_or_create_body_temperature()
 
-        # Older weight reading
+        now = datetime.now(timezone.utc)
+
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
-            value=Decimal("75.0"),
-            recorded_at=datetime(2025, 12, 20, 8, 0, 0, tzinfo=timezone.utc),
+            value=Decimal("72.0"),
+            recorded_at=now - timedelta(days=1),
         )
 
-        # Newer weight reading (should be used)
+        # Temperature within 4-hour window
         DataPointSeriesFactory(
             mapping=mapping,
-            series_type=weight_type,
-            value=Decimal("74.2"),
-            recorded_at=datetime(2025, 12, 25, 8, 0, 0, tzinfo=timezone.utc),
+            series_type=temp_type,
+            value=Decimal("36.6"),
+            recorded_at=now - timedelta(hours=2),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-26T23:59:59Z"},
+            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
 
-        body = data["data"][0]
-        # Should use the most recent value (74.2) before the query date
-        assert body["weight_kg"] == 74.2
+        assert data["latest"]["body_temperature_celsius"] == 36.6
+        assert data["latest"]["temperature_measured_at"] is not None
 
-    def test_get_body_summary_empty_when_no_data(self, client: TestClient, db: Session) -> None:
-        """Test body summary returns empty list when no body data exists."""
+    def test_get_body_summary_latest_temperature_stale(self, client: TestClient, db: Session) -> None:
+        """Test latest section returns null for temperature outside window."""
+        user = UserFactory()
+        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
+
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+        temp_type = SeriesTypeDefinitionFactory.get_or_create_body_temperature()
+
+        now = datetime.now(timezone.utc)
+
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=weight_type,
+            value=Decimal("72.0"),
+            recorded_at=now - timedelta(days=1),
+        )
+
+        # Temperature outside 4-hour window (6 hours ago)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=temp_type,
+            value=Decimal("36.6"),
+            recorded_at=now - timedelta(hours=6),
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body",
+            headers=api_key_headers(api_key.id),
+            params={"latest_window_hours": 4},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Temperature is stale, should be null
+        assert data["latest"]["body_temperature_celsius"] is None
+        assert data["latest"]["temperature_measured_at"] is None
+
+    def test_get_body_summary_null_when_no_data(self, client: TestClient, db: Session) -> None:
+        """Test body summary returns null when no body data exists."""
         user = UserFactory()
         ExternalDeviceMappingFactory(user=user, provider_name="apple")
 
@@ -1139,56 +1255,46 @@ class TestBodySummaryEndpoint:
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
-        # No body data, so should return empty
-        assert len(data["data"]) == 0
+        # No body data, returns null
+        assert data is None
 
-    def test_get_body_summary_multiple_days(self, client: TestClient, db: Session) -> None:
-        """Test body summary returns data for multiple days."""
+    def test_get_body_summary_uses_latest_slow_changing_values(self, client: TestClient, db: Session) -> None:
+        """Test static section always uses the most recent value for each metric."""
         user = UserFactory()
         mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
 
         weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
 
-        # Weight on day 1
+        now = datetime.now(timezone.utc)
+
+        # Older weight
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
-            value=Decimal("72.0"),
-            recorded_at=datetime(2025, 12, 25, 8, 0, 0, tzinfo=timezone.utc),
+            value=Decimal("75.0"),
+            recorded_at=now - timedelta(days=30),
         )
 
-        # Weight on day 2
+        # Newer weight (should be used)
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=weight_type,
-            value=Decimal("71.8"),
-            recorded_at=datetime(2025, 12, 26, 8, 0, 0, tzinfo=timezone.utc),
+            value=Decimal("72.5"),
+            recorded_at=now - timedelta(days=1),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"start_date": "2025-12-26T00:00:00Z", "end_date": "2025-12-27T23:59:59Z"},
         )
 
         assert response.status_code == 200
         data = response.json()
-        # Should have data for both days (Dec 26 and 27)
-        # Dec 26 has weight from Dec 26, Dec 27 uses latest (Dec 26)
-        assert len(data["data"]) == 2
 
-        # First day should show Dec 26 data
-        body_26 = data["data"][0]
-        assert body_26["date"] == "2025-12-26"
-        assert body_26["weight_kg"] == 71.8
-
-        # Second day should show Dec 27 data (using latest available weight)
-        body_27 = data["data"][1]
-        assert body_27["date"] == "2025-12-27"
-        assert body_27["weight_kg"] == 71.8  # Uses most recent weight
+        # Should use the most recent value
+        assert data["slow_changing"]["weight_kg"] == 72.5

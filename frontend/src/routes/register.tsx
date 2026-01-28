@@ -17,8 +17,12 @@ import {
   ShieldCheck,
   Zap,
   Bot,
+  Loader2,
 } from 'lucide-react';
 import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
@@ -81,18 +85,15 @@ function RegisterPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               {/* Email */}
               <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="text-xs font-medium text-zinc-300"
-                >
+                <Label htmlFor="email" className="text-xs text-zinc-300">
                   Email address
-                </label>
+                </Label>
                 <div className="relative group">
-                  <input
+                  <Input
                     type="email"
                     id="email"
                     {...form.register('email')}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm"
+                    className="bg-zinc-900/50 border-zinc-800 pr-10"
                     placeholder="developer@example.com"
                   />
                   <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none opacity-0 group-focus-within:opacity-100 transition-opacity">
@@ -108,18 +109,15 @@ function RegisterPage() {
 
               {/* Password */}
               <div className="space-y-1.5">
-                <label
-                  htmlFor="password"
-                  className="text-xs font-medium text-zinc-300"
-                >
+                <Label htmlFor="password" className="text-xs text-zinc-300">
                   Password
-                </label>
+                </Label>
                 <div className="relative group">
-                  <input
+                  <Input
                     type={showPassword ? 'text' : 'password'}
                     id="password"
                     {...form.register('password')}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 pr-10 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm"
+                    className="bg-zinc-900/50 border-zinc-800 pr-10"
                     placeholder="At least 8 characters"
                   />
                   <button
@@ -143,18 +141,18 @@ function RegisterPage() {
 
               {/* Confirm Password */}
               <div className="space-y-1.5">
-                <label
+                <Label
                   htmlFor="confirmPassword"
-                  className="text-xs font-medium text-zinc-300"
+                  className="text-xs text-zinc-300"
                 >
                   Confirm password
-                </label>
+                </Label>
                 <div className="relative group">
-                  <input
+                  <Input
                     type={showConfirmPassword ? 'text' : 'password'}
                     id="confirmPassword"
                     {...form.register('confirmPassword')}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 pr-10 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm"
+                    className="bg-zinc-900/50 border-zinc-800 pr-10"
                     placeholder="Confirm your password"
                   />
                   <button
@@ -177,29 +175,10 @@ function RegisterPage() {
               </div>
 
               {/* Submit */}
-              <button
-                type="submit"
-                disabled={isRegistering}
-                className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <Button type="submit" disabled={isRegistering} className="w-full">
                 {isRegistering ? (
                   <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Creating account...
                   </>
                 ) : (
@@ -208,7 +187,7 @@ function RegisterPage() {
                     <ArrowRight className="w-4 h-4 opacity-60" />
                   </>
                 )}
-              </button>
+              </Button>
             </form>
 
             <p className="text-center text-sm text-zinc-500">

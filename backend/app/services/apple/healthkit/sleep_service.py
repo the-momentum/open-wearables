@@ -147,7 +147,7 @@ def handle_sleep_data(
 
     for s in sleep_raw:
         sjson = HKRecordJSON(**s)
-        source_name = sjson.sourceName
+        source_name = sjson.source.name
         sleep_phase = get_apple_sleep_phase(int(sjson.value))
 
         if sleep_phase is None:
@@ -187,15 +187,12 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     total_sleep_seconds = state["light"] + state["deep"] + state["rem"]
     in_bed = state["in_bed"]
 
-    efficiency = total_sleep_seconds / total_duration if total_duration > 0 else 0
-
-    try:
-        record_uuid = UUID(state["uuid"])
-    except ValueError:
-        record_uuid = uuid4()
+    efficiency = (total_sleep_seconds / total_duration) * 100 if total_duration > 0 else None
+    efficiency_score = Decimal(str(efficiency)) if efficiency is not None else None
 
     sleep_record = EventRecordCreate(
-        id=record_uuid,
+        id=uuid4(),
+        external_id=state.get("uuid"),
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
@@ -210,7 +207,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         record_id=sleep_record.id,
         sleep_total_duration_minutes=total_sleep_seconds // 60,
         sleep_time_in_bed_minutes=in_bed // 60,
-        sleep_efficiency_score=Decimal(efficiency),
+        sleep_efficiency_score=efficiency_score,
         sleep_deep_minutes=state["deep"] // 60,
         sleep_rem_minutes=state["rem"] // 60,
         sleep_light_minutes=state["light"] // 60,

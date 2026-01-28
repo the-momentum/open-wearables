@@ -27,7 +27,7 @@ class Workout(BaseModel):
     distance_meters: float | None = None
     avg_heart_rate_bpm: int | None = None
     max_heart_rate_bpm: int | None = None
-    avg_pace_sec_per_km: int | None = None
+    avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
 
 

@@ -150,7 +150,10 @@ from .system_info import (
     SystemInfoResponse,
 )
 from .timeseries import (
+    ActiveMinutesResult,
+    ActivityAggregateResult,
     HeartRateSampleCreate,
+    IntensityMinutesResult,
     StepSampleCreate,
     TimeSeriesQueryParams,
     TimeSeriesSample,
@@ -228,6 +231,9 @@ __all__ = [
     "ExternalMappingCreate",
     "ExternalMappingUpdate",
     "ExternalMappingResponse",
+    "ActivityAggregateResult",
+    "ActiveMinutesResult",
+    "IntensityMinutesResult",
     "HeartRateSampleCreate",
     "TimeSeriesSampleCreate",
     "TimeSeriesSampleResponse",
