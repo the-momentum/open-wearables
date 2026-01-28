@@ -158,7 +158,7 @@ class ImportService:
         if stats is None:
             return EventRecordMetrics(), None
 
-        stats_dict: dict[str, Decimal] = {}
+        stats_dict: dict[str, Decimal | int] = {}
         stats_dict["energy_burned"] = Decimal("0")
         duration: float | None = None
 
@@ -202,13 +202,13 @@ class ImportService:
                 case "lapLength":
                     pass  # No corresponding field in EventRecordMetrics
                 case "maxHeartRate":
-                    stats_dict["heart_rate_max"] = value
+                    stats_dict["heart_rate_max"] = int(value)
                 case "maxSpeed":
                     stats_dict["max_speed"] = value
                 case "minHeartRate":
-                    stats_dict["heart_rate_min"] = value
+                    stats_dict["heart_rate_min"] = int(value)
                 case "stepCount":
-                    stats_dict["steps_count"] = value
+                    stats_dict["steps_count"] = int(value)
                 case "swimmingLocationType":
                     pass  # No corresponding field in EventRecordMetrics
                 case "swimmingStrokeCount":

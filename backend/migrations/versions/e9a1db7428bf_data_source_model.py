@@ -1,6 +1,6 @@
-"""device_simplified_and_sdk_connection
+"""data_source_model
 
-Revision ID: 2cf4fca4782d
+Revision ID: e9a1db7428bf
 Revises: 7a36d24b6c9c
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "2cf4fca4782d"
+revision: str = "e9a1db7428bf"
 down_revision: Union[str, None] = "7a36d24b6c9c"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,23 +30,20 @@ def upgrade() -> None:
         sa.Column("source", sa.String(length=50), nullable=True),
         sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("user_id", "device_model", "source", name="uq_data_source_identity"),
     )
     op.create_index("idx_data_source_user", "data_source", ["user_id"], unique=False)
     op.create_index("idx_data_source_user_device", "data_source", ["user_id", "device_model"], unique=False)
 
-    # 1. Handle dependencies in data_point_series
-    # Drop old constraints and indexes referencing external_device_mapping
     op.drop_constraint(
         op.f("data_point_series_external_device_mapping_id_fkey"), "data_point_series", type_="foreignkey"
     )
     op.drop_index(op.f("idx_data_point_series_mapping_type_time"), table_name="data_point_series")
     op.drop_constraint(op.f("uq_data_point_series_mapping_type_time"), "data_point_series", type_="unique")
 
-    # Add new column and drop old column
     op.add_column("data_point_series", sa.Column("data_source_id", sa.UUID(), nullable=False))
     op.drop_column("data_point_series", "external_device_mapping_id")
 
-    # Create new constraints and indexes
     op.create_index(
         "idx_data_point_series_source_type_time",
         "data_point_series",
@@ -60,18 +57,14 @@ def upgrade() -> None:
     )
     op.create_foreign_key(None, "data_point_series", "data_source", ["data_source_id"], ["id"], ondelete="CASCADE")
 
-    # 2. Handle dependencies in event_record
-    # Drop old constraints and indexes referencing external_device_mapping
     op.drop_constraint(op.f("event_record_external_device_mapping_id_fkey"), "event_record", type_="foreignkey")
     op.drop_index(op.f("idx_event_record_mapping_category"), table_name="event_record")
     op.drop_index(op.f("idx_event_record_mapping_time"), table_name="event_record")
     op.drop_constraint(op.f("uq_event_record_datetime"), "event_record", type_="unique")
 
-    # Add new column and drop old column
     op.add_column("event_record", sa.Column("data_source_id", sa.UUID(), nullable=False))
     op.drop_column("event_record", "external_device_mapping_id")
 
-    # Create new constraints and indexes
     op.create_unique_constraint(
         "uq_event_record_datetime", "event_record", ["data_source_id", "start_datetime", "end_datetime"]
     )
@@ -84,14 +77,12 @@ def upgrade() -> None:
     )
     op.create_foreign_key(None, "event_record", "data_source", ["data_source_id"], ["id"], ondelete="CASCADE")
 
-    # 3. Now safe to drop external_device_mapping and related tables
     op.drop_index(op.f("idx_external_mapping_device"), table_name="external_device_mapping")
     op.drop_index(op.f("idx_external_mapping_user"), table_name="external_device_mapping")
     op.drop_table("external_device_mapping")
     op.drop_table("device_software")
     op.drop_table("device")
 
-    # 4. Update user_connection
     op.alter_column("user_connection", "access_token", existing_type=sa.TEXT(), nullable=True)
     op.alter_column(
         "user_connection", "token_expires_at", existing_type=postgresql.TIMESTAMP(timezone=True), nullable=True
@@ -167,15 +158,6 @@ def downgrade() -> None:
     )
     op.drop_column("data_point_series", "data_source_id")
     op.create_table(
-        "device",
-        sa.Column("id", sa.UUID(), autoincrement=False, nullable=False),
-        sa.Column("serial_number", sa.VARCHAR(length=100), autoincrement=False, nullable=False),
-        sa.Column("provider_name", sa.VARCHAR(length=10), autoincrement=False, nullable=False),
-        sa.Column("name", sa.VARCHAR(length=100), autoincrement=False, nullable=False),
-        sa.PrimaryKeyConstraint("id", name="device_pkey"),
-        postgresql_ignore_search_path=False,
-    )
-    op.create_table(
         "device_software",
         sa.Column("id", sa.UUID(), autoincrement=False, nullable=False),
         sa.Column("device_id", sa.UUID(), autoincrement=False, nullable=False),
@@ -206,6 +188,14 @@ def downgrade() -> None:
     )
     op.create_index(op.f("idx_external_mapping_user"), "external_device_mapping", ["user_id"], unique=False)
     op.create_index(op.f("idx_external_mapping_device"), "external_device_mapping", ["device_id"], unique=False)
+    op.create_table(
+        "device",
+        sa.Column("id", sa.UUID(), autoincrement=False, nullable=False),
+        sa.Column("serial_number", sa.VARCHAR(length=100), autoincrement=False, nullable=False),
+        sa.Column("provider_name", sa.VARCHAR(length=10), autoincrement=False, nullable=False),
+        sa.Column("name", sa.VARCHAR(length=100), autoincrement=False, nullable=False),
+        sa.PrimaryKeyConstraint("id", name=op.f("device_pkey")),
+    )
     op.drop_index("idx_data_source_user_device", table_name="data_source")
     op.drop_index("idx_data_source_user", table_name="data_source")
     op.drop_table("data_source")

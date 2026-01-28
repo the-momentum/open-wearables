@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Index
+from sqlalchemy import Index, UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
@@ -18,6 +18,7 @@ class DataSource(BaseDbModel):
     __table_args__ = (
         Index("idx_data_source_user", "user_id"),
         Index("idx_data_source_user_device", "user_id", "device_model"),
+        UniqueConstraint("user_id", "device_model", "source", name="uq_data_source_identity"),
     )
 
     id: Mapped[PrimaryKey[UUID]]

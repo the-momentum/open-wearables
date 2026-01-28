@@ -148,7 +148,7 @@ class DataSourceRepository(
                 }
                 for user_id, device_model, source in missing
             ]
-            stmt = insert(self.model).values(values).on_conflict_do_nothing()
+            stmt = insert(self.model).values(values).on_conflict_do_nothing(constraint="uq_data_source_identity")
             db_session.execute(stmt)
             db_session.flush()
 
