@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
@@ -26,7 +27,11 @@ from app.schemas import (
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
+from app.repositories.user_connection_repository import UserConnectionRepository
+
+from .device_resolution import extract_device_info
 from .sleep_service import handle_sleep_data
 
 
@@ -35,6 +40,7 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
@@ -62,17 +68,21 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
+            device_model, software_version, manufacturer = extract_device_info(wjson.source)
+
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=wjson.source.name or "Apple Health",
-                device_id=wjson.source.device_name or None,
+                source_name="apple_health_sdk",
+                device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                provider_name="Apple",
+                source="apple_health_sdk",
+                software_version=software_version,
+                manufacturer=manufacturer,
                 user_id=user_uuid,
             )
 
@@ -106,12 +116,17 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
+            # Extract device info
+            device_model, software_version, manufacturer = extract_device_info(rjson.source)
+
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
-                provider_name="Apple",
-                device_id=rjson.source.device_name,
+                source="apple_health_sdk",
+                device_model=device_model,
+                software_version=software_version,
+                manufacturer=manufacturer,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -189,13 +204,13 @@ class ImportService:
                 case "lapLength":
                     pass  # No corresponding field in EventRecordMetrics
                 case "maxHeartRate":
-                    stats_dict["heart_rate_max"] = value
+                    stats_dict["heart_rate_max"] = int(value)
                 case "maxSpeed":
                     stats_dict["max_speed"] = value
                 case "minHeartRate":
-                    stats_dict["heart_rate_min"] = value
+                    stats_dict["heart_rate_min"] = int(value)
                 case "stepCount":
-                    stats_dict["steps_count"] = value
+                    stats_dict["steps_count"] = int(value)
                 case "swimmingLocationType":
                     pass  # No corresponding field in EventRecordMetrics
                 case "swimmingStrokeCount":
@@ -209,19 +224,47 @@ class ImportService:
 
         return EventRecordMetrics(**stats_dict), duration
 
-    def load_data(self, db_session: DbSession, raw: dict, user_id: str) -> bool:
+    def load_data(
+        self,
+        db_session: DbSession,
+        raw: dict,
+        user_id: str,
+        batch_id: str | None = None,
+    ) -> dict[str, int]:
+        """
+        Load data into database and return counts of saved items.
+
+        Returns:
+            dict with counts: {"workouts_saved": int, "records_saved": int, "sleep_saved": int}
+        """
+        workouts_saved = 0
+        records_saved = 0
+        sleep_saved = 0
+
+        # Process workouts
         for record, detail in self._build_workout_bundles(raw, user_id):
             created_or_existing_record = self.event_record_service.create(db_session, record)
-            # Always use the returned record's ID (whether newly created or existing)
             detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
             self.event_record_service.create_detail(db_session, detail_for_record)
+            workouts_saved += 1
 
+        # Process time series samples (records)
         samples = self._build_statistic_bundles(raw, user_id)
-        self.timeseries_service.bulk_create_samples(db_session, samples)
+        if samples:
+            self.timeseries_service.bulk_create_samples(db_session, samples)
+            records_saved = len(samples)
 
-        handle_sleep_data(db_session, raw, user_id)
+        # Process sleep (count sleep segments from input)
+        sleep_data = raw.get("data", {}).get("sleep", [])
+        if sleep_data:
+            handle_sleep_data(db_session, raw, user_id)
+            sleep_saved = len(sleep_data)
 
-        return True
+        return {
+            "workouts_saved": workouts_saved,
+            "records_saved": records_saved,
+            "sleep_saved": sleep_saved,
+        }
 
     def import_data_from_request(
         self,
@@ -229,6 +272,7 @@ class ImportService:
         request_content: str,
         content_type: str,
         user_id: str,
+        batch_id: str | None = None,
     ) -> UploadDataResponse:
         try:
             # Parse content based on type
@@ -238,14 +282,67 @@ class ImportService:
                 data = self._parse_json_content(request_content)
 
             if not data:
+                log_structured(
+                    self.log,
+                    "warning",
+                    "No valid data found in request",
+                    action="apple_sdk_validate_data",
+                    batch_id=batch_id,
+                    user_id=user_id,
+                )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
-            # Load data using provided database session
-            self.load_data(db_session, data, user_id=user_id)
+            # Extract incoming counts for logging
+            data_section = data.get("data", {})
+            incoming_records = len(data_section.get("records", []))
+            incoming_workouts = len(data_section.get("workouts", []))
+            incoming_sleep = len(data_section.get("sleep", []))
+
+            # Load data and get saved counts
+            saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
+
+            # Update last synced time
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), "apple")
+            if connection:
+                self.user_connection_repo.update_last_synced_at(db_session, connection)
+
+            # Log detailed processing results
+            log_structured(
+                self.log,
+                "info",
+                "Apple data import completed",
+                action="apple_sdk_import_complete",
+                batch_id=batch_id,
+                user_id=user_id,
+                incoming_records=incoming_records,
+                incoming_workouts=incoming_workouts,
+                incoming_sleep=incoming_sleep,
+                records_saved=saved_counts["records_saved"],
+                workouts_saved=saved_counts["workouts_saved"],
+                sleep_saved=saved_counts["sleep_saved"],
+            )
 
         except Exception as e:
-            log_and_capture_error(e, self.log, f"Import failed for user {user_id}: {e}", extra={"user_id": user_id})
-            return UploadDataResponse(status_code=400, response=f"Import failed: {str(e)}", user_id=user_id)
+            log_structured(
+                self.log,
+                "error",
+                f"Import failed for user {user_id}: {e}",
+                action="apple_sdk_import_failed",
+                batch_id=batch_id,
+                user_id=user_id,
+                error_type=type(e).__name__,
+            )
+            log_and_capture_error(
+                e,
+                self.log,
+                f"Import failed for user {user_id}: {e}",
+                extra={"user_id": user_id, "batch_id": batch_id},
+            )
+            return UploadDataResponse(
+                status_code=400,
+                response=f"Import failed: {str(e)}",
+                user_id=user_id,
+            )
 
         return UploadDataResponse(status_code=200, response="Import successful", user_id=user_id)
 

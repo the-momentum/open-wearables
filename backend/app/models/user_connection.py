@@ -30,10 +30,10 @@ class UserConnection(BaseDbModel):
     provider_user_id: Mapped[str | None]
     provider_username: Mapped[str | None]
 
-    # OAuth tokens
-    access_token: Mapped[str]
+    # OAuth tokens (optional for SDK-based providers like Apple)
+    access_token: Mapped[str | None]
     refresh_token: Mapped[str | None]
-    token_expires_at: Mapped[datetime_tz]
+    token_expires_at: Mapped[datetime_tz | None]
     scope: Mapped[str | None]
 
     # Metadata

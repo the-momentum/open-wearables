@@ -21,10 +21,10 @@ from app.models import (
     ApiKey,
     Application,
     DataPointSeries,
+    DataSource,
     Developer,
     EventRecord,
     EventRecordDetail,
-    ExternalDeviceMapping,
     PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
@@ -312,31 +312,44 @@ class ApplicationFactory(BaseFactory):
         return super()._create(model_class, *args, **kwargs)
 
 
-class ExternalDeviceMappingFactory(BaseFactory):
-    """Factory for ExternalDeviceMapping model."""
+class DataSourceFactory(BaseFactory):
+    """Factory for DataSource model."""
 
     class Meta:
-        model = ExternalDeviceMapping
+        model = DataSource
 
     id = LazyFunction(uuid4)
-    provider_name = "apple"
-    device_id = LazyFunction(lambda: f"device_{uuid4().hex[:8]}")
+    device_model = LazyFunction(lambda: f"TestDevice-{uuid4().hex[:8]}")
+    software_version = "1.0.0"
+    manufacturer = "TestManufacturer"
+    source = "test_source"
 
     @classmethod
     def _create(
         cls,
-        model_class: type[ExternalDeviceMapping],
+        model_class: type[DataSource],
         *args: Any,
         **kwargs: Any,
-    ) -> ExternalDeviceMapping:
+    ) -> DataSource:
         """Override create to handle user relationship."""
         user = kwargs.pop("user", None)
-        # Remove any stale user_id that might have been set
+        # Remove any stale user_id
         kwargs.pop("user_id", None)
+
         if user is None:
             user = UserFactory()
         kwargs["user_id"] = user.id
+
+        # Handle legacy source parameter (ProviderName enum -> str)
+        source = kwargs.get("source")
+        if source is not None and hasattr(source, "value"):
+            kwargs["source"] = source.value
+
         return super()._create(model_class, *args, **kwargs)
+
+
+# Backward-compatible alias for tests still using the old name
+DataSourceFactory = DataSourceFactory
 
 
 class UserConnectionFactory(BaseFactory):
@@ -349,9 +362,9 @@ class UserConnectionFactory(BaseFactory):
     provider = "garmin"
     provider_user_id = LazyFunction(lambda: f"provider_{uuid4().hex[:8]}")
     provider_username = factory.Faker("user_name")
-    access_token = LazyFunction(lambda: f"access_{uuid4().hex}")
+    access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
     refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))
+    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
     scope = "read_all"
     status = ConnectionStatus.ACTIVE
     last_synced_at = None
@@ -388,13 +401,14 @@ class EventRecordFactory(BaseFactory):
 
     @classmethod
     def _create(cls, model_class: type[EventRecord], *args: Any, **kwargs: Any) -> EventRecord:
-        """Override create to handle mapping relationship and type_ alias."""
-        mapping = kwargs.pop("mapping", None)
-        # Remove any stale external_device_mapping_id that might have been set
-        kwargs.pop("external_device_mapping_id", None)
-        if mapping is None:
-            mapping = ExternalDeviceMappingFactory()
-        kwargs["external_device_mapping_id"] = mapping.id
+        """Override create to handle data_source relationship and type_ alias."""
+        # Support both "mapping" (legacy) and "data_source" parameter names
+        data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
+        # Remove any stale data_source_id that might have been set
+        kwargs.pop("data_source_id", None)
+        if data_source is None:
+            data_source = DataSourceFactory()
+        kwargs["data_source_id"] = data_source.id
 
         # Handle type_ alias
         if "type_" in kwargs:
@@ -441,25 +455,17 @@ class DataPointSeriesFactory(BaseFactory):
     @classmethod
     def _create(cls, model_class: type[DataPointSeries], *args: Any, **kwargs: Any) -> DataPointSeries:
         """Override create to handle relationships."""
-        mapping = kwargs.pop("mapping", None)
+        # Support both "mapping" (legacy) and "data_source" parameter names
+        data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
         series_type = kwargs.pop("series_type", None)
 
-        if mapping is None:
-            mapping = ExternalDeviceMappingFactory()
+        if data_source is None:
+            data_source = DataSourceFactory()
         if series_type is None:
             # Use the pre-seeded heart_rate series type
             series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
-        kwargs["external_device_mapping_id"] = mapping.id
-        kwargs["series_type_definition_id"] = series_type.id
-
-        # Remove LazyAttribute placeholders that may have been set
-        if "external_device_mapping_id" in kwargs and kwargs["external_device_mapping_id"] is None:
-            kwargs.pop("external_device_mapping_id", None)
-        if "series_type_definition_id" in kwargs and kwargs["series_type_definition_id"] is None:
-            kwargs.pop("series_type_definition_id", None)
-
-        kwargs["external_device_mapping_id"] = mapping.id
+        kwargs["data_source_id"] = data_source.id
         kwargs["series_type_definition_id"] = series_type.id
 
         # Convert value to Decimal if needed
@@ -538,7 +544,8 @@ __all__ = [
     "DeveloperFactory",
     "ApiKeyFactory",
     "ApplicationFactory",
-    "ExternalDeviceMappingFactory",
+    "DataSourceFactory",
+    "DataSourceFactory",  # Backward-compatible alias for DataSourceFactory
     "UserConnectionFactory",
     "EventRecordFactory",
     "EventRecordDetailFactory",

@@ -175,13 +175,13 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name="Whoop",
-            device_id=None,  # Whoop doesn't provide device info in workout
+            device_model=None,  # Whoop doesn't provide device info in workout
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
             external_id=raw_workout.id,  # Whoop workout UUID
-            provider_name=self.provider_name,
+            source=self.provider_name,
             user_id=user_id,
         )
 

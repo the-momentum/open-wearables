@@ -30,14 +30,39 @@ fake = Faker()
 WORKOUT_TYPES = list(WorkoutType)
 
 SOURCE_NAMES = [
-    "Apple Watch",
-    "iPhone",
-    "Garmin",
-    "Polar",
-    "Suunto",
-    "Strava",
-    "Fitbit",
+    "Apple Health",
+    "Garmin Connect",
+    "Polar Flow",
+    "Suunto App",
 ]
+
+# Map source names to provider/device info
+PROVIDER_CONFIGS = {
+    "Apple Health": {
+        "provider": "apple",
+        "manufacturer": "Apple Inc.",
+        "devices": ["Apple Watch Series 6", "Apple Watch Series 7", "Apple Watch Ultra"],
+        "os_versions": ["8.0", "9.0", "9.1"],
+    },
+    "Garmin Connect": {
+        "provider": "garmin",
+        "manufacturer": "Garmin",
+        "devices": ["Fenix 7", "Forerunner 965", "Epix Gen 2"],
+        "os_versions": ["12.00", "13.22"],
+    },
+    "Polar Flow": {
+        "provider": "polar",
+        "manufacturer": "Polar",
+        "devices": ["Vantage V2", "Grit X Pro"],
+        "os_versions": ["4.0.11"],
+    },
+    "Suunto App": {
+        "provider": "suunto",
+        "manufacturer": "Suunto",
+        "devices": ["Suunto 9 Peak", "Suunto Vertical"],
+        "os_versions": ["2.25.18"],
+    },
+}
 
 GENDERS = ["female", "male", "nonbinary", "other"]
 
@@ -100,19 +125,32 @@ def generate_workout(
     heart_rate_avg = Decimal((heart_rate_min + heart_rate_max) / 2)
 
     workout_id = uuid4()
-    device_id = (
-        f"device_{fake_instance.random_int(min=1, max=5)}" if fake_instance.boolean(chance_of_getting_true=50) else None
-    )
+
+    source_name = fake_instance.random.choice(SOURCE_NAMES)
+    config = PROVIDER_CONFIGS[source_name]
+
+    # Simulate device
+    has_device = fake_instance.boolean(chance_of_getting_true=80)
+    device_name: str | None = None
+    manufacturer: str | None = None
+    sw_version: str | None = None
+
+    if has_device:
+        device_name = fake_instance.random.choice(config["devices"])
+        manufacturer = str(config["manufacturer"])
+        sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=workout_id,
-        provider_name="Faker",
+        source=str(config["provider"]),
         user_id=user_id,
         category="workout",
         type=fake_instance.random.choice(WORKOUT_TYPES),
         duration_seconds=duration_seconds,
-        source_name=fake_instance.random.choice(SOURCE_NAMES),
-        device_id=device_id,
+        source_name=source_name,
+        device_model=device_name,
+        manufacturer=manufacturer,
+        software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -146,36 +184,46 @@ def generate_sleep(
 
     # Time in bed is typically 15-60 minutes more than sleep duration
     time_in_bed_minutes = sleep_duration_minutes + fake_instance.random_int(min=15, max=60)
-    sleep_efficiency = Decimal(
-        Decimal(sleep_duration_minutes) / Decimal(time_in_bed_minutes) * Decimal("100"),
-    )
 
-    # Sleep stages (should sum to approximately sleep_duration_minutes)
-    # Calculate stages ensuring all values are non-negative
-    deep_minutes = fake_instance.random_int(min=60, max=min(180, sleep_duration_minutes // 3))
-    rem_minutes = fake_instance.random_int(min=60, max=min(150, sleep_duration_minutes // 3))
-    awake_minutes = fake_instance.random_int(min=10, max=min(30, sleep_duration_minutes // 10))
+    # Sleep stages (should roughly add up to sleep_duration_minutes)
+    deep_minutes = fake_instance.random_int(min=60, max=120)
+    rem_minutes = fake_instance.random_int(min=80, max=140)
+    light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - fake_instance.random_int(min=10, max=40)
+    awake_minutes = fake_instance.random_int(min=5, max=30)
 
-    # Light sleep is the remainder, ensuring it's non-negative
-    remaining_for_light = sleep_duration_minutes - deep_minutes - rem_minutes - awake_minutes
-    light_minutes = max(0, remaining_for_light)
+    # Sleep efficiency (total sleep / time in bed)
+    sleep_efficiency = Decimal(sleep_duration_minutes) / Decimal(time_in_bed_minutes) * 100
 
-    is_nap = fake_instance.boolean(chance_of_getting_true=20)
+    # Is nap? (10% chance)
+    is_nap = fake_instance.boolean(chance_of_getting_true=10)
 
     sleep_id = uuid4()
-    device_id = (
-        f"device_{fake_instance.random_int(min=1, max=3)}" if fake_instance.boolean(chance_of_getting_true=60) else None
-    )
+
+    source_name = fake_instance.random.choice(SOURCE_NAMES)
+    config = PROVIDER_CONFIGS[source_name]
+
+    # Simulate device
+    has_device = fake_instance.boolean(chance_of_getting_true=80)
+    device_name: str | None = None
+    manufacturer: str | None = None
+    sw_version: str | None = None
+
+    if has_device:
+        device_name = fake_instance.random.choice(config["devices"])
+        manufacturer = str(config["manufacturer"])
+        sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=sleep_id,
-        provider_name="Faker",
+        source=str(config["provider"]),
         user_id=user_id,
         category="sleep",
         type=None,
         duration_seconds=sleep_duration_seconds,
-        source_name=fake_instance.random.choice(SOURCE_NAMES),
-        device_id=device_id,
+        source_name=source_name,
+        device_model=device_name,
+        manufacturer=manufacturer,
+        software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
@@ -217,8 +265,10 @@ def generate_time_series_samples(
     fake_instance: Faker,
     *,
     user_id: UUID,
-    provider_name: str,
-    device_id: str | None = None,
+    source: str,
+    device_model: str | None = None,
+    manufacturer: str | None = None,
+    software_version: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time series samples for a workout period with realistic frequencies."""
     samples = []
@@ -246,8 +296,10 @@ def generate_time_series_samples(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=provider_name,
-                        device_id=device_id,
+                        source=source,
+                        device_model=device_model,
+                        manufacturer=manufacturer,
+                        software_version=software_version,
                         recorded_at=current_time,
                         value=Decimal(str(value)),
                         series_type=series_type,
@@ -298,14 +350,15 @@ def seed_activity_data() -> None:
 
                 # Generate time series samples for some workouts (30% chance)
                 if fake.boolean(chance_of_getting_true=30):
-                    device_id = f"device_{fake.random_int(min=1, max=5)}"
                     samples = generate_time_series_samples(
                         record.start_datetime,
                         record.end_datetime,
                         fake,
                         user_id=user.id,
-                        provider_name=record.provider_name or "Apple",
-                        device_id=device_id,
+                        source=record.source or "unknown",
+                        device_model=record.device_model,
+                        manufacturer=record.manufacturer,
+                        software_version=record.software_version,
                     )
                     if samples:
                         timeseries_service.bulk_create_samples(db, samples)

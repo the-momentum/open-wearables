@@ -3,13 +3,13 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.models import (
+    DataSource,
     EventRecord,
     EventRecordDetail,
-    ExternalDeviceMapping,
     SleepDetails,
     WorkoutDetails,
 )
-from app.repositories import EventRecordDetailRepository, EventRecordRepository, ExternalMappingRepository
+from app.repositories import DataSourceRepository, EventRecordDetailRepository, EventRecordRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -17,7 +17,8 @@ from app.schemas import (
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import DataSource, PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import SourceMetadata as DataSourceSchema
 from app.schemas.events import (
     SleepSession,
     Workout,
@@ -38,12 +39,12 @@ class EventRecordService(
     def __init__(self, log: Logger, **kwargs):
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
-        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+        self.data_source_repo = DataSourceRepository()
 
     def _build_response(
         self,
         record: EventRecord,
-        mapping: ExternalDeviceMapping,
+        data_source: DataSource,
     ) -> EventRecordResponse:
         return EventRecordResponse(
             id=record.id,
@@ -54,10 +55,9 @@ class EventRecordService(
             duration_seconds=record.duration_seconds,
             start_datetime=record.start_datetime,
             end_datetime=record.end_datetime,
-            external_device_mapping_id=record.external_device_mapping_id,
-            user_id=mapping.user_id,
-            provider_name=mapping.provider_name,
-            device_id=mapping.device_id,
+            data_source_id=record.data_source_id,
+            user_id=data_source.user_id,
+            source=data_source.source,
         )
 
     def create_detail(
@@ -74,7 +74,7 @@ class EventRecordService(
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-    ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
+    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         self.logger.debug(f"Fetching event records with filters: {query_params.model_dump()}")
 
         records, total_count = self.crud.get_records_with_filters(db_session, query_params, user_id)
@@ -92,16 +92,16 @@ class EventRecordService(
     ) -> list[EventRecordResponse]:
         records, _ = await self._get_records_with_filters(db_session, query_params, user_id)
 
-        return [self._build_response(record, mapping) for record, mapping in records]
+        return [self._build_response(record, data_source) for record, data_source in records]
 
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type."""
         return self.crud.get_count_by_workout_type(db_session)
 
-    def _map_source(self, mapping: ExternalDeviceMapping) -> DataSource:
-        return DataSource(
-            provider=mapping.provider_name or "unknown",
-            device=mapping.device_id,
+    def _map_source(self, data_source: DataSource) -> DataSourceSchema:
+        return DataSourceSchema(
+            provider=data_source.source or "unknown",
+            device=data_source.device_model,
         )
 
     @handle_exceptions
@@ -151,7 +151,7 @@ class EventRecordService(
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
-        for record, mapping in records:
+        for record, data_source in records:
             details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
 
             workout = Workout(
@@ -161,7 +161,7 @@ class EventRecordService(
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
                 duration_seconds=record.duration_seconds,
-                source=self._map_source(mapping),
+                source=self._map_source(data_source),
                 calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
                 distance_meters=float(details.distance) if details and details.distance else None,
                 avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
@@ -201,9 +201,9 @@ class EventRecordService(
         if not record:
             return None
 
-        mapping = self.mapping_repo.get(db_session, record.external_device_mapping_id)
+        data_source = self.data_source_repo.get(db_session, record.data_source_id)
 
-        if not mapping or mapping.user_id != user_id:
+        if not data_source or data_source.user_id != user_id:
             return None
 
         details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
@@ -224,7 +224,7 @@ class EventRecordService(
             start_time=record.start_datetime,
             end_time=record.end_datetime,
             duration_seconds=record.duration_seconds,
-            source=self._map_source(mapping),
+            source=self._map_source(data_source),
             calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
@@ -283,14 +283,14 @@ class EventRecordService(
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
         data = []
-        for record, mapping in records:
+        for record, data_source in records:
             details: SleepDetails | None = record.detail if isinstance(record.detail, SleepDetails) else None
 
             session = SleepSession(
                 id=record.id,
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
-                source=self._map_source(mapping),
+                source=self._map_source(data_source),
                 duration_seconds=record.duration_seconds or 0,
                 efficiency_percent=float(details.sleep_efficiency_score)
                 if details and details.sleep_efficiency_score
