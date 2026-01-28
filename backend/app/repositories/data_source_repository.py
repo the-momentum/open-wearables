@@ -138,7 +138,7 @@ class DataSourceRepository(
         missing = [i for i in identities_list if i not in result]
 
         if missing:
-            # Batch insert missing
+            # Batch insert missing with ON CONFLICT using unique constraint
             values = [
                 {
                     "id": uuid4(),
@@ -148,7 +148,9 @@ class DataSourceRepository(
                 }
                 for user_id, device_model, source in missing
             ]
-            stmt = insert(self.model).values(values).on_conflict_do_nothing()
+            stmt = insert(self.model).values(values).on_conflict_do_nothing(
+                constraint="uq_data_source_identity"
+            )
             db_session.execute(stmt)
             db_session.flush()
 
