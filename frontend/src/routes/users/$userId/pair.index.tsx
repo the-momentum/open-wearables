@@ -87,13 +87,15 @@ function PairWearablePage() {
           >
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
             <p className="text-sm text-red-300 flex-1">{error}</p>
-            <button
+            <Button
+              variant="destructive"
+              size="icon"
               onClick={reset}
               aria-label="Dismiss error"
-              className="text-red-400/70 hover:text-red-300 transition-colors"
+              // className="text-red-400/70 hover:text-red-300 hover:bg-transparent"
             >
               <X className="w-5 h-5" />
-            </button>
+            </Button>
           </motion.div>
         )}
       </AnimatePresence>
