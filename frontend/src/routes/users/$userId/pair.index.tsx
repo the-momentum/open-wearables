@@ -92,7 +92,6 @@ function PairWearablePage() {
               size="icon"
               onClick={reset}
               aria-label="Dismiss error"
-              // className="text-red-400/70 hover:text-red-300 hover:bg-transparent"
             >
               <X className="w-5 h-5" />
             </Button>
