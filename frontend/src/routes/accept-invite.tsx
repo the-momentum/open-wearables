@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
+import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/accept-invite')({
   component: AcceptInvitePage,
@@ -32,7 +33,7 @@ export const Route = createFileRoute('/accept-invite')({
   }),
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -102,7 +103,7 @@ function AcceptInvitePage() {
         onSuccess: () => {
           setIsSuccess(true);
           timeoutRef.current = setTimeout(() => {
-            navigate({ to: '/login' });
+            navigate({ to: ROUTES.login });
           }, 2000);
         },
         onError: (error) => {
@@ -153,7 +154,7 @@ function AcceptInvitePage() {
           {status === 'success' ? (
             <div className="p-8">
               <Link
-                to="/login"
+                to={ROUTES.login}
                 className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
               >
                 Sign In Now
@@ -163,7 +164,7 @@ function AcceptInvitePage() {
           ) : (
             <div className="px-8 py-6 border-t border-zinc-900 bg-zinc-950/50">
               <Link
-                to="/login"
+                to={ROUTES.login}
                 className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -335,7 +336,7 @@ function AcceptInvitePage() {
               <p className="text-center text-sm text-zinc-500">
                 Already have an account?{' '}
                 <Link
-                  to="/login"
+                  to={ROUTES.login}
                   className="text-white hover:text-zinc-200 transition-colors"
                 >
                   Sign in

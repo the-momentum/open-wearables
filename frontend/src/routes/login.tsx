@@ -5,12 +5,13 @@ import { isAuthenticated } from '@/lib/auth/session';
 import { ArrowRight, Mail, Lock } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { CodePreviewCard } from '@/components/login/code-preview-card';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });

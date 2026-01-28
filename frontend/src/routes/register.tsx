@@ -18,12 +18,13 @@ import {
   Zap,
   Bot,
 } from 'lucide-react';
+import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/register')({
   component: RegisterPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -213,7 +214,7 @@ function RegisterPage() {
             <p className="text-center text-sm text-zinc-500">
               Already have an account?{' '}
               <Link
-                to="/login"
+                to={ROUTES.login}
                 className="text-white hover:text-zinc-200 transition-colors"
               >
                 Sign in

@@ -10,6 +10,7 @@ import type {
   ResetPasswordRequest,
 } from '../lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 
 export function useAuth() {
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ export function useAuth() {
     onSuccess: (data) => {
       setSession(data.access_token, data.developer_id);
       toast.success('Logged in successfully');
-      navigate({ to: '/dashboard' });
+      navigate({ to: DEFAULT_REDIRECTS.authenticated });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -39,7 +40,7 @@ export function useAuth() {
     onSuccess: (data) => {
       setSession(data.access_token, data.developer_id);
       toast.success('Account created successfully');
-      navigate({ to: '/dashboard' });
+      navigate({ to: DEFAULT_REDIRECTS.authenticated });
     },
     onError: (error: unknown) => {
       const message =
@@ -53,11 +54,11 @@ export function useAuth() {
     onSuccess: () => {
       clearSession();
       toast.success('Logged out successfully');
-      navigate({ to: '/login' });
+      navigate({ to: DEFAULT_REDIRECTS.unauthenticated });
     },
     onError: () => {
       clearSession();
-      navigate({ to: '/login' });
+      navigate({ to: DEFAULT_REDIRECTS.unauthenticated });
     },
   });
 
@@ -86,7 +87,7 @@ export function useAuth() {
     mutationFn: (data: ResetPasswordRequest) => authService.resetPassword(data),
     onSuccess: () => {
       toast.success('Password reset successfully');
-      navigate({ to: '/login' });
+      navigate({ to: DEFAULT_REDIRECTS.unauthenticated });
     },
     onError: (error: unknown) => {
       const message =

@@ -2,6 +2,7 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { isAuthenticated } from '@/lib/auth/session';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { useEffect } from 'react';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/')({
   beforeLoad: async () => {
@@ -12,11 +13,11 @@ export const Route = createFileRoute('/')({
     // Redirect to dashboard if authenticated, otherwise to login
     if (isAuthenticated()) {
       throw redirect({
-        to: '/dashboard',
+        to: DEFAULT_REDIRECTS.authenticated,
       });
     } else {
       throw redirect({
-        to: '/login',
+        to: DEFAULT_REDIRECTS.unauthenticated,
       });
     }
   },
@@ -29,9 +30,9 @@ function IndexRedirect() {
   // Handle client-side redirect after hydration
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate({ to: '/dashboard' });
+      navigate({ to: DEFAULT_REDIRECTS.authenticated });
     } else {
-      navigate({ to: '/login' });
+      navigate({ to: DEFAULT_REDIRECTS.unauthenticated });
     }
   }, [navigate]);
 
