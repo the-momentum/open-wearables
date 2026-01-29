@@ -245,10 +245,11 @@ class ImportService:
             records = [record for record, _ in workout_bundles]
             details = [detail for _, detail in workout_bundles]
 
-            # Bulk create records
+            # Bulk create records - flush to make them visible for FK constraints
             self.event_record_service.bulk_create(db_session, records)
+            db_session.flush()
 
-            # Bulk create details
+            # Bulk create details (requires event_record to exist due to FK)
             self.event_record_service.bulk_create_details(db_session, details, detail_type="workout")
             workouts_saved = len(workout_bundles)
 
