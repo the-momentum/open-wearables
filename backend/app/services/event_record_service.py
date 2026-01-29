@@ -68,6 +68,23 @@ class EventRecordService(
     ) -> EventRecordDetail:
         return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
 
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        records: list[EventRecordCreate],
+    ) -> list[UUID]:
+        """Bulk create event records with batch data source resolution."""
+        return self.crud.bulk_create(db_session, records)
+
+    def bulk_create_details(
+        self,
+        db_session: DbSession,
+        details: list[EventRecordDetailCreate],
+        detail_type: str = "workout",
+    ) -> None:
+        """Bulk create event record details."""
+        self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # type: ignore[arg-type]
+
     @handle_exceptions
     async def _get_records_with_filters(
         self,

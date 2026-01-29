@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, tuple_
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
@@ -14,6 +15,9 @@ from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
+
+# Identity tuple: (user_id, device_model, source)
+DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
 class EventRecordRepository(
@@ -73,6 +77,60 @@ class EventRecordRepository(
             if existing:
                 return existing
             raise
+
+    @handle_exceptions
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> list[UUID]:
+        """Bulk create event records with batch data source resolution.
+
+        Optimized for performance - resolves data sources in batch, then inserts all records.
+        Returns list of record IDs (both new and existing).
+        """
+        if not creators:
+            return []
+
+        # 1. Resolve all data sources in batch
+        unique_identities: set[DataSourceIdentity] = set()
+        for c in creators:
+            unique_identities.add((c.user_id, c.device_model, c.source))
+
+        identity_to_source_id = self.data_source_repo.batch_ensure_data_sources(db_session, unique_identities)
+
+        # 2. Build values for batch insert
+        values_list = []
+        for creator in creators:
+            identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
+            source_id = identity_to_source_id.get(identity)
+
+            if not source_id:
+                continue
+
+            values_list.append(
+                {
+                    "id": creator.id,
+                    "external_id": creator.external_id,
+                    "data_source_id": source_id,
+                    "category": creator.category,
+                    "type": creator.type,
+                    "source_name": creator.source_name,
+                    "duration_seconds": creator.duration_seconds,
+                    "start_datetime": creator.start_datetime,
+                    "end_datetime": creator.end_datetime,
+                }
+            )
+
+        if not values_list:
+            return []
+
+        # 3. Batch insert with ON CONFLICT DO NOTHING
+        stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
+        db_session.execute(stmt)
+        db_session.commit()
+
+        return [v["id"] for v in values_list]
 
     def get_record_with_details(
         self,

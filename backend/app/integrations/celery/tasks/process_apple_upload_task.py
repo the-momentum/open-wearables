@@ -15,7 +15,7 @@ from celery import shared_task
 logger = getLogger(__name__)
 
 
-@shared_task
+@shared_task(queue="apple_sync")
 def process_apple_upload(
     content: str,
     content_type: str,

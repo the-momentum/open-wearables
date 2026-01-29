@@ -51,6 +51,13 @@ def create_celery() -> Celery:
         task_default_queue="default",
         task_default_exchange="default",
         result_expires=3 * 24 * 3600,
+        task_queues={
+            "default": {},
+            "apple_sync": {},
+        },
+        task_routes={
+            "app.integrations.celery.tasks.process_apple_upload_task.process_apple_upload": {"queue": "apple_sync"},
+        },
     )
 
     celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])

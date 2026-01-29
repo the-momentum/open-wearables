@@ -239,12 +239,18 @@ class ImportService:
         records_saved = 0
         sleep_saved = 0
 
-        # Process workouts
-        for record, detail in self._build_workout_bundles(raw, user_id):
-            created_or_existing_record = self.event_record_service.create(db_session, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-            self.event_record_service.create_detail(db_session, detail_for_record)
-            workouts_saved += 1
+        # Process workouts in batch
+        workout_bundles = list(self._build_workout_bundles(raw, user_id))
+        if workout_bundles:
+            records = [record for record, _ in workout_bundles]
+            details = [detail for _, detail in workout_bundles]
+
+            # Bulk create records
+            self.event_record_service.bulk_create(db_session, records)
+
+            # Bulk create details
+            self.event_record_service.bulk_create_details(db_session, details, detail_type="workout")
+            workouts_saved = len(workout_bundles)
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(raw, user_id)
