@@ -312,9 +312,9 @@ class TestGarmin247Data:
         sample_body_comp: dict[str, Any],
     ) -> None:
         """Test saving body composition data."""
-        user_id = uuid4()
+        user = UserFactory()
 
-        count = garmin_247.save_body_composition(db, user_id, sample_body_comp)
+        count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
         # Should create 3 data points: weight, body_fat, BMI
         assert mock_create.call_count == 3
@@ -354,25 +354,23 @@ class TestGarmin247Data:
     # -------------------------------------------------------------------------
 
     def test_load_and_save_all_default_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all triggers backfill with default date range."""
+        """Test load_and_save_all syncs data via Summary API with default date range."""
         user = UserFactory()
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill") as mock_start_backfill,
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": "2024-01-14T00:00:00+00:00",
-                "end_time": "2024-01-15T00:00:00+00:00",
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_all_summaries"
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "total_saved": 5,
+                "fetch_results": {"sleeps": 3, "dailies": 2},
+                "save_results": {"sleeps": 3, "dailies": 2},
             }
 
             results = garmin_247.load_and_save_all(db, user.id)
 
-            assert results["backfill_triggered"] is True
-            assert "sleeps" in results["triggered_types"]
-            mock_start_backfill.assert_called_once()
+            assert results["sync_complete"] is True
+            assert results["total_saved"] == 5
+            mock_fetch.assert_called_once()
 
     def test_load_and_save_all_custom_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with custom date range."""
@@ -381,40 +379,34 @@ class TestGarmin247Data:
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 7, tzinfo=timezone.utc)
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": start.isoformat(),
-                "end_time": end.isoformat(),
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_all_summaries"
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "total_saved": 10,
+                "fetch_results": {},
+                "save_results": {},
             }
 
             results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
-            # Verify custom dates were used
-            mock_trigger.assert_called_once()
-            call_kwargs = mock_trigger.call_args[1]
-            assert call_kwargs["start_time"] == start
-            assert call_kwargs["end_time"] == end
+            mock_fetch.assert_called_once()
+            call_kwargs = mock_fetch.call_args[1]
+            assert call_kwargs["days"] == 6  # (end - start).days
 
-            assert results["backfill_triggered"] is True
+            assert results["sync_complete"] is True
 
     def test_load_and_save_all_string_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test load_and_save_all with ISO string dates."""
         user = UserFactory()
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": "2024-01-01T00:00:00+00:00",
-                "end_time": "2024-01-07T00:00:00+00:00",
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_all_summaries"
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "total_saved": 3,
+                "fetch_results": {},
+                "save_results": {},
             }
 
             results = garmin_247.load_and_save_all(
@@ -424,29 +416,25 @@ class TestGarmin247Data:
                 end_time="2024-01-07T00:00:00Z",
             )
 
-            assert results["backfill_triggered"] is True
+            assert results["sync_complete"] is True
 
     def test_load_and_save_all_handles_errors(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all handles errors from backfill service."""
+        """Test load_and_save_all handles errors from summary service."""
         user = UserFactory()
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": [],
-                "failed": {"sleeps": "API Error"},
-                "start_time": "2024-01-14T00:00:00+00:00",
-                "end_time": "2024-01-15T00:00:00+00:00",
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_all_summaries"
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "total_saved": 0,
+                "fetch_results": {},
+                "save_results": {},
             }
 
             results = garmin_247.load_and_save_all(db, user.id)
 
-            # Should still return with backfill_triggered
-            assert results["backfill_triggered"] is True
-            assert results["triggered_types"] == []
-            assert "sleeps" in results["failed_types"]
+            assert results["sync_complete"] is True
+            assert results["total_saved"] == 0
 
     # -------------------------------------------------------------------------
     # HRV Data Tests
