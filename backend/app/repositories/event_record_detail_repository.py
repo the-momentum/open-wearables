@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Literal
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
 DetailType = Literal["workout", "sleep"]
+logger = getLogger(__name__)
 
 
 class EventRecordDetailRepository(
@@ -86,7 +88,42 @@ class EventRecordDetailRepository(
             data = creator.model_dump(exclude_none=True)
             # Remove fields not in child table
             data.pop("detail_type", None)
+            # Remove sleep-specific fields when inserting workout details
+            if detail_type == "workout":
+                for sleep_field in [
+                    "sleep_total_duration_minutes",
+                    "sleep_time_in_bed_minutes",
+                    "sleep_efficiency_score",
+                    "sleep_deep_minutes",
+                    "sleep_rem_minutes",
+                    "sleep_light_minutes",
+                    "sleep_awake_minutes",
+                    "is_nap",
+                ]:
+                    data.pop(sleep_field, None)
+            # Remove workout-specific fields when inserting sleep details
+            elif detail_type == "sleep":
+                for workout_field in [
+                    "heart_rate_min",
+                    "heart_rate_max",
+                    "heart_rate_avg",
+                    "steps_count",
+                    "energy_burned",
+                    "distance",
+                    "max_speed",
+                    "max_watts",
+                    "moving_time_seconds",
+                    "total_elevation_gain",
+                    "average_speed",
+                    "average_watts",
+                    "elev_high",
+                    "elev_low",
+                ]:
+                    data.pop(workout_field, None)
             child_values.append(data)
+
+        if child_values:
+            logger.debug(f"Inserting {len(child_values)} {detail_type} details, sample: {child_values[0]}")
 
         # Use appropriate model based on detail_type
         model = WorkoutDetails if detail_type == "workout" else SleepDetails
