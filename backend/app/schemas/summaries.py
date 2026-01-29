@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common_types import DataSource
+from app.schemas.common_types import SourceMetadata
 
 
 class IntensityMinutes(BaseModel):
@@ -21,7 +21,7 @@ class HeartRateStats(BaseModel):
 
 class ActivitySummary(BaseModel):
     date: date
-    source: DataSource
+    source: SourceMetadata
     # Step and movement metrics
     steps: int | None = Field(None, description="Total step count", example=8432)
     distance_meters: float | None = Field(None, example=6240.5)
@@ -49,7 +49,7 @@ class SleepStagesSummary(BaseModel):
 
 class SleepSummary(BaseModel):
     date: date
-    source: DataSource
+    source: SourceMetadata
     start_time: datetime | None = None
     end_time: datetime | None = None
     duration_minutes: int | None = Field(None, description="Total sleep duration excluding naps", example=450)
@@ -137,7 +137,7 @@ class BodySummary(BaseModel):
     - latest: Point-in-time readings (only if recent)
     """
 
-    source: DataSource
+    source: SourceMetadata
     slow_changing: BodySlowChanging
     averaged: BodyAveraged
     latest: BodyLatest
@@ -145,7 +145,7 @@ class BodySummary(BaseModel):
 
 class RecoverySummary(BaseModel):
     date: date
-    source: DataSource
+    source: SourceMetadata
     sleep_duration_seconds: int | None = None
     sleep_efficiency_percent: float | None = None
     resting_heart_rate_bpm: int | None = None

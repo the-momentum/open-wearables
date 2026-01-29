@@ -161,7 +161,7 @@ class TestGarminWorkouts:
         assert record.category == "workout"
         assert record.type == WorkoutType.RUNNING.value
         assert record.source_name == "Garmin Forerunner 945"
-        assert record.device_id == "Garmin Forerunner 945"
+        assert record.device_model == "Garmin Forerunner 945"
         assert record.duration_seconds == 3600
         assert record.external_id == "12345678901"
         assert record.user_id == user_id

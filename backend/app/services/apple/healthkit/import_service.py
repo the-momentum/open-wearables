@@ -9,6 +9,7 @@ from app.constants.series_types import (
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -28,6 +29,7 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
+from .device_resolution import extract_device_info
 from .sleep_service import handle_sleep_data
 
 
@@ -36,6 +38,7 @@ class ImportService:
         self.log = log
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
+        self.user_connection_repo = UserConnectionRepository()
 
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
@@ -63,17 +66,21 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
+            device_model, software_version, manufacturer = extract_device_info(wjson.source)
+
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=wjson.source.name or "Apple Health",
-                device_id=wjson.source.device_name or None,
+                source_name="apple_health_sdk",
+                device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                provider_name="Apple",
+                source="apple_health_sdk",
+                software_version=software_version,
+                manufacturer=manufacturer,
                 user_id=user_uuid,
             )
 
@@ -107,12 +114,17 @@ class ImportService:
             if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
                 value = value * 100
 
+            # Extract device info
+            device_model, software_version, manufacturer = extract_device_info(rjson.source)
+
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
-                provider_name="Apple",
-                device_id=rjson.source.device_name,
+                source="apple_health_sdk",
+                device_model=device_model,
+                software_version=software_version,
+                manufacturer=manufacturer,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -146,7 +158,7 @@ class ImportService:
         if stats is None:
             return EventRecordMetrics(), None
 
-        stats_dict: dict[str, Decimal] = {}
+        stats_dict: dict[str, Decimal | int] = {}
         stats_dict["energy_burned"] = Decimal("0")
         duration: float | None = None
 
@@ -190,13 +202,13 @@ class ImportService:
                 case "lapLength":
                     pass  # No corresponding field in EventRecordMetrics
                 case "maxHeartRate":
-                    stats_dict["heart_rate_max"] = value
+                    stats_dict["heart_rate_max"] = int(value)
                 case "maxSpeed":
                     stats_dict["max_speed"] = value
                 case "minHeartRate":
-                    stats_dict["heart_rate_min"] = value
+                    stats_dict["heart_rate_min"] = int(value)
                 case "stepCount":
-                    stats_dict["steps_count"] = value
+                    stats_dict["steps_count"] = int(value)
                 case "swimmingLocationType":
                     pass  # No corresponding field in EventRecordMetrics
                 case "swimmingStrokeCount":
@@ -227,12 +239,18 @@ class ImportService:
         records_saved = 0
         sleep_saved = 0
 
-        # Process workouts
-        for record, detail in self._build_workout_bundles(raw, user_id):
-            created_or_existing_record = self.event_record_service.create(db_session, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
-            self.event_record_service.create_detail(db_session, detail_for_record)
-            workouts_saved += 1
+        # Process workouts in batch
+        workout_bundles = list(self._build_workout_bundles(raw, user_id))
+        if workout_bundles:
+            records = [record for record, _ in workout_bundles]
+            details = [detail for _, detail in workout_bundles]
+
+            # Bulk create records
+            self.event_record_service.bulk_create(db_session, records)
+
+            # Bulk create details
+            self.event_record_service.bulk_create_details(db_session, details, detail_type="workout")
+            workouts_saved = len(workout_bundles)
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(raw, user_id)
@@ -286,6 +304,10 @@ class ImportService:
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
+
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), "apple")
+            if connection:
+                self.user_connection_repo.update_last_synced_at(db_session, connection)
 
             # Log detailed processing results
             log_structured(

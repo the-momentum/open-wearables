@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.factories import ApiKeyFactory, EventRecordFactory, ExternalDeviceMappingFactory, UserFactory
+from tests.factories import ApiKeyFactory, DataSourceFactory, EventRecordFactory, UserFactory
 from tests.utils import api_key_headers
 
 
@@ -23,7 +23,7 @@ class TestWorkoutsEndpoints:
         """Test successfully retrieving workouts for a user."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         workout1 = EventRecordFactory(
             mapping=mapping,
             category="workout",
@@ -85,7 +85,7 @@ class TestWorkoutsEndpoints:
         """Test filtering workouts by category."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         workout = EventRecordFactory(mapping=mapping, category="workout")
         EventRecordFactory(mapping=mapping, category="sleep", type="sleep")
         api_key = ApiKeyFactory()
@@ -113,7 +113,7 @@ class TestWorkoutsEndpoints:
         """Test filtering workouts by type."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         running = EventRecordFactory(mapping=mapping, category="workout", type_="running")
         EventRecordFactory(mapping=mapping, category="workout", type_="cycling")
         api_key = ApiKeyFactory()
@@ -141,7 +141,7 @@ class TestWorkoutsEndpoints:
         """Test filtering workouts by start and end datetime."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
         EventRecordFactory(
             mapping=mapping,
@@ -176,7 +176,7 @@ class TestWorkoutsEndpoints:
         """Test pagination with skip and limit parameters."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         # Create 5 workouts
         [EventRecordFactory(mapping=mapping, category="workout") for _ in range(5)]
         api_key = ApiKeyFactory()
@@ -202,7 +202,7 @@ class TestWorkoutsEndpoints:
         """Test sorting workouts by start_datetime."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
         workout1 = EventRecordFactory(
             mapping=mapping,
@@ -248,8 +248,8 @@ class TestWorkoutsEndpoints:
         # Arrange
         user1 = UserFactory()
         user2 = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user1)
-        mapping2 = ExternalDeviceMappingFactory(user=user2)
+        mapping1 = DataSourceFactory(user=user1)
+        mapping2 = DataSourceFactory(user=user2)
         workout1 = EventRecordFactory(mapping=mapping1, category="workout")
         EventRecordFactory(mapping=mapping2, category="workout")
         api_key = ApiKeyFactory()
@@ -358,7 +358,7 @@ class TestWorkoutsEndpoints:
         """Test that response contains all expected fields."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         EventRecordFactory(
             mapping=mapping,
             category="workout",

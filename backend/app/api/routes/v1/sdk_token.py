@@ -62,12 +62,10 @@ async def create_user_token(
         )
 
     # Generate user-scoped SDK token
-    # Admin-generated tokens are infinite, app-generated tokens expire after 60 minutes
-    is_admin_token = developer is not None
     access_token = create_sdk_user_token(
         app_id=app_id,
         user_id=str(user_id),
-        infinite=is_admin_token,
+        infinite=True,
     )
 
     return Token(access_token=access_token, token_type="bearer")

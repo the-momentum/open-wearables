@@ -28,7 +28,7 @@ class TestProviderSettingsServiceGetAllProviders:
 
         # Assert
         provider_names = {p.provider for p in providers}
-        expected_names = {p.value for p in ProviderName}
+        expected_names = {p.value for p in ProviderName if p.value != "unknown"}
         assert provider_names == expected_names
 
     def test_get_all_providers_includes_display_name(self, db: Session) -> None:
@@ -226,7 +226,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
 
         # Assert
         # Should return all providers with their current settings
-        assert len(results) == len(list(ProviderName))
+        assert len(results) == len(list(ProviderName)) - 1
 
     def test_bulk_update_providers_single_update(self, db: Session) -> None:
         """Should handle single provider update."""
@@ -258,7 +258,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         # Assert
         # Should return all provider types
         provider_names = {p.provider for p in results}
-        expected_names = {p.value for p in ProviderName}
+        expected_names = {p.value for p in ProviderName if p.value != "unknown"}
         assert provider_names == expected_names
 
     def test_bulk_update_providers_validates_first_then_updates(self, db: Session) -> None:
