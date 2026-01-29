@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Loader2,
 } from 'lucide-react';
+import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,7 +28,7 @@ export const Route = createFileRoute('/reset-password')({
   }),
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/users' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -91,7 +92,7 @@ function ResetPasswordPage() {
 
           <div className="p-8 space-y-4">
             <Link
-              to="/forgot-password"
+              to={ROUTES.forgotPassword}
               className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
             >
               Request New Reset Link
@@ -100,7 +101,7 @@ function ResetPasswordPage() {
 
           <div className="px-8 py-6 border-t border-zinc-900 bg-zinc-950/50">
             <Link
-              to="/login"
+              to={ROUTES.login}
               className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -224,7 +225,7 @@ function ResetPasswordPage() {
 
         <div className="px-8 py-6 border-t border-zinc-900 bg-zinc-950/50">
           <Link
-            to="/login"
+            to={ROUTES.login}
             className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

@@ -22,6 +22,7 @@ import {
   useAppleXmlUpload,
   useGenerateUserToken,
 } from '@/hooks/api/use-users';
+import { ROUTES } from '@/lib/constants/routes';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ProfileSection } from '@/components/user/profile-section';
@@ -165,7 +166,7 @@ function UserDetailPage() {
   const handleDelete = () => {
     deleteUser(userId, {
       onSuccess: () => {
-        navigate({ to: '/users' });
+        navigate({ to: ROUTES.users });
       },
     });
   };
@@ -194,7 +195,7 @@ function UserDetailPage() {
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
           <p className="text-zinc-400">User not found</p>
           <Button variant="outline" className="mt-4" asChild>
-            <Link to="/users">
+            <Link to={ROUTES.users}>
               <ArrowLeft className="h-4 w-4" />
               Back to Users
             </Link>
@@ -210,7 +211,7 @@ function UserDetailPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link
-            to="/users"
+            to={ROUTES.users}
             className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

@@ -9,6 +9,7 @@ import {
   type ForgotPasswordFormData,
 } from '@/lib/validation/auth.schemas';
 import { Activity, ArrowLeft, Mail, CheckCircle, Loader2 } from 'lucide-react';
+import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +18,7 @@ export const Route = createFileRoute('/forgot-password')({
   component: ForgotPasswordPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/users' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -140,7 +141,7 @@ function ForgotPasswordPage() {
         {/* Footer */}
         <div className="px-8 py-6 border-t border-zinc-900 bg-zinc-950/50">
           <Link
-            to="/login"
+            to={ROUTES.login}
             className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

@@ -10,22 +10,23 @@ import {
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { ROUTES } from '@/lib/constants/routes';
 import { Button } from '@/components/ui/button';
 
 const menuItems = [
   {
     title: 'Dashboard',
-    url: '/dashboard',
+    url: ROUTES.dashboard,
     icon: Home,
   },
   {
     title: 'Users',
-    url: '/users',
+    url: ROUTES.users,
     icon: Users,
   },
   {
     title: 'Settings',
-    url: '/settings',
+    url: ROUTES.settings,
     icon: Settings,
   },
   {
