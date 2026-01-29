@@ -557,14 +557,26 @@ export interface InvitationAccept {
   password: string;
 }
 
-// Garmin Backfill Status (sequential: 5 data types × 30 days)
-export interface GarminBackfillStatus {
-  in_progress: boolean;
-  days_completed: number;
-  current_data_type_index: number;
-  current_data_type: string; // "sleeps" | "dailies" | "epochs" | "bodyComps" | "hrv"
-  current_end_date: string | null;
-  target_days: number;
+// Garmin Summary Sync Error
+export interface GarminSyncError {
+  data_type: string;
+  day: number;
+  error: string;
+  timestamp: string;
+}
+
+// Garmin Summary Sync Status (365-day REST sync)
+export interface GarminSummarySyncStatus {
+  status: 'IDLE' | 'SYNCING' | 'WAITING' | 'COMPLETED' | 'FAILED';
+  progress_percent: number; // 0-100
+  current_data_type: string; // e.g., "dailies", "sleeps", "hrv"
+  current_type_index: number; // 0-15
+  total_types: number; // 16
+  current_day: number; // 0-364
+  target_days: number; // 365
+  started_at: string | null; // ISO timestamp
+  last_chunk_at: string | null; // ISO timestamp
+  errors: GarminSyncError[]; // Recent errors (max 10)
 }
 
 // Sync Response (returned by provider sync endpoint)
@@ -573,5 +585,24 @@ export interface SyncResponse {
   async: boolean;
   task_id: string;
   message: string;
-  backfill_status?: GarminBackfillStatus;
+  // Garmin summary sync status (365-day REST sync)
+  sync_status?: GarminSummarySyncStatus;
+}
+
+// Garmin Backfill Types (webhook-based, 90-day sync)
+export interface BackfillTypeStatus {
+  status: 'pending' | 'triggered' | 'success' | 'failed';
+  triggered_at?: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface GarminBackfillStatus {
+  overall_status: 'pending' | 'in_progress' | 'complete' | 'partial';
+  types: Record<string, BackfillTypeStatus>;
+  success_count: number;
+  failed_count: number;
+  pending_count: number;
+  triggered_count: number;
+  total_types: number;
 }

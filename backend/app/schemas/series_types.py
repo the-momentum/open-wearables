@@ -111,6 +111,14 @@ class SeriesType(str, Enum):
     time_in_daylight = "time_in_daylight"
     water_temperature = "water_temperature"
 
+    # =========================================================================
+    # GARMIN-SPECIFIC METRICS (IDs 220-239)
+    # =========================================================================
+    stress_level = "stress_level"  # Garmin stress score (1-100)
+    skin_temperature = "skin_temperature"  # Skin temp deviation from baseline
+    fitness_age = "fitness_age"  # Garmin fitness age estimate
+    body_battery = "body_battery"  # Garmin body battery (0-100)
+
 
 # =============================================================================
 # DATABASE ID DEFINITIONS
@@ -204,6 +212,13 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (202, SeriesType.environmental_sound_reduction, "dB"),
     (203, SeriesType.time_in_daylight, "minutes"),
     (204, SeriesType.water_temperature, "celsius"),
+    # -------------------------------------------------------------------------
+    # GARMIN-SPECIFIC METRICS (IDs 220-239)
+    # -------------------------------------------------------------------------
+    (220, SeriesType.stress_level, "score"),
+    (221, SeriesType.skin_temperature, "celsius"),
+    (222, SeriesType.fitness_age, "years"),
+    (223, SeriesType.body_battery, "percent"),
 ]
 
 

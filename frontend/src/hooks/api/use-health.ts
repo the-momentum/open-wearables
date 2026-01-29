@@ -107,22 +107,40 @@ export function useSynchronizeDataFromProvider(
   return useMutation({
     mutationFn: () => healthService.synchronizeProvider(provider, userId),
     onSuccess: (data) => {
+      // Invalidate connection and workout data
       queryClient.invalidateQueries({
         queryKey: queryKeys.connections.all(userId),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.workouts(userId),
       });
-      // Invalidate Garmin backfill status to refresh the UI
+
+      // Auto-refresh data sections when sync completes
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.activitySummaries(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.sleepSessions(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.bodySummary(userId),
+      });
+
+      // Invalidate Garmin-specific status queries
       if (provider === 'garmin') {
         queryClient.invalidateQueries({
-          queryKey: queryKeys.garmin.backfillStatus(userId),
+          queryKey: queryKeys.garmin.summarySyncStatus(userId),
         });
       }
-      // Show appropriate toast based on backfill status
-      if (data.backfill_status?.in_progress) {
+
+      // Show appropriate toast based on sync status
+      if (
+        data.sync_status?.status === 'SYNCING' ||
+        data.sync_status?.status === 'WAITING'
+      ) {
         toast.info(
-          'Syncing 30 days of Garmin data. This may take a few minutes.'
+          'Syncing Garmin data. Progress shown on your connection card.',
+          { duration: 5000 }
         );
       } else {
         toast.success('Data synchronized successfully');
@@ -137,14 +155,102 @@ export function useSynchronizeDataFromProvider(
 }
 
 /**
- * Get Garmin backfill status for a user
- * Polls every 15 seconds while backfill is in progress
+ * Get Garmin summary sync status (365-day REST sync)
+ * Polls every 10 seconds while sync is in progress (SYNCING or WAITING)
+ */
+export function useGarminSummarySyncStatus(userId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.garmin.summarySyncStatus(userId),
+    queryFn: () => healthService.getGarminSummarySyncStatus(userId),
+    enabled,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      // Poll while SYNCING or WAITING
+      return status === 'SYNCING' || status === 'WAITING' ? 10000 : false;
+    },
+  });
+}
+
+/**
+ * Start Garmin summary sync mutation
+ * Initiates 365-day REST-based data sync
+ */
+export function useStartGarminSummarySync(userId: string) {
+  return useMutation({
+    mutationFn: ({ resume = false }: { resume?: boolean } = {}) =>
+      healthService.startGarminSummarySync(userId, resume),
+    onSuccess: () => {
+      // Invalidate status to start polling
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.garmin.summarySyncStatus(userId),
+      });
+      toast.info(
+        'Starting 1-year Garmin data sync. This will run in the background.'
+      );
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to start sync';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Cancel Garmin summary sync
+ * Stops the sync process; can be resumed later
+ */
+export function useCancelGarminSummarySync(userId: string) {
+  return useMutation({
+    mutationFn: () => healthService.cancelGarminSummarySync(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.garmin.summarySyncStatus(userId),
+      });
+      toast.info('Sync cancelled');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to cancel sync';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Get Garmin backfill status (webhook-based, 90-day sync)
+ * Polls every 10 seconds while backfill is in progress
  */
 export function useGarminBackfillStatus(userId: string, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.garmin.backfillStatus(userId),
     queryFn: () => healthService.getGarminBackfillStatus(userId),
     enabled,
-    refetchInterval: (query) => (query.state.data?.in_progress ? 15000 : false),
+    refetchInterval: (query) => {
+      const status = query.state.data?.overall_status;
+      // Poll while in_progress
+      return status === 'in_progress' ? 10000 : false;
+    },
+  });
+}
+
+/**
+ * Retry Garmin backfill for a specific failed type
+ */
+export function useRetryGarminBackfill(userId: string) {
+  return useMutation({
+    mutationFn: (typeName: string) =>
+      healthService.retryGarminBackfill(userId, typeName),
+    onSuccess: (_, typeName) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.garmin.backfillStatus(userId),
+      });
+      toast.info(`Retrying ${typeName} sync...`);
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to retry sync';
+      toast.error(message);
+    },
   });
 }

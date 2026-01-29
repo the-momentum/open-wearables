@@ -8,6 +8,7 @@ import type {
   TimeSeriesParams,
   TimeSeriesSample,
   SyncResponse,
+  GarminSummarySyncStatus,
   GarminBackfillStatus,
   ActivitySummary,
   SleepSummary,
@@ -59,11 +60,66 @@ export const healthService = {
   },
 
   /**
-   * Get Garmin backfill status for a user
+   * Start 365-day Garmin summary sync via REST endpoints
+   * @param userId - User UUID with active Garmin connection
+   * @param resume - If true, resume from last position; otherwise start fresh
+   */
+  async startGarminSummarySync(
+    userId: string,
+    resume = false
+  ): Promise<SyncResponse> {
+    return apiClient.post<SyncResponse>(
+      `/api/v1/providers/garmin/users/${userId}/summary-sync`,
+      {},
+      { params: { resume } }
+    );
+  },
+
+  /**
+   * Get Garmin summary sync status for a user
+   * Returns progress, current data type, errors, etc.
+   */
+  async getGarminSummarySyncStatus(
+    userId: string
+  ): Promise<GarminSummarySyncStatus> {
+    return apiClient.get<GarminSummarySyncStatus>(
+      `/api/v1/providers/garmin/users/${userId}/summary-sync/status`
+    );
+  },
+
+  /**
+   * Cancel in-progress Garmin summary sync
+   * The sync can be resumed later using startGarminSummarySync with resume=true
+   */
+  async cancelGarminSummarySync(
+    userId: string
+  ): Promise<{ cancelled: boolean; message: string }> {
+    return apiClient.delete<{ cancelled: boolean; message: string }>(
+      `/api/v1/providers/garmin/users/${userId}/summary-sync`
+    );
+  },
+
+  /**
+   * Get Garmin backfill status for all 16 data types
+   * Returns status for each type independently (webhook-based, 90-day sync)
    */
   async getGarminBackfillStatus(userId: string): Promise<GarminBackfillStatus> {
     return apiClient.get<GarminBackfillStatus>(
-      `/api/v1/providers/garmin/users/${userId}/backfill-status`
+      `/api/v1/providers/garmin/users/${userId}/backfill/status`
+    );
+  },
+
+  /**
+   * Retry backfill for a specific failed data type
+   * @param userId - User UUID
+   * @param typeName - Data type to retry (e.g., "sleeps", "dailies", "hrv")
+   */
+  async retryGarminBackfill(
+    userId: string,
+    typeName: string
+  ): Promise<{ success: boolean; type: string; status: string }> {
+    return apiClient.post<{ success: boolean; type: string; status: string }>(
+      `/api/v1/providers/garmin/users/${userId}/backfill/${typeName}/retry`
     );
   },
 
