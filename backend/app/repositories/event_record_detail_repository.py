@@ -1,6 +1,7 @@
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
+from sqlalchemy import Table
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.inspection import inspect
 
@@ -78,7 +79,9 @@ class EventRecordDetailRepository(
         if not base_values:
             return
 
-        base_stmt = insert(EventRecordDetail).values(base_values).on_conflict_do_nothing(index_elements=["record_id"])
+        # Use __table__ for raw INSERT to avoid polymorphic mapper issues
+        base_table = cast(Table, EventRecordDetail.__table__)
+        base_stmt = insert(base_table).values(base_values).on_conflict_do_nothing(index_elements=["record_id"])
         db_session.execute(base_stmt)
 
         # Use appropriate model based on detail_type
@@ -97,12 +100,12 @@ class EventRecordDetailRepository(
         if not child_values:
             return
 
-        child_stmt = insert(model).values(child_values)
+        # Use __table__ for raw INSERT to avoid polymorphic mapper issues
+        child_table = cast(Table, model.__table__)
+        child_stmt = insert(child_table).values(child_values)
 
         # Upsert: Update fields if record exists (fixes NULLs if record was created empty)
-        update_dict = {
-            col_name: getattr(child_stmt.excluded, col_name) for col_name in valid_columns if col_name != "record_id"
-        }
+        update_dict = {col_name: child_stmt.excluded[col_name] for col_name in valid_columns if col_name != "record_id"}
 
         child_stmt = child_stmt.on_conflict_do_update(index_elements=["record_id"], set_=update_dict)
         db_session.execute(child_stmt)
