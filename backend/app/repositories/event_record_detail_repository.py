@@ -123,7 +123,7 @@ class EventRecordDetailRepository(
             child_values.append(data)
 
         if child_values:
-            logger.debug(f"Inserting {len(child_values)} {detail_type} details, sample: {child_values[0]}")
+            logger.info(f"Inserting {len(child_values)} {detail_type} details, sample: {child_values[0]}")
 
         # Use appropriate model based on detail_type
         model = WorkoutDetails if detail_type == "workout" else SleepDetails
