@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # ULTRAHUMAN OAUTH SETTINGS
+    ultrahuman_client_id: str | None = None
+    ultrahuman_client_secret: SecretStr | None = None
+    ultrahuman_redirect_uri: str = "http://localhost:8000/api/v1/oauth/ultrahuman/callback"
+    ultrahuman_default_scope: str = "ring_data cgm_data profile"
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None
