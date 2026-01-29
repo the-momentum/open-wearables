@@ -3,7 +3,6 @@ from uuid import UUID
 
 from sqlalchemy import Table
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.inspection import inspect
 
 from app.database import DbSession
 from app.models import (
@@ -87,7 +86,9 @@ class EventRecordDetailRepository(
         # Use appropriate model based on detail_type
         model = WorkoutDetails if detail_type == "workout" else SleepDetails
 
-        valid_columns = set(inspect(model).columns.keys())
+        # Get columns from the actual child TABLE (not mapper which includes inherited columns)
+        child_table = cast(Table, model.__table__)
+        valid_columns = set(child_table.columns.keys())
 
         # Build values for child table (workout_details or sleep_details)
         child_values = []
@@ -101,7 +102,6 @@ class EventRecordDetailRepository(
             return
 
         # Use __table__ for raw INSERT to avoid polymorphic mapper issues
-        child_table = cast(Table, model.__table__)
         child_stmt = insert(child_table).values(child_values)
 
         # Upsert: Update fields if record exists (fixes NULLs if record was created empty)

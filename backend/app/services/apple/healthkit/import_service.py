@@ -243,15 +243,19 @@ class ImportService:
         workout_bundles = list(self._build_workout_bundles(raw, user_id))
         if workout_bundles:
             records = [record for record, _ in workout_bundles]
-            details = [detail for _, detail in workout_bundles]
+            details_by_id = {detail.record_id: detail for _, detail in workout_bundles}
 
-            # Bulk create records - flush to make them visible for FK constraints
-            self.event_record_service.bulk_create(db_session, records)
+            # Bulk create records - returns only IDs that were actually inserted
+            inserted_ids = self.event_record_service.bulk_create(db_session, records)
             db_session.flush()
 
+            # Filter details to only those records that were actually inserted (avoid FK violation)
+            details_to_insert = [details_by_id[rid] for rid in inserted_ids if rid in details_by_id]
+
             # Bulk create details (requires event_record to exist due to FK)
-            self.event_record_service.bulk_create_details(db_session, details, detail_type="workout")
-            workouts_saved = len(workout_bundles)
+            if details_to_insert:
+                self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="workout")
+            workouts_saved = len(inserted_ids)
 
         # Process time series samples (records)
         samples = self._build_statistic_bundles(raw, user_id)

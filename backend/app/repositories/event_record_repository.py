@@ -127,10 +127,11 @@ class EventRecordRepository(
 
         # 3. Batch insert with ON CONFLICT DO NOTHING
         stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
-        db_session.execute(stmt)
+        result = db_session.execute(stmt.returning(self.model.id))
+        inserted_ids = {row[0] for row in result.fetchall()}
         # NOTE: Caller should commit - allows batching multiple operations
 
-        return [v["id"] for v in values_list]
+        return list(inserted_ids)
 
     def get_record_with_details(
         self,
