@@ -101,21 +101,38 @@ class DataPointSeriesRepository(
     def _fetch_mappings_by_identity(
         self, db_session: DbSession, identities: list[MappingIdentity]
     ) -> dict[MappingIdentity, UUID]:
-        """Batch fetch mappings for a list of identities."""
+        """Batch fetch mappings for a list of identities.
+
+        Note: Uses OR conditions instead of tuple IN clause to handle NULL device_id
+        correctly. SQL's IN clause doesn't match NULL values properly.
+        """
         if not identities:
             return {}
 
-        mappings = (
-            db_session.query(ExternalDeviceMapping)
-            .filter(
-                tuple_(
-                    ExternalDeviceMapping.user_id,
-                    ExternalDeviceMapping.provider_name,
-                    ExternalDeviceMapping.device_id,
-                ).in_(identities)
-            )
-            .all()
-        )
+        from sqlalchemy import and_, or_
+
+        # Build OR conditions to handle NULL device_id properly
+        conditions = []
+        for user_id, provider_name, device_id in identities:
+            if device_id is None:
+                # Use IS NULL for NULL device_id
+                conditions.append(
+                    and_(
+                        ExternalDeviceMapping.user_id == user_id,
+                        ExternalDeviceMapping.provider_name == provider_name,
+                        ExternalDeviceMapping.device_id.is_(None),
+                    )
+                )
+            else:
+                conditions.append(
+                    and_(
+                        ExternalDeviceMapping.user_id == user_id,
+                        ExternalDeviceMapping.provider_name == provider_name,
+                        ExternalDeviceMapping.device_id == device_id,
+                    )
+                )
+
+        mappings = db_session.query(ExternalDeviceMapping).filter(or_(*conditions)).all()
 
         return {(m.user_id, m.provider_name, m.device_id): m.id for m in mappings}
 

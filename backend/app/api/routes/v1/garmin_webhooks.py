@@ -14,7 +14,8 @@ from sqlalchemy.exc import IntegrityError
 from app.database import DbSession
 from app.integrations.celery.tasks.garmin_backfill_task import (
     get_backfill_status,
-    trigger_next_backfill,
+    mark_type_success,
+    trigger_next_pending_type,
 )
 from app.integrations.redis_client import get_redis_client
 from app.models import Developer
@@ -129,6 +130,10 @@ async def _process_wellness_notification(
                     "saved": count,
                 }
             )
+
+            # Mark type as success for backfill tracking
+            if count > 0:
+                mark_type_success(str(user_id), summary_type)
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching {summary_type}: {str(e)}")
@@ -452,6 +457,8 @@ async def garmin_push_notification(
                     )
                     processed_count += 1
                     logger.info(f"Saved activity {activity_id} with record IDs: {created_ids}")
+                    # Mark activities type as success for backfill tracking
+                    mark_type_success(str(internal_user_id), "activities")
 
                 except IntegrityError:
                     # Duplicate activity - already exists in database
@@ -499,6 +506,9 @@ async def garmin_push_notification(
                         errors.append(f"Sleep error: {str(e)}")
                 if sleep_count > 0:
                     logger.info(f"Saved {sleep_count} sleep records for {len(sleeps_users)} user(s)")
+                    # Mark type as success for backfill tracking
+                    for uid in sleeps_users:
+                        mark_type_success(uid, "sleeps")
                 wellness_results["sleeps"] = {"processed": len(payload["sleeps"]), "saved": sleep_count}
 
             # Handle dailies (batch processing - log once at end)
@@ -520,6 +530,8 @@ async def garmin_push_notification(
                         errors.append(f"Dailies error: {str(e)}")
                 if dailies_count > 0:
                     logger.info(f"Saved {dailies_count} dailies records for {len(dailies_users)} user(s)")
+                    for uid in dailies_users:
+                        mark_type_success(uid, "dailies")
                 wellness_results["dailies"] = {"processed": len(payload["dailies"]), "saved": dailies_count}
 
             # Handle epochs (batch processing - log once at end)
@@ -547,6 +559,8 @@ async def garmin_push_notification(
                         f"Saved {epochs_count} epochs records for {len(epochs_users)} user(s) "
                         f"(processed {epochs_processed}/{len(payload['epochs'])} items)"
                     )
+                    for uid in epochs_users:
+                        mark_type_success(uid, "epochs")
                 wellness_results["epochs"] = {"processed": len(payload["epochs"]), "saved": epochs_count}
 
             # Handle bodyComps (batch processing - log once at end)
@@ -567,6 +581,8 @@ async def garmin_push_notification(
                         errors.append(f"BodyComps error: {str(e)}")
                 if body_count > 0:
                     logger.info(f"Saved {body_count} body composition records for {len(bodycomps_users)} user(s)")
+                    for uid in bodycomps_users:
+                        mark_type_success(uid, "bodyComps")
                 wellness_results["bodyComps"] = {"processed": len(payload["bodyComps"]), "saved": body_count}
 
             # Handle HRV (Heart Rate Variability) - batch processing
@@ -587,6 +603,8 @@ async def garmin_push_notification(
                         errors.append(f"HRV error: {str(e)}")
                 if hrv_count > 0:
                     logger.info(f"Saved {hrv_count} HRV records for {len(hrv_users)} user(s)")
+                    for uid in hrv_users:
+                        mark_type_success(uid, "hrv")
                 wellness_results["hrv"] = {"processed": len(payload["hrv"]), "saved": hrv_count}
 
         # Collect all user IDs that were processed for wellness data
@@ -604,17 +622,17 @@ async def garmin_push_notification(
 
         # Chain next backfill request for users with active backfill
         # Sequential flow: each webhook triggers the NEXT data type
-        # sleeps → webhook → dailies → webhook → epochs → ... → next day
+        # sleeps → webhook → dailies → webhook → epochs → ... → complete
         backfill_triggered = []
         for user_id_str in all_users:
-            status = get_backfill_status(user_id_str)
-            if status["in_progress"]:
+            backfill_status = get_backfill_status(user_id_str)
+            if backfill_status["overall_status"] == "in_progress":
                 logger.info(
                     f"Triggering next backfill for user {user_id_str} "
-                    f"(day {status['days_completed'] + 1}/{status['target_days']}, "
-                    f"next type: {status['current_data_type']})"
+                    f"({backfill_status['success_count']}/{backfill_status['total_types']} complete, "
+                    f"{backfill_status['pending_count']} pending)"
                 )
-                trigger_next_backfill.delay(user_id_str)
+                trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
         return {
