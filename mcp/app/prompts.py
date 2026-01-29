@@ -15,9 +15,9 @@ def present_health_data() -> list[Message]:
             """When presenting health data to users, follow these formatting guidelines:
 
 **Numbers and Units:**
-- Steps: use comma separators (e.g., 8,432 steps)
-- Distance: convert meters to km, show as "X.XX km" (e.g., 6240.5m → 6.24 km)
-- Calories: round to whole numbers with comma separators (e.g., 2,150 kcal)
+- Steps: format for readability (e.g., 8432 steps)
+- Distance: convert meters to km, round to 2 decimal places (e.g., 6240.5m → 6.24 km)
+- Calories: round to whole numbers (e.g., 2150 kcal)
 - Duration in minutes: convert to hours/minutes if >= 60 (e.g., 75 min → 1h 15m)
 - Heart rate: always include "bpm" unit (e.g., 72 bpm)
 - Percentages: round to 1 decimal place (e.g., 89.5%)
@@ -30,9 +30,9 @@ def present_health_data() -> list[Message]:
 - Group related metrics together
 
 **Example Good Response:**
-"This week you averaged 8,400 steps per day, totaling 58,800 steps. Your most active
-day was Saturday (12,400 steps), while Wednesday was your lowest (5,200 steps).
-You burned 2,450 active calories and spent 90 minutes in vigorous activity zones."
+"This week you averaged 8400 steps per day, totaling 58800 steps. Your most active
+day was Saturday (12400 steps), while Wednesday was your lowest (5200 steps).
+You burned 2450 active calories and spent 90 minutes in vigorous activity zones."
 
 **Example Bad Response:**
 "steps: 58800, distance_meters: 43680.5, active_calories_kcal: 2450.3,
