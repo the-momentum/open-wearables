@@ -303,10 +303,10 @@ class TestGarmin247Data:
     # Body Composition Tests
     # -------------------------------------------------------------------------
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.create")
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_save_body_composition(
         self,
-        mock_create: MagicMock,
+        mock_bulk_create: MagicMock,
         garmin_247: Garmin247Data,
         db: Session,
         sample_body_comp: dict[str, Any],
@@ -317,7 +317,8 @@ class TestGarmin247Data:
         count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
         # Should create 3 data points: weight, body_fat, BMI
-        assert mock_create.call_count == 3
+        mock_bulk_create.assert_called_once()
+        assert len(mock_bulk_create.call_args[0][1]) == 3
         assert count == 3
 
     def test_save_body_composition_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
