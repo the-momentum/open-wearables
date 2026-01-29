@@ -325,9 +325,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     # Retry with shorter range (14 days for Activity API, 31 for Health API)
                     fallback_days = 14 if data_type in GarminBackfillService.ACTIVITY_API_TYPES else 31
                     start_time_fallback = end_time - timedelta(days=fallback_days)
-                    logger.info(
-                        f"Retrying {data_type} with {fallback_days}-day range for user {user_id}"
-                    )
+                    logger.info(f"Retrying {data_type} with {fallback_days}-day range for user {user_id}")
                     result = backfill_service.trigger_backfill(
                         db=db,
                         user_id=user_uuid,
@@ -346,9 +344,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 is_rate_limit = "429" in error or "rate limit" in error.lower()
                 delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
                 if is_rate_limit:
-                    logger.warning(
-                        f"Rate limit hit for {data_type}, waiting {delay}s before next type"
-                    )
+                    logger.warning(f"Rate limit hit for {data_type}, waiting {delay}s before next type")
                 # Still trigger next type even if this one failed (with delay)
                 trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
                 return {"status": "failed", "error": error}
@@ -368,9 +364,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             is_rate_limit = e.status_code == 429 or "rate limit" in error.lower()
             delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
             if is_rate_limit:
-                logger.warning(
-                    f"Rate limit hit for {data_type}, waiting {delay}s before next type"
-                )
+                logger.warning(f"Rate limit hit for {data_type}, waiting {delay}s before next type")
             # Try to continue with next type (with delay)
             trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
             return {"status": "failed", "error": error}
@@ -404,9 +398,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             complete_backfill(user_id)
             logger.info(f"All {len(ALL_DATA_TYPES)} types complete for user {user_id}")
             return {"status": "complete", "success_count": status["success_count"]}
-        logger.info(
-            f"Backfill finished with {status['failed_count']} failures for user {user_id}"
-        )
+        logger.info(f"Backfill finished with {status['failed_count']} failures for user {user_id}")
         return {
             "status": "partial",
             "success_count": status["success_count"],

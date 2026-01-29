@@ -126,9 +126,7 @@ def make_authenticated_request(
                     time.sleep(backoff_delay)
                     continue
                 # Max retries exceeded
-                logger.error(
-                    f"{provider_name.capitalize()} rate limited (429), max retries exceeded"
-                )
+                logger.error(f"{provider_name.capitalize()} rate limited (429), max retries exceeded")
                 raise HTTPException(
                     status_code=429,
                     detail=f"{provider_name.capitalize()} API error: {response.text}",
@@ -174,7 +172,8 @@ def make_authenticated_request(
                 continue
 
             logger.error(
-                f"{provider_name.capitalize()} API error for user {user_id}: {e.response.status_code} - {e.response.text}",
+                f"{provider_name.capitalize()} API error for user {user_id}: "
+                f"{e.response.status_code} - {e.response.text}",
             )
             if e.response.status_code == 401:
                 raise HTTPException(

@@ -167,9 +167,7 @@ class GarminSummaryService:
                                 f"Rate limited (429) on {endpoint}, will retry ({attempt + 1}/{self.MAX_RETRIES})"
                             )
                             continue
-                        self.logger.error(
-                            f"Rate limited (429) on {endpoint}, max retries exceeded"
-                        )
+                        self.logger.error(f"Rate limited (429) on {endpoint}, max retries exceeded")
                         return []
 
                     self.logger.warning(

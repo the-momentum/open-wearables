@@ -43,7 +43,9 @@ class GarminPullTokenService:
         """
         self.consumer_key = consumer_key or settings.garmin_client_id
         secret = settings.garmin_client_secret
-        self.consumer_secret = consumer_secret or (secret.get_secret_value() if hasattr(secret, 'get_secret_value') else secret)
+        self.consumer_secret = consumer_secret or (
+            secret.get_secret_value() if hasattr(secret, "get_secret_value") else secret
+        )
         self.logger = logging.getLogger(self.__class__.__name__)
 
         if not self.consumer_key or not self.consumer_secret:
