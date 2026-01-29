@@ -131,7 +131,7 @@ class DataPointSeriesRepository(
                 .on_conflict_do_nothing(index_elements=["data_source_id", "series_type_definition_id", "recorded_at"])
             )
             db_session.execute(stmt)
-            db_session.commit()
+            # NOTE: Caller should commit - allows batching multiple operations
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
         try:

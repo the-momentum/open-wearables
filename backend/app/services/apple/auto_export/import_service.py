@@ -169,6 +169,9 @@ class ImportService:
             self.timeseries_service.bulk_create_samples(db_session, all_hr_samples)
             records_saved = len(all_hr_samples)
 
+        # Commit all changes in one transaction
+        db_session.commit()
+
         return {
             "workouts_saved": workouts_saved,
             "records_saved": records_saved,

@@ -62,12 +62,35 @@ class TestCreateUserToken:
 
         assert response.status_code == 200
         token = response.json()["access_token"]
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm], options={"verify_exp": False})
 
         assert payload["sub"] == user_id
         assert payload["scope"] == "sdk"
         assert payload["app_id"] == application.app_id
-        assert "exp" in payload
+        # NOTE: infinite=True is hardcoded in the endpoint for now, so no exp claim is expected.
+        # If this changes back to default expiration, this test needs to check for 'exp'.
+        assert "exp" not in payload
+
+    def test_token_without_exp_when_infinite(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Token with infinite=true should not contain exp claim."""
+        developer = DeveloperFactory()
+        application = ApplicationFactory(developer=developer, app_secret="test_secret")
+        user_id = "123e4567-e89b-12d3-a456-426614174000"
+
+        response = client.post(
+            f"{api_v1_prefix}/users/{user_id}/token",
+            json={"app_id": application.app_id, "app_secret": "test_secret", "infinite": True},
+        )
+
+        assert response.status_code == 200
+        token = response.json()["access_token"]
+        # Decode without exp verification since it has no exp
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm], options={"verify_exp": False})
+
+        assert payload["sub"] == user_id
+        assert payload["scope"] == "sdk"
+        assert payload["app_id"] == application.app_id
+        assert "exp" not in payload
 
     def test_create_token_missing_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """Missing app_id should return validation error."""

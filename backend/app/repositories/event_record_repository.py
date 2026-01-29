@@ -128,7 +128,7 @@ class EventRecordRepository(
         # 3. Batch insert with ON CONFLICT DO NOTHING
         stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
         db_session.execute(stmt)
-        db_session.commit()
+        # NOTE: Caller should commit - allows batching multiple operations
 
         return [v["id"] for v in values_list]
 

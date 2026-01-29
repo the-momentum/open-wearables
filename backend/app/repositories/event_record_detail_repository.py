@@ -56,26 +56,44 @@ class EventRecordDetailRepository(
         creators: list[EventRecordDetailCreate],
         detail_type: DetailType = "workout",
     ) -> None:
-        """Bulk create detail records using batch insert."""
+        """Bulk create detail records using batch insert.
+
+        For joined table inheritance, we need to insert into both the base table
+        (event_record_detail) and the child table (workout_details/sleep_details).
+        """
         if not creators:
             return
 
-        values_list = []
+        # Build values for base table (event_record_detail)
+        base_values = []
+        for creator in creators:
+            base_values.append(
+                {
+                    "record_id": creator.record_id,
+                    "detail_type": detail_type,
+                }
+            )
+
+        if not base_values:
+            return
+
+        base_stmt = insert(EventRecordDetail).values(base_values).on_conflict_do_nothing(index_elements=["record_id"])
+        db_session.execute(base_stmt)
+
+        # Build values for child table (workout_details or sleep_details)
+        child_values = []
         for creator in creators:
             data = creator.model_dump(exclude_none=True)
-            # Add detail_type for polymorphic identity
-            data["detail_type"] = detail_type
-            values_list.append(data)
-
-        if not values_list:
-            return
+            # Remove fields not in child table
+            data.pop("detail_type", None)
+            child_values.append(data)
 
         # Use appropriate model based on detail_type
         model = WorkoutDetails if detail_type == "workout" else SleepDetails
 
-        stmt = insert(model).values(values_list).on_conflict_do_nothing(index_elements=["record_id"])
-        db_session.execute(stmt)
-        db_session.commit()
+        child_stmt = insert(model).values(child_values).on_conflict_do_nothing(index_elements=["record_id"])
+        db_session.execute(child_stmt)
+        # NOTE: Caller should commit - allows batching multiple operations
 
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
         """Get detail by its associated event record ID."""
