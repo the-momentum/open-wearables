@@ -217,8 +217,8 @@ make downgrade                             # Rollback
 ```bash
 cd backend
 
-# Update lockfile after changing pyproject.toml
-uv lock
+# Add new dependencies (updates pyproject.toml, lockfile, and venv)
+uv add <package-name>
 
 # Lint and format (run after changes)
 uv run ruff check . --fix && uv run ruff format .
@@ -230,7 +230,7 @@ uv run ty check .
 uv run pytest -v --cov=app
 ```
 
-Run `uv lock` after modifying dependencies in `pyproject.toml`.
+Use `uv add <package-name>` to add new dependencies (automatically updates pyproject.toml, lockfile, and venv).
 Run `uv run ruff check . --fix && uv run ruff format .` after making changes.
 
 ## Detailed Layer Rules
