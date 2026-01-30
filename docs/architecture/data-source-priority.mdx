@@ -397,9 +397,8 @@ The following architectural decisions have been made:
 |----------|--------|-----------|
 | **Priority scope** | Per-provider (not per-metric) | Simplifies configuration; one priority ranking for all metrics |
 | **Revoked connection data** | Keep and use in /summary | Historical data remains valuable even after disconnect |
-| **SDK + Auto Export** | Allow both, deduplicate | Users may have both; system handles duplicates transparently |
 | **Multiple accounts per provider** | Not allowed | Constraint `(user_id, provider)` - simplifies model and UI |
-| **Partial data** | Fallback to complete data | If priority provider has <80% coverage, use next provider |
+| **Partial data** | Use priority provider regardless of coverage | First iteration always uses highest-priority provider with any data; coverage-based fallback planned for future |
 
 ## Cross-Source Deduplication
 
@@ -407,7 +406,7 @@ The following architectural decisions have been made:
 
 A user may have multiple data channels from the same provider:
 - Apple Health SDK (real-time sync)
-- Apple Health Auto Export (batch export app)
+- Apple Health Auto Export (batch export app through 3rd party app)
 - Apple Health XML (one-time import)
 
 This can result in duplicate data for the same events/metrics.
@@ -447,7 +446,13 @@ def bulk_create_event_records(records: list[EventRecordCreate]) -> list[EventRec
     return db.execute(stmt)
 ```
 
-## Partial Data Fallback
+## Partial Data Fallback (Future)
+
+<Note>
+**Not implemented in first iteration.**
+
+The current implementation always uses the highest-priority provider that has any data for the requested period. Coverage-based fallback strategies will be added in a future release.
+</Note>
 
 ### Problem
 
@@ -456,13 +461,25 @@ The priority provider may have incomplete data for a given day:
 - Garmin has full 24-hour data
 - Which source should `/summary` use?
 
-### Solution
+### Current Behavior
 
-Implement **coverage-based fallback** with a configurable threshold (default: 80%):
+The system uses the **highest-priority provider with any data**, regardless of coverage:
+
+```
+User Jan on 2026-01-28:
+- Apple (priority 1): 14 hours of data = 58% coverage
+- Garmin (priority 2): 24 hours of data = 100% coverage
+
+Result: Use Apple data (highest priority with data)
+```
+
+### Future Enhancement: Coverage-Based Fallback
+
+A future release may implement **coverage-based fallback** with a configurable threshold:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│              Partial Data Fallback Algorithm                     │
+│              Partial Data Fallback Algorithm (PLANNED)           │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. For each provider (by priority order):                       │
 │     a. Query data for the requested date                         │
@@ -473,36 +490,6 @@ Implement **coverage-based fallback** with a configurable threshold (default: 80
 │  2. If no provider meets threshold:                              │
 │     → Use provider with highest coverage (regardless of value)   │
 └─────────────────────────────────────────────────────────────────┘
-```
-
-### Coverage Calculation
-
-```python
-def calculate_coverage(user_id: UUID, provider: str, date: date) -> float:
-    """Calculate data coverage percentage for a provider on a given day."""
-
-    # For time-series data (steps, HR): check hourly buckets
-    hours_with_data = count_distinct_hours_with_data(user_id, provider, date)
-    coverage = hours_with_data / 24.0
-
-    # For event data (sleep, workouts): check if primary event exists
-    # Sleep: at least one sleep record covering night
-    # Workout: not applicable (workouts are discrete events)
-
-    return coverage
-
-# Configuration
-MIN_DATA_COVERAGE_THRESHOLD = 0.8  # 80%
-```
-
-### Example
-
-```
-User Jan on 2026-01-28:
-- Apple (priority 1): 14 hours of data = 58% coverage ❌
-- Garmin (priority 2): 24 hours of data = 100% coverage ✅
-
-Result: Use Garmin data (meets 80% threshold)
 ```
 
 ## NULL Device Model Handling
@@ -649,7 +636,8 @@ The system stores all data in UTC. Daily aggregations use the timezone from `use
 
 The following are **not currently implemented** but may be added:
 
-1. **Per-metric priority** - Different provider rankings for sleep vs. activity vs. body metrics
-2. **Data quality scoring** - Weight measurements from scale > manual entry
-3. **Aggregator chain tracking** - Track full path: Device → App → Apple Health → Our system
-4. **Automatic duplicate detection** - Flag overlapping workouts for user review
+1. **Coverage-based fallback** - Fall back to secondary provider when primary has incomplete data (e.g., <80% coverage)
+2. **Per-metric priority** - Different provider rankings for sleep vs. activity vs. body metrics
+3. **Data quality scoring** - Weight measurements from scale > manual entry
+4. **Aggregator chain tracking** - Track full path: Device → App → Apple Health → Our system
+5. **Automatic duplicate detection** - Flag overlapping workouts for user review
