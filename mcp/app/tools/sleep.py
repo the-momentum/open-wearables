@@ -1,37 +1,16 @@
 """MCP tools for querying sleep records."""
 
 import logging
-from datetime import datetime
 
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.utils import normalize_datetime
 
 logger = logging.getLogger(__name__)
 
 # Create router for sleep-related tools
 sleep_router = FastMCP(name="Sleep Tools")
-
-
-def _format_duration(minutes: int | None) -> str | None:
-    """Format duration in minutes to human-readable string."""
-    if minutes is None:
-        return None
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours}h {mins}m"
-
-
-def _normalize_datetime(dt_str: str | None) -> str | None:
-    """Normalize datetime string to ISO 8601 format."""
-    if not dt_str:
-        return None
-    try:
-        # Parse and normalize to consistent ISO format
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        return dt.isoformat()
-    except (ValueError, AttributeError):
-        return dt_str
 
 
 @sleep_router.tool
@@ -70,7 +49,6 @@ async def list_sleep(
                     "start_datetime": "2025-01-11T23:15:00+00:00",
                     "end_datetime": "2025-01-12T07:30:00+00:00",
                     "duration_minutes": 495,
-                    "duration_formatted": "8h 15m",
                     "source": "whoop"
                 }
             ],
@@ -78,7 +56,6 @@ async def list_sleep(
                 "total_nights": 7,
                 "nights_with_data": 6,
                 "avg_duration_minutes": 465,
-                "avg_duration_formatted": "7h 45m",
                 "min_duration_minutes": 360,
                 "max_duration_minutes": 540
             }
@@ -89,7 +66,7 @@ async def list_sleep(
         - Calculate dates based on user queries:
           "last week" → start_date = 7 days ago, end_date = today
           "January 2025" → start_date = "2025-01-01", end_date = "2025-01-31"
-        - Duration is in minutes. Use duration_formatted for human-readable output.
+        - Duration is in minutes.
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
           spans midnight, so end_datetime is often the day after start_datetime.
@@ -129,10 +106,9 @@ async def list_sleep(
             records.append(
                 {
                     "date": str(record.get("date")),
-                    "start_datetime": _normalize_datetime(record.get("start_time")),
-                    "end_datetime": _normalize_datetime(record.get("end_time")),
+                    "start_datetime": normalize_datetime(record.get("start_time")),
+                    "end_datetime": normalize_datetime(record.get("end_time")),
                     "duration_minutes": duration,
-                    "duration_formatted": _format_duration(duration),
                     "source": source.get("provider") if isinstance(source, dict) else source,
                 }
             )
@@ -142,7 +118,6 @@ async def list_sleep(
             "total_nights": len(records),
             "nights_with_data": len(durations),
             "avg_duration_minutes": None,
-            "avg_duration_formatted": None,
             "min_duration_minutes": None,
             "max_duration_minutes": None,
         }
@@ -152,7 +127,6 @@ async def list_sleep(
             summary.update(
                 {
                     "avg_duration_minutes": round(avg),
-                    "avg_duration_formatted": _format_duration(round(avg)),
                     "min_duration_minutes": min(durations),
                     "max_duration_minutes": max(durations),
                 }
