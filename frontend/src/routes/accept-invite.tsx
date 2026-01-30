@@ -24,6 +24,10 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
+import { DEFAULT_REDIRECTS, ROUTES } from '@/lib/constants/routes';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const Route = createFileRoute('/accept-invite')({
   component: AcceptInvitePage,
@@ -32,7 +36,7 @@ export const Route = createFileRoute('/accept-invite')({
   }),
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/dashboard' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -57,9 +61,6 @@ const STATUS_CONFIG = {
       'This invitation link is invalid or has expired. Please contact your team administrator for a new invitation.',
   },
 } as const;
-
-const INPUT_CLASS =
-  'w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm';
 
 function AcceptInvitePage() {
   const { token } = Route.useSearch();
@@ -102,7 +103,7 @@ function AcceptInvitePage() {
         onSuccess: () => {
           setIsSuccess(true);
           timeoutRef.current = setTimeout(() => {
-            navigate({ to: '/login' });
+            navigate({ to: ROUTES.login });
           }, 2000);
         },
         onError: (error) => {
@@ -153,7 +154,7 @@ function AcceptInvitePage() {
           {status === 'success' ? (
             <div className="p-8">
               <Link
-                to="/login"
+                to={ROUTES.login}
                 className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
               >
                 Sign In Now
@@ -163,7 +164,7 @@ function AcceptInvitePage() {
           ) : (
             <div className="px-8 py-6 border-t border-zinc-900 bg-zinc-950/50">
               <Link
-                to="/login"
+                to={ROUTES.login}
                 className="flex items-center justify-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -198,16 +199,16 @@ function AcceptInvitePage() {
               >
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label
+                    <Label
                       htmlFor="first_name"
-                      className="text-xs font-medium text-zinc-300"
+                      className="text-xs text-zinc-300"
                     >
                       First name
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="first_name"
                       placeholder="John"
-                      className={INPUT_CLASS}
+                      className="bg-zinc-900/50 border-zinc-800"
                       {...form.register('first_name')}
                     />
                     {form.formState.errors.first_name && (
@@ -217,16 +218,16 @@ function AcceptInvitePage() {
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <label
+                    <Label
                       htmlFor="last_name"
-                      className="text-xs font-medium text-zinc-300"
+                      className="text-xs text-zinc-300"
                     >
                       Last name
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="last_name"
                       placeholder="Doe"
-                      className={INPUT_CLASS}
+                      className="bg-zinc-900/50 border-zinc-800"
                       {...form.register('last_name')}
                     />
                     {form.formState.errors.last_name && (
@@ -238,18 +239,15 @@ function AcceptInvitePage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label
-                    htmlFor="password"
-                    className="text-xs font-medium text-zinc-300"
-                  >
+                  <Label htmlFor="password" className="text-xs text-zinc-300">
                     Password
-                  </label>
+                  </Label>
                   <div className="relative">
-                    <input
+                    <Input
                       type={showPassword ? 'text' : 'password'}
                       id="password"
                       placeholder="At least 8 characters"
-                      className={`${INPUT_CLASS} pr-10`}
+                      className="bg-zinc-900/50 border-zinc-800 pr-10"
                       {...form.register('password')}
                     />
                     <button
@@ -272,18 +270,18 @@ function AcceptInvitePage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label
+                  <Label
                     htmlFor="confirmPassword"
-                    className="text-xs font-medium text-zinc-300"
+                    className="text-xs text-zinc-300"
                   >
                     Confirm password
-                  </label>
+                  </Label>
                   <div className="relative">
-                    <input
+                    <Input
                       type={showConfirmPassword ? 'text' : 'password'}
                       id="confirmPassword"
                       placeholder="Confirm your password"
-                      className={`${INPUT_CLASS} pr-10`}
+                      className="bg-zinc-900/50 border-zinc-800 pr-10"
                       {...form.register('confirmPassword')}
                     />
                     <button
@@ -313,10 +311,10 @@ function AcceptInvitePage() {
                   </p>
                 )}
 
-                <button
+                <Button
                   type="submit"
                   disabled={acceptInvitationMutation.isPending}
-                  className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full"
                 >
                   {acceptInvitationMutation.isPending ? (
                     <>
@@ -329,13 +327,13 @@ function AcceptInvitePage() {
                       <ArrowRight className="w-4 h-4 opacity-60" />
                     </>
                   )}
-                </button>
+                </Button>
               </form>
 
               <p className="text-center text-sm text-zinc-500">
                 Already have an account?{' '}
                 <Link
-                  to="/login"
+                  to={ROUTES.login}
                   className="text-white hover:text-zinc-200 transition-colors"
                 >
                   Sign in

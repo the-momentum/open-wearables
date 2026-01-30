@@ -3,7 +3,6 @@ _commit: 0.3.0
 _src_path: https://github.com/the-momentum/python-ai-kit
 default_python_version: '3.13'
 plugins:
-- sqladmin
 - celery
 - sentry
 project_description: ''

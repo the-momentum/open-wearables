@@ -17,6 +17,12 @@ _SDK_WORKOUT_TYPE_KEYS = tuple(SDK_TO_UNIFIED.keys())
 SDKWorkoutType = Literal[_SDK_WORKOUT_TYPE_KEYS]  # type: ignore[valid-type]
 
 
+class WorkoutStatisticJSON(BaseModel):
+    type: str
+    unit: str
+    value: float | int
+
+
 class WorkoutJSON(BaseModel):
     uuid: str | None = None
     user_id: str | None = None
@@ -25,9 +31,3 @@ class WorkoutJSON(BaseModel):
     endDate: datetime
     source: SourceInfo | None = None
     workoutStatistics: list[WorkoutStatisticJSON] | None = None
-
-
-class WorkoutStatisticJSON(BaseModel):
-    type: str
-    unit: str
-    value: float | int

@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from tests.factories import (
     DataPointSeriesFactory,
+    DataSourceFactory,
     DeveloperFactory,
     EventRecordFactory,
-    ExternalDeviceMappingFactory,
     SeriesTypeDefinitionFactory,
     UserConnectionFactory,
     UserFactory,
@@ -35,8 +35,8 @@ class TestGetDashboardStats:
         UserConnectionFactory(user=user1, provider="garmin")
         UserConnectionFactory(user=user2, provider="polar")
 
-        mapping1 = ExternalDeviceMappingFactory(user=user1)
-        mapping2 = ExternalDeviceMappingFactory(user=user2)
+        mapping1 = DataSourceFactory(user=user1)
+        mapping2 = DataSourceFactory(user=user2)
         heart_rate_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
         DataPointSeriesFactory(mapping=mapping1, series_type=heart_rate_type)
@@ -92,7 +92,7 @@ class TestGetDashboardStats:
         UserConnectionFactory(user=user2, provider="polar")
 
         # Create data points
-        mapping1 = ExternalDeviceMappingFactory(user=user1)
+        mapping1 = DataSourceFactory(user=user1)
         heart_rate_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         steps_type = SeriesTypeDefinitionFactory.get_or_create_steps()
         DataPointSeriesFactory(mapping=mapping1, series_type=heart_rate_type, value=75.0)
@@ -137,7 +137,7 @@ class TestGetDashboardStats:
         headers = developer_auth_headers(developer.id)
 
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         # Use pre-seeded series types
         heart_rate_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
@@ -171,7 +171,7 @@ class TestGetDashboardStats:
         headers = developer_auth_headers(developer.id)
 
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         # Create event records with different workout types
         EventRecordFactory(mapping=mapping, category="workout", type_="running")
@@ -226,7 +226,7 @@ class TestGetDashboardStats:
         # Create test data
         user = UserFactory()
         UserConnectionFactory(user=user)
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         DataPointSeriesFactory(mapping=mapping)
 
         # Act
@@ -251,7 +251,7 @@ class TestGetDashboardStats:
 
         # Create test data
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         DataPointSeriesFactory(mapping=mapping)
 
         # Act

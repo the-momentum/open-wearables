@@ -8,6 +8,7 @@ class SleepState(TypedDict):
 
     uuid: str
     source_name: str | None
+    device_id: str | None
     start_time: str
     last_timestamp: str
 

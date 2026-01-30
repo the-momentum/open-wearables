@@ -186,7 +186,7 @@ class TestSuuntoWorkouts:
         assert record.category == "workout"
         assert record.type == WorkoutType.RUNNING.value
         assert record.source_name == "Suunto 9 Peak"
-        assert record.device_id == "SN123456"
+        assert record.device_model == "Suunto 9 Peak"  # Uses displayName from gear
         assert record.duration_seconds == 3600
         assert record.external_id == "123456789"
         assert record.user_id == user_id
@@ -211,7 +211,7 @@ class TestSuuntoWorkouts:
 
         # Assert - when gear is None, source_name defaults to "Suunto"
         assert record.source_name == "Suunto"
-        assert record.device_id is None
+        assert record.device_model is None
 
     def test_normalize_workout_creates_detail_with_metrics(
         self,
@@ -325,10 +325,10 @@ class TestSuuntoWorkouts:
     @patch.object(SuuntoWorkouts, "_make_api_request")
     @patch("app.services.event_record_service.event_record_service.create")
     @patch("app.services.event_record_service.event_record_service.create_detail")
-    @patch("app.repositories.device_repository.DeviceRepository.ensure_device")
+    @patch("app.repositories.data_source_repository.DataSourceRepository.ensure_data_source")
     def test_load_data_creates_records(
         self,
-        mock_ensure_device: MagicMock,
+        mock_ensure_data_source: MagicMock,
         mock_create_detail: MagicMock,
         mock_create: MagicMock,
         mock_request: MagicMock,
@@ -350,5 +350,5 @@ class TestSuuntoWorkouts:
         assert result is True
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
-        # Verify device creation was attempted
-        mock_ensure_device.assert_called_once()
+        # Verify data source creation was attempted
+        mock_ensure_data_source.assert_called_once()

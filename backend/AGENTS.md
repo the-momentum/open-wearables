@@ -227,6 +227,7 @@ uv run ty check .
 uv run pytest -v --cov=app
 ```
 
+Use `uv add <package-name>` to add new dependencies (automatically updates pyproject.toml, lockfile, and venv).
 Run `uv run ruff check . --fix && uv run ruff format .` after making changes.
 
 ## Detailed Layer Rules

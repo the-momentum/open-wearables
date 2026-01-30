@@ -12,6 +12,7 @@ class SDKTokenRequest(BaseModel):
 
     app_id: str | None = None
     app_secret: str | None = None
+    infinite: bool = False  # If True, token will not expire
 
 
 class SDKAuthContext(BaseModel):

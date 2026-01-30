@@ -3,13 +3,15 @@ from typing import Any, get_args, get_origin
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
-from app.mappings import ManyToOne, OneToMany
+from app.mappings import ManyToOne, OneToMany, OneToOne
 
 DEFAULT_ONE_TO_MANY = dict(cascade="all, delete-orphan", passive_deletes=True)
 DEFAULT_MANY_TO_ONE = dict()
+DEFAULT_ONE_TO_ONE = dict(uselist=False)
 RELATION_TYPES: dict[Any, dict] = {
     ManyToOne: DEFAULT_MANY_TO_ONE,
     OneToMany: DEFAULT_ONE_TO_MANY,
+    OneToOne: DEFAULT_ONE_TO_ONE,
 }
 
 
@@ -77,7 +79,12 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
 
         namespace[attr] = relationship(target_name, **options)
 
-        kind = "one" if inner_origin is OneToMany else "many"
+        if inner_origin is OneToMany:
+            kind = "one"
+        elif inner_origin is ManyToOne:
+            kind = "many"
+        else:  # OneToOne
+            kind = "single"
         local_rels[attr] = (kind, target_name)
 
     @classmethod

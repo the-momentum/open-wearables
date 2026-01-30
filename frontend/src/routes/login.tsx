@@ -2,15 +2,19 @@ import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { isAuthenticated } from '@/lib/auth/session';
-import { ArrowRight, Mail, Lock } from 'lucide-react';
+import { ArrowRight, Mail, Lock, Loader2 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { CodePreviewCard } from '@/components/login/code-preview-card';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
   beforeLoad: () => {
     if (typeof window !== 'undefined' && isAuthenticated()) {
-      throw redirect({ to: '/users' });
+      throw redirect({ to: DEFAULT_REDIRECTS.authenticated });
     }
   },
 });
@@ -52,19 +56,16 @@ function LoginPage() {
             <form className="space-y-4" onSubmit={handleLogin}>
               {/* Email Input */}
               <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="text-xs font-medium text-zinc-300"
-                >
+                <Label htmlFor="email" className="text-xs text-zinc-300">
                   Email address
-                </label>
+                </Label>
                 <div className="relative group">
-                  <input
+                  <Input
                     type="email"
                     id="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm"
+                    className="bg-zinc-900/50 border-zinc-800 pr-10"
                     placeholder="developer@example.com"
                     required
                   />
@@ -76,19 +77,16 @@ function LoginPage() {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                <label
-                  htmlFor="password"
-                  className="text-xs font-medium text-zinc-300"
-                >
+                <Label htmlFor="password" className="text-xs text-zinc-300">
                   Password
-                </label>
+                </Label>
                 <div className="relative group">
-                  <input
+                  <Input
                     type="password"
                     id="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-zinc-900/50 border border-zinc-800 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all shadow-sm"
+                    className="bg-zinc-900/50 border-zinc-800 pr-10"
                     placeholder="••••••••"
                     required
                   />
@@ -99,29 +97,10 @@ function LoginPage() {
               </div>
 
               {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="w-full bg-white text-black hover:bg-zinc-200 font-medium text-sm h-9 rounded-md transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <Button type="submit" disabled={isLoggingIn} className="w-full">
                 {isLoggingIn ? (
                   <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     Signing in...
                   </>
                 ) : (
@@ -130,7 +109,7 @@ function LoginPage() {
                     <ArrowRight className="w-4 h-4 opacity-60" />
                   </>
                 )}
-              </button>
+              </Button>
             </form>
           </div>
 

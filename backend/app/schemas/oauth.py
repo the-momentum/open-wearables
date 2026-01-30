@@ -20,6 +20,7 @@ class ProviderName(str, Enum):
     POLAR = "polar"
     SUUNTO = "suunto"
     WHOOP = "whoop"
+    UNKNOWN = "unknown"
 
 
 class ConnectionStatus(str, Enum):
@@ -57,9 +58,9 @@ class UserConnectionCreate(UserConnectionBase):
     model_config = ConfigDict(populate_by_name=True)
 
     id: UUID = Field(default_factory=uuid4)
-    access_token: str
+    access_token: str | None = None  # Optional for SDK-based providers (e.g., Apple)
     refresh_token: str | None = None
-    token_expires_at: datetime
+    token_expires_at: datetime | None = None  # Optional for SDK-based providers
     status: ConnectionStatus = ConnectionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

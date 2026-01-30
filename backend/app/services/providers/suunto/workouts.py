@@ -5,7 +5,8 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.suunto import get_unified_workout_type
 from app.database import DbSession
-from app.repositories.device_repository import DeviceRepository
+from app.models import DataSource
+from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -18,6 +19,10 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 
 class SuuntoWorkouts(BaseWorkoutsTemplate):
     """Suunto implementation of workouts template."""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.data_source_repo = DataSourceRepository(DataSource)
 
     def _get_suunto_headers(self) -> dict[str, str]:
         """Get Suunto-specific headers including subscription key."""
@@ -153,8 +158,10 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         else:
             source_name = "Suunto"
 
-        # Device ID: use serial number from gear
-        device_id = raw_workout.gear.serialNumber if raw_workout.gear else None
+        # Device model: use display name or name from gear
+        device_model = None
+        if raw_workout.gear:
+            device_model = raw_workout.gear.displayName or raw_workout.gear.name
 
         metrics = self._build_metrics(raw_workout)
 
@@ -165,13 +172,13 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name=source_name,
-            device_id=device_id,
+            device_model=device_model,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
             external_id=str(raw_workout.workoutId),
-            provider_name=self.provider_name,  # Provider name for mapping (e.g., "suunto")
+            source=self.provider_name,  # Provider name for mapping (e.g., "suunto")
             user_id=user_id,
         )
 
@@ -228,17 +235,17 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         workouts_data = response.get("payload", [])
         workouts = [SuuntoWorkoutJSON(**w) for w in workouts_data]
 
-        device_repo = DeviceRepository()
-
         for workout in workouts:
-            # Save device info if available
-            if workout.gear and workout.gear.serialNumber:
-                device_repo.ensure_device(
+            # Save device/data source info if available
+            if workout.gear:
+                device_name = workout.gear.displayName or workout.gear.name
+                self.data_source_repo.ensure_data_source(
                     db,
-                    provider_name="suunto",
-                    serial_number=workout.gear.serialNumber,
-                    name=workout.gear.displayName or workout.gear.name,
-                    sw_version=workout.gear.swVersion,
+                    user_id=user_id,
+                    device_model=device_name,
+                    software_version=workout.gear.swVersion,
+                    manufacturer="Suunto",
+                    source=self.provider_name,
                 )
 
         for record, details in self._build_bundles(workouts, user_id):
@@ -266,15 +273,16 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         if isinstance(raw_workout, dict):
             raw_workout = SuuntoWorkoutJSON(**raw_workout)
 
-        # Save device info if available
-        if raw_workout.gear and raw_workout.gear.serialNumber:
-            device_repo = DeviceRepository()
-            device_repo.ensure_device(
+        # Save device/data source info if available
+        if raw_workout.gear:
+            device_name = raw_workout.gear.displayName or raw_workout.gear.name
+            self.data_source_repo.ensure_data_source(
                 db,
-                provider_name="suunto",
-                serial_number=raw_workout.gear.serialNumber,
-                name=raw_workout.gear.displayName or raw_workout.gear.name,
-                sw_version=raw_workout.gear.swVersion,
+                user_id=user_id,
+                device_model=device_name,
+                software_version=raw_workout.gear.swVersion,
+                manufacturer="Suunto",
+                source=self.provider_name,
             )
 
         super()._process_single_workout(db, user_id, raw_workout)

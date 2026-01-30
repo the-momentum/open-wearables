@@ -114,7 +114,7 @@ class TestAppleStrategy:
 
         # Assert
         assert strategy.workouts is not None
-        assert strategy.workouts.provider_name == "apple"
+        assert strategy.workouts.provider_name == "apple_health_sdk"
         assert strategy.workouts.api_base_url == ""
         assert strategy.workouts.oauth is None
 

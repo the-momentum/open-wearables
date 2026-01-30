@@ -32,11 +32,16 @@ from .common import (
     RootJSON,
 )
 from .common_types import (
-    DataSource,
     ErrorDetails,
     PaginatedResponse,
     Pagination,
+    SourceMetadata,
     TimeseriesMetadata,
+)
+from .data_source import (
+    DataSourceCreate,
+    DataSourceResponse,
+    DataSourceUpdate,
 )
 from .developer import (
     DeveloperCreate,
@@ -66,11 +71,6 @@ from .events import (
     Workout,
     WorkoutDetailed,
     WorkoutType,
-)
-from .external_mapping import (
-    ExternalMappingCreate,
-    ExternalMappingResponse,
-    ExternalMappingUpdate,
 )
 from .filter_params import FilterParams
 from .garmin.activity_import import (
@@ -231,9 +231,9 @@ __all__ = [
     "EventRecordDetailResponse",
     "EventRecordDetailUpdate",
     "WorkoutType",
-    "ExternalMappingCreate",
-    "ExternalMappingUpdate",
-    "ExternalMappingResponse",
+    "DataSourceCreate",
+    "DataSourceUpdate",
+    "DataSourceResponse",
     "ActivityAggregateResult",
     "ActiveMinutesResult",
     "IntensityMinutesResult",
@@ -286,7 +286,7 @@ __all__ = [
     "SyncAllUsersResult",
     "SyncVendorDataResult",
     # Common Types
-    "DataSource",
+    "SourceMetadata",
     "ErrorDetails",
     "PaginatedResponse",
     "Pagination",
