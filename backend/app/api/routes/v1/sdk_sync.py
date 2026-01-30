@@ -1,4 +1,3 @@
-import json
 import uuid
 from logging import getLogger
 
@@ -47,10 +46,10 @@ async def sync_sdk_data(
     batch_id = str(uuid.uuid4())
 
     # Extract and count data types from payload
-    data = body.get("data", {})
-    records_count = len(data.get("records", []))
-    workouts_count = len(data.get("workouts", []))
-    sleep_count = len(data.get("sleep", []))
+    data = body.data
+    records_count = len(data.records)
+    workouts_count = len(data.workouts)
+    sleep_count = len(data.sleep)
 
     # Log initial batch receipt with counts
     log_structured(
