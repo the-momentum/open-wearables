@@ -292,7 +292,7 @@ class TestPolarWorkoutsNormalization:
         assert record.category == "workout"
         assert record.type == WorkoutType.RUNNING.value
         assert record.source_name == "Polar Vantage V2"
-        assert record.device_id == "Polar Vantage V2"
+        assert record.device_model == "Polar Vantage V2"
         assert record.duration_seconds == 3600
         assert record.external_id == "ABC123"
         assert record.user_id == user.id

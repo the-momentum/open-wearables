@@ -28,6 +28,7 @@ import type { UserRead, UserQueryParams } from '@/lib/api/types';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { truncateId } from '@/lib/utils/format';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAppleXmlUpload } from '@/hooks/api/use-users';
 import {
   Pagination,
@@ -198,9 +199,8 @@ export function UsersTable({
           </code>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             onClick={() => handleCopyId(row.original.id)}
-            className="h-6 w-6"
           >
             {copiedId === row.original.id ? (
               <Check className="h-3 w-3 text-emerald-500" />
@@ -324,11 +324,10 @@ export function UsersTable({
             )}
           </Button>
           <Button
-            variant="outline"
+            variant="destructive-outline"
             size="icon"
             onClick={() => onDelete(row.original.id)}
             disabled={isDeleting}
-            className="hover:text-red-400 hover:bg-destructive/10"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -397,12 +396,12 @@ export function UsersTable({
       <div className="p-4 border-b border-zinc-800">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-          <input
+          <Input
             type="text"
             placeholder="Search by name or email..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-9 pr-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700 transition-all"
+            className="bg-zinc-900 border-zinc-800 px-9"
           />
           {isLoading && (
             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 animate-spin" />

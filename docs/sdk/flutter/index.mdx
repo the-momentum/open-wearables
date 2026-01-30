@@ -1,0 +1,213 @@
+---
+title: "Flutter SDK"
+sidebarTitle: "Overview"
+description: "Background health data sync for Flutter apps using Apple HealthKit"
+---
+
+## Introduction
+
+The Open Wearables Flutter SDK (`health_bg_sync`) enables secure background synchronization of health data from Apple HealthKit (iOS) to the Open Wearables platform.
+
+<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
+  View source code, report issues, and contribute to the Flutter SDK.
+</Card>
+
+## Features
+
+- **Background Sync** - Health data syncs even when your app is in the background
+- **Incremental Updates** - Only syncs new data using anchored queries
+- **Secure Storage** - Credentials stored in iOS Keychain
+- **Simple Authentication** - Token-based auth with optional auto-refresh
+- **Wide Data Support** - Steps, heart rate, workouts, sleep, and 40+ data types
+
+## Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| iOS Version | iOS 13.0+ |
+| Xcode | Xcode 14+ |
+| Apple Developer Account | Required for HealthKit entitlement |
+| HealthKit Capability | Must be enabled in Xcode |
+| Physical Device | HealthKit doesn't work in iOS Simulator |
+
+## Installation
+
+<Steps>
+  <Step title="Add the dependency">
+    Add `health_bg_sync` to your `pubspec.yaml`:
+
+    ```yaml
+    dependencies:
+      health_bg_sync: ^0.1.0
+    ```
+
+    Then run:
+
+    ```bash
+    flutter pub get
+    ```
+  </Step>
+
+  <Step title="iOS Configuration">
+    Add the following to your `ios/Runner/Info.plist`:
+
+    ```xml
+    <!-- Health data permission -->
+    <key>NSHealthShareUsageDescription</key>
+    <string>This app syncs your health data to your account.</string>
+
+    <!-- Background modes for sync -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+
+    <!-- Background task identifiers -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.healthbgsync.task.refresh</string>
+        <string>com.healthbgsync.task.process</string>
+    </array>
+    ```
+
+    Then enable HealthKit capability in Xcode:
+    
+    1. Open `ios/Runner.xcworkspace` in Xcode
+    2. Select your target → **Signing & Capabilities**
+    3. Click **+ Capability** → Add **HealthKit**
+    4. Check **Background Delivery** if you want updates while app is closed
+  </Step>
+</Steps>
+
+## Quick Start
+
+Here's the minimal code to get health sync working:
+
+```dart
+import 'package:health_bg_sync/health_bg_sync.dart';
+
+class HealthService {
+  Future<void> initialize() async {
+    // 1. Configure the SDK
+    await HealthBgSync.configure(
+      environment: HealthBgSyncEnvironment.production,
+    );
+
+    // 2. Check if already signed in (session restored from Keychain)
+    if (HealthBgSync.isSignedIn) {
+      print('Session restored for ${HealthBgSync.currentUser?.userId}');
+      return;
+    }
+
+    // 3. Get credentials from YOUR backend
+    final credentials = await yourBackend.getHealthCredentials();
+
+    // 4. Sign in with the SDK
+    await HealthBgSync.signIn(
+      userId: credentials.userId,
+      accessToken: credentials.accessToken,
+    );
+
+    // 5. Request health permissions
+    await HealthBgSync.requestAuthorization(
+      types: [
+        HealthDataType.steps,
+        HealthDataType.heartRate,
+        HealthDataType.sleep,
+        HealthDataType.workout,
+      ],
+    );
+
+    // 6. Start background sync
+    await HealthBgSync.startBackgroundSync();
+  }
+}
+```
+
+## Documentation
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="book" href="/sdk/flutter/integration">
+    Complete guide to integrating the SDK including authentication flow, backend setup, and best practices.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/flutter/troubleshooting">
+    Common issues and their solutions for iOS and Android.
+  </Card>
+</CardGroup>
+
+## Supported Health Data Types
+
+The SDK supports 40+ health data types across multiple categories:
+
+<AccordionGroup>
+  <Accordion title="Activity & Fitness">
+    | Type | Description |
+    |------|-------------|
+    | `steps` | Step count |
+    | `distanceWalkingRunning` | Walking/running distance |
+    | `distanceCycling` | Cycling distance |
+    | `flightsClimbed` | Floors climbed |
+    | `walkingSpeed` | Average walking speed |
+    | `walkingStepLength` | Step length |
+    | `sixMinuteWalkTestDistance` | 6-minute walk test |
+  </Accordion>
+
+  <Accordion title="Heart & Vitals">
+    | Type | Description |
+    |------|-------------|
+    | `heartRate` | Heart rate measurements |
+    | `restingHeartRate` | Resting heart rate |
+    | `heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `vo2Max` | VO2 max |
+    | `oxygenSaturation` | Blood oxygen |
+    | `respiratoryRate` | Breathing rate |
+    | `bloodPressure` | Blood pressure readings |
+  </Accordion>
+
+  <Accordion title="Body Measurements">
+    | Type | Description |
+    |------|-------------|
+    | `bodyMass` | Weight |
+    | `height` | Height |
+    | `bmi` | Body Mass Index |
+    | `bodyFatPercentage` | Body fat % |
+    | `leanBodyMass` | Lean body mass |
+    | `waistCircumference` | Waist circumference (iOS 16+) |
+    | `bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Sleep & Mindfulness">
+    | Type | Description |
+    |------|-------------|
+    | `sleep` | Sleep sessions and stages |
+    | `mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Nutrition">
+    | Type | Description |
+    |------|-------------|
+    | `dietaryEnergyConsumed` | Calories consumed |
+    | `dietaryCarbohydrates` | Carbs |
+    | `dietaryProtein` | Protein |
+    | `dietaryFatTotal` | Total fat |
+    | `dietaryWater` | Water intake |
+  </Accordion>
+
+  <Accordion title="Workouts">
+    | Type | Description |
+    |------|-------------|
+    | `workout` | All workout types with metadata |
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="arrow-right" href="/sdk/flutter/integration">
+    Complete step-by-step integration guide.
+  </Card>
+  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open_wearables_health_sdk#api-reference">
+    Full API documentation on GitHub.
+  </Card>
+</CardGroup>

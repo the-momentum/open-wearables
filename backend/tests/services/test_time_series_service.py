@@ -22,7 +22,7 @@ from app.schemas.timeseries import (
 from app.services.timeseries_service import timeseries_service
 from tests.factories import (
     DataPointSeriesFactory,
-    ExternalDeviceMappingFactory,
+    DataSourceFactory,
     SeriesTypeDefinitionFactory,
     UserFactory,
 )
@@ -35,7 +35,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create heart rate samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_1")
+        DataSourceFactory(source="apple", device_model="device_1")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -44,7 +44,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
-                device_id="device_1",
+                device_model="device_1",
                 recorded_at=now - timedelta(minutes=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
@@ -63,7 +63,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create step samples."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_2")
+        DataSourceFactory(source="apple", device_model="device_2")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -72,7 +72,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
-                device_id="device_2",
+                device_model="device_2",
                 recorded_at=now - timedelta(hours=i),
                 value=1000 + i * 100,
                 series_type=SeriesType.steps,
@@ -91,7 +91,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
         """Should bulk create samples of different series types."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device_3")
+        DataSourceFactory(source="apple", device_model="device_3")
 
         initial_count = timeseries_service.get_total_count(db)
         now = datetime.now(timezone.utc)
@@ -100,7 +100,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
-                device_id="device_3",
+                device_model="device_3",
                 recorded_at=now - timedelta(minutes=1),
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -109,7 +109,7 @@ class TestTimeSeriesServiceBulkCreateSamples:
                 id=uuid4(),
                 user_id=user.id,
                 provider_name="apple",
-                device_id="device_3",
+                device_model="device_3",
                 recorded_at=now - timedelta(minutes=2),
                 value=5000,
                 series_type=SeriesType.steps,
@@ -130,7 +130,7 @@ class TestTimeSeriesServiceGetDailyHistogram:
     def test_get_daily_histogram_groups_by_day(self, db: Session) -> None:
         """Should group data points by day."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         start_date = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
@@ -187,7 +187,7 @@ class TestTimeSeriesServiceGetCountBySeriesType:
     def test_get_count_by_series_type_groups_correctly(self, db: Session) -> None:
         """Should group and count data points by series type."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         step_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
@@ -210,7 +210,7 @@ class TestTimeSeriesServiceGetCountBySeriesType:
     def test_get_count_by_series_type_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         # Use existing seeded series types to avoid ID conflicts
         type1 = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         type2 = SeriesTypeDefinitionFactory.get_or_create_steps()
@@ -239,15 +239,15 @@ class TestTimeSeriesServiceGetCountBySeriesType:
         assert results == []
 
 
-class TestTimeSeriesServiceGetCountByProvider:
-    """Test counting data points by provider."""
+class TestTimeSeriesServiceGetCountBySource:
+    """Test counting data points by source."""
 
-    def test_get_count_by_provider_groups_correctly(self, db: Session) -> None:
-        """Should group and count data points by provider."""
+    def test_get_count_by_source_groups_correctly(self, db: Session) -> None:
+        """Should group and count data points by source."""
         # Arrange
         user = UserFactory()
-        apple_mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple")
-        garmin_mapping = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
+        apple_mapping = DataSourceFactory(user=user, source="apple")
+        garmin_mapping = DataSourceFactory(user=user, source="garmin")
 
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
@@ -260,27 +260,27 @@ class TestTimeSeriesServiceGetCountByProvider:
             DataPointSeriesFactory(mapping=garmin_mapping, series_type=series_type)
 
         # Act
-        results = timeseries_service.get_count_by_provider(db)
+        results = timeseries_service.get_count_by_source(db)
 
         # Assert
         results_dict = dict(results)
         assert results_dict["apple"] == 4
         assert results_dict["garmin"] == 2
 
-    def test_get_count_by_provider_ordered_by_count(self, db: Session) -> None:
+    def test_get_count_by_source_ordered_by_count(self, db: Session) -> None:
         """Should order results by count descending."""
         # Arrange
-        results = timeseries_service.get_count_by_provider(db)
+        results = timeseries_service.get_count_by_source(db)
 
         if len(results) > 1:
             # Verify descending order
             for i in range(len(results) - 1):
                 assert results[i][1] >= results[i + 1][1]
 
-    def test_get_count_by_provider_empty_result(self, db: Session) -> None:
+    def test_get_count_by_source_empty_result(self, db: Session) -> None:
         """Should return empty list when no data points exist."""
         # Act
-        results = timeseries_service.get_count_by_provider(db)
+        results = timeseries_service.get_count_by_source(db)
 
         # Assert
         assert results == []
@@ -292,7 +292,7 @@ class TestTimeSeriesServiceGetTotalCount:
     def test_get_total_count(self, db: Session) -> None:
         """Should return total count of all data points."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         initial_count = timeseries_service.get_total_count(db)
@@ -324,7 +324,7 @@ class TestTimeSeriesServiceGetCountInRange:
     def test_get_count_in_range(self, db: Session) -> None:
         """Should count data points within date range."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         now = datetime.now(timezone.utc)

@@ -1,7 +1,78 @@
 ---
 title: "Apple Health"
-description: "Setup guide for Apple Health integration"
+description: "Setup guide for Apple Health integration using the Flutter SDK"
 ---
 
-TODO
+## Overview
+
+Apple Health integration uses a **push-based model** where health data is sent from the user's device to Open Wearables using our mobile SDK. This is different from cloud providers like Garmin or Polar that use webhooks.
+
+<Note>
+  **Why Push-Based?** Apple HealthKit doesn't expose a cloud API. Health data lives exclusively on the user's device, so your mobile app must actively push data to your backend using our SDK.
+</Note>
+
+## Integration Options
+
+<CardGroup cols={2}>
+  <Card title="Flutter SDK" icon="mobile" href="/sdk/flutter">
+    Cross-platform SDK for iOS and Android. Recommended for most applications.
+  </Card>
+  <Card title="XML Import" icon="file-import" href="/api-reference/guides/apple-xml-import">
+    Import Apple Health data from XML exports. Useful for one-time migrations.
+  </Card>
+</CardGroup>
+
+## Flutter SDK Quick Start
+
+The fastest way to integrate Apple Health:
+
+```dart
+import 'package:health_bg_sync/health_bg_sync.dart';
+
+// 1. Configure SDK
+await HealthBgSync.configure();
+
+// 2. Sign in with credentials from your backend
+await HealthBgSync.signIn(
+  userId: credentials.userId,
+  accessToken: credentials.accessToken,
+);
+
+// 3. Request permissions
+await HealthBgSync.requestAuthorization(
+  types: [
+    HealthDataType.steps,
+    HealthDataType.heartRate,
+    HealthDataType.sleep,
+  ],
+);
+
+// 4. Start background sync
+await HealthBgSync.startBackgroundSync();
+```
+
+<Card title="Full Integration Guide" icon="arrow-right" href="/sdk/flutter/integration">
+  Complete step-by-step guide including backend setup, authentication flow, and best practices.
+</Card>
+
+## Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| iOS Version | iOS 13.0+ |
+| Apple Developer Account | Required for HealthKit entitlement |
+| Physical Device | HealthKit doesn't work in iOS Simulator |
+
+## Supported Data Types
+
+Apple Health provides the widest range of health data types:
+
+- **Activity**: Steps, distance, flights climbed, active energy
+- **Heart**: Heart rate, resting HR, HRV, VO2 max
+- **Sleep**: Sleep sessions with stages
+- **Workouts**: All workout types with detailed metrics
+- **Body**: Weight, height, body fat percentage
+- **Nutrition**: Dietary intake tracking
+
+See the [Flutter SDK documentation](/sdk/flutter#supported-health-data-types) for the complete list of supported types.
 

@@ -198,4 +198,3 @@ The backend also includes:
 
 - **Celery**: For background task processing
 - **Flower**: Celery monitoring (available at http://localhost:5555 when running)
-- **SQLAdmin**: Admin interface for database management

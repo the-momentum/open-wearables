@@ -43,7 +43,7 @@ class TestGarmin247Data:
             "durationInSeconds": 28800,  # 8 hours
             "deepSleepDurationInSeconds": 7200,  # 2 hours
             "lightSleepDurationInSeconds": 14400,  # 4 hours
-            "remSleepDurationInSeconds": 5400,  # 1.5 hours
+            "remSleepInSeconds": 5400,  # 1.5 hours
             "awakeDurationInSeconds": 1800,  # 30 minutes
             "averageHeartRate": 58,
             "lowestHeartRate": 48,

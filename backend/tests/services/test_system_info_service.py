@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from app.services.system_info_service import system_info_service
 from tests.factories import (
     DataPointSeriesFactory,
+    DataSourceFactory,
     EventRecordFactory,
-    ExternalDeviceMappingFactory,
     SeriesTypeDefinitionFactory,
     UserConnectionFactory,
     UserFactory,
@@ -154,7 +154,7 @@ class TestSystemInfoServiceGetSystemInfo:
         initial_info = system_info_service.get_system_info(db)
         initial_count = initial_info.data_points.count
 
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
 
         # Create data points
@@ -191,7 +191,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_top_series_types(self, db: Session) -> None:
         """Should return top series types by count."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         step_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
@@ -223,7 +223,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_top_series_types_limited_to_five(self, db: Session) -> None:
         """Should return at most 5 top series types."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Use existing seeded series types to avoid conflicts
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
@@ -244,7 +244,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_top_workout_types(self, db: Session) -> None:
         """Should return top workout types by count."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Create workouts of different types
         for _ in range(8):
@@ -280,7 +280,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_top_workout_types_limited_to_five(self, db: Session) -> None:
         """Should return at most 5 top workout types."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Create 6 different workout types
         for i in range(6):
@@ -296,7 +296,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_handles_null_workout_type(self, db: Session) -> None:
         """Should handle workouts with null type."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
 
         # Create workouts with null type
         EventRecordFactory(mapping=mapping, category="workout", type_=None)

@@ -257,22 +257,58 @@ export interface BloodPressure {
   reading_count: number | null;
 }
 
-export interface BodySummary {
-  date: string;
-  source: DataSource;
-  // Static/demographic
-  age: number | null;
-  // Body composition (latest values)
-  height_cm: number | null;
+/**
+ * Slow-changing body composition metrics.
+ * Returns the most recent recorded value for each field.
+ */
+export interface BodySlowChanging {
   weight_kg: number | null;
+  height_cm: number | null;
   body_fat_percent: number | null;
   muscle_mass_kg: number | null;
   bmi: number | null;
-  // Vitals (7-day rolling averages)
+  age: number | null;
+}
+
+/**
+ * Vitals averaged over a configurable time period (1 or 7 days).
+ */
+export interface BodyAveraged {
+  period_days: number;
   resting_heart_rate_bpm: number | null;
   avg_hrv_sdnn_ms: number | null;
+  period_start: string;
+  period_end: string;
+}
+
+/**
+ * Point-in-time metrics only returned if measured within a time window.
+ */
+export interface BodyLatest {
+  body_temperature_celsius: number | null;
+  temperature_measured_at: string | null;
   blood_pressure: BloodPressure | null;
-  basal_body_temperature_celsius: number | null;
+  blood_pressure_measured_at: string | null;
+}
+
+/**
+ * Comprehensive body metrics with semantic grouping.
+ * Returns null from API if no body data exists.
+ */
+export interface BodySummary {
+  source: DataSource;
+  slow_changing: BodySlowChanging;
+  averaged: BodyAveraged;
+  latest: BodyLatest;
+}
+
+/**
+ * Query parameters for body summary endpoint.
+ */
+export interface BodySummaryParams {
+  average_period?: 1 | 7;
+  latest_window_hours?: number;
+  [key: string]: number | undefined;
 }
 
 export interface RecoverySummary {
@@ -450,6 +486,12 @@ export interface EventRecordResponse {
   };
   calories_kcal?: number | null;
   distance_meters?: number | null;
+  // Heart rate fields (matching backend Workout schema)
+  avg_heart_rate_bpm?: number | null;
+  max_heart_rate_bpm?: number | null;
+  // Elevation and pace
+  elevation_gain_meters?: number | null;
+  avg_pace_sec_per_km?: number | null;
 
   // Legacy fields (keeping for compatibility if needed, but marked optional)
   user_id?: string;
@@ -459,27 +501,23 @@ export interface EventRecordResponse {
   device_id?: string | null;
   start_datetime?: string;
   end_datetime?: string;
-  heart_rate_min?: number | string | null;
-  heart_rate_max?: number | string | null;
-  heart_rate_avg?: number | string | null;
   steps_min?: number | string | null;
   steps_max?: number | string | null;
   steps_avg?: number | string | null;
   max_speed?: number | string | null;
   max_watts?: number | string | null;
-  moving_time_seconds: number | string | null;
-  total_elevation_gain: number | string | null;
-  average_speed: number | string | null;
-  average_watts: number | string | null;
-  elev_high: number | string | null;
-  elev_low: number | string | null;
-  sleep_total_duration_minutes: number | string | null;
-  sleep_time_in_bed_minutes: number | string | null;
-  sleep_efficiency_score: number | string | null;
-  sleep_deep_minutes: number | string | null;
-  sleep_rem_minutes: number | string | null;
-  sleep_light_minutes: number | string | null;
-  sleep_awake_minutes: number | string | null;
+  moving_time_seconds?: number | string | null;
+  average_speed?: number | string | null;
+  average_watts?: number | string | null;
+  elev_high?: number | string | null;
+  elev_low?: number | string | null;
+  sleep_total_duration_minutes?: number | string | null;
+  sleep_time_in_bed_minutes?: number | string | null;
+  sleep_efficiency_score?: number | string | null;
+  sleep_deep_minutes?: number | string | null;
+  sleep_rem_minutes?: number | string | null;
+  sleep_light_minutes?: number | string | null;
+  sleep_awake_minutes?: number | string | null;
 }
 
 export interface HealthDataParams {

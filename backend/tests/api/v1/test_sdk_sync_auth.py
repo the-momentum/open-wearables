@@ -23,13 +23,15 @@ def mock_celery_tasks() -> Generator[MagicMock, None, None]:
 class TestSDKSyncWithSDKToken:
     """Tests for SDK sync endpoints with SDK token authentication."""
 
-    def test_healthion_endpoint_accepts_sdk_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """SDK token should be accepted for healthion sync."""
+    def test_apple_health_sdk_endpoint_accepts_sdk_token(
+        self, client: TestClient, db: Session, api_v1_prefix: str
+    ) -> None:
+        """SDK token should be accepted for apple-health-sdk sync."""
         user_id = "123e4567-e89b-12d3-a456-426614174000"
         token = create_sdk_user_token("app_123", user_id)
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/healthion",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple",
             headers={"Authorization": f"Bearer {token}"},
             json={"data": {"workouts": [], "records": []}},
         )
@@ -38,44 +40,15 @@ class TestSDKSyncWithSDKToken:
         # May be 400/422 if data format is wrong, but auth should pass
         assert response.status_code != 401
 
-    def test_auto_health_export_accepts_sdk_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """SDK token should be accepted for auto-health-export sync."""
-        user_id = "123e4567-e89b-12d3-a456-426614174000"
-        token = create_sdk_user_token("app_123", user_id)
-
-        response = client.post(
-            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/auto-health-export",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"data": {"workouts": []}},
-        )
-
-        # Should not be 401
-        assert response.status_code != 401
-
-    def test_healthion_still_accepts_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """API key should still work (backwards compatibility)."""
+    def test_apple_health_sdk_still_accepts_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """API key should still work for apple-health-sdk (backwards compatibility)."""
         api_key = ApiKeyFactory()
         user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple/healthion",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple",
             headers={"X-Open-Wearables-API-Key": api_key.id},
             json={"data": {"workouts": [], "records": []}},
-        )
-
-        # Should not be 401
-        assert response.status_code != 401
-
-    def test_auto_health_export_still_accepts_api_key(
-        self, client: TestClient, db: Session, api_v1_prefix: str
-    ) -> None:
-        """API key should still work for auto-health-export."""
-        api_key = ApiKeyFactory()
-
-        response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple/auto-health-export",
-            headers={"X-Open-Wearables-API-Key": api_key.id},
-            json={"data": {"workouts": []}},
         )
 
         # Should not be 401
@@ -84,7 +57,7 @@ class TestSDKSyncWithSDKToken:
     def test_no_auth_returns_401(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """No authentication should return 401."""
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple/healthion",
+            f"{api_v1_prefix}/sdk/users/user_456/sync/apple",
             json={"data": {"workouts": [], "records": []}},
         )
 

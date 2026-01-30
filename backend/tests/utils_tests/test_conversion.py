@@ -12,9 +12,9 @@ from app.schemas import ConnectionStatus
 from app.utils.conversion import base_to_dict
 from tests.factories import (
     DataPointSeriesFactory,
+    DataSourceFactory,
     DeveloperFactory,
     EventRecordFactory,
-    ExternalDeviceMappingFactory,
     UserConnectionFactory,
     UserFactory,
 )
@@ -188,7 +188,7 @@ class TestBaseToDictEventRecord:
     def test_base_to_dict_event_record(self, db: Session) -> None:
         """Test converting EventRecord model to dictionary."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         event = EventRecordFactory(
             mapping=mapping,
             category="workout",
@@ -203,7 +203,7 @@ class TestBaseToDictEventRecord:
         # Assert
         assert isinstance(result, dict)
         assert result["id"] == event.id
-        assert result["external_device_mapping_id"] == mapping.id
+        assert result["data_source_id"] == mapping.id
         assert result["category"] == "workout"
         assert result["type"] == "running"
         assert result["source_name"] == "Apple Watch"
@@ -212,7 +212,7 @@ class TestBaseToDictEventRecord:
     def test_base_to_dict_event_record_datetime_fields(self, db: Session) -> None:
         """Test EventRecord datetime serialization."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         start_time = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
         end_time = datetime(2025, 1, 1, 11, 0, 0, tzinfo=timezone.utc)
 
@@ -238,17 +238,17 @@ class TestBaseToDictEventRecord:
         assert parsed_end.hour == 11
 
 
-class TestBaseToDictExternalDeviceMapping:
-    """Test suite for base_to_dict with ExternalDeviceMapping model."""
+class TestBaseToDictDataSource:
+    """Test suite for base_to_dict with DataSource model."""
 
-    def test_base_to_dict_external_device_mapping(self, db: Session) -> None:
-        """Test converting ExternalDeviceMapping model to dictionary."""
+    def test_base_to_dict_data_source(self, db: Session) -> None:
+        """Test converting DataSource model to dictionary."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(
+        mapping = DataSourceFactory(
             user=user,
-            provider_name="apple",
-            device_id="device-123",
+            source="apple",
+            device_model="device_123",
         )
 
         # Act
@@ -258,8 +258,8 @@ class TestBaseToDictExternalDeviceMapping:
         assert isinstance(result, dict)
         assert result["id"] == mapping.id
         assert result["user_id"] == user.id
-        assert result["provider_name"] == "apple"
-        assert result["device_id"] == "device-123"
+        assert result["source"] == "apple"
+        assert result["device_model"] == mapping.device_model
 
 
 class TestBaseToDictDataPointSeries:
@@ -268,7 +268,7 @@ class TestBaseToDictDataPointSeries:
     def test_base_to_dict_data_point_series(self, db: Session) -> None:
         """Test converting DataPointSeries model to dictionary."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         timestamp = datetime(2025, 1, 15, 12, 30, 0, tzinfo=timezone.utc)
         data_point = DataPointSeriesFactory(
             mapping=mapping,
@@ -282,14 +282,14 @@ class TestBaseToDictDataPointSeries:
         # Assert
         assert isinstance(result, dict)
         assert result["id"] == data_point.id
-        assert result["external_device_mapping_id"] == mapping.id
+        assert result["data_source_id"] == mapping.id
         # DataPointSeries doesn't have category field, it has series_type_definition_id
         assert "series_type_definition_id" in result
 
     def test_base_to_dict_data_point_series_timestamp(self, db: Session) -> None:
         """Test DataPointSeries timestamp serialization."""
         # Arrange
-        mapping = ExternalDeviceMappingFactory()
+        mapping = DataSourceFactory()
         data_point = DataPointSeriesFactory(mapping=mapping)
 
         # Act
@@ -408,7 +408,7 @@ class TestBaseToDictIntegration:
         """Test converting multiple related models."""
         # Arrange
         user = UserFactory(email="integration@example.com")
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         event = EventRecordFactory(mapping=mapping)
 
         # Act
@@ -419,14 +419,14 @@ class TestBaseToDictIntegration:
         # Assert - All conversions should work
         assert user_dict["id"] == user.id
         assert mapping_dict["user_id"] == user.id
-        assert event_dict["external_device_mapping_id"] == mapping.id
+        assert event_dict["data_source_id"] == mapping.id
 
     def test_convert_models_with_same_user(self, db: Session) -> None:
         """Test converting multiple models referencing same user."""
         # Arrange
         user = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user, device_id="device-1")
-        mapping2 = ExternalDeviceMappingFactory(user=user, device_id="device-2")
+        mapping1 = DataSourceFactory(user=user, device_model="device-1")
+        mapping2 = DataSourceFactory(user=user, device_model="device-2")
 
         # Act
         dict1 = base_to_dict(mapping1)
@@ -434,4 +434,4 @@ class TestBaseToDictIntegration:
 
         # Assert
         assert dict1["user_id"] == dict2["user_id"]
-        assert dict1["device_id"] != dict2["device_id"]
+        assert dict1["device_model"] != dict2["device_model"]

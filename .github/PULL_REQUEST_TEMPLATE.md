@@ -2,14 +2,6 @@
 
 <!-- Provide a brief summary of your changes. What problem does this solve? -->
 
-
-
-### Related Issue
-
-<!-- Link to any related issues (e.g., "Fixes #123" or "Closes #456") -->
-
-
-
 ## Checklist
 
 ### General

@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { SimpleSidebar } from '@/components/layout/simple-sidebar';
 import { isAuthenticated } from '@/lib/auth/session';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
@@ -11,7 +12,7 @@ export const Route = createFileRoute('/_authenticated')({
       return;
     }
     if (!isAuthenticated()) {
-      throw redirect({ to: '/login' });
+      throw redirect({ to: DEFAULT_REDIRECTS.unauthenticated });
     }
   },
 });

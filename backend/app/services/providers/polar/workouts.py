@@ -120,13 +120,13 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             category="workout",
             type=workout_type.value,
             source_name=raw_workout.device,
-            device_id=raw_workout.device,
+            device_model=raw_workout.device,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
             id=workout_id,
             external_id=raw_workout.id,
-            provider_name="Polar",
+            source="polar",
             user_id=user_id,
         )
 

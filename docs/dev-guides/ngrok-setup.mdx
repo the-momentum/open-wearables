@@ -1,0 +1,121 @@
+---
+title: "Exposing local backend with ngrok"
+description: "Quick setup guide for testing webhooks, OAuth flows (Garmin), and mobile SDK integrations"
+---
+
+When testing webhooks (Garmin OAuth callback, Garmin data push) or the Apple Health SDK, you need to expose your local backend to the internet. ngrok provides a simple solution with minimal configuration.
+
+<Note>
+Why might ngrok be needed for the OAuth flow? Because Garmin's OAuth callback requires HTTPS. Other currently supported cloud providers work with HTTP, so localhost is fine.
+</Note>
+
+## Quick Start
+
+<Steps>
+  <Step title="Install ngrok">
+    Download from [ngrok.com](https://ngrok.com/download) or use a package manager:
+    
+    ```bash
+    # macOS
+    brew install ngrok
+    
+    # Or download directly
+    ```
+  </Step>
+  
+  <Step title="Start your backend">
+    Ensure your Open Wearables backend is running locally (typically on port 8000):
+    
+    ```bash
+    docker compose up
+    ```
+  </Step>
+  
+  <Step title="Expose with ngrok">
+    Run ngrok to create a public tunnel:
+    
+    ```bash
+    ngrok http 8000
+    ```
+  </Step>
+  
+  <Step title="Use the public URL">
+    ngrok will display a public URL like:
+    
+    ```
+    Forwarding  https://abc123.ngrok-free.app -> http://localhost:8000
+    ```
+    
+    Use this HTTPS URL for:
+    - **Garmin OAuth** (requires HTTPS)
+    - Webhook endpoints
+    - Mobile SDK webhook (e.g. [Apple Health sync endpoint](/api-reference/sdk/sync-data-healthion))
+  </Step>
+</Steps>
+
+## Common Use Cases
+
+<AccordionGroup>
+  <Accordion title="OAuth Flow Testing">
+    **Garmin (requires HTTPS):**
+    
+    Garmin OAuth requires HTTPS, so you need ngrok:
+    
+    1. Start ngrok: `ngrok http 8000`
+    2. Copy the HTTPS URL (e.g., `https://abc123.ngrok-free.app`)
+    3. Use it as the `redirect_uri` parameter:
+    
+    ```bash
+    curl "http://localhost:8000/api/v1/oauth/garmin/authorize?user_id=USER_ID&redirect_uri=https://abc123.ngrok-free.app/oauth/callback" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+    
+    **Polar & Suunto (HTTP works):**
+    
+    These providers don't require HTTPS, so you can test locally without ngrok:
+    
+    ```bash
+    # Use localhost directly
+    curl "http://localhost:8000/api/v1/oauth/polar/authorize?user_id=USER_ID&redirect_uri=http://localhost:8000/oauth/callback" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+  </Accordion>
+  
+  <Accordion title="Webhook Testing">
+    For testing webhook endpoints (e.g., Garmin data push):
+    
+    1. Expose your backend: `ngrok http 8000`
+    2. Configure the webhook URL in your provider settings:
+       - Garmin: Use `https://abc123.ngrok-free.app/api/v1/webhooks/garmin`
+       - Other providers: Similar pattern
+  </Accordion>
+  
+  <Accordion title="Mobile SDK Integration">
+    When testing Apple Health SDK or mobile app integrations:
+    
+    1. Start ngrok: `ngrok http 8000`
+    2. Configure your mobile app to use the ngrok URL:
+       - Update API base URL to `https://abc123.ngrok-free.app`
+       - Same approach
+  </Accordion>
+</AccordionGroup>
+
+## Tips
+
+<Tip>
+**Static domain:** For a consistent URL that doesn't change on restart, you can set a custom domain in ngrok (requires account):
+
+```bash
+ngrok http 8000 --domain=your-custom-domain.ngrok-free.app
+```
+</Tip>
+
+<Warning>
+**Security:** Only use ngrok for development/testing. Never expose production backends through ngrok without proper authentication and rate limiting.
+</Warning>
+
+## Related Guides
+
+- [Backend E2E Integration](/dev-guides/backend-e2e-integration) - Complete integration walkthrough
+- [Provider Setup](/provider-setup/index) - Configure OAuth credentials
+

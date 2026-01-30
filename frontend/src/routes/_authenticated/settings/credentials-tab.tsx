@@ -7,6 +7,17 @@ import {
   useDeleteApiKey,
 } from '@/hooks/api/use-credentials';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export function CredentialsTab() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -80,12 +91,7 @@ export function CredentialsTab() {
     return (
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
         <p className="text-zinc-400 mb-4">Failed to load API keys</p>
-        <button
-          onClick={() => refetch()}
-          className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
-          Retry
-        </button>
+        <Button onClick={() => refetch()}>Retry</Button>
       </div>
     );
   }
@@ -100,13 +106,10 @@ export function CredentialsTab() {
             Manage your API keys and widget embed codes
           </p>
         </div>
-        <button
-          onClick={() => setIsCreateDialogOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Create API Key
-        </button>
+        </Button>
       </div>
 
       {/* API Keys Table */}
@@ -151,22 +154,24 @@ export function CredentialsTab() {
                         <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
                           {visibleKeys.has(key.id) ? key.id : maskKey(key.id)}
                         </code>
-                        <button
+                        <Button
+                          variant="ghost-faded"
+                          size="icon-sm"
                           onClick={() => toggleKeyVisibility(key.id)}
-                          className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
                         >
                           {visibleKeys.has(key.id) ? (
                             <EyeOff className="h-4 w-4" />
                           ) : (
                             <Eye className="h-4 w-4" />
                           )}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="ghost-faded"
+                          size="icon-sm"
                           onClick={() => copyToClipboard(key.id)}
-                          className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
                         >
                           <Copy className="h-4 w-4" />
-                        </button>
+                        </Button>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-xs text-zinc-500">
@@ -174,13 +179,14 @@ export function CredentialsTab() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end">
-                        <button
+                        <Button
+                          variant="destructive-outline"
+                          size="icon-sm"
                           onClick={() => handleDelete(key.id)}
                           disabled={deleteMutation.isPending}
-                          className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-50"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -195,68 +201,59 @@ export function CredentialsTab() {
             <p className="text-sm text-zinc-500 mb-4">
               Create your first key to get started
             </p>
-            <button
+            <Button
+              variant="outline"
               onClick={() => setIsCreateDialogOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 text-white rounded-md text-sm font-medium hover:bg-zinc-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Create API Key
-            </button>
+            </Button>
           </div>
         )}
       </div>
 
       {/* Create Dialog */}
-      {isCreateDialogOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
-            <div className="p-6 border-b border-zinc-800">
-              <h2 className="text-lg font-medium text-white">
-                Create New API Key
-              </h2>
-              <p className="text-sm text-zinc-500 mt-1">
-                Generate a new API key for your application
-              </p>
-            </div>
-            <div className="p-6">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-300">
-                  Key Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g., Production API Key"
-                  value={keyName}
-                  onChange={(e) => setKeyName(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
-                />
-                <p className="text-[10px] text-zinc-600">
-                  A descriptive name to identify this key
-                </p>
-              </div>
-            </div>
-            <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setIsCreateDialogOpen(false);
-                  setKeyName('');
-                }}
-                disabled={createMutation.isPending}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreate}
-                disabled={createMutation.isPending}
-                className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
-              >
-                {createMutation.isPending ? 'Creating...' : 'Create Key'}
-              </button>
-            </div>
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New API Key</DialogTitle>
+            <DialogDescription>
+              Generate a new API key for your application
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="key_name" className="text-zinc-300">
+              Key Name
+            </Label>
+            <Input
+              id="key_name"
+              type="text"
+              placeholder="e.g., Production API Key"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              className="bg-zinc-800 border-zinc-700"
+            />
+            <p className="text-[10px] text-zinc-600">
+              A descriptive name to identify this key
+            </p>
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                setKeyName('');
+              }}
+              disabled={createMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Creating...' : 'Create Key'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

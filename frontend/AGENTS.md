@@ -40,6 +40,8 @@ src/
 │   │   ├── types.ts     # API types
 │   │   └── services/    # Service modules
 │   ├── auth/session.ts  # Session management (localStorage)
+│   ├── constants/
+│   │   └── routes.ts    # Centralized route paths and redirects
 │   ├── query/keys.ts    # Query key factory
 │   ├── validation/      # Zod schemas
 │   └── errors/          # Error handling
@@ -134,6 +136,51 @@ export const queryKeys = {
 };
 ```
 
+### Route Constants
+
+All frontend route paths are centralized in `src/lib/constants/routes.ts`. **Never hardcode route paths** - always import from this file.
+
+```typescript
+// src/lib/constants/routes.ts
+export const ROUTES = {
+  // Public routes
+  login: '/login',
+  register: '/register',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
+  acceptInvite: '/accept-invite',
+
+  // Authenticated routes
+  dashboard: '/dashboard',
+  users: '/users',
+  settings: '/settings',
+
+  // Widget routes
+  widgetConnect: '/widget/connect',
+} as const;
+
+export const DEFAULT_REDIRECTS = {
+  authenticated: ROUTES.dashboard,
+  unauthenticated: ROUTES.login,
+} as const;
+```
+
+**Usage examples:**
+
+```typescript
+// For redirects (use DEFAULT_REDIRECTS)
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
+
+navigate({ to: DEFAULT_REDIRECTS.authenticated });
+throw redirect({ to: DEFAULT_REDIRECTS.unauthenticated });
+
+// For links and navigation (use ROUTES)
+import { ROUTES } from '@/lib/constants/routes';
+
+<Link to={ROUTES.login}>Sign in</Link>
+navigate({ to: ROUTES.users });
+```
+
 ### Zod Validation Schemas
 
 ```typescript
@@ -205,6 +252,7 @@ function RegisterPage() {
 // src/routes/_authenticated.tsx
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { isAuthenticated } from '@/lib/auth/session';
+import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
 
 export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
@@ -212,7 +260,7 @@ export const Route = createFileRoute('/_authenticated')({
     // Skip during SSR (localStorage not available)
     if (typeof window === 'undefined') return;
     if (!isAuthenticated()) {
-      throw redirect({ to: '/login' });
+      throw redirect({ to: DEFAULT_REDIRECTS.unauthenticated });
     }
   },
 });
@@ -233,6 +281,8 @@ function AuthenticatedLayout() {
 
 ```typescript
 // src/lib/api/client.ts
+import { ROUTES } from '../constants/routes';
+
 export const apiClient = {
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const url = `${API_CONFIG.baseUrl}${endpoint}`;
@@ -247,7 +297,7 @@ export const apiClient = {
 
     if (response.status === 401) {
       clearSession();
-      window.location.href = '/login';
+      window.location.href = ROUTES.login;
     }
 
     if (!response.ok) {

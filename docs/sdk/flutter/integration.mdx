@@ -1,0 +1,541 @@
+---
+title: "Integration Guide"
+sidebarTitle: "Integration Guide"
+description: "Complete guide to integrating the Flutter SDK with your application"
+---
+
+## Overview
+
+This guide walks you through the complete integration of the Open Wearables Flutter SDK, from backend setup to production deployment.
+
+<Steps>
+  <Step title="Set up backend authentication endpoint" />
+  <Step title="Configure the SDK in your Flutter app" />
+  <Step title="Implement sign-in flow" />
+  <Step title="Request health permissions" />
+  <Step title="Start background sync" />
+</Steps>
+
+## Authentication Architecture
+
+The SDK uses a secure token-based flow that keeps your API keys safe on your backend:
+
+<Steps>
+  <Step title="Mobile App requests credentials" icon="mobile">
+    User initiates health connection in your Flutter app. App calls your backend.
+  </Step>
+  <Step title="Your Backend generates token" icon="server">
+    Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
+    ```
+    POST https://api.openwearables.io/v1/tokens
+    X-API-Key: sk_live_your_secret_key
+    ```
+  </Step>
+  <Step title="Backend returns credentials" icon="key">
+    Open Wearables returns `userId` + `accessToken`. Your backend passes these to the mobile app (**not the API Key!**).
+  </Step>
+  <Step title="SDK stores & syncs" icon="lock">
+    Flutter SDK stores credentials in iOS Keychain and uses `accessToken` to sync health data directly to Open Wearables.
+  </Step>
+</Steps>
+
+<Warning>
+  **Never embed your API Key in the mobile app.** The API Key should only exist on your backend server. Only the `accessToken` is passed to the mobile app.
+</Warning>
+
+## Step 1: Backend Setup
+
+Your backend needs a single endpoint that generates access tokens for your users.
+
+### Generate Access Token
+
+When a user wants to connect their health data, your backend should:
+
+1. Authenticate the user (your own auth system)
+2. Call Open Wearables API to generate an access token
+3. Return the token to the mobile app
+
+<Tabs>
+  <Tab title="Node.js">
+```javascript
+// Express.js example
+const express = require('express');
+const app = express();
+
+app.post('/api/health/connect', authenticateUser, async (req, res) => {
+  try {
+    // 1. Get your authenticated user
+    const userId = req.user.id;
+    
+    // 2. Call Open Wearables API to generate token
+    const response = await fetch('https://api.openwearables.io/v1/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.OPENWEARABLES_API_KEY, // Secret! Never expose!
+      },
+      body: JSON.stringify({
+        externalId: userId.toString(), // Your user's ID
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to generate token');
+    }
+    
+    const { userId: owUserId, accessToken } = await response.json();
+    
+    // 3. Return credentials to mobile app (NOT the API Key!)
+    res.json({ 
+      userId: owUserId, 
+      accessToken 
+    });
+  } catch (error) {
+    console.error('Health connect error:', error);
+    res.status(500).json({ error: 'Failed to connect health' });
+  }
+});
+```
+  </Tab>
+
+  <Tab title="Python">
+```python
+# FastAPI example
+from fastapi import FastAPI, Depends, HTTPException
+import httpx
+import os
+
+app = FastAPI()
+
+@app.post("/api/health/connect")
+async def connect_health(current_user = Depends(get_current_user)):
+    # 1. Call Open Wearables API to generate token
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.openwearables.io/v1/tokens",
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": os.environ["OPENWEARABLES_API_KEY"],
+            },
+            json={
+                "externalId": str(current_user.id),
+            },
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(500, "Failed to generate token")
+        
+        data = response.json()
+    
+    # 2. Return credentials to mobile app
+    return {
+        "userId": data["userId"],
+        "accessToken": data["accessToken"],
+    }
+```
+  </Tab>
+
+  <Tab title="Ruby">
+```ruby
+# Rails controller example
+class HealthController < ApplicationController
+  before_action :authenticate_user!
+
+  def connect
+    # 1. Call Open Wearables API to generate token
+    response = HTTParty.post(
+      'https://api.openwearables.io/v1/tokens',
+      headers: {
+        'Content-Type' => 'application/json',
+        'X-API-Key' => ENV['OPENWEARABLES_API_KEY']
+      },
+      body: {
+        externalId: current_user.id.to_s
+      }.to_json
+    )
+
+    if response.success?
+      # 2. Return credentials to mobile app
+      render json: {
+        userId: response['userId'],
+        accessToken: response['accessToken']
+      }
+    else
+      render json: { error: 'Failed to connect' }, status: 500
+    end
+  end
+end
+```
+  </Tab>
+</Tabs>
+
+<Note>
+  The `externalId` parameter links the Open Wearables user to your user. Use your internal user ID to easily correlate data later.
+</Note>
+
+## Step 2: SDK Configuration
+
+Configure the SDK once at app startup, typically in your main initialization code.
+
+```dart
+import 'package:health_bg_sync/health_bg_sync.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Configure SDK - this also restores any existing session
+  await HealthBgSync.configure(
+    environment: HealthBgSyncEnvironment.production,
+  );
+  
+  runApp(MyApp());
+}
+```
+
+### Configuration Options
+
+| Parameter | Description |
+|-----------|-------------|
+| `environment` | `production` (default) or `sandbox` for testing |
+| `customSyncUrl` | Custom URL for self-hosted instances |
+
+```dart
+// For self-hosted Open Wearables
+await HealthBgSync.configure(
+  customSyncUrl: 'https://your-domain.com/sdk/users/{user_id}/sync/apple/healthkit',
+);
+
+// For testing/sandbox environment
+await HealthBgSync.configure(
+  environment: HealthBgSyncEnvironment.sandbox,
+);
+```
+
+### Session Restoration
+
+The SDK automatically restores the user session from secure storage when `configure()` is called:
+
+```dart
+await HealthBgSync.configure();
+
+// Check if user was previously signed in
+if (HealthBgSync.isSignedIn) {
+  print('Welcome back, ${HealthBgSync.currentUser?.userId}!');
+  // User is already signed in, can start sync directly
+} else {
+  // Need to sign in first
+}
+```
+
+## Step 3: Sign In
+
+After getting credentials from your backend, sign in with the SDK:
+
+```dart
+Future<void> connectHealth() async {
+  try {
+    // 1. Get credentials from YOUR backend
+    final response = await yourApi.post('/api/health/connect');
+    final credentials = json.decode(response.body);
+    
+    // 2. Sign in with the SDK
+    final user = await HealthBgSync.signIn(
+      userId: credentials['userId'],
+      accessToken: credentials['accessToken'],
+    );
+    
+    print('Connected: ${user.userId}');
+  } on SignInException catch (e) {
+    print('Sign-in failed: ${e.message}');
+  }
+}
+```
+
+### With Automatic Token Refresh
+
+For long-running sessions, enable automatic token refresh:
+
+```dart
+final user = await HealthBgSync.signIn(
+  userId: credentials['userId'],
+  accessToken: credentials['accessToken'],
+  // Optional: Enable auto-refresh
+  appId: 'your-app-id',
+  appSecret: 'your-app-secret',
+  baseUrl: 'https://api.openwearables.io',
+);
+```
+
+<Tip>
+  Token refresh credentials can also be fetched from your backend to avoid embedding secrets in the app.
+</Tip>
+
+## Step 4: Request Permissions
+
+Request access to specific health data types:
+
+```dart
+Future<bool> requestHealthPermissions() async {
+  final authorized = await HealthBgSync.requestAuthorization(
+    types: [
+      HealthDataType.steps,
+      HealthDataType.heartRate,
+      HealthDataType.restingHeartRate,
+      HealthDataType.sleep,
+      HealthDataType.workout,
+      HealthDataType.activeEnergy,
+      HealthDataType.bodyMass,
+    ],
+  );
+  
+  if (authorized) {
+    print('Health permissions granted');
+  } else {
+    print('Some permissions were denied');
+  }
+  
+  return authorized;
+}
+```
+
+<Note>
+  On iOS, users can grant partial permissions. The SDK will sync whatever data the user allows.
+</Note>
+
+### iOS Permission UI
+
+When requesting permissions, iOS shows a system dialog listing all requested data types. Users can toggle each type individually.
+
+<Tip>
+  Request only the data types you actually need. Requesting too many types can overwhelm users and reduce acceptance rates.
+</Tip>
+
+## Step 5: Start Background Sync
+
+Enable background sync to keep data flowing even when your app is in the background:
+
+```dart
+await HealthBgSync.startBackgroundSync();
+
+// Check sync status
+print('Sync active: ${HealthBgSync.isSyncActive}');
+```
+
+### Background Sync Behavior
+
+| Mechanism | Frequency |
+|-----------|-----------|
+| iOS Background App Refresh + BGTaskScheduler | Every 15 minutes (system-managed) |
+
+<Warning>
+  Background sync frequency is controlled by iOS and may vary based on battery level, network conditions, and user behavior. The 15-minute interval is a minimum - actual syncs may be less frequent.
+</Warning>
+
+### Manual Sync
+
+Trigger an immediate sync when needed:
+
+```dart
+// Sync now
+await HealthBgSync.syncNow();
+```
+
+## Complete Integration Example
+
+Here's a complete service class showing the full integration:
+
+```dart
+import 'dart:convert';
+import 'package:health_bg_sync/health_bg_sync.dart';
+import 'package:http/http.dart' as http;
+
+class HealthSyncService {
+  final String _backendUrl;
+  final String _authToken;
+
+  HealthSyncService({
+    required String backendUrl,
+    required String authToken,
+  })  : _backendUrl = backendUrl,
+        _authToken = authToken;
+
+  /// Initialize the health sync service
+  Future<void> initialize() async {
+    await HealthBgSync.configure(
+      environment: HealthBgSyncEnvironment.production,
+    );
+  }
+
+  /// Get current status
+  HealthBgSyncStatus get status => HealthBgSync.status;
+  bool get isConnected => HealthBgSync.isSignedIn;
+  bool get isSyncing => HealthBgSync.isSyncActive;
+
+  /// Connect health data for the current user
+  Future<void> connect() async {
+    // Check current state
+    switch (HealthBgSync.status) {
+      case HealthBgSyncStatus.signedIn:
+        // Already signed in
+        if (!HealthBgSync.isSyncActive) {
+          await _startSync();
+        }
+        return;
+
+      case HealthBgSyncStatus.configured:
+        // Need to sign in
+        await _signIn();
+        await _startSync();
+        return;
+
+      case HealthBgSyncStatus.notConfigured:
+        throw Exception('SDK not configured. Call initialize() first.');
+    }
+  }
+
+  Future<void> _signIn() async {
+    // Get credentials from your backend
+    final response = await http.post(
+      Uri.parse('$_backendUrl/api/health/connect'),
+      headers: {
+        'Authorization': 'Bearer $_authToken',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get health credentials');
+    }
+
+    final data = json.decode(response.body);
+
+    // Sign in with SDK
+    await HealthBgSync.signIn(
+      userId: data['userId'],
+      accessToken: data['accessToken'],
+    );
+  }
+
+  Future<void> _startSync() async {
+    // Request permissions
+    final authorized = await HealthBgSync.requestAuthorization(
+      types: [
+        HealthDataType.steps,
+        HealthDataType.heartRate,
+        HealthDataType.sleep,
+        HealthDataType.workout,
+        HealthDataType.activeEnergy,
+      ],
+    );
+
+    if (!authorized) {
+      throw Exception('Health permissions not granted');
+    }
+
+    // Start background sync
+    await HealthBgSync.startBackgroundSync();
+  }
+
+  /// Disconnect health data
+  Future<void> disconnect() async {
+    await HealthBgSync.stopBackgroundSync();
+    await HealthBgSync.signOut();
+  }
+
+  /// Check for interrupted sync sessions
+  Future<void> checkAndResumeSync() async {
+    final status = await HealthBgSync.getSyncStatus();
+    
+    if (status['hasResumableSession'] == true) {
+      print('Resuming interrupted sync...');
+      print('Already sent: ${status['sentCount']} records');
+      await HealthBgSync.resumeSync();
+    }
+  }
+
+  /// Force a full re-sync of all data
+  Future<void> resyncAllData() async {
+    await HealthBgSync.resetAnchors();
+    await HealthBgSync.syncNow();
+  }
+}
+```
+
+### Using the Service
+
+```dart
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late HealthSyncService _healthService;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeHealth();
+  }
+
+  Future<void> _initializeHealth() async {
+    _healthService = HealthSyncService(
+      backendUrl: 'https://your-backend.com',
+      authToken: await getAuthToken(),
+    );
+
+    await _healthService.initialize();
+    
+    // Check for interrupted syncs
+    await _healthService.checkAndResumeSync();
+  }
+
+  Future<void> _connectHealth() async {
+    try {
+      await _healthService.connect();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Health connected!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: ElevatedButton(
+          onPressed: _connectHealth,
+          child: Text(_healthService.isConnected 
+            ? 'Health Connected' 
+            : 'Connect Health'),
+        ),
+      ),
+    );
+  }
+}
+```
+
+## Data Sync Endpoint
+
+The SDK sends health data to:
+
+```
+POST /sdk/users/{user_id}/sync/apple/healthkit
+```
+
+Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/flutter/troubleshooting">
+    Common issues and solutions for iOS.
+  </Card>
+  <Card title="Data Types" icon="database" href="/api-reference/guides/data-types">
+    Available health metrics and data formats.
+  </Card>
+</CardGroup>
