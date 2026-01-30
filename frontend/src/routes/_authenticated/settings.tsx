@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CredentialsTab } from './settings/credentials-tab';
 import { ProvidersTab } from './settings/providers-tab';
+import { PrioritiesTab } from './settings/priorities-tab';
 import { TeamTab } from './settings/team-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
@@ -25,6 +26,11 @@ const tabs: TabConfig[] = [
     id: 'providers',
     label: 'Providers',
     component: ProvidersTab,
+  },
+  {
+    id: 'priorities',
+    label: 'Priorities',
+    component: PrioritiesTab,
   },
   {
     id: 'team',

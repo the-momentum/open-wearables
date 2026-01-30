@@ -16,6 +16,7 @@ import {
 import { formatDate, truncateId } from '@/lib/utils/format';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ConnectionCard } from '@/components/user/connection-card';
+import { DataSourcesSection } from '@/components/user/data-sources-section';
 
 interface ProfileSectionProps {
   userId: string;
@@ -191,6 +192,9 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
             )}
           </div>
         </div>
+
+        {/* Data Sources */}
+        <DataSourcesSection userId={userId} />
       </div>
 
       {/* Edit User Dialog */}

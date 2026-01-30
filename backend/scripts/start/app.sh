@@ -9,6 +9,10 @@ uv run alembic upgrade head
 echo 'Initializing provider settings...'
 uv run python scripts/init_provider_settings.py
 
+# Initialize device priority table
+echo 'Initializing priorities...'
+uv run python scripts/init_device_priorities.py
+
 # Init app
 echo "Starting the FastAPI application..."
 if [ "$ENVIRONMENT" = "local" ]; then
