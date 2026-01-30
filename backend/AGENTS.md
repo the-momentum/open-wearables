@@ -217,9 +217,6 @@ make downgrade                             # Rollback
 ```bash
 cd backend
 
-# Add new dependencies (updates pyproject.toml, lockfile, and venv)
-uv add <package-name>
-
 # Lint and format (run after changes)
 uv run ruff check . --fix && uv run ruff format .
 
