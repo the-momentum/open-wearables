@@ -1,3 +1,4 @@
+from app.schemas.oauth import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
@@ -11,15 +12,15 @@ class ProviderFactory:
 
     def get_provider(self, provider_name: str) -> BaseProviderStrategy:
         match provider_name:
-            case "apple":
+            case ProviderName.APPLE.value:
                 return AppleStrategy()
-            case "garmin":
+            case ProviderName.GARMIN.value:
                 return GarminStrategy()
-            case "suunto":
+            case ProviderName.SUUNTO.value:
                 return SuuntoStrategy()
-            case "polar":
+            case ProviderName.POLAR.value:
                 return PolarStrategy()
-            case "whoop":
+            case ProviderName.WHOOP.value:
                 return WhoopStrategy()
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
