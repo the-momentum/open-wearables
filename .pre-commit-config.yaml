@@ -10,20 +10,27 @@ repos:
 
   - repo: local
     hooks:
-      - id: ty
-        name: ty check
+      - id: ty-backend
+        name: ty check (backend)
         entry: sh -c 'cd backend && .venv/bin/ty check .'
         language: system
         files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: ty-mcp
+        name: ty check (mcp)
+        entry: sh -c 'cd mcp && .venv/bin/ty check .'
+        language: system
+        files: ^mcp/.*\.py$
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: ^backend/
+        files: ^(backend|mcp)/
       - id: end-of-file-fixer
-        files: ^backend/
+        files: ^(backend|mcp)/
       - id: check-merge-conflict
         args: [--assume-in-merge]
-        files: ^backend/
+        files: ^(backend|mcp)/
