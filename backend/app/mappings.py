@@ -57,6 +57,10 @@ FKDataSource = Annotated[
     UUID,
     mapped_column(ForeignKey("data_source.id", ondelete="CASCADE")),
 ]
+FKUserConnection = Annotated[
+    UUID | None,
+    mapped_column(ForeignKey("user_connection.id", ondelete="SET NULL"), nullable=True),
+]
 FKSeriesTypeDefinition = Annotated[
     int,
     mapped_column(ForeignKey("series_type_definition.id", ondelete="RESTRICT")),

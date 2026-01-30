@@ -8,6 +8,7 @@ from .application_service import application_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .invitation_service import invitation_service
+from .priority_service import PriorityService
 from .sdk_token_service import create_sdk_user_token
 from .services import AppService
 from .summaries_service import summaries_service
@@ -33,4 +34,5 @@ __all__ = [
     "timeseries_service",
     "pre_url_service",
     "system_info_service",
+    "PriorityService",
 ]

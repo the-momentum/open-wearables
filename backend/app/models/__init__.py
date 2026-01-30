@@ -3,10 +3,12 @@ from .application import Application
 from .data_point_series import DataPointSeries
 from .data_source import DataSource
 from .developer import Developer
+from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
 from .event_record_detail import EventRecordDetail
 from .invitation import Invitation
 from .personal_record import PersonalRecord
+from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
@@ -19,7 +21,9 @@ __all__ = [
     "Application",
     "Developer",
     "DataSource",
+    "DeviceTypePriority",
     "Invitation",
+    "ProviderPriority",
     "ProviderSetting",
     "User",
     "UserConnection",
