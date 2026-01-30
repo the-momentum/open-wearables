@@ -100,17 +100,16 @@ class DataSource(BaseDbModel):
 
 ### 3. `PROVIDER_PRIORITY` (New)
 
-Developer-configurable priority for data providers in `/summary` endpoints.
+System-wide priority configuration for data providers in `/summary` endpoints.
 
 ```python
 class ProviderPriority(BaseDbModel):
     __tablename__ = "provider_priority"
     __table_args__ = (
-        UniqueConstraint("application_id", "provider", name="uq_app_provider"),
+        UniqueConstraint("provider", name="uq_provider_priority"),
     )
-    
+
     id: Mapped[PrimaryKey[UUID]]
-    application_id: Mapped[FKApplication]
     provider: Mapped[ProviderName]
     priority: Mapped[int]  # 1 = highest
     created_at: Mapped[datetime_tz]
@@ -146,9 +145,7 @@ erDiagram
     USER ||--o{ USER_CONNECTION : "connects"
     USER ||--o{ DATA_SOURCE : "has"
     USER_CONNECTION ||--o{ DATA_SOURCE : "provides (optional)"
-    
-    APPLICATION ||--o{ PROVIDER_PRIORITY : "configures"
-    
+
     DATA_SOURCE ||--o{ EVENT_RECORD : "collects"
     DATA_SOURCE ||--o{ DATA_POINT_SERIES : "metrics"
 
@@ -179,7 +176,6 @@ erDiagram
 
     PROVIDER_PRIORITY {
         uuid id PK
-        uuid application_id FK
         enum provider "ProviderName"
         int priority
         datetime created_at
@@ -303,15 +299,15 @@ def import_xml_data(db: DbSession, user_id: UUID, xml_file: bytes) -> None:
 
 ## Provider Priority Configuration
 
-Developers configure priorities in the dashboard. Example:
+System-wide provider priority configuration. Example:
 
-| application_id | provider | priority | Description |
-|----------------|----------|----------|-------------|
-| `app-xyz` | `apple` | 1 | Apple has highest priority |
-| `app-xyz` | `garmin` | 2 | Garmin as fallback |
-| `app-xyz` | `oura` | 3 | Oura third |
-| `app-xyz` | `polar` | 4 | Polar fourth |
-| `app-xyz` | `whoop` | 5 | Whoop lowest |
+| provider | priority | Description |
+|----------|----------|-------------|
+| `apple` | 1 | Apple has highest priority |
+| `garmin` | 2 | Garmin as fallback |
+| `oura` | 3 | Oura third |
+| `polar` | 4 | Polar fourth |
+| `whoop` | 5 | Whoop lowest |
 
 ## Prioritization Logic
 
@@ -321,7 +317,7 @@ Developers configure priorities in the dashboard. Example:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    GET /v1/users/{id}/summary                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  1. Get PROVIDER_PRIORITY for application_id                    │
+│  1. Get PROVIDER_PRIORITY (system-wide config)                  │
 │     → [apple:1, garmin:2, oura:3]                               │
 │                                                                 │
 │  2. For each provider (by priority):                            │
@@ -366,7 +362,7 @@ Developers configure priorities in the dashboard. Example:
 
 **Request for steps on 2026-01-28:**
 
-1. **Provider priority** (app config): apple=1, garmin=2
+1. **Provider priority** (system config): apple=1, garmin=2
 2. **Select Apple** (has data, priority 1)
 3. **Device type priority**: watch > phone > unknown
 4. **Return steps from ds-1** (Apple Watch via SDK)
