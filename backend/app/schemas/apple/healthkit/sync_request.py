@@ -12,10 +12,6 @@ from app.constants.series_types import AppleCategoryType, AppleMetricType
 from app.constants.workout_statistics import WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
 
-# Union type for all valid Apple HealthKit record types
-# Includes both quantity types (HKQuantityTypeIdentifier...) and category types (HKCategoryTypeIdentifier...)
-AppleRecordType = AppleMetricType | AppleCategoryType
-
 
 class OSVersion(BaseModel):
     """Operating system version info from HealthKit source."""
@@ -46,18 +42,32 @@ class SourceInfo(BaseModel):
         populate_by_name = True
 
 
-class HealthRecord(BaseModel):
-    """Schema for JSON import format from HealthKit.
-
-    Represents a single health measurement (heart rate, steps, distance, etc.).
-    """
+class MetricRecord(BaseModel):
+    """Health metric record from HealthKit (heart rate, steps, distance, etc.)."""
 
     uuid: str | None = None
-    type: AppleRecordType | None = None
+    type: AppleMetricType | None = None
     startDate: datetime
     endDate: datetime
     unit: str | None
     value: Decimal
+    source: SourceInfo | None = None
+    recordMetadata: list[dict[str, Any]] | None = None
+
+
+class SleepRecord(BaseModel):
+    """Sleep analysis record from HealthKit."""
+
+    uuid: str | None = None
+    type: AppleCategoryType | None = None
+    startDate: datetime
+    endDate: datetime
+    unit: str | None
+    value: Decimal = Field(
+        ge=0,
+        le=5,
+        description="Sleep phase: 0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=LIGHT, 4=DEEP, 5=REM",
+    )
     source: SourceInfo | None = None
     recordMetadata: list[dict[str, Any]] | None = None
 
@@ -87,11 +97,11 @@ class SyncRequestData(BaseModel):
     Contains the actual health data arrays.
     """
 
-    records: list[HealthRecord] = Field(
+    records: list[MetricRecord] = Field(
         default_factory=list,
         description="Time-series health measurements (heart rate, steps, distance, etc.)",
     )
-    sleep: list[HealthRecord] = Field(
+    sleep: list[SleepRecord] = Field(
         default_factory=list,
         description="Sleep phase records. Each record's `value` field contains the sleep phase as integer: "
         "0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=ASLEEP_CORE (light), 4=ASLEEP_DEEP, 5=ASLEEP_REM",

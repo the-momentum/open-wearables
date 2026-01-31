@@ -10,7 +10,10 @@ from .apple.auto_export.json_schemas import (
     WorkoutJSON as AEWorkoutJSON,
 )
 from .apple.healthkit.sync_request import (
-    HealthRecord as HKRecordJSON,
+    MetricRecord as HKMetricRecordJSON,
+)
+from .apple.healthkit.sync_request import (
+    SleepRecord as HKSleepRecordJSON,
 )
 from .apple.healthkit.sync_request import (
     SyncRequest as AppleHealthDataRequest,
@@ -263,7 +266,8 @@ __all__ = [
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
-    "HKRecordJSON",
+    "HKMetricRecordJSON",
+    "HKSleepRecordJSON",
     "HKWorkoutJSON",
     "HKWorkoutStatisticJSON",
     "AppleHealthDataRequest",
