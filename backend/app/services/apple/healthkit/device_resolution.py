@@ -1,6 +1,6 @@
 """Device resolution utilities for HealthKit data."""
 
-from app.schemas.apple.healthkit.source import OSVersion, SourceInfo
+from app.schemas.apple.healthkit.sync_request import OSVersion, SourceInfo
 
 
 def _format_os_version(os_version: OSVersion | None) -> str | None:
