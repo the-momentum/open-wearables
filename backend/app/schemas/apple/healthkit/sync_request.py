@@ -53,7 +53,6 @@ class HealthRecord(BaseModel):
     """
 
     uuid: str | None = None
-    user_id: str | None = None
     type: AppleRecordType | None = None
     startDate: datetime
     endDate: datetime
@@ -75,7 +74,6 @@ class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
     uuid: str | None = None
-    user_id: str | None = None
     type: SDKWorkoutType | None = None
     startDate: datetime
     endDate: datetime
