@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from app.constants.series_types import (
     get_series_type_from_apple_metric_type,
 )
+from app.constants.workout_statistics import WorkoutStatisticType
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -158,57 +159,55 @@ class ImportService:
                 continue
 
             match stat.type:
-                case "activeEnergyBurned":
+                case WorkoutStatisticType.ACTIVE_ENERGY_BURNED:
                     stats_dict["energy_burned"] += value
-                case "averageGroundContactTime":
+                case WorkoutStatisticType.AVERAGE_GROUND_CONTACT_TIME:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageHeartRate":
+                case WorkoutStatisticType.AVERAGE_HEART_RATE:
                     stats_dict["heart_rate_avg"] = value
-                case "averageMETs":
+                case WorkoutStatisticType.AVERAGE_METS:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageRunningPower":
+                case WorkoutStatisticType.AVERAGE_RUNNING_POWER:
                     stats_dict["average_watts"] = value
-                case "averageRunningSpeed":
+                case WorkoutStatisticType.AVERAGE_RUNNING_SPEED:
                     stats_dict["average_speed"] = value
-                case "averageRunningStrideLength":
+                case WorkoutStatisticType.AVERAGE_RUNNING_STRIDE_LENGTH:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageSpeed":
+                case WorkoutStatisticType.AVERAGE_SPEED:
                     if "average_speed" not in stats_dict:
                         stats_dict["average_speed"] = value
-                case "averageVerticalOscillation":
+                case WorkoutStatisticType.AVERAGE_VERTICAL_OSCILLATION:
                     pass  # No corresponding field in EventRecordMetrics
-                case "basalEnergyBurned":
+                case WorkoutStatisticType.BASAL_ENERGY_BURNED:
                     stats_dict["energy_burned"] += value
-                case "distance":
+                case WorkoutStatisticType.DISTANCE:
                     stats_dict["distance"] = value
-                case "duration":
+                case WorkoutStatisticType.DURATION:
                     duration = float(value)
-                case "elevationAscended":
+                case WorkoutStatisticType.ELEVATION_ASCENDED:
                     stats_dict["total_elevation_gain"] = value
-                case "elevationDescended":
+                case WorkoutStatisticType.ELEVATION_DESCENDED:
                     pass  # No corresponding field in EventRecordMetrics
-                case "indoorWorkout":
+                case WorkoutStatisticType.INDOOR_WORKOUT:
                     pass  # No corresponding field in EventRecordMetrics
-                case "lapLength":
+                case WorkoutStatisticType.LAP_LENGTH:
                     pass  # No corresponding field in EventRecordMetrics
-                case "maxHeartRate":
+                case WorkoutStatisticType.MAX_HEART_RATE:
                     stats_dict["heart_rate_max"] = int(value)
-                case "maxSpeed":
+                case WorkoutStatisticType.MAX_SPEED:
                     stats_dict["max_speed"] = value
-                case "minHeartRate":
+                case WorkoutStatisticType.MIN_HEART_RATE:
                     stats_dict["heart_rate_min"] = int(value)
-                case "stepCount":
+                case WorkoutStatisticType.STEP_COUNT:
                     stats_dict["steps_count"] = int(value)
-                case "swimmingLocationType":
+                case WorkoutStatisticType.SWIMMING_LOCATION_TYPE:
                     pass  # No corresponding field in EventRecordMetrics
-                case "swimmingStrokeCount":
+                case WorkoutStatisticType.SWIMMING_STROKE_COUNT:
                     pass  # No corresponding field in EventRecordMetrics
-                case "weatherHumidity":
+                case WorkoutStatisticType.WEATHER_HUMIDITY:
                     pass  # No corresponding field in EventRecordMetrics
-                case "weatherTemperature":
+                case WorkoutStatisticType.WEATHER_TEMPERATURE:
                     pass  # No corresponding field in EventRecordMetrics
-                case _:
-                    continue
 
         return EventRecordMetrics(**stats_dict), duration
 
