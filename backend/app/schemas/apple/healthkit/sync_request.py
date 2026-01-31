@@ -4,28 +4,19 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.constants.series_types.apple import (
-    CATEGORY_TYPE_IDENTIFIERS,
-    METRIC_TYPE_TO_SERIES_TYPE,
-)
-from app.constants.workout_types.apple_sdk import SDK_TO_UNIFIED
+from app.constants.series_types import AppleCategoryType, AppleMetricType
+from app.constants.workout_statistics import WorkoutStatisticType
+from app.constants.workout_types import SDKWorkoutType
 
 from .source import SourceInfo
 
-# Extract all valid Apple HealthKit metric type keys for Literal type
-# This ensures type safety and OpenAPI documentation
+# Union type for all valid Apple HealthKit record types
 # Includes both quantity types (HKQuantityTypeIdentifier...) and category types (HKCategoryTypeIdentifier...)
-_APPLE_METRIC_TYPE_KEYS = tuple(METRIC_TYPE_TO_SERIES_TYPE.keys()) + tuple(CATEGORY_TYPE_IDENTIFIERS)
-AppleMetricType = Literal[_APPLE_METRIC_TYPE_KEYS]  # type: ignore[valid-type]
-
-# Extract all valid SDK workout type keys for Literal type
-# This ensures type safety and OpenAPI documentation
-_SDK_WORKOUT_TYPE_KEYS = tuple(SDK_TO_UNIFIED.keys())
-SDKWorkoutType = Literal[_SDK_WORKOUT_TYPE_KEYS]  # type: ignore[valid-type]
+AppleRecordType = AppleMetricType | AppleCategoryType
 
 
 class HealthRecord(BaseModel):
@@ -36,7 +27,7 @@ class HealthRecord(BaseModel):
 
     uuid: str | None = None
     user_id: str | None = None
-    type: AppleMetricType | None = None
+    type: AppleRecordType | None = None
     startDate: datetime
     endDate: datetime
     unit: str | None
@@ -48,7 +39,7 @@ class HealthRecord(BaseModel):
 class WorkoutStatistic(BaseModel):
     """Schema for workout statistic (distance, heart rate, calories, etc.)."""
 
-    type: str
+    type: WorkoutStatisticType
     unit: str
     value: float | int
 
