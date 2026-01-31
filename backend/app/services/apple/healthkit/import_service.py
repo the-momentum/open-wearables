@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from app.constants.series_types import (
     get_series_type_from_apple_metric_type,
 )
+from app.constants.workout_statistics import WorkoutStatisticType
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -15,15 +16,12 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
-    HKRecordJSON,
-    HKWorkoutJSON,
-    HKWorkoutStatisticJSON,
-    RootJSON,
     SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
     UploadDataResponse,
 )
+from app.schemas.apple.healthkit.sync_request import SyncRequest, WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
@@ -45,19 +43,15 @@ class ImportService:
 
     def _build_workout_bundles(
         self,
-        raw: dict,
+        request: SyncRequest,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
         """
-        Given the parsed JSON dict from HealthAutoExport, yield tuples of
+        Given the parsed SyncRequest, yield tuples of
         (EventRecordCreate, EventRecordDetailCreate) ready to insert into your ORM session.
         """
-        root = RootJSON(**raw)
-        workouts_raw = root.data.get("workouts", [])
         user_uuid = UUID(user_id)
-        for w in workouts_raw:
-            wjson = HKWorkoutJSON(**w)
-
+        for wjson in request.data.workouts:
             workout_id = uuid4()
             external_id = wjson.uuid if wjson.uuid else None
 
@@ -93,16 +87,13 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
-        raw: dict,
+        request: SyncRequest,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
-        root = RootJSON(**raw)
-        records_raw = root.data.get("records", [])
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
 
-        for r in records_raw:
-            rjson = HKRecordJSON(**r)
+        for rjson in request.data.records:
             value = Decimal(str(rjson.value))
 
             record_type = rjson.type or ""
@@ -150,7 +141,7 @@ class ImportService:
 
     def _extract_metrics_from_workout_stats(
         self,
-        stats: list[HKWorkoutStatisticJSON] | None,
+        stats: list[WorkoutStatistic] | None,
     ) -> tuple[EventRecordMetrics, int | float | None]:
         """
         Returns a dictionary with the metrics and duration.
@@ -168,57 +159,55 @@ class ImportService:
                 continue
 
             match stat.type:
-                case "activeEnergyBurned":
+                case WorkoutStatisticType.ACTIVE_ENERGY_BURNED:
                     stats_dict["energy_burned"] += value
-                case "averageGroundContactTime":
+                case WorkoutStatisticType.AVERAGE_GROUND_CONTACT_TIME:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageHeartRate":
+                case WorkoutStatisticType.AVERAGE_HEART_RATE:
                     stats_dict["heart_rate_avg"] = value
-                case "averageMETs":
+                case WorkoutStatisticType.AVERAGE_METS:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageRunningPower":
+                case WorkoutStatisticType.AVERAGE_RUNNING_POWER:
                     stats_dict["average_watts"] = value
-                case "averageRunningSpeed":
+                case WorkoutStatisticType.AVERAGE_RUNNING_SPEED:
                     stats_dict["average_speed"] = value
-                case "averageRunningStrideLength":
+                case WorkoutStatisticType.AVERAGE_RUNNING_STRIDE_LENGTH:
                     pass  # No corresponding field in EventRecordMetrics
-                case "averageSpeed":
+                case WorkoutStatisticType.AVERAGE_SPEED:
                     if "average_speed" not in stats_dict:
                         stats_dict["average_speed"] = value
-                case "averageVerticalOscillation":
+                case WorkoutStatisticType.AVERAGE_VERTICAL_OSCILLATION:
                     pass  # No corresponding field in EventRecordMetrics
-                case "basalEnergyBurned":
+                case WorkoutStatisticType.BASAL_ENERGY_BURNED:
                     stats_dict["energy_burned"] += value
-                case "distance":
+                case WorkoutStatisticType.DISTANCE:
                     stats_dict["distance"] = value
-                case "duration":
+                case WorkoutStatisticType.DURATION:
                     duration = float(value)
-                case "elevationAscended":
+                case WorkoutStatisticType.ELEVATION_ASCENDED:
                     stats_dict["total_elevation_gain"] = value
-                case "elevationDescended":
+                case WorkoutStatisticType.ELEVATION_DESCENDED:
                     pass  # No corresponding field in EventRecordMetrics
-                case "indoorWorkout":
+                case WorkoutStatisticType.INDOOR_WORKOUT:
                     pass  # No corresponding field in EventRecordMetrics
-                case "lapLength":
+                case WorkoutStatisticType.LAP_LENGTH:
                     pass  # No corresponding field in EventRecordMetrics
-                case "maxHeartRate":
+                case WorkoutStatisticType.MAX_HEART_RATE:
                     stats_dict["heart_rate_max"] = int(value)
-                case "maxSpeed":
+                case WorkoutStatisticType.MAX_SPEED:
                     stats_dict["max_speed"] = value
-                case "minHeartRate":
+                case WorkoutStatisticType.MIN_HEART_RATE:
                     stats_dict["heart_rate_min"] = int(value)
-                case "stepCount":
+                case WorkoutStatisticType.STEP_COUNT:
                     stats_dict["steps_count"] = int(value)
-                case "swimmingLocationType":
+                case WorkoutStatisticType.SWIMMING_LOCATION_TYPE:
                     pass  # No corresponding field in EventRecordMetrics
-                case "swimmingStrokeCount":
+                case WorkoutStatisticType.SWIMMING_STROKE_COUNT:
                     pass  # No corresponding field in EventRecordMetrics
-                case "weatherHumidity":
+                case WorkoutStatisticType.WEATHER_HUMIDITY:
                     pass  # No corresponding field in EventRecordMetrics
-                case "weatherTemperature":
+                case WorkoutStatisticType.WEATHER_TEMPERATURE:
                     pass  # No corresponding field in EventRecordMetrics
-                case _:
-                    continue
 
         return EventRecordMetrics(**stats_dict), duration
 
@@ -235,12 +224,13 @@ class ImportService:
         Returns:
             dict with counts: {"workouts_saved": int, "records_saved": int, "sleep_saved": int}
         """
+        request = SyncRequest(**raw)
         workouts_saved = 0
         records_saved = 0
         sleep_saved = 0
 
         # Process workouts in batch
-        workout_bundles = list(self._build_workout_bundles(raw, user_id))
+        workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
             records = [record for record, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail in workout_bundles}
@@ -258,7 +248,7 @@ class ImportService:
             workouts_saved = len(inserted_ids)
 
         # Process time series samples (records)
-        samples = self._build_statistic_bundles(raw, user_id)
+        samples = self._build_statistic_bundles(request, user_id)
         if samples:
             self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved = len(samples)
@@ -267,10 +257,9 @@ class ImportService:
         db_session.commit()
 
         # Process sleep (count sleep segments from input)
-        sleep_data = raw.get("data", {}).get("sleep", [])
-        if sleep_data:
-            handle_sleep_data(db_session, raw, user_id)
-            sleep_saved = len(sleep_data)
+        if request.data.sleep:
+            handle_sleep_data(db_session, request, user_id)
+            sleep_saved = len(request.data.sleep)
 
         return {
             "workouts_saved": workouts_saved,
@@ -305,10 +294,10 @@ class ImportService:
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Extract incoming counts for logging
-            data_section = data.get("data", {})
-            incoming_records = len(data_section.get("records", []))
-            incoming_workouts = len(data_section.get("workouts", []))
-            incoming_sleep = len(data_section.get("sleep", []))
+            inner_data = data.get("data", {})
+            incoming_records = len(inner_data.get("records", []))
+            incoming_workouts = len(inner_data.get("workouts", []))
+            incoming_sleep = len(inner_data.get("sleep", []))
 
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
@@ -359,6 +348,7 @@ class ImportService:
 
     def _parse_multipart_content(self, content: str) -> dict | None:
         """Parse multipart form data to extract JSON."""
+        # Try to find JSON start with various field patterns
         json_start = content.find('{\n  "data"')
         if json_start == -1:
             json_start = content.find('{"data"')
