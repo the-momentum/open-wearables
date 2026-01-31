@@ -9,17 +9,17 @@ from .apple.auto_export.json_schemas import (
 from .apple.auto_export.json_schemas import (
     WorkoutJSON as AEWorkoutJSON,
 )
-from .apple.healthkit.record_import import (
-    RecordJSON as HKRecordJSON,
+from .apple.healthkit.sync_request import (
+    HealthRecord as HKRecordJSON,
 )
-from .apple.healthkit.sdk_import import (
-    AppleHealthDataRequest,
+from .apple.healthkit.sync_request import (
+    SyncRequest as AppleHealthDataRequest,
 )
-from .apple.healthkit.workout_import import (
-    WorkoutJSON as HKWorkoutJSON,
+from .apple.healthkit.sync_request import (
+    Workout as HKWorkoutJSON,
 )
-from .apple.healthkit.workout_import import (
-    WorkoutStatisticJSON as HKWorkoutStatisticJSON,
+from .apple.healthkit.sync_request import (
+    WorkoutStatistic as HKWorkoutStatisticJSON,
 )
 from .application import (
     ApplicationCreate,

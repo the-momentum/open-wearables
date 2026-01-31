@@ -4,7 +4,7 @@ With the simplified DataSource model, we no longer need to create separate Devic
 This module now just extracts device_model and related info from SourceInfo.
 """
 
-from app.schemas.apple.healthkit.source_info import OSVersion, SourceInfo
+from app.schemas.apple.healthkit.source import OSVersion, SourceInfo
 
 
 def _format_os_version(os_version: OSVersion | None) -> str | None:
