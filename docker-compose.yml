@@ -22,6 +22,7 @@ services:
         dockerfile: Dockerfile
     container_name: backend__open-wearables
     image: open-wearables-platform:latest
+    pull_policy: never
     command: scripts/start/app.sh
     env_file:
       - ./backend/config/.env
@@ -59,6 +60,7 @@ services:
   celery-worker:
     container_name: celery-worker__open-wearables
     image: open-wearables-platform:latest
+    pull_policy: never
     command: scripts/start/worker.sh
     env_file:
       - ./backend/config/.env
@@ -81,6 +83,7 @@ services:
   celery-beat:
     container_name: celery-beat__open-wearables
     image: open-wearables-platform:latest
+    pull_policy: never
     command: scripts/start/beat.sh
     env_file:
       - ./backend/config/.env
@@ -103,6 +106,7 @@ services:
   flower:
     container_name: flower__open-wearables
     image: open-wearables-platform:latest
+    pull_policy: never
     command: scripts/start/flower.sh
     env_file:
       - ./backend/config/.env
@@ -137,6 +141,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: frontend__open-wearables
     image: open-wearables-frontend:dev
+    pull_policy: never
     ports:
       - "3000:3000"
     depends_on:
