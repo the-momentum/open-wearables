@@ -13,10 +13,9 @@ from app.integrations.redis_client import get_redis_client
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
-    HKRecordJSON,
-    RootJSON,
 )
-from app.schemas.apple.healthkit.redis_sleep import SLEEP_START_STATES, SleepState
+from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
+from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.sentry_helpers import log_and_capture_error
@@ -123,7 +122,7 @@ def _apply_transition(
 
 def handle_sleep_data(
     db_session: DbSession,
-    raw: dict,
+    request: SyncRequest,
     user_id: str,
 ) -> None:
     """
@@ -134,7 +133,7 @@ def handle_sleep_data(
 
     Args:
         db_session: Database session for persisting finalized sleep records
-        raw: Raw JSON data from Apple HealthKit containing sleep records
+        request: Parsed SyncRequest containing sleep records
         user_id: User identifier for associating sleep data
 
     Flow:
@@ -143,13 +142,9 @@ def handle_sleep_data(
           * Gap > 1 hour: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
     """
-    root = RootJSON(**raw)
-    sleep_raw = root.data.get("sleep", [])
-
     current_state = load_sleep_state(user_id)
 
-    for s in sleep_raw:
-        sjson = HKRecordJSON(**s)
+    for sjson in request.data.sleep:
         source_name = "apple_health_sdk"
 
         # Extract device info
