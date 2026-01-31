@@ -1,0 +1,353 @@
+---
+title: 'Webhooks Implementation Plan'
+description: 'Technical plan for implementing developer-facing webhook system using Svix'
+---
+
+# Webhooks System Plan for Open Wearables (Svix)
+
+## Summary
+
+Webhook system based on **Svix self-hosted**, allowing developers to configure per-application endpoints to receive granular events about wearable data.
+
+**Decisions:**
+- Svix self-hosted (ready infrastructure, retries, dashboard, logs)
+- Granular events (workout.created, sleep.completed, timeseries.updated)
+- Per-application scope (webhooks assigned to SDK Application)
+
+---
+
+## 1. Svix Self-Hosted Setup
+
+### Requirements
+- PostgreSQL (already available)
+- Redis v6.2.0+ (already available)
+- Docker image: `svix/svix-server`
+
+### Docker Compose (new service)
+
+```yaml
+# docker-compose.yml
+svix:
+  image: svix/svix-server:latest
+  ports:
+    - "8071:8071"
+  environment:
+    SVIX_JWT_SECRET: ${SVIX_JWT_SECRET}
+    SVIX_DB_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/svix
+    SVIX_REDIS_DSN: redis://redis:6379/1
+    SVIX_QUEUE_TYPE: redis
+  depends_on:
+    - postgres
+    - redis
+```
+
+### Configuration
+- `SVIX_JWT_SECRET` - secret for auth (generate)
+- Separate `svix` database in PostgreSQL
+- Redis DB 1 (separated from Celery)
+
+---
+
+## 2. Integration Architecture
+
+### Concept Mapping
+
+| Open Wearables | Svix | Description |
+|----------------|------|------------|
+| Application | Application | 1:1 - each SDK app has its own Svix app |
+| - | Endpoint | Developer adds via Svix portal/API |
+| Event emission | Message | Backend sends via Svix SDK |
+
+### Flow
+
+```
+User sync data → ImportService → WebhookEventService
+                                        ↓
+                              Svix Python SDK
+                                        ↓
+                              Svix Server (Docker)
+                                        ↓
+                              Developer's webhook endpoint
+```
+
+---
+
+## 3. Event Types (Granular)
+
+| Event Type | Payload | Trigger |
+|------------|---------|---------|
+| `workout.created` | `{user_id, workout_ids[], provider, count}` | EventRecordService.bulk_create (workouts) |
+| `sleep.completed` | `{user_id, sleep_id, start_time, end_time, provider}` | finalize_stale_sleep_task |
+| `timeseries.updated` | `{user_id, series_type, sample_count, provider}` | TimeseriesService.bulk_create |
+| `sync.completed` | `{user_id, provider, workouts_count, records_count, sleep_count}` | ImportService (summary) |
+
+### Event Payload Structure
+
+```json
+{
+  "user_id": "uuid",
+  "workout_ids": ["uuid1", "uuid2"],
+  "provider": "apple",
+  "count": 2,
+  "timestamp": "2026-01-31T12:00:00Z"
+}
+```
+
+---
+
+## 4. Backend Integration
+
+### Python SDK
+
+```bash
+pip install svix
+```
+
+### SvixClient Service
+
+**File:** `backend/app/services/svix_client.py`
+
+```python
+from svix.api import Svix, ApplicationIn, MessageIn
+
+class SvixService:
+    def __init__(self):
+        self.client = Svix(settings.svix_auth_token, SvixOptions(server_url=settings.svix_server_url))
+
+    def create_application(self, app: Application) -> str:
+        """Create Svix application when SDK Application is created."""
+        svix_app = self.client.application.create(ApplicationIn(
+            name=app.name,
+            uid=str(app.id),  # Link to our Application.id
+        ))
+        return svix_app.id
+
+    def send_event(self, app_id: str, event_type: str, payload: dict):
+        """Send webhook event to all subscribed endpoints."""
+        self.client.message.create(app_id, MessageIn(
+            event_type=event_type,
+            payload=payload,
+        ))
+```
+
+### WebhookEventService
+
+**File:** `backend/app/services/webhook_event_service.py`
+
+```python
+class WebhookEventService:
+    def __init__(self, svix: SvixService, app_repo: ApplicationRepository):
+        self.svix = svix
+        self.app_repo = app_repo
+
+    def emit_workout_created(self, user_id: UUID, workout_ids: list[UUID], provider: str):
+        # Find Application for this user
+        app = self.app_repo.get_by_user(user_id)
+        if app and app.svix_app_id:
+            self.svix.send_event(
+                app_id=app.svix_app_id,
+                event_type="workout.created",
+                payload={
+                    "user_id": str(user_id),
+                    "workout_ids": [str(id) for id in workout_ids],
+                    "provider": provider,
+                    "count": len(workout_ids),
+                }
+            )
+```
+
+---
+
+## 5. Model Changes
+
+### Application model update
+
+**File:** `backend/app/models/application.py`
+
+```python
+class Application(BaseDbModel):
+    # ... existing fields ...
+    svix_app_id: Mapped[str | None]  # Svix application ID
+```
+
+### Migration
+
+```python
+# Add svix_app_id column to application table
+op.add_column('application', sa.Column('svix_app_id', sa.String(64), nullable=True))
+```
+
+---
+
+## 6. API Endpoints
+
+### Webhook Management (delegated to Svix)
+
+Developers can manage webhooks through:
+1. **Svix App Portal** - embedded UI (recommended)
+2. **Proxy endpoints** - optional wrappers in our API
+
+### App Portal Integration
+
+```python
+# backend/app/api/routes/v1/webhooks.py
+
+@router.get("/applications/{app_id}/webhook-portal")
+async def get_webhook_portal(app_id: UUID, developer: DeveloperDep):
+    """Generate Svix App Portal URL for webhook management."""
+    app = app_repo.get(app_id)
+
+    # Generate short-lived portal URL
+    portal = svix.authentication.app_portal_access(
+        app.svix_app_id,
+        AppPortalAccessIn(feature_flags=["event_types_read"])
+    )
+    return {"url": portal.url}
+```
+
+Developer clicks "Manage Webhooks" → opens Svix Portal in new window/iframe.
+
+---
+
+## 7. Integration Points
+
+### 7.1 Application Creation
+
+**File:** `backend/app/api/routes/v1/applications.py`
+
+```python
+@router.post("/applications")
+async def create_application(...):
+    # Create our Application
+    app = app_service.create(...)
+
+    # Create corresponding Svix Application
+    svix_app_id = svix_service.create_application(app)
+    app_service.update(app.id, svix_app_id=svix_app_id)
+
+    return app
+```
+
+### 7.2 Import Service (event emission)
+
+**File:** `backend/app/services/apple/healthkit/import_service.py`
+
+After line ~320 (after success):
+
+```python
+# Emit webhook events
+if saved_counts["workouts_saved"] > 0:
+    webhook_service.emit_workout_created(user_id, inserted_workout_ids, "apple")
+
+if saved_counts["sleep_saved"] > 0:
+    webhook_service.emit_sync_completed(user_id, "apple", saved_counts)
+```
+
+### 7.3 Sleep Finalization
+
+**File:** `backend/app/integrations/celery/tasks/finalize_stale_sleep_task.py`
+
+After finalizing sleep session:
+
+```python
+webhook_service.emit_sleep_completed(user_id, sleep_record)
+```
+
+---
+
+## 8. File Structure
+
+```
+backend/app/
+├── services/
+│   ├── svix_client.py           # NEW: Svix SDK wrapper
+│   └── webhook_event_service.py # NEW: Event emission logic
+├── api/routes/v1/
+│   └── webhooks.py              # NEW: Portal URL endpoint
+├── models/
+│   └── application.py           # UPDATE: add svix_app_id
+└── config.py                    # UPDATE: Svix settings
+
+docker-compose.yml               # UPDATE: add svix service
+.env.example                     # UPDATE: Svix env vars
+
+migrations/versions/
+└── XXXX_add_svix_app_id.py      # NEW: migration
+```
+
+---
+
+## 9. Configuration
+
+**File:** `backend/app/config.py`
+
+```python
+# Svix settings
+svix_server_url: str = "http://svix:8071"
+svix_auth_token: str  # Svix API token
+```
+
+**File:** `.env`
+
+```bash
+SVIX_JWT_SECRET=your-secret-here
+SVIX_AUTH_TOKEN=your-token-here
+```
+
+---
+
+## 10. Implementation Phases
+
+### Phase 1: Infrastructure Setup
+- [ ] Add svix service to docker-compose.yml
+- [ ] Create svix database in PostgreSQL
+- [ ] Configure env vars
+- [ ] Test Svix server standalone
+
+### Phase 2: SDK Integration
+- [ ] `pip install svix`
+- [ ] SvixService (client wrapper)
+- [ ] Migration: add svix_app_id to Application
+- [ ] Hook: create Svix app when creating Application
+
+### Phase 3: Event Emission
+- [ ] WebhookEventService
+- [ ] Integration with ImportService
+- [ ] Integration with finalize_stale_sleep_task
+- [ ] Event types registration in Svix
+
+### Phase 4: Developer Experience
+- [ ] Endpoint to generate portal URL
+- [ ] Frontend: "Manage Webhooks" button in Application settings
+- [ ] Documentation for developers
+
+---
+
+## 11. Verification
+
+1. **Setup test:**
+   - Run `docker-compose up svix`
+   - Check Svix health endpoint
+
+2. **Integration test:**
+   - Create Application → check if Svix app created
+   - Add webhook endpoint via Svix portal
+   - Execute Apple Health sync
+   - Check if webhook was called
+
+3. **Retry test:**
+   - Configure webhook with non-working URL
+   - Check retry behavior in Svix dashboard
+
+4. **End-to-end:**
+   - Mobile app → SDK sync → Webhook delivered → Developer endpoint receives data
+
+---
+
+## 12. Future Extensions
+
+- [ ] Event filtering in UI (only workout.created, not sleep)
+- [ ] Custom headers for webhooks
+- [ ] Webhook signing verification docs for developers
+- [ ] Rate limiting per-application
+- [ ] Dead Letter Queue monitoring
