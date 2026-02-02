@@ -819,7 +819,7 @@ class Garmin247Data(Base247DataTemplate):
                             source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(stress_value)),
-                            series_type=SeriesType.stress_level,
+                            series_type=SeriesType.garmin_stress_level,
                         )
                     )
                 except Exception:
@@ -841,7 +841,7 @@ class Garmin247Data(Base247DataTemplate):
                             source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(battery_value)),
-                            series_type=SeriesType.body_battery,
+                            series_type=SeriesType.garmin_body_battery,
                         )
                     )
                 except Exception:
@@ -1117,7 +1117,7 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(fitness_age)),
-                    series_type=SeriesType.fitness_age,
+                    series_type=SeriesType.garmin_fitness_age,
                     external_id=summary_id,
                 )
             )
@@ -1168,7 +1168,7 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(skin_temp)),
-                    series_type=SeriesType.skin_temperature,
+                    series_type=SeriesType.garmin_skin_temperature,
                     external_id=summary_id,
                 )
             )
@@ -1250,7 +1250,7 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(stress)),
-                    series_type=SeriesType.stress_level,
+                    series_type=SeriesType.garmin_stress_level,
                     external_id=f"{summary_id}:stress" if summary_id else None,
                 )
             )

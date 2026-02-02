@@ -93,7 +93,7 @@ async def oauth_callback(
     )
 
     # For Garmin: Auto-trigger 90-day backfill for all 16 data types
-    if provider.value == "garmin":
+    if provider == ProviderName.GARMIN:
         start_garmin_full_backfill.delay(str(oauth_state.user_id))
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there

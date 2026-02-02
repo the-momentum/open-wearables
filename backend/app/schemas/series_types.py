@@ -114,10 +114,10 @@ class SeriesType(str, Enum):
     # =========================================================================
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # =========================================================================
-    stress_level = "stress_level"  # Garmin stress score (1-100)
-    skin_temperature = "skin_temperature"  # Skin temp deviation from baseline
-    fitness_age = "fitness_age"  # Garmin fitness age estimate
-    body_battery = "body_battery"  # Garmin body battery (0-100)
+    garmin_stress_level = "garmin_stress_level"  # Garmin stress score (1-100)
+    garmin_skin_temperature = "garmin_skin_temperature"  # Skin temp deviation from baseline
+    garmin_fitness_age = "garmin_fitness_age"  # Garmin fitness age estimate
+    garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
 
 
 # =============================================================================
@@ -215,10 +215,10 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # -------------------------------------------------------------------------
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # -------------------------------------------------------------------------
-    (220, SeriesType.stress_level, "score"),
-    (221, SeriesType.skin_temperature, "celsius"),
-    (222, SeriesType.fitness_age, "years"),
-    (223, SeriesType.body_battery, "percent"),
+    (220, SeriesType.garmin_stress_level, "score"),
+    (221, SeriesType.garmin_skin_temperature, "celsius"),
+    (222, SeriesType.garmin_fitness_age, "years"),
+    (223, SeriesType.garmin_body_battery, "percent"),
 ]
 
 
