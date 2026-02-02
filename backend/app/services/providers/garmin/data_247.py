@@ -392,6 +392,7 @@ class Garmin247Data(Base247DataTemplate):
                     value=Decimal(str(hr_value)),
                     series_type=SeriesType.heart_rate,
                 )
+                samples.append(sample)
             except Exception:
                 pass
 
@@ -511,6 +512,7 @@ class Garmin247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                     )
+                    samples_to_insert.append(sample_create)
                 except Exception:
                     pass
 
@@ -677,6 +679,7 @@ class Garmin247Data(Base247DataTemplate):
                         series_type=SeriesType.heart_rate_variability_sdnn,
                         external_id=f"{summary_id}:{offset_str}" if summary_id else None,
                     )
+                    samples.append(sample)
                 except Exception as e:
                     self.logger.debug(f"Failed to collect HRV value at offset {offset_str}: {e}")
 
@@ -731,12 +734,12 @@ class Garmin247Data(Base247DataTemplate):
             category="workout",
             type=activity_type.lower(),
             source_name="Garmin",
-            device_id=raw_activity.get("deviceId"),
+            device_model=raw_activity.get("deviceId"),
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=str(activity_id),
-            provider_name=self.provider_name,
+            source=self.provider_name,
             user_id=user_id,
         )
 
@@ -813,7 +816,7 @@ class Garmin247Data(Base247DataTemplate):
                         TimeSeriesSampleCreate(
                             id=uuid4(),
                             user_id=user_id,
-                            provider_name=self.provider_name,
+                            source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(stress_value)),
                             series_type=SeriesType.stress_level,
@@ -835,7 +838,7 @@ class Garmin247Data(Base247DataTemplate):
                         TimeSeriesSampleCreate(
                             id=uuid4(),
                             user_id=user_id,
-                            provider_name=self.provider_name,
+                            source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(battery_value)),
                             series_type=SeriesType.body_battery,
@@ -884,7 +887,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(avg_respiration)),
                     series_type=SeriesType.respiratory_rate,
@@ -905,7 +908,7 @@ class Garmin247Data(Base247DataTemplate):
                         TimeSeriesSampleCreate(
                             id=uuid4(),
                             user_id=user_id,
-                            provider_name=self.provider_name,
+                            source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(resp_value)),
                             series_type=SeriesType.respiratory_rate,
@@ -954,7 +957,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(avg_spo2)),
                     series_type=SeriesType.oxygen_saturation,
@@ -975,7 +978,7 @@ class Garmin247Data(Base247DataTemplate):
                         TimeSeriesSampleCreate(
                             id=uuid4(),
                             user_id=user_id,
-                            provider_name=self.provider_name,
+                            source=self.provider_name,
                             recorded_at=recorded_at,
                             value=Decimal(str(spo2_value)),
                             series_type=SeriesType.oxygen_saturation,
@@ -1029,7 +1032,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(systolic)),
                     series_type=SeriesType.blood_pressure_systolic,
@@ -1044,7 +1047,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(diastolic)),
                     series_type=SeriesType.blood_pressure_diastolic,
@@ -1096,7 +1099,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(vo2_max)),
                     series_type=SeriesType.vo2_max,
@@ -1111,7 +1114,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(fitness_age)),
                     series_type=SeriesType.fitness_age,
@@ -1162,7 +1165,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(skin_temp)),
                     series_type=SeriesType.skin_temperature,
@@ -1214,7 +1217,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(heart_rate)),
                     series_type=SeriesType.heart_rate,
@@ -1229,7 +1232,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(hrv)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
@@ -1244,7 +1247,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(stress)),
                     series_type=SeriesType.stress_level,
@@ -1259,7 +1262,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(spo2)),
                     series_type=SeriesType.oxygen_saturation,
@@ -1274,7 +1277,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(respiration)),
                     series_type=SeriesType.respiratory_rate,
@@ -1327,12 +1330,12 @@ class Garmin247Data(Base247DataTemplate):
             category="activity",
             type=f"moveiq_{activity_type.lower()}",
             source_name="Garmin Move IQ",
-            device_id=None,
+            device_model=None,
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=summary_id,
-            provider_name=self.provider_name,
+            source=self.provider_name,
             user_id=user_id,
         )
 
