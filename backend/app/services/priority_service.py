@@ -29,9 +29,7 @@ class PriorityService:
         db_session: DbSession,
     ) -> ProviderPriorityListResponse:
         priorities = self.priority_repo.get_all_ordered(db_session)
-        return ProviderPriorityListResponse(
-            items=[ProviderPriorityResponse.model_validate(p) for p in priorities]
-        )
+        return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in priorities])
 
     @handle_exceptions
     async def update_provider_priority(
@@ -51,9 +49,7 @@ class PriorityService:
     ) -> ProviderPriorityListResponse:
         priorities_tuples = [(p.provider, p.priority) for p in update.priorities]
         results = self.priority_repo.bulk_update(db_session, priorities_tuples)
-        return ProviderPriorityListResponse(
-            items=[ProviderPriorityResponse.model_validate(p) for p in results]
-        )
+        return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in results])
 
     @handle_exceptions
     async def get_user_data_sources(
@@ -120,6 +116,7 @@ class PriorityService:
             parts.append(ds.provider.value.capitalize())
         if ds.device_model:
             from app.constants.devices import APPLE_DEVICE_NAMES
+
             readable_model = APPLE_DEVICE_NAMES.get(ds.device_model, ds.device_model)
             parts.append(readable_model)
         elif ds.original_source_name:

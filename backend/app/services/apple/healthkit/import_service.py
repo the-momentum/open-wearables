@@ -66,7 +66,7 @@ class ImportService:
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
-            device_model, software_version, manufacturer = extract_device_info(wjson.source)
+            device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
             record = EventRecordCreate(
                 category="workout",
@@ -80,7 +80,7 @@ class ImportService:
                 external_id=external_id,
                 source="apple_health_sdk",
                 software_version=software_version,
-                manufacturer=manufacturer,
+                provider="apple",
                 user_id=user_uuid,
             )
 
@@ -115,7 +115,7 @@ class ImportService:
                 value = value * 100
 
             # Extract device info
-            device_model, software_version, manufacturer = extract_device_info(rjson.source)
+            device_model, software_version, original_source_name = extract_device_info(rjson.source)
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
@@ -124,7 +124,7 @@ class ImportService:
                 source="apple_health_sdk",
                 device_model=device_model,
                 software_version=software_version,
-                manufacturer=manufacturer,
+                provider="apple",
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,

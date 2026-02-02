@@ -96,7 +96,7 @@ const SLEEP_METRICS: SleepMetricDefinition[] = [
     bgColor: 'bg-emerald-500/10',
     glowColor: 'shadow-[0_0_15px_rgba(16,185,129,0.5)]',
     getValue: (stats) => stats.avgEfficiency,
-    formatValue: (v) => (v != null ? `${Math.round(v)}%` : '-'),
+    formatValue: (v) => (v !== null ? `${Math.round(v)}%` : '-'),
     getChartValue: (s) => s.efficiency_percent || 0,
     unit: '%',
   },
@@ -228,7 +228,7 @@ function SleepSessionRow({
               <Zap className="h-4 w-4 text-emerald-400" />
               <div>
                 <p className="text-sm font-medium text-white">
-                  {session.efficiency_percent != null
+                  {session.efficiency_percent !== null
                     ? `${Math.round(session.efficiency_percent)}%`
                     : '-'}
                 </p>

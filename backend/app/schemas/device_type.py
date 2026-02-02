@@ -60,8 +60,7 @@ def infer_device_type_from_model(device_model: str | None) -> DeviceType:
 
     # Garmin device patterns
     if any(
-        x in model_lower
-        for x in ["forerunner", "fenix", "venu", "epix", "enduro", "instinct", "tactix", "approach"]
+        x in model_lower for x in ["forerunner", "fenix", "venu", "epix", "enduro", "instinct", "tactix", "approach"]
     ):
         return DeviceType.WATCH
 

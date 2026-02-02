@@ -132,12 +132,12 @@ def generate_workout(
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
     device_name: str | None = None
-    manufacturer: str | None = None
+    provider: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        manufacturer = str(config["manufacturer"])
+        provider = str(config["provider"])
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
@@ -149,7 +149,7 @@ def generate_workout(
         duration_seconds=duration_seconds,
         source_name=source_name,
         device_model=device_name,
-        manufacturer=manufacturer,
+        provider=provider,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -205,12 +205,12 @@ def generate_sleep(
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
     device_name: str | None = None
-    manufacturer: str | None = None
+    provider: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        manufacturer = str(config["manufacturer"])
+        provider = str(config["provider"])
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
@@ -222,7 +222,7 @@ def generate_sleep(
         duration_seconds=sleep_duration_seconds,
         source_name=source_name,
         device_model=device_name,
-        manufacturer=manufacturer,
+        provider=provider,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -267,7 +267,7 @@ def generate_time_series_samples(
     user_id: UUID,
     source: str,
     device_model: str | None = None,
-    manufacturer: str | None = None,
+    provider: str | None = None,
     software_version: str | None = None,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time series samples for a workout period with realistic frequencies."""
@@ -298,7 +298,7 @@ def generate_time_series_samples(
                         user_id=user_id,
                         source=source,
                         device_model=device_model,
-                        manufacturer=manufacturer,
+                        provider=provider,
                         software_version=software_version,
                         recorded_at=current_time,
                         value=Decimal(str(value)),
@@ -357,7 +357,7 @@ def seed_activity_data() -> None:
                         user_id=user.id,
                         source=record.source or "unknown",
                         device_model=record.device_model,
-                        manufacturer=record.manufacturer,
+                        provider=record.provider,
                         software_version=record.software_version,
                     )
                     if samples:

@@ -34,7 +34,7 @@ class TestDataPointSeriesRepository:
         """Test creating a data point with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = DataSourceFactory(source="apple", device_model="watch123")
+        mapping = DataSourceFactory(user=user, source="apple", device_model="watch123")
         now = datetime.now(timezone.utc)
 
         sample_data = TimeSeriesSampleCreate(
@@ -128,7 +128,7 @@ class TestDataPointSeriesRepository:
         """Test that creating duplicate data points returns the existing record instead of raising error."""
         # Arrange
         user = UserFactory()
-        mapping = DataSourceFactory(source="apple", device_model="watch123")
+        mapping = DataSourceFactory(user=user, source="apple", device_model="watch123")
         recorded_time = datetime.now(timezone.utc)
 
         # Create first sample
@@ -231,7 +231,7 @@ class TestDataPointSeriesRepository:
         """Test getting samples filtered by external mapping ID."""
         # Arrange
         user = UserFactory()
-        mapping = DataSourceFactory(user=user)
+        mapping = DataSourceFactory(user=user, source="apple", device_model="device1")
 
         now = datetime.now(timezone.utc)
         sample_ids = []

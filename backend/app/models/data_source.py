@@ -1,11 +1,16 @@
+from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import Index, text
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32, str_50, str_100
 from app.schemas.oauth import ProviderName
+
+if TYPE_CHECKING:
+    from app.models.data_point_series import DataPointSeries
+    from app.models.event_record import EventRecord
 
 
 class DataSource(BaseDbModel):
@@ -18,7 +23,14 @@ class DataSource(BaseDbModel):
     __tablename__ = "data_source"
     __table_args__ = (
         Index("idx_data_source_user_provider", "user_id", "provider"),
-        UniqueConstraint("user_id", "provider", "device_model", "source", name="uq_data_source_identity"),
+        Index(
+            "uq_data_source_identity",
+            "user_id",
+            "provider",
+            text("COALESCE(device_model, '')"),
+            text("COALESCE(source, '')"),
+            unique=True,
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]

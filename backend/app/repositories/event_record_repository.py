@@ -1,3 +1,4 @@
+import contextlib
 from datetime import datetime
 from uuid import UUID
 
@@ -12,7 +13,7 @@ from app.models import DataSource, EventRecord, SleepDetails
 from app.models.workout_details import WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
+from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate, ProviderName
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -29,28 +30,32 @@ class EventRecordRepository(
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        # Use provided data_source_id or resolve/create one
         if creator.data_source_id:
             data_source_id = creator.data_source_id
         else:
+            provider = self.data_source_repo.infer_provider_from_source(creator.source)
+            if creator.provider:
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(creator.provider)
             data_source = self.data_source_repo.ensure_data_source(
                 db_session,
                 user_id=creator.user_id,
+                provider=provider,
+                user_connection_id=creator.user_connection_id,
                 device_model=creator.device_model,
                 source=creator.source,
                 software_version=creator.software_version,
-                manufacturer=creator.manufacturer,
             )
             data_source_id = data_source.id
 
         creation_data = creator.model_dump()
         creation_data["data_source_id"] = data_source_id
-        # Remove fields that aren't on the model or have been handled
         for redundant_key in (
             "user_id",
             "source",
             "device_model",
-            "manufacturer",
+            "provider",
+            "user_connection_id",
             "software_version",
         ):
             creation_data.pop(redundant_key, None)
@@ -64,7 +69,6 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            # Query using the data_source and other unique constraint fields
             existing = (
                 db_session.query(self.model)
                 .filter(
@@ -84,22 +88,31 @@ class EventRecordRepository(
         db_session: DbSession,
         creators: list[EventRecordCreate],
     ) -> list[UUID]:
-        """Bulk create event records with batch data source resolution.
-
-        Optimized for performance - resolves data sources in batch, then inserts all records.
-        Returns list of record IDs (both new and existing).
-        """
         if not creators:
             return []
 
-        # 1. Resolve all data sources in batch
-        unique_identities: set[DataSourceIdentity] = set()
+        # Group by provider for batch processing
+        by_provider: dict[ProviderName, list[EventRecordCreate]] = {}
         for c in creators:
-            unique_identities.add((c.user_id, c.device_model, c.source))
+            provider = self.data_source_repo.infer_provider_from_source(c.source)
+            if c.provider:
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(c.provider)
+            by_provider.setdefault(provider, []).append(c)
 
-        identity_to_source_id = self.data_source_repo.batch_ensure_data_sources(db_session, unique_identities)
+        identity_to_source_id: dict[DataSourceIdentity, UUID] = {}
 
-        # 2. Build values for batch insert
+        for provider, provider_creators in by_provider.items():
+            unique_identities: set[DataSourceIdentity] = set()
+            user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
+            for c in provider_creators:
+                unique_identities.add((c.user_id, c.device_model, c.source))
+
+            batch_result = self.data_source_repo.batch_ensure_data_sources(
+                db_session, provider, user_connection_id, unique_identities
+            )
+            identity_to_source_id.update(batch_result)
+
         values_list = []
         for creator in creators:
             identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
@@ -125,11 +138,9 @@ class EventRecordRepository(
         if not values_list:
             return []
 
-        # 3. Batch insert with ON CONFLICT DO NOTHING
         stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
         result = db_session.execute(stmt.returning(self.model.id))
         inserted_ids = {row[0] for row in result.fetchall()}
-        # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
 

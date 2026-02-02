@@ -212,7 +212,7 @@ const SLEEP_FIELD_DEFINITIONS: SleepFieldDefinition[] = [
     key: 'deepSleep',
     label: 'Deep Sleep',
     getValue: (s) =>
-      s.stages?.deep_minutes != null
+      s.stages?.deep_minutes !== null
         ? formatMinutes(s.stages.deep_minutes)
         : null,
   },
@@ -220,7 +220,7 @@ const SLEEP_FIELD_DEFINITIONS: SleepFieldDefinition[] = [
     key: 'remSleep',
     label: 'REM Sleep',
     getValue: (s) =>
-      s.stages?.rem_minutes != null
+      s.stages?.rem_minutes !== null
         ? formatMinutes(s.stages.rem_minutes)
         : null,
   },
@@ -228,7 +228,7 @@ const SLEEP_FIELD_DEFINITIONS: SleepFieldDefinition[] = [
     key: 'lightSleep',
     label: 'Light Sleep',
     getValue: (s) =>
-      s.stages?.light_minutes != null
+      s.stages?.light_minutes !== null
         ? formatMinutes(s.stages.light_minutes)
         : null,
   },
@@ -236,7 +236,7 @@ const SLEEP_FIELD_DEFINITIONS: SleepFieldDefinition[] = [
     key: 'awake',
     label: 'Time Awake',
     getValue: (s) =>
-      s.stages?.awake_minutes != null
+      s.stages?.awake_minutes !== null
         ? formatMinutes(s.stages.awake_minutes)
         : null,
   },

@@ -29,7 +29,8 @@ interface DataSourceItemProps {
 function DataSourceItem({ dataSource, userId }: DataSourceItemProps) {
   const updateMutation = useUpdateDataSourceEnabled();
 
-  const deviceInfo = DEVICE_TYPE_INFO[dataSource.device_type || 'unknown'] ||
+  const deviceInfo =
+    DEVICE_TYPE_INFO[dataSource.device_type || 'unknown'] ||
     DEVICE_TYPE_INFO.unknown;
 
   const handleToggle = () => {
@@ -82,7 +83,12 @@ interface DataSourcesSectionProps {
 }
 
 export function DataSourcesSection({ userId }: DataSourcesSectionProps) {
-  const { data: dataSources, isLoading, error, refetch } = useUserDataSources(userId);
+  const {
+    data: dataSources,
+    isLoading,
+    error,
+    refetch,
+  } = useUserDataSources(userId);
 
   if (isLoading) {
     return (

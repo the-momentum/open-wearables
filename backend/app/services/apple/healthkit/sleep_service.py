@@ -154,7 +154,7 @@ def handle_sleep_data(
         source_name = "apple_health_sdk"
 
         # Extract device info
-        device_model, software_version, manufacturer = extract_device_info(sjson.source)
+        device_model, software_version, original_source_name = extract_device_info(sjson.source)
 
         sleep_phase = get_apple_sleep_phase(int(sjson.value))
 

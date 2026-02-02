@@ -11,6 +11,7 @@ from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
+    ProviderName,
     SuuntoWorkoutJSON,
 )
 from app.services.event_record_service import event_record_service
@@ -242,9 +243,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
                 self.data_source_repo.ensure_data_source(
                     db,
                     user_id=user_id,
+                    provider=ProviderName.SUUNTO,
                     device_model=device_name,
                     software_version=workout.gear.swVersion,
-                    manufacturer="Suunto",
                     source=self.provider_name,
                 )
 
@@ -279,9 +280,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             self.data_source_repo.ensure_data_source(
                 db,
                 user_id=user_id,
+                provider=ProviderName.SUUNTO,
                 device_model=device_name,
                 software_version=raw_workout.gear.swVersion,
-                manufacturer="Suunto",
                 source=self.provider_name,
             )
 

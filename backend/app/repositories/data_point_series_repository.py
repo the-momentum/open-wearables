@@ -1,3 +1,4 @@
+import contextlib
 from datetime import datetime
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from app.schemas import (
     ActiveMinutesResult,
     ActivityAggregateResult,
     IntensityMinutesResult,
+    ProviderName,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
@@ -51,7 +53,8 @@ class DataPointSeriesRepository(
             "user_id",
             "source",
             "device_model",
-            "manufacturer",
+            "provider",
+            "user_connection_id",
             "software_version",
             "series_type",
             "data_source_id",
@@ -89,13 +92,28 @@ class DataPointSeriesRepository(
     def _resolve_data_sources(
         self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]
     ) -> dict[DataSourceIdentity, UUID]:
-        """Resolve data source identities to IDs. Returns map of (user_id, device_model, source) -> data_source_id."""
-        unique_identities: set[DataSourceIdentity] = set()
+        by_provider: dict[ProviderName, list[TimeSeriesSampleCreate]] = {}
         for c in creators:
-            unique_identities.add((c.user_id, c.device_model, c.source))
+            provider = self.data_source_repo.infer_provider_from_source(c.source)
+            if c.provider:
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(c.provider)
+            by_provider.setdefault(provider, []).append(c)
 
-        # Use batch operation - single query + batch insert
-        return self.data_source_repo.batch_ensure_data_sources(db_session, unique_identities)
+        identity_to_source_id: dict[DataSourceIdentity, UUID] = {}
+
+        for provider, provider_creators in by_provider.items():
+            unique_identities: set[DataSourceIdentity] = set()
+            user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
+            for c in provider_creators:
+                unique_identities.add((c.user_id, c.device_model, c.source))
+
+            batch_result = self.data_source_repo.batch_ensure_data_sources(
+                db_session, provider, user_connection_id, unique_identities
+            )
+            identity_to_source_id.update(batch_result)
+
+        return identity_to_source_id
 
     def _insert_data_points(
         self,
@@ -159,15 +177,19 @@ class DataPointSeriesRepository(
             raise
 
     def create_data_source(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataSource:
-        """Create or get existing data source for the creator."""
+        provider = self.data_source_repo.infer_provider_from_source(creator.source)
+        if creator.provider:
+            with contextlib.suppress(ValueError):
+                provider = ProviderName(creator.provider)
+
         return self.data_source_repo.ensure_data_source(
             db_session,
             user_id=creator.user_id,
+            provider=provider,
+            user_connection_id=creator.user_connection_id,
             device_model=creator.device_model,
             software_version=creator.software_version,
-            manufacturer=creator.manufacturer,
             source=creator.source,
-            data_source_id=creator.data_source_id,
         )
 
     def get_samples(

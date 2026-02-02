@@ -38,9 +38,7 @@ class DeviceTypePriorityRepository:
         db.flush()
         return result.scalar_one()
 
-    def bulk_update(
-        self, db: DbSession, priorities: list[tuple[DeviceType, int]]
-    ) -> list[DeviceTypePriority]:
+    def bulk_update(self, db: DbSession, priorities: list[tuple[DeviceType, int]]) -> list[DeviceTypePriority]:
         now = datetime.now(UTC)
         for device_type, priority in priorities:
             stmt = (

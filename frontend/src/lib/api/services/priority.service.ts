@@ -2,10 +2,23 @@ import { apiClient } from '../client';
 import { ApiError } from '../../errors/api-error';
 
 // Provider enum matching backend ProviderName
-export type ProviderName = 'apple' | 'garmin' | 'polar' | 'suunto' | 'whoop' | 'unknown';
+export type ProviderName =
+  | 'apple'
+  | 'garmin'
+  | 'polar'
+  | 'suunto'
+  | 'whoop'
+  | 'unknown';
 
 // Device type enum matching backend DeviceType
-export type DeviceType = 'watch' | 'band' | 'ring' | 'phone' | 'scale' | 'other' | 'unknown';
+export type DeviceType =
+  | 'watch'
+  | 'band'
+  | 'ring'
+  | 'phone'
+  | 'scale'
+  | 'other'
+  | 'unknown';
 
 // Types
 export interface ProviderPriority {
@@ -56,10 +69,9 @@ export const priorityService = {
   // Provider Priorities (global)
   async getProviderPriorities(): Promise<ProviderPriority[]> {
     try {
-      const response =
-        await apiClient.get<ProviderPriorityListResponse>(
-          '/priorities/providers'
-        );
+      const response = await apiClient.get<ProviderPriorityListResponse>(
+        '/priorities/providers'
+      );
       return response.items;
     } catch (error) {
       if (error instanceof ApiError) throw error;

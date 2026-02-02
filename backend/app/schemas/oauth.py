@@ -20,6 +20,7 @@ class ProviderName(str, Enum):
     POLAR = "polar"
     SUUNTO = "suunto"
     WHOOP = "whoop"
+    OURA = "oura"
     UNKNOWN = "unknown"
 
 
