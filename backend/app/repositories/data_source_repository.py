@@ -180,21 +180,9 @@ class DataSourceRepository(
         )
 
     def infer_provider_from_source(self, source: str | None) -> ProviderName:
-        if not source:
-            return ProviderName.UNKNOWN
+        """Infer provider from source string.
 
-        source_lower = source.lower()
-        if "apple" in source_lower:
-            return ProviderName.APPLE
-        if "garmin" in source_lower:
-            return ProviderName.GARMIN
-        if "suunto" in source_lower:
-            return ProviderName.SUUNTO
-        if "polar" in source_lower:
-            return ProviderName.POLAR
-        if "whoop" in source_lower:
-            return ProviderName.WHOOP
-        if "oura" in source_lower:
-            return ProviderName.OURA
-
-        return ProviderName.UNKNOWN
+        Deprecated: Use ProviderName.from_source_string() directly instead.
+        This method is kept for backward compatibility.
+        """
+        return ProviderName.from_source_string(source)

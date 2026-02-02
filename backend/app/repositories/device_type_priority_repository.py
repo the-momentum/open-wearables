@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -27,7 +28,7 @@ class DeviceTypePriorityRepository:
         now = datetime.now(UTC)
         stmt = (
             insert(DeviceTypePriority)
-            .values(device_type=device_type, priority=priority, created_at=now, updated_at=now)
+            .values(id=uuid4(), device_type=device_type, priority=priority, created_at=now, updated_at=now)
             .on_conflict_do_update(
                 index_elements=["device_type"],
                 set_={"priority": priority, "updated_at": now},
@@ -43,7 +44,7 @@ class DeviceTypePriorityRepository:
         for device_type, priority in priorities:
             stmt = (
                 insert(DeviceTypePriority)
-                .values(device_type=device_type, priority=priority, created_at=now, updated_at=now)
+                .values(id=uuid4(), device_type=device_type, priority=priority, created_at=now, updated_at=now)
                 .on_conflict_do_update(
                     index_elements=["device_type"],
                     set_={"priority": priority, "updated_at": now},
