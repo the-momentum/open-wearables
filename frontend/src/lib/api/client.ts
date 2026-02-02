@@ -1,6 +1,7 @@
 import { API_CONFIG } from './config';
 import { ApiError } from '../errors/api-error';
 import { getToken, clearSession } from '../auth/session';
+import { ROUTES } from '../constants/routes';
 
 interface RequestOptions extends RequestInit {
   timeout?: number;
@@ -97,7 +98,7 @@ export const apiClient = {
       if (response.status === 401) {
         clearSession();
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          window.location.href = ROUTES.login;
         }
         throw ApiError.fromResponse(response);
       }
@@ -236,7 +237,7 @@ export const apiClient = {
     if (response.status === 401) {
       clearSession();
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        window.location.href = ROUTES.login;
       }
       throw ApiError.fromResponse(response);
     }

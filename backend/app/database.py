@@ -21,7 +21,7 @@ from sqlalchemy.orm import (
 from app.config import settings
 from app.mappings import email, str_10, str_32, str_50, str_64, str_100, str_255
 from app.schemas.invitation import InvitationStatus
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.oauth import ConnectionStatus, ProviderName
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -69,6 +69,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         str_255: String(255),
         ConnectionStatus: String(64),
         InvitationStatus: String(50),
+        ProviderName: String(50),
     }
 
 

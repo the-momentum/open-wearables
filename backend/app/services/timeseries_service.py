@@ -13,7 +13,7 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
+from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
 from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -56,9 +56,9 @@ class TimeSeriesService(
         """Get count of data points grouped by series type ID."""
         return self.crud.get_count_by_series_type(db_session)
 
-    def get_count_by_provider(self, db_session: DbSession) -> list[tuple[str | None, int]]:
-        """Get count of data points grouped by provider."""
-        return self.crud.get_count_by_provider(db_session)
+    def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
+        """Get count of data points grouped by source."""
+        return self.crud.get_count_by_source(db_session)
 
     @handle_exceptions
     async def get_timeseries(
@@ -106,15 +106,24 @@ class TimeSeriesService(
 
         # Map to response format
         data = []
-        for sample, mapping in samples:
+        for sample, data_source in samples:
             series_type = get_series_type_from_id(sample.series_type_definition_id)
             unit = get_series_type_unit(series_type)
+
+            # Build source from data source info if available
+            source = None
+            if data_source:
+                source = SourceMetadata(
+                    provider=data_source.source or "unknown",
+                    device=data_source.device_model,
+                )
 
             item = TimeSeriesSample(
                 timestamp=sample.recorded_at,
                 type=series_type,
                 value=float(sample.value),
                 unit=unit,
+                source=source,
             )
             data.append(item)
 

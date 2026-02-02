@@ -48,3 +48,6 @@ create_migration:  ## Create a new migration. Use 'make create_migration m="Desc
 
 downgrade:  ## Revert the last migration
 	$(DOCKER_EXEC) $(ALEMBIC_CMD) downgrade -1
+
+reset_db:  ## Truncate all tables in the database (WARNING: deletes all data)
+	$(DOCKER_EXEC) uv run python scripts/reset_database.py

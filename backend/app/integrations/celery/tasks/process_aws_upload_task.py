@@ -94,3 +94,4 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
             event_record_service.create_detail(db, detail_for_record)
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
+            db.commit()

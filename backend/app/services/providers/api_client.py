@@ -38,8 +38,15 @@ def _get_valid_token(
             detail=f"User not connected to {provider_name}",
         )
 
+    # SDK-based providers don't have access tokens
+    if not connection.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"No access token available for {provider_name} (SDK-based provider?)",
+        )
+
     # Check if token is expired (with 5 minute buffer)
-    if connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
+    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
         if not connection.refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

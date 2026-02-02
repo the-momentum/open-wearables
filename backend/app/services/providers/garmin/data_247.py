@@ -7,10 +7,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping
-from app.repositories import EventRecordRepository, UserConnectionRepository
+from app.models import DataPointSeries, EventRecord
+from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.repositories.external_mapping_repository import ExternalMappingRepository
 from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.series_types import SeriesType
@@ -41,7 +40,7 @@ class Garmin247Data(Base247DataTemplate):
     ):
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+        self.data_source_repo = DataSourceRepository()
         self.connection_repo = UserConnectionRepository()
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -215,12 +214,12 @@ class Garmin247Data(Base247DataTemplate):
             category="sleep",
             type="sleep_session",
             source_name="Garmin",
-            device_id=None,
+            device_model=None,
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
             external_id=normalized_sleep.get("garmin_summary_id"),
-            provider_name=self.provider_name,
+            source=self.provider_name,
             user_id=user_id,
         )
 
@@ -339,7 +338,7 @@ class Garmin247Data(Base247DataTemplate):
                     TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
-                        provider_name=self.provider_name,
+                        source=self.provider_name,
                         recorded_at=recorded_at,
                         value=Decimal(str(value)),
                         series_type=series_type,
@@ -385,15 +384,13 @@ class Garmin247Data(Base247DataTemplate):
                 offset_seconds = int(offset_str)
                 recorded_at = base_dt + timedelta(seconds=offset_seconds)
 
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        provider_name=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(hr_value)),
-                        series_type=SeriesType.heart_rate,
-                    )
+                sample = TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    value=Decimal(str(hr_value)),
+                    series_type=SeriesType.heart_rate,
                 )
             except Exception:
                 pass
@@ -506,15 +503,13 @@ class Garmin247Data(Base247DataTemplate):
 
                 try:
                     recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-                    samples_to_insert.append(
-                        TimeSeriesSampleCreate(
-                            id=uuid4(),
-                            user_id=user_id,
-                            provider_name=self.provider_name,
-                            recorded_at=recorded_at,
-                            value=Decimal(str(value)),
-                            series_type=series_type,
-                        )
+                    sample_create = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
                     )
                 except Exception:
                     pass
@@ -565,7 +560,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(weight_grams)) / 1000,  # Convert to kg
                     series_type=SeriesType.weight,
@@ -580,7 +575,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(body_fat)),
                     series_type=SeriesType.body_fat_percentage,
@@ -595,7 +590,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(bmi)),
                     series_type=SeriesType.body_mass_index,
@@ -656,7 +651,7 @@ class Garmin247Data(Base247DataTemplate):
                 TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
-                    provider_name=self.provider_name,
+                    source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(last_night_avg)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
@@ -673,16 +668,14 @@ class Garmin247Data(Base247DataTemplate):
                 try:
                     offset_seconds = int(offset_str)
                     recorded_at = self._from_epoch_seconds(start_ts + offset_seconds)
-                    samples.append(
-                        TimeSeriesSampleCreate(
-                            id=uuid4(),
-                            user_id=user_id,
-                            provider_name=self.provider_name,
-                            recorded_at=recorded_at,
-                            value=Decimal(str(hrv_ms)),
-                            series_type=SeriesType.heart_rate_variability_sdnn,
-                            external_id=f"{summary_id}:{offset_str}" if summary_id else None,
-                        )
+                    sample = TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(hrv_ms)),
+                        series_type=SeriesType.heart_rate_variability_sdnn,
+                        external_id=f"{summary_id}:{offset_str}" if summary_id else None,
                     )
                 except Exception as e:
                     self.logger.debug(f"Failed to collect HRV value at offset {offset_str}: {e}")

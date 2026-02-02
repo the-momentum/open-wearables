@@ -2,7 +2,7 @@
 Tests for DataPointSeriesRepository.
 
 Tests cover:
-- CRUD operations with external mapping integration
+- CRUD operations with data source integration
 - get_samples with filtering by series type, device, date range
 - Aggregation methods (get_total_count, get_count_in_range, get_daily_histogram)
 - get_count_by_series_type and get_count_by_provider
@@ -15,11 +15,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries
+from app.models import DataPointSeries, DataSource
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.series_types import SeriesType
 from app.schemas.timeseries import TimeSeriesQueryParams, TimeSeriesSampleCreate
-from tests.factories import ExternalDeviceMappingFactory, UserFactory
+from tests.factories import DataSourceFactory, UserFactory
 
 
 class TestDataPointSeriesRepository:
@@ -34,15 +34,15 @@ class TestDataPointSeriesRepository:
         """Test creating a data point with an existing external mapping."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
+        mapping = DataSourceFactory(source="apple", device_model="watch123")
         now = datetime.now(timezone.utc)
 
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="watch123",
-            external_device_mapping_id=mapping.id,
+            source="apple",
+            device_model="watch123",
+            data_source_id=mapping.id,
             recorded_at=now,
             value=72.5,
             series_type=SeriesType.heart_rate,
@@ -53,7 +53,7 @@ class TestDataPointSeriesRepository:
 
         # Assert
         assert result.id == sample_data.id
-        assert result.external_device_mapping_id == mapping.id
+        assert result.data_source_id == mapping.id
         assert result.recorded_at == now
         assert result.value == Decimal("72.5")
         # series_type_definition_id should be set from series_type
@@ -73,9 +73,9 @@ class TestDataPointSeriesRepository:
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="garmin",
-            device_id="device456",
-            external_device_mapping_id=None,
+            source="garmin",
+            device_model="device456",
+            data_source_id=None,
             recorded_at=now,
             value=150,
             series_type=SeriesType.heart_rate,
@@ -85,30 +85,29 @@ class TestDataPointSeriesRepository:
         result = series_repo.create(db, sample_data)
 
         # Assert
-        assert result.external_device_mapping_id is not None
-        # Verify mapping was created
-        from app.models import ExternalDeviceMapping
-        from app.repositories.external_mapping_repository import ExternalMappingRepository
+        assert result.data_source_id is not None
+        # Verify data source was created
+        from app.repositories.data_source_repository import DataSourceRepository
 
-        mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
-        mapping = mapping_repo.get(db, result.external_device_mapping_id)
-        assert mapping is not None
-        assert mapping.user_id == user.id
-        assert mapping.provider_name == "garmin"
-        assert mapping.device_id == "device456"
+        data_source_repo = DataSourceRepository(DataSource)
+        data_source = data_source_repo.get(db, result.data_source_id)
+        assert data_source is not None
+        assert data_source.user_id == user.id
+        assert data_source.source == "garmin"
+        assert data_source.device_model == "device456"
 
     def test_create_sets_series_type_definition_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that series_type_definition_id is correctly set from series_type enum."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         sample_data = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="device1",
-            external_device_mapping_id=mapping.id,
+            source="apple",
+            device_model="device1",
+            data_source_id=mapping.id,
             recorded_at=datetime.now(timezone.utc),
             value=10000,
             series_type=SeriesType.steps,
@@ -129,16 +128,16 @@ class TestDataPointSeriesRepository:
         """Test that creating duplicate data points returns the existing record instead of raising error."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="watch123")
+        mapping = DataSourceFactory(source="apple", device_model="watch123")
         recorded_time = datetime.now(timezone.utc)
 
         # Create first sample
         first_sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="watch123",
-            external_device_mapping_id=mapping.id,
+            source="apple",
+            device_model="watch123",
+            data_source_id=mapping.id,
             recorded_at=recorded_time,
             value=72.5,
             series_type=SeriesType.heart_rate,
@@ -150,9 +149,9 @@ class TestDataPointSeriesRepository:
         duplicate_sample = TimeSeriesSampleCreate(
             id=uuid4(),  # Different ID
             user_id=user.id,
-            provider_name="apple",
-            device_id="watch123",
-            external_device_mapping_id=mapping.id,
+            source="apple",
+            device_model="watch123",
+            data_source_id=mapping.id,
             recorded_at=recorded_time,  # Same timestamp
             value=75.0,  # Different value
             series_type=SeriesType.heart_rate,  # Same series type
@@ -165,11 +164,11 @@ class TestDataPointSeriesRepository:
         assert result2 is not None
         assert result2.id == first_id  # Same ID as the first record
         assert result2.value == Decimal("72.5")  # Original value, not the duplicate's value
-        assert result2.external_device_mapping_id == mapping.id
+        assert result2.data_source_id == mapping.id
         assert result2.recorded_at == recorded_time
 
     def test_get_samples_requires_device_filter(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test that get_samples requires at least device_id or external_device_mapping_id."""
+        """Test that get_samples requires at least device_id or data_source_id."""
         # Arrange
         user = UserFactory()
         query_params = TimeSeriesQueryParams()
@@ -185,8 +184,8 @@ class TestDataPointSeriesRepository:
         """Test getting samples filtered by device ID."""
         # Arrange
         user = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user, device_id="device1")
-        mapping2 = ExternalDeviceMappingFactory(user=user, device_id="device2")
+        mapping1 = DataSourceFactory(user=user, device_model="device1")
+        mapping2 = DataSourceFactory(user=user, device_model="device2")
 
         now = datetime.now(timezone.utc)
 
@@ -195,9 +194,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping1.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping1.id,
                 recorded_at=now - timedelta(hours=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
@@ -208,16 +207,16 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="device2",
-            external_device_mapping_id=mapping2.id,
+            source="apple",
+            device_model="device2",
+            data_source_id=mapping2.id,
             recorded_at=now,
             value=80,
             series_type=SeriesType.heart_rate,
         )
         series_repo.create(db, sample)
 
-        query_params = TimeSeriesQueryParams(device_id="device1")
+        query_params = TimeSeriesQueryParams(device_model="device1")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -225,16 +224,14 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 3
         assert total_count == 3
-        for _, mapping in results:
-            assert mapping.device_id == "device1"
+        for _, data_source in results:
+            assert data_source.device_model == "device1"
 
-    def test_get_samples_by_external_device_mapping_id(
-        self, db: Session, series_repo: DataPointSeriesRepository
-    ) -> None:
+    def test_get_samples_by_data_source_id(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test getting samples filtered by external mapping ID."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         now = datetime.now(timezone.utc)
         sample_ids = []
@@ -243,9 +240,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=now - timedelta(hours=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
@@ -253,7 +250,7 @@ class TestDataPointSeriesRepository:
             result = series_repo.create(db, sample)
             sample_ids.append(result.id)
 
-        query_params = TimeSeriesQueryParams(external_device_mapping_id=mapping.id)
+        query_params = TimeSeriesQueryParams(data_source_id=mapping.id)
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -262,13 +259,13 @@ class TestDataPointSeriesRepository:
         assert len(results) == 3
         assert total_count == 3
         for sample, _ in results:
-            assert sample.external_device_mapping_id == mapping.id
+            assert sample.data_source_id == mapping.id
 
     def test_get_samples_by_series_type(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that get_samples only returns samples of the specified series type."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="device1")
+        mapping = DataSourceFactory(user=user, device_model="device1")
         now = datetime.now(timezone.utc)
 
         # Create heart rate samples
@@ -276,9 +273,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=now - timedelta(hours=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
@@ -289,16 +286,16 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="device1",
-            external_device_mapping_id=mapping.id,
+            source="apple",
+            device_model="device1",
+            data_source_id=mapping.id,
             recorded_at=now,
             value=10000,
             series_type=SeriesType.steps,
         )
         series_repo.create(db, sample)
 
-        query_params = TimeSeriesQueryParams(device_id="device1")
+        query_params = TimeSeriesQueryParams(device_model="device1")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -319,7 +316,7 @@ class TestDataPointSeriesRepository:
         """
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="device1")
+        mapping = DataSourceFactory(user=user, device_model="device1")
 
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
@@ -330,9 +327,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=dt,
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -342,7 +339,7 @@ class TestDataPointSeriesRepository:
         # Query with half-open interval [yesterday, now + 1s) to include both yesterday and now
         end_datetime = now + timedelta(seconds=1)
         query_params = TimeSeriesQueryParams(
-            device_id="device1",
+            device_model="device1",
             start_datetime=yesterday,
             end_datetime=end_datetime,
         )
@@ -358,11 +355,11 @@ class TestDataPointSeriesRepository:
             assert sample.recorded_at < end_datetime
 
     def test_get_samples_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test filtering samples by provider ID."""
+        """Test getting samples filtered by provider."""
         # Arrange
         user = UserFactory()
-        mapping_apple = ExternalDeviceMappingFactory(user=user, provider_name="apple", device_id="device1")
-        mapping_garmin = ExternalDeviceMappingFactory(user=user, provider_name="garmin", device_id="device1")
+        mapping_apple = DataSourceFactory(user=user, source="apple", device_model="device1")
+        mapping_garmin = DataSourceFactory(user=user, source="garmin", device_model="device1")
 
         now = datetime.now(timezone.utc)
 
@@ -370,9 +367,9 @@ class TestDataPointSeriesRepository:
         sample1 = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="apple",
-            device_id="device1",
-            external_device_mapping_id=mapping_apple.id,
+            source="apple",
+            device_model="device1",
+            data_source_id=mapping_apple.id,
             recorded_at=now,
             value=72,
             series_type=SeriesType.heart_rate,
@@ -382,16 +379,16 @@ class TestDataPointSeriesRepository:
         sample2 = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user.id,
-            provider_name="garmin",
-            device_id="device1",
-            external_device_mapping_id=mapping_garmin.id,
+            source="garmin",
+            device_model="device1",
+            data_source_id=mapping_garmin.id,
             recorded_at=now,
             value=75,
             series_type=SeriesType.heart_rate,
         )
         series_repo.create(db, sample2)
 
-        query_params = TimeSeriesQueryParams(device_id="device1", provider_name="apple")
+        query_params = TimeSeriesQueryParams(device_model="device1", source="apple")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -399,14 +396,14 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 1
         assert total_count == 1
-        _, mapping = results[0]
-        assert mapping.provider_name == "apple"
+        _, data_source = results[0]
+        assert data_source.source == "apple"
 
     def test_get_samples_ordered_by_recorded_at_asc(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
         """Test that samples are ordered by recorded_at ascending."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user, device_id="device1")
+        mapping = DataSourceFactory(user=user, device_model="device1")
 
         now = datetime.now(timezone.utc)
         times = [now - timedelta(hours=i) for i in range(3)]
@@ -415,16 +412,16 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=dt,
                 value=72,
                 series_type=SeriesType.heart_rate,
             )
             series_repo.create(db, sample)
 
-        query_params = TimeSeriesQueryParams(device_id="device1")
+        query_params = TimeSeriesQueryParams(device_model="device1")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -440,11 +437,11 @@ class TestDataPointSeriesRepository:
         """Test that get_samples is limited to 1000 records."""
         # Arrange
         user = UserFactory()
-        ExternalDeviceMappingFactory(user=user)
+        DataSourceFactory(user=user)
 
         # Note: Creating 1000+ records would be slow, so we just verify the limit exists
         # by checking the method implementation
-        query_params = TimeSeriesQueryParams(device_id="device1")
+        query_params = TimeSeriesQueryParams(device_model="device1")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user.id)
@@ -458,16 +455,16 @@ class TestDataPointSeriesRepository:
         initial_count = series_repo.get_total_count(db)
 
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
 
         for i in range(3):
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=70 + i,
                 series_type=SeriesType.heart_rate,
@@ -484,7 +481,7 @@ class TestDataPointSeriesRepository:
         """Test counting data points within a datetime range."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
@@ -495,9 +492,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=dt,
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -514,7 +511,7 @@ class TestDataPointSeriesRepository:
         """Test getting daily histogram of data points."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
 
         now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
         yesterday = now - timedelta(days=1)
@@ -532,9 +529,9 @@ class TestDataPointSeriesRepository:
                 sample = TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user.id,
-                    provider_name="apple",
-                    device_id="device1",
-                    external_device_mapping_id=mapping.id,
+                    source="apple",
+                    device_model="device1",
+                    data_source_id=mapping.id,
                     recorded_at=dt + timedelta(seconds=i),
                     value=72,
                     series_type=SeriesType.heart_rate,
@@ -555,7 +552,7 @@ class TestDataPointSeriesRepository:
         """Test aggregating data point counts by series type."""
         # Arrange
         user = UserFactory()
-        mapping = ExternalDeviceMappingFactory(user=user)
+        mapping = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
 
         # Create heart rate samples
@@ -563,9 +560,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -577,9 +574,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=10000,
                 series_type=SeriesType.steps,
@@ -599,12 +596,12 @@ class TestDataPointSeriesRepository:
         assert counts_dict.get(hr_type_id, 0) >= 3
         assert counts_dict.get(steps_type_id, 0) >= 2
 
-    def test_get_count_by_provider(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
-        """Test aggregating data point counts by provider."""
+    def test_get_count_by_source(self, db: Session, series_repo: DataPointSeriesRepository) -> None:
+        """Test aggregating data point counts by source."""
         # Arrange
         user = UserFactory()
-        mapping_apple = ExternalDeviceMappingFactory(user=user, provider_name="apple")
-        mapping_garmin = ExternalDeviceMappingFactory(user=user, provider_name="garmin")
+        mapping_apple = DataSourceFactory(user=user, source="apple")
+        mapping_garmin = DataSourceFactory(user=user, source="garmin")
 
         now = datetime.now(timezone.utc)
 
@@ -613,9 +610,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping_apple.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping_apple.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -627,9 +624,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user.id,
-                provider_name="garmin",
-                device_id="device2",
-                external_device_mapping_id=mapping_garmin.id,
+                source="garmin",
+                device_model="device2",
+                data_source_id=mapping_garmin.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=75,
                 series_type=SeriesType.heart_rate,
@@ -637,7 +634,7 @@ class TestDataPointSeriesRepository:
             series_repo.create(db, sample)
 
         # Act
-        results = series_repo.get_count_by_provider(db)
+        results = series_repo.get_count_by_source(db)
 
         # Assert
         counts_dict = dict(results)
@@ -649,8 +646,8 @@ class TestDataPointSeriesRepository:
         # Arrange
         user1 = UserFactory()
         user2 = UserFactory()
-        mapping1 = ExternalDeviceMappingFactory(user=user1, device_id="device1")
-        mapping2 = ExternalDeviceMappingFactory(user=user2, device_id="device1")
+        mapping1 = DataSourceFactory(user=user1, device_model="device1")
+        mapping2 = DataSourceFactory(user=user2, device_model="device1")
 
         now = datetime.now(timezone.utc)
 
@@ -659,9 +656,9 @@ class TestDataPointSeriesRepository:
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
                 user_id=user1.id,
-                provider_name="apple",
-                device_id="device1",
-                external_device_mapping_id=mapping1.id,
+                source="apple",
+                device_model="device1",
+                data_source_id=mapping1.id,
                 recorded_at=now + timedelta(seconds=i),
                 value=72,
                 series_type=SeriesType.heart_rate,
@@ -672,16 +669,16 @@ class TestDataPointSeriesRepository:
         sample = TimeSeriesSampleCreate(
             id=uuid4(),
             user_id=user2.id,
-            provider_name="apple",
-            device_id="device1",
-            external_device_mapping_id=mapping2.id,
+            source="apple",
+            device_model="device1",
+            data_source_id=mapping2.id,
             recorded_at=now,
             value=75,
             series_type=SeriesType.heart_rate,
         )
         series_repo.create(db, sample)
 
-        query_params = TimeSeriesQueryParams(device_id="device1")
+        query_params = TimeSeriesQueryParams(device_model="device1")
 
         # Act
         results, total_count = series_repo.get_samples(db, query_params, [SeriesType.heart_rate], user1.id)
@@ -689,5 +686,5 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 2
         assert total_count == 2
-        for _, mapping in results:
-            assert mapping.user_id == user1.id
+        for _, data_source in results:
+            assert data_source.user_id == user1.id
