@@ -40,18 +40,20 @@ RUN if [ -d /app/.output/public ]; then \
 FROM node:22-alpine
 
 WORKDIR /app
-# Copy built assets from builder
-COPY --from=builder /app/build-output /usr/share/nginx/html
 
-# Copy built output from builder
+# Copy built output from builder (Nitro SSR bundle)
 COPY --from=builder /app/.output ./.output
 
 # Expose port
 EXPOSE 3000
 
-# Set the port for Nitro
+# Set environment variables for Nitro server
+# Nitro 3.x uses NITRO_HOST and NITRO_PORT as primary variables
+ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
+ENV NITRO_PORT=3000
+ENV NITRO_HOST=0.0.0.0
 
 # Run the Nitro server
 CMD ["node", ".output/server/index.mjs"]

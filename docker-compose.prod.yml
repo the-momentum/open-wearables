@@ -1,0 +1,107 @@
+# Production Docker Compose for Open Wearables
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  db:
+    image: postgres:18
+    container_name: postgres__open-wearables
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-open-wearables}
+      POSTGRES_USER: ${POSTGRES_USER:-open-wearables}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-open-wearables} -d ${POSTGRES_DB:-open-wearables}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    container_name: redis__open-wearables
+    image: redis:8
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend__open-wearables
+    image: open-wearables-backend:latest
+    command: scripts/start/app.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-worker:
+    container_name: celery-worker__open-wearables
+    image: open-wearables-backend:latest
+    command: scripts/start/worker.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  celery-beat:
+    container_name: celery-beat__open-wearables
+    image: open-wearables-backend:latest
+    command: scripts/start/beat.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://api-openwearables.ekygai.com}
+    container_name: frontend__open-wearables
+    image: open-wearables-frontend:latest
+    environment:
+      - NODE_ENV=production
+      - NITRO_HOST=0.0.0.0
+      - NITRO_PORT=3000
+      - PORT=3000
+      - HOST=0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  redis_data:
