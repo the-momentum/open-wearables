@@ -53,6 +53,11 @@ export interface DataSource {
   device_type: DeviceType | null;
   original_source_name: string | null;
   display_name: string | null;
+  is_enabled: boolean;
+}
+
+export interface DataSourceEnabledUpdate {
+  is_enabled: boolean;
 }
 
 export interface DataSourceListResponse {
@@ -133,6 +138,23 @@ export const priorityService = {
         `/api/v1/users/${userId}/data-sources`
       );
       return response.items;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw ApiError.networkError((error as Error).message);
+    }
+  },
+
+  async updateDataSourceEnabled(
+    userId: string,
+    dataSourceId: string,
+    data: DataSourceEnabledUpdate
+  ): Promise<DataSource> {
+    try {
+      const response = await apiClient.patch<DataSource>(
+        `/api/v1/users/${userId}/data-sources/${dataSourceId}`,
+        data
+      );
+      return response;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw ApiError.networkError((error as Error).message);

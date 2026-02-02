@@ -73,3 +73,33 @@ export function useUserDataSources(userId: string) {
     enabled: !!userId,
   });
 }
+
+export function useUpdateDataSourceEnabled() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      userId,
+      dataSourceId,
+      isEnabled,
+    }: {
+      userId: string;
+      dataSourceId: string;
+      isEnabled: boolean;
+    }) =>
+      priorityService.updateDataSourceEnabled(userId, dataSourceId, {
+        is_enabled: isEnabled,
+      }),
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.priorities.dataSources(variables.userId),
+      });
+      toast.success(
+        `Data source ${variables.isEnabled ? 'enabled' : 'disabled'}`
+      );
+    },
+    onError: (error) => {
+      toast.error(`Failed to update data source: ${getErrorMessage(error)}`);
+    },
+  });
+}
