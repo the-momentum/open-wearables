@@ -3,12 +3,12 @@ from datetime import datetime
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, asc, case, cast, func, literal_column, tuple_
+from sqlalchemy import Date, String, asc, case, cast, func, literal_column, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource
+from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import (
@@ -722,6 +722,7 @@ class DataPointSeriesRepository(
 
         # Main query to get the actual values at those timestamps
         # Use DISTINCT ON to handle multiple records with identical timestamps
+        # Order by priorities to prefer higher priority sources
         results = (
             db_session.query(
                 self.model.series_type_definition_id,
@@ -731,6 +732,11 @@ class DataPointSeriesRepository(
                 DataSource.device_model,
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
+            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
+            .outerjoin(
+                DeviceTypePriority,
+                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+            )
             .join(
                 latest_subq,
                 (self.model.series_type_definition_id == latest_subq.c.series_type_definition_id)
@@ -738,9 +744,14 @@ class DataPointSeriesRepository(
             )
             .filter(DataSource.user_id == user_id)
             # DISTINCT ON (PostgreSQL) ensures exactly one result per series type
-            # Order by id desc as tiebreaker for deterministic selection
+            # Order by priorities (lower number = higher priority), then id desc as tiebreaker
             .distinct(self.model.series_type_definition_id)
-            .order_by(self.model.series_type_definition_id, self.model.id.desc())
+            .order_by(
+                self.model.series_type_definition_id,
+                ProviderPriority.priority.asc().nulls_last(),
+                DeviceTypePriority.priority.asc().nulls_last(),
+                self.model.id.desc(),
+            )
             .all()
         )
 
@@ -843,13 +854,22 @@ class DataPointSeriesRepository(
                 DataSource.device_model,
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
+            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
+            .outerjoin(
+                DeviceTypePriority,
+                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+            )
             .filter(
                 DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,
             )
-            .order_by(self.model.recorded_at.desc())
+            .order_by(
+                self.model.recorded_at.desc(),
+                ProviderPriority.priority.asc().nulls_last(),
+                DeviceTypePriority.priority.asc().nulls_last(),
+            )
             .first()
         )
 
