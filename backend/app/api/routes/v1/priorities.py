@@ -8,6 +8,13 @@ from fastapi import APIRouter, Path
 
 from app.database import DbSession
 from app.schemas.data_source import DataSourceListResponse
+from app.schemas.device_type import DeviceType
+from app.schemas.device_type_priority import (
+    DeviceTypePriorityBulkUpdate,
+    DeviceTypePriorityListResponse,
+    DeviceTypePriorityResponse,
+    DeviceTypePriorityUpdate,
+)
 from app.schemas.oauth import ProviderName
 from app.schemas.provider_priority import (
     ProviderPriorityBulkUpdate,
@@ -67,3 +74,39 @@ async def get_user_data_sources(
     user_id: Annotated[UUID, Path(description="User ID")],
 ) -> DataSourceListResponse:
     return await priority_service.get_user_data_sources(db, user_id)
+
+
+@router.get(
+    "/priorities/device-types",
+    summary="Get device type priorities",
+)
+async def get_device_type_priorities(
+    db: DbSession,
+    _developer: DeveloperDep,
+) -> DeviceTypePriorityListResponse:
+    return await priority_service.get_device_type_priorities(db)
+
+
+@router.put(
+    "/priorities/device-types/{device_type}",
+    summary="Update device type priority",
+)
+async def update_device_type_priority(
+    db: DbSession,
+    _developer: DeveloperDep,
+    device_type: Annotated[DeviceType, Path(description="Device type enum")],
+    update: DeviceTypePriorityUpdate,
+) -> DeviceTypePriorityResponse:
+    return await priority_service.update_device_type_priority(db, device_type, update.priority)
+
+
+@router.put(
+    "/priorities/device-types",
+    summary="Bulk update device type priorities",
+)
+async def bulk_update_device_type_priorities(
+    db: DbSession,
+    _developer: DeveloperDep,
+    update: DeviceTypePriorityBulkUpdate,
+) -> DeviceTypePriorityListResponse:
+    return await priority_service.bulk_update_device_type_priorities(db, update)

@@ -331,14 +331,14 @@ class SummariesService:
             if has_more:
                 last = results[-1]
                 next_cursor = encode_activity_cursor(
-                    last["activity_date"], last["source"], last.get("device_model"), "next"
+                    last["activity_date"], last["source"] or "unknown", last.get("device_model"), "next"
                 )
 
             # Previous cursor if we had a cursor (not first page)
             if cursor:
                 first = results[0]
                 previous_cursor = encode_activity_cursor(
-                    first["activity_date"], first["source"], first.get("device_model"), "prev"
+                    first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
                 )
 
         # Transform to schema

@@ -37,7 +37,7 @@ SOURCE_NAMES = [
 ]
 
 # Map source names to provider/device info
-PROVIDER_CONFIGS = {
+PROVIDER_CONFIGS: dict[str, dict[str, str | list[str]]] = {
     "Apple Health": {
         "provider": "apple",
         "manufacturer": "Apple Inc.",

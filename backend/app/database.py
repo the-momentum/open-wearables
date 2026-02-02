@@ -44,7 +44,7 @@ def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
 
 
 class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
-    @declared_attr
+    @declared_attr.directive
     def __tablename__(self) -> str:
         return self.__name__.lower()
 

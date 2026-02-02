@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   priorityService,
   type ProviderPriorityBulkUpdate,
+  type DeviceTypePriorityBulkUpdate,
 } from '@/lib/api/services/priority.service';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -34,6 +35,35 @@ export function useBulkUpdateProviderPriorities() {
   });
 }
 
+// ==================== Device Type Priorities ====================
+
+export function useDeviceTypePriorities() {
+  return useQuery({
+    queryKey: queryKeys.priorities.deviceTypes(),
+    queryFn: () => priorityService.getDeviceTypePriorities(),
+  });
+}
+
+export function useBulkUpdateDeviceTypePriorities() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: DeviceTypePriorityBulkUpdate) =>
+      priorityService.bulkUpdateDeviceTypePriorities(data),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.priorities.all,
+      });
+      toast.success('Device type priorities updated successfully');
+    },
+    onError: (error) => {
+      toast.error(
+        `Failed to update device priorities: ${getErrorMessage(error)}`
+      );
+    },
+  });
+}
+
 // ==================== User Data Sources ====================
 
 export function useUserDataSources(userId: string) {
@@ -41,35 +71,5 @@ export function useUserDataSources(userId: string) {
     queryKey: queryKeys.priorities.dataSources(userId),
     queryFn: () => priorityService.getUserDataSources(userId),
     enabled: !!userId,
-  });
-}
-
-export function useUpdateDataSourceEnabled() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      userId,
-      dataSourceId,
-      isEnabled,
-    }: {
-      userId: string;
-      dataSourceId: string;
-      isEnabled: boolean;
-    }) =>
-      priorityService.updateDataSourceEnabled(userId, dataSourceId, {
-        is_enabled: isEnabled,
-      }),
-    onSuccess: async (_, variables) => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.priorities.dataSources(variables.userId),
-      });
-      toast.success(
-        variables.isEnabled ? 'Data source enabled' : 'Data source disabled'
-      );
-    },
-    onError: (error) => {
-      toast.error(`Failed to update data source: ${getErrorMessage(error)}`);
-    },
   });
 }

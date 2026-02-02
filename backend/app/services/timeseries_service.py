@@ -33,7 +33,7 @@ class TimeSeriesService(
         db_session: DbSession,
         samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
     ) -> None:
-        self.crud.bulk_create(db_session, samples)
+        self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

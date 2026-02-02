@@ -8,6 +8,7 @@ export type ProviderName =
   | 'polar'
   | 'suunto'
   | 'whoop'
+  | 'oura'
   | 'unknown';
 
 // Device type enum matching backend DeviceType
@@ -50,7 +51,6 @@ export interface DataSource {
   software_version: string | null;
   source: string | null;
   device_type: DeviceType | null;
-  is_enabled: boolean;
   original_source_name: string | null;
   display_name: string | null;
 }
@@ -60,8 +60,24 @@ export interface DataSourceListResponse {
   total: number;
 }
 
-export interface DataSourceEnableUpdate {
-  is_enabled: boolean;
+export interface DeviceTypePriority {
+  id: string;
+  device_type: DeviceType;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeviceTypePriorityListResponse {
+  items: DeviceTypePriority[];
+}
+
+export interface DeviceTypePriorityUpdate {
+  priority: number;
+}
+
+export interface DeviceTypePriorityBulkUpdate {
+  priorities: { device_type: DeviceType; priority: number }[];
 }
 
 // Service
@@ -70,7 +86,7 @@ export const priorityService = {
   async getProviderPriorities(): Promise<ProviderPriority[]> {
     try {
       const response = await apiClient.get<ProviderPriorityListResponse>(
-        '/priorities/providers'
+        '/api/v1/priorities/providers'
       );
       return response.items;
     } catch (error) {
@@ -85,7 +101,7 @@ export const priorityService = {
   ): Promise<ProviderPriority> {
     try {
       const response = await apiClient.put<ProviderPriority>(
-        `/priorities/providers/${provider}`,
+        `/api/v1/priorities/providers/${provider}`,
         data
       );
       return response;
@@ -100,7 +116,7 @@ export const priorityService = {
   ): Promise<ProviderPriority[]> {
     try {
       const response = await apiClient.put<ProviderPriorityListResponse>(
-        '/priorities/providers',
+        '/api/v1/priorities/providers',
         data
       );
       return response.items;
@@ -114,7 +130,7 @@ export const priorityService = {
   async getUserDataSources(userId: string): Promise<DataSource[]> {
     try {
       const response = await apiClient.get<DataSourceListResponse>(
-        `/users/${userId}/data-sources`
+        `/api/v1/users/${userId}/data-sources`
       );
       return response.items;
     } catch (error) {
@@ -123,17 +139,44 @@ export const priorityService = {
     }
   },
 
-  async updateDataSourceEnabled(
-    userId: string,
-    dataSourceId: string,
-    data: DataSourceEnableUpdate
-  ): Promise<DataSource> {
+  // Device Type Priorities (global)
+  async getDeviceTypePriorities(): Promise<DeviceTypePriority[]> {
     try {
-      const response = await apiClient.patch<DataSource>(
-        `/users/${userId}/data-sources/${dataSourceId}`,
+      const response = await apiClient.get<DeviceTypePriorityListResponse>(
+        '/api/v1/priorities/device-types'
+      );
+      return response.items;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw ApiError.networkError((error as Error).message);
+    }
+  },
+
+  async updateDeviceTypePriority(
+    deviceType: DeviceType,
+    data: DeviceTypePriorityUpdate
+  ): Promise<DeviceTypePriority> {
+    try {
+      const response = await apiClient.put<DeviceTypePriority>(
+        `/api/v1/priorities/device-types/${deviceType}`,
         data
       );
       return response;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      throw ApiError.networkError((error as Error).message);
+    }
+  },
+
+  async bulkUpdateDeviceTypePriorities(
+    data: DeviceTypePriorityBulkUpdate
+  ): Promise<DeviceTypePriority[]> {
+    try {
+      const response = await apiClient.put<DeviceTypePriorityListResponse>(
+        '/api/v1/priorities/device-types',
+        data
+      );
+      return response.items;
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw ApiError.networkError((error as Error).message);

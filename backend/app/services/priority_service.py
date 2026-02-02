@@ -7,6 +7,11 @@ from app.repositories import DataSourceRepository, ProviderPriorityRepository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.schemas.data_source import DataSourceListResponse, DataSourceResponse
 from app.schemas.device_type import DeviceType
+from app.schemas.device_type_priority import (
+    DeviceTypePriorityBulkUpdate,
+    DeviceTypePriorityListResponse,
+    DeviceTypePriorityResponse,
+)
 from app.schemas.oauth import ProviderName
 from app.schemas.provider_priority import (
     ProviderPriorityBulkUpdate,
@@ -74,6 +79,36 @@ class PriorityService:
             for ds in sources
         ]
         return DataSourceListResponse(items=items, total=len(items))
+
+    @handle_exceptions
+    async def get_device_type_priorities(
+        self,
+        db_session: DbSession,
+    ) -> DeviceTypePriorityListResponse:
+        priorities = self.device_type_priority_repo.get_all_ordered(db_session)
+        return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in priorities])
+
+    @handle_exceptions
+    async def update_device_type_priority(
+        self,
+        db_session: DbSession,
+        device_type: DeviceType,
+        priority: int,
+    ) -> DeviceTypePriorityResponse:
+        result = self.device_type_priority_repo.upsert(db_session, device_type, priority)
+        db_session.commit()
+        return DeviceTypePriorityResponse.model_validate(result)
+
+    @handle_exceptions
+    async def bulk_update_device_type_priorities(
+        self,
+        db_session: DbSession,
+        update: DeviceTypePriorityBulkUpdate,
+    ) -> DeviceTypePriorityListResponse:
+        priorities_tuples = [(p.device_type, p.priority) for p in update.priorities]
+        results = self.device_type_priority_repo.bulk_update(db_session, priorities_tuples)
+        db_session.commit()
+        return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
     def get_priority_data_source_ids(
         self,

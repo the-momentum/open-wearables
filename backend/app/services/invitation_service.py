@@ -90,6 +90,7 @@ class InvitationService:
             invited_by_id=invited_by.id,
         )
         invitation = self.crud.create(db_session, invitation_data)
+        assert invitation is not None
 
         # Queue invitation email for async delivery (Celery task will update status to SENT on success)
         self._send_invitation_email_async(invitation, invited_by.email)

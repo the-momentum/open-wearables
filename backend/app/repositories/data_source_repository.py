@@ -100,7 +100,9 @@ class DataSourceRepository(
             device_type=device_type.value if device_type != DeviceType.UNKNOWN else None,
             original_source_name=original_source_name,
         )
-        return self.create(db_session, create_payload)
+        result = self.create(db_session, create_payload)
+        assert result is not None
+        return result
 
     def _infer_device_type(
         self,

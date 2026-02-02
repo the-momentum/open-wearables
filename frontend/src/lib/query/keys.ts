@@ -129,6 +129,7 @@ export const queryKeys = {
   priorities: {
     all: ['priorities'] as const,
     providers: () => [...queryKeys.priorities.all, 'providers'] as const,
+    deviceTypes: () => [...queryKeys.priorities.all, 'deviceTypes'] as const,
     dataSources: (userId: string) =>
       [...queryKeys.priorities.all, 'dataSources', userId] as const,
   },
