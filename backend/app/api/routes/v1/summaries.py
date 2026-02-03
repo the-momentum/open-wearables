@@ -26,7 +26,7 @@ async def get_activity_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[int, Query(ge=1, le=400)] = 50,
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
 
@@ -70,20 +70,23 @@ async def get_recovery_summary(
 @router.get("/users/{user_id}/summaries/body")
 async def get_body_summary(
     user_id: UUID,
-    start_date: str,
-    end_date: str,
     db: DbSession,
     _api_key: ApiKeyDep,
-    cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> PaginatedResponse[BodySummary]:
-    """Returns daily body composition and vital statistics.
+    average_period: Annotated[int, Query(ge=1, le=7, description="Days to average vitals (1-7)")] = 7,
+    latest_window_hours: Annotated[
+        int, Query(ge=1, le=24, description="Hours for latest readings to be considered valid (1-24)")
+    ] = 4,
+) -> BodySummary | None:
+    """Returns comprehensive body metrics with semantic grouping.
 
-    Aggregates include:
-    - Body composition: weight, height, body fat %, muscle mass, BMI
-    - Vitals (7-day rolling avg): resting HR, HRV, blood pressure
-    - Static: age (calculated from birth date)
+    Response is organized into three categories:
+    - **static**: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
+      Returns the most recent recorded value for each field.
+    - **averaged**: Vitals averaged over a period (resting HR, HRV)
+      Period is configurable via `average_period` parameter (1-7 days).
+    - **latest**: Point-in-time readings (body temperature, blood pressure)
+      Only returned if measured within `latest_window_hours` (default 4 hours).
+
+    Returns null if no body data exists for the user.
     """
-    start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
-    return await summaries_service.get_body_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
+    return await summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)

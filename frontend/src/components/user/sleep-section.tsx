@@ -208,11 +208,11 @@ function SleepSessionRow({
           )}
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-white">
-              {format(new Date(session.start_time), 'EEE, MMM d')}
+              {format(new Date(session.end_time), 'EEE, MMM d')}
             </p>
           </div>
           <p className="text-xs text-zinc-500">
-            {format(new Date(session.start_time), 'yyyy')}
+            {format(new Date(session.end_time), 'yyyy')}
           </p>
         </div>
 

@@ -1,58 +1,16 @@
 """MCP tools for querying workout records."""
 
 import logging
-from datetime import datetime
 
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.utils import normalize_datetime
 
 logger = logging.getLogger(__name__)
 
 # Create router for workout-related tools
 workouts_router = FastMCP(name="Workout Tools")
-
-
-def _format_duration(seconds: int | None) -> str | None:
-    """Format duration in seconds to human-readable string."""
-    if seconds is None:
-        return None
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    if hours > 0:
-        return f"{hours}h {minutes}m"
-    return f"{minutes}m"
-
-
-def _format_distance(meters: float | None) -> str | None:
-    """Format distance in meters to human-readable string."""
-    if meters is None:
-        return None
-    km = meters / 1000
-    if km >= 1:
-        return f"{km:.2f} km"
-    return f"{int(meters)} m"
-
-
-def _format_pace(seconds_per_km: int | None) -> str | None:
-    """Format pace in seconds per km to human-readable string."""
-    if seconds_per_km is None:
-        return None
-    minutes = seconds_per_km // 60
-    secs = seconds_per_km % 60
-    return f"{minutes}:{secs:02d} /km"
-
-
-def _normalize_datetime(dt_str: str | None) -> str | None:
-    """Normalize datetime string to ISO 8601 format."""
-    if not dt_str:
-        return None
-    try:
-        # Parse and normalize to consistent ISO format
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        return dt.isoformat()
-    except (ValueError, AttributeError):
-        return dt_str
 
 
 @workouts_router.tool
@@ -96,12 +54,11 @@ async def list_workouts(
                     "start_datetime": "2025-01-11T07:00:00+00:00",
                     "end_datetime": "2025-01-11T07:45:00+00:00",
                     "duration_seconds": 2700,
-                    "duration_formatted": "45m",
                     "distance_meters": 7500.0,
-                    "distance_formatted": "7.50 km",
                     "calories_kcal": 520.0,
                     "avg_heart_rate_bpm": 145,
                     "max_heart_rate_bpm": 172,
+                    "avg_pace_sec_per_km": 360,
                     "elevation_gain_meters": 85.0,
                     "source": "garmin"
                 }
@@ -110,12 +67,9 @@ async def list_workouts(
                 "total_workouts": 5,
                 "workouts_with_distance": 4,
                 "total_duration_seconds": 12600,
-                "total_duration_formatted": "3h 30m",
                 "total_distance_meters": 28500.0,
-                "total_distance_formatted": "28.50 km",
                 "total_calories_kcal": 2100.0,
                 "avg_duration_seconds": 2520,
-                "avg_duration_formatted": "42m",
                 "workout_types": {"running": 3, "cycling": 2}
             }
         }
@@ -126,8 +80,7 @@ async def list_workouts(
           "last week" -> start_date = 7 days ago, end_date = today
           "this month" -> start_date = first of month, end_date = today
         - Use the workout_type filter to narrow down results (e.g., "show my runs").
-        - Duration is in seconds. Use duration_formatted for human-readable output.
-        - Distance is in meters. Use distance_formatted for human-readable output.
+        - Duration is in seconds, distance in meters, pace in seconds per km.
         - The 'source' field indicates which wearable provided the data (garmin, whoop, etc.)
         - Common workout types: running, cycling, swimming, strength_training, walking,
           hiking, yoga, hiit, rowing, elliptical, pilates
@@ -182,37 +135,32 @@ async def list_workouts(
                 {
                     "id": str(record.get("id")),
                     "type": w_type,
-                    "start_datetime": _normalize_datetime(record.get("start_time")),
-                    "end_datetime": _normalize_datetime(record.get("end_time")),
+                    "start_datetime": normalize_datetime(record.get("start_time")),
+                    "end_datetime": normalize_datetime(record.get("end_time")),
                     "duration_seconds": duration,
-                    "duration_formatted": _format_duration(duration),
                     "distance_meters": distance,
-                    "distance_formatted": _format_distance(distance),
                     "calories_kcal": cals,
                     "avg_heart_rate_bpm": record.get("avg_heart_rate_bpm"),
                     "max_heart_rate_bpm": record.get("max_heart_rate_bpm"),
                     "avg_pace_sec_per_km": record.get("avg_pace_sec_per_km"),
-                    "avg_pace_formatted": _format_pace(record.get("avg_pace_sec_per_km")),
                     "elevation_gain_meters": record.get("elevation_gain_meters"),
                     "source": source.get("provider") if isinstance(source, dict) else source,
                 }
             )
 
         # Calculate summary statistics
-        total_duration = sum(durations) if durations else 0
-        total_distance = sum(distances) if distances else 0
-        total_cals = sum(calories) if calories else 0
+        total_duration = sum(durations)
+        total_distance = sum(distances)
+        total_cals = sum(calories)
+        avg_duration = round(total_duration / len(durations)) if durations else None
 
         summary = {
             "total_workouts": len(records),
             "workouts_with_distance": len(distances),
             "total_duration_seconds": total_duration,
-            "total_duration_formatted": _format_duration(total_duration) if total_duration else None,
             "total_distance_meters": total_distance if distances else None,
-            "total_distance_formatted": _format_distance(total_distance) if distances else None,
             "total_calories_kcal": round(total_cals, 1) if calories else None,
-            "avg_duration_seconds": round(total_duration / len(durations)) if durations else None,
-            "avg_duration_formatted": _format_duration(round(total_duration / len(durations))) if durations else None,
+            "avg_duration_seconds": avg_duration,
             "workout_types": workout_types if workout_types else None,
         }
 

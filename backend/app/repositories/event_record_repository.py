@@ -3,17 +3,21 @@ from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
 from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, tuple_
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
-from app.models import EventRecord, ExternalDeviceMapping, SleepDetails
+from app.models import DataSource, EventRecord, SleepDetails
 from app.models.workout_details import WorkoutDetails
-from app.repositories.external_mapping_repository import ExternalMappingRepository
+from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
+
+# Identity tuple: (user_id, device_model, source)
+DataSourceIdentity = tuple[UUID, str | None, str | None]
 
 
 class EventRecordRepository(
@@ -21,23 +25,34 @@ class EventRecordRepository(
 ):
     def __init__(self, model: type[EventRecord]):
         super().__init__(model)
-        self.mapping_repo = ExternalMappingRepository(ExternalDeviceMapping)
+        self.data_source_repo = DataSourceRepository()
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        # Use provider_name for external mapping (e.g., 'suunto')
-        # provider_id is the workout/record ID from the provider
-        mapping = self.mapping_repo.ensure_mapping(
-            db_session,
-            creator.user_id,
-            creator.provider_name or "unknown",  # Provider name for mapping (suunto/garmin/polar)
-            creator.device_id,
-            creator.external_device_mapping_id,
-        )
+        # Use provided data_source_id or resolve/create one
+        if creator.data_source_id:
+            data_source_id = creator.data_source_id
+        else:
+            data_source = self.data_source_repo.ensure_data_source(
+                db_session,
+                user_id=creator.user_id,
+                device_model=creator.device_model,
+                source=creator.source,
+                software_version=creator.software_version,
+                manufacturer=creator.manufacturer,
+            )
+            data_source_id = data_source.id
 
         creation_data = creator.model_dump()
-        creation_data["external_device_mapping_id"] = mapping.id
-        for redundant_key in ("user_id", "provider_name", "device_id"):
+        creation_data["data_source_id"] = data_source_id
+        # Remove fields that aren't on the model or have been handled
+        for redundant_key in (
+            "user_id",
+            "source",
+            "device_model",
+            "manufacturer",
+            "software_version",
+        ):
             creation_data.pop(redundant_key, None)
 
         creation = self.model(**creation_data)
@@ -49,11 +64,11 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            # Query using the mapping and other unique constraint fields
+            # Query using the data_source and other unique constraint fields
             existing = (
                 db_session.query(self.model)
                 .filter(
-                    self.model.external_device_mapping_id == mapping.id,
+                    self.model.data_source_id == data_source_id,
                     self.model.start_datetime == creation.start_datetime,
                     self.model.end_datetime == creation.end_datetime,
                 )
@@ -63,22 +78,90 @@ class EventRecordRepository(
                 return existing
             raise
 
+    @handle_exceptions
+    def bulk_create(
+        self,
+        db_session: DbSession,
+        creators: list[EventRecordCreate],
+    ) -> list[UUID]:
+        """Bulk create event records with batch data source resolution.
+
+        Optimized for performance - resolves data sources in batch, then inserts all records.
+        Returns list of record IDs (both new and existing).
+        """
+        if not creators:
+            return []
+
+        # 1. Resolve all data sources in batch
+        unique_identities: set[DataSourceIdentity] = set()
+        for c in creators:
+            unique_identities.add((c.user_id, c.device_model, c.source))
+
+        identity_to_source_id = self.data_source_repo.batch_ensure_data_sources(db_session, unique_identities)
+
+        # 2. Build values for batch insert
+        values_list = []
+        for creator in creators:
+            identity: DataSourceIdentity = (creator.user_id, creator.device_model, creator.source)
+            source_id = identity_to_source_id.get(identity)
+
+            if not source_id:
+                continue
+
+            values_list.append(
+                {
+                    "id": creator.id,
+                    "external_id": creator.external_id,
+                    "data_source_id": source_id,
+                    "category": creator.category,
+                    "type": creator.type,
+                    "source_name": creator.source_name,
+                    "duration_seconds": creator.duration_seconds,
+                    "start_datetime": creator.start_datetime,
+                    "end_datetime": creator.end_datetime,
+                }
+            )
+
+        if not values_list:
+            return []
+
+        # 3. Batch insert with ON CONFLICT DO NOTHING
+        stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
+        result = db_session.execute(stmt.returning(self.model.id))
+        inserted_ids = {row[0] for row in result.fetchall()}
+        # NOTE: Caller should commit - allows batching multiple operations
+
+        return list(inserted_ids)
+
+    def get_record_with_details(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        category: str,
+    ) -> EventRecord | None:
+        return (
+            db_session.query(EventRecord)
+            .options(selectinload(EventRecord.detail))
+            .filter(EventRecord.id == record_id, EventRecord.category == category)
+            .first()
+        )
+
     def get_records_with_filters(
         self,
         db_session: DbSession,
         query_params: EventRecordQueryParams,
         user_id: str,
-    ) -> tuple[list[tuple[EventRecord, ExternalDeviceMapping]], int]:
+    ) -> tuple[list[tuple[EventRecord, DataSource]], int]:
         query: Query = (
-            db_session.query(EventRecord, ExternalDeviceMapping)
+            db_session.query(EventRecord, DataSource)
             .join(
-                ExternalDeviceMapping,
-                EventRecord.external_device_mapping_id == ExternalDeviceMapping.id,
+                DataSource,
+                EventRecord.data_source_id == DataSource.id,
             )
             .options(selectinload(EventRecord.detail))
         )
 
-        filters = [ExternalDeviceMapping.user_id == UUID(user_id)]
+        filters = [DataSource.user_id == UUID(user_id)]
 
         if query_params.category:
             filters.append(EventRecord.category == query_params.category)
@@ -89,14 +172,14 @@ class EventRecordRepository(
         if query_params.source_name:
             filters.append(EventRecord.source_name.ilike(f"%{query_params.source_name}%"))
 
-        if query_params.device_id:
-            filters.append(ExternalDeviceMapping.device_id == query_params.device_id)
+        if query_params.device_model:
+            filters.append(DataSource.device_model == query_params.device_model)
 
-        if getattr(query_params, "provider_name", None):
-            filters.append(ExternalDeviceMapping.provider_name == query_params.provider_name)
+        if getattr(query_params, "source", None):
+            filters.append(DataSource.source == query_params.source)
 
-        if getattr(query_params, "external_device_mapping_id", None):
-            filters.append(EventRecord.external_device_mapping_id == query_params.external_device_mapping_id)
+        if getattr(query_params, "data_source_id", None):
+            filters.append(EventRecord.data_source_id == query_params.data_source_id)
 
         if query_params.start_datetime:
             filters.append(EventRecord.start_datetime >= query_params.start_datetime)
@@ -197,11 +280,11 @@ class EventRecordRepository(
         cursor: str | None,
         limit: int,
     ) -> list[dict]:
-        """Get daily sleep summaries aggregated by date, provider, and device.
+        """Get daily sleep summaries aggregated by date, source, and device_model.
 
         Returns list of dicts with keys:
         - sleep_date, min_start_time, max_end_time, total_duration_minutes
-        - provider_name, device_id, record_id
+        - source, device_model, record_id
         - time_in_bed_minutes, efficiency_percent
         - deep_minutes, light_minutes, rem_minutes, awake_minutes
         - nap_count, nap_duration_minutes
@@ -221,8 +304,8 @@ class EventRecordRepository(
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
                 # Main sleep duration (exclude naps)
                 func.sum(case((is_main_sleep, EventRecord.duration_seconds), else_=0)).label("total_duration"),
-                ExternalDeviceMapping.provider_name,
-                ExternalDeviceMapping.device_id,
+                DataSource.source,
+                DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
                 # Sleep details aggregations - main sleep only (minutes stored, convert to seconds later)
                 func.sum(case((is_main_sleep, SleepDetails.sleep_time_in_bed_minutes), else_=None)).label(
@@ -256,18 +339,18 @@ class EventRecordRepository(
                     case((SleepDetails.is_nap == True, EventRecord.duration_seconds), else_=0)  # noqa: E712
                 ).label("nap_duration"),
             )
-            .join(ExternalDeviceMapping, EventRecord.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
             .filter(
-                ExternalDeviceMapping.user_id == user_id,
+                DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
                 EventRecord.end_datetime >= start_date,
                 cast(EventRecord.end_datetime, Date) < cast(end_date, Date),
             )
             .group_by(
                 cast(EventRecord.end_datetime, Date),
-                ExternalDeviceMapping.provider_name,
-                ExternalDeviceMapping.device_id,
+                DataSource.source,
+                DataSource.device_model,
             )
         ).subquery()
 
@@ -278,8 +361,8 @@ class EventRecordRepository(
             subquery.c.min_start_time,
             subquery.c.max_end_time,
             subquery.c.total_duration,
-            subquery.c.provider_name,
-            subquery.c.device_id,
+            subquery.c.source,
+            subquery.c.device_model,
             record_id_col,
             subquery.c.time_in_bed_minutes,
             subquery.c.deep_minutes,
@@ -326,8 +409,8 @@ class EventRecordRepository(
                     "min_start_time": row.min_start_time,
                     "max_end_time": row.max_end_time,
                     "total_duration_minutes": int(row.total_duration or 0) // 60,
-                    "provider_name": row.provider_name,
-                    "device_id": row.device_id,
+                    "source": row.source,
+                    "device_model": row.device_model,
                     "record_id": row.record_id,
                     "time_in_bed_minutes": int(row.time_in_bed_minutes)
                     if row.time_in_bed_minutes is not None
@@ -356,14 +439,14 @@ class EventRecordRepository(
         Aggregates WorkoutDetails data by date for activity summaries.
 
         Returns list of dicts with keys:
-        - workout_date, provider_name, device_id
+        - workout_date, source, device_model
         - elevation_meters, distance_meters, energy_burned_kcal
         """
         results = (
             db_session.query(
                 cast(self.model.end_datetime, Date).label("workout_date"),
-                ExternalDeviceMapping.provider_name,
-                ExternalDeviceMapping.device_id,
+                DataSource.source,
+                DataSource.device_model,
                 # Sum elevation gain for all workouts on that day
                 func.sum(WorkoutDetails.total_elevation_gain).label("elevation_sum"),
                 # Sum distance for all workouts
@@ -371,19 +454,19 @@ class EventRecordRepository(
                 # Sum energy burned
                 func.sum(WorkoutDetails.energy_burned).label("energy_sum"),
             )
-            .join(ExternalDeviceMapping, self.model.external_device_mapping_id == ExternalDeviceMapping.id)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
             # Use outerjoin since WorkoutDetails is optional - some workouts may not have details
             .outerjoin(WorkoutDetails, self.model.id == WorkoutDetails.record_id)
             .filter(
-                ExternalDeviceMapping.user_id == user_id,
+                DataSource.user_id == user_id,
                 self.model.category == "workout",
                 self.model.end_datetime >= start_date,
                 cast(self.model.end_datetime, Date) < cast(end_date, Date),
             )
             .group_by(
                 cast(self.model.end_datetime, Date),
-                ExternalDeviceMapping.provider_name,
-                ExternalDeviceMapping.device_id,
+                DataSource.source,
+                DataSource.device_model,
             )
             .order_by(asc(cast(self.model.end_datetime, Date)))
             .all()
@@ -394,8 +477,8 @@ class EventRecordRepository(
             aggregates.append(
                 {
                     "workout_date": row.workout_date,
-                    "provider_name": row.provider_name,
-                    "device_id": row.device_id,
+                    "source": row.source,
+                    "device_model": row.device_model,
                     "elevation_meters": float(row.elevation_sum) if row.elevation_sum is not None else None,
                     "distance_meters": float(row.distance_sum) if row.distance_sum is not None else None,
                     "energy_burned_kcal": float(row.energy_sum) if row.energy_sum is not None else None,

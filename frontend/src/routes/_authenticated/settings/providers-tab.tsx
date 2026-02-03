@@ -5,6 +5,7 @@ import {
 } from '@/hooks/api/use-oauth-providers';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { ProviderItem } from '@/components/settings/providers/provider-item';
+import { Button } from '@/components/ui/button';
 
 export function ProvidersTab() {
   const {
@@ -65,12 +66,9 @@ export function ProvidersTab() {
     return (
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
         <p className="text-zinc-400 mb-4">Failed to load OAuth providers</p>
-        <button
-          onClick={() => refetch()}
-          className="px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
+        <Button variant="outline" onClick={() => refetch()}>
           Retry
-        </button>
+        </Button>
       </div>
     );
   }
@@ -93,11 +91,7 @@ export function ProvidersTab() {
           </p>
         </div>
         {hasChanges && (
-          <button
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
-          >
+          <Button onClick={handleSave} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -109,7 +103,7 @@ export function ProvidersTab() {
                 Save Changes
               </>
             )}
-          </button>
+          </Button>
         )}
       </div>
 

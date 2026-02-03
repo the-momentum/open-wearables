@@ -4,7 +4,11 @@ import {
   type WorkoutsParams,
   type SummaryParams,
 } from '@/lib/api/services/health.service';
-import type { TimeSeriesParams, SleepSessionsParams } from '@/lib/api/types';
+import type {
+  TimeSeriesParams,
+  SleepSessionsParams,
+  BodySummaryParams,
+} from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { queryClient } from '@/lib/query/client';
@@ -82,14 +86,14 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
- * Get body summaries for a user
+ * Get body summary for a user (static, averaged, latest metrics)
  * Uses GET /api/v1/users/{user_id}/summaries/body
  */
-export function useBodySummaries(userId: string, params: SummaryParams) {
+export function useBodySummary(userId: string, params?: BodySummaryParams) {
   return useQuery({
-    queryKey: queryKeys.health.bodySummaries(userId, params),
-    queryFn: () => healthService.getBodySummaries(userId, params),
-    enabled: !!userId && !!params.start_date && !!params.end_date,
+    queryKey: queryKeys.health.bodySummary(userId, params),
+    queryFn: () => healthService.getBodySummary(userId, params),
+    enabled: !!userId,
   });
 }
 

@@ -5,6 +5,16 @@ import { useUsers, useDeleteUser, useCreateUser } from '@/hooks/api/use-users';
 import type { UserCreate, UserQueryParams } from '@/lib/api/types';
 import { UsersTable } from '@/components/users/users-table';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const initialFormState: UserCreate = {
   external_user_id: '',
@@ -147,13 +157,10 @@ function UsersPage() {
             Manage your platform users and their wearable connections
           </p>
         </div>
-        <button
-          onClick={() => setIsCreateDialogOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-md text-sm font-medium hover:bg-zinc-200 transition-colors"
-        >
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Add User
-        </button>
+        </Button>
       </div>
 
       {total > 0 || queryParams.search ? (
@@ -183,158 +190,163 @@ function UsersPage() {
         </div>
       )}
 
-      {isCreateDialogOpen && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
-            <div className="p-6 border-b border-zinc-800">
-              <h2 className="text-lg font-medium text-white">
-                Create New User
-              </h2>
-              <p className="text-sm text-zinc-500 mt-1">
-                Create a new user to connect wearable devices and collect health
-                data.
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseCreateDialog();
+          } else {
+            setIsCreateDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+            <DialogDescription>
+              Create a new user to connect wearable devices and collect health
+              data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="external_user_id" className="text-zinc-300">
+                External User ID
+              </Label>
+              <Input
+                id="external_user_id"
+                type="text"
+                placeholder="e.g., user_12345 or external system ID"
+                value={formData.external_user_id || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    external_user_id: e.target.value,
+                  })
+                }
+                maxLength={255}
+                className="bg-zinc-800 border-zinc-700"
+              />
+              {formErrors.external_user_id && (
+                <p className="text-xs text-red-500">
+                  {formErrors.external_user_id}
+                </p>
+              )}
+              <p className="text-[10px] text-zinc-600">
+                Your unique identifier for this user (max 255 characters)
               </p>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-300">
-                  External User ID
-                </label>
-                <input
+                <Label htmlFor="first_name" className="text-zinc-300">
+                  First Name
+                </Label>
+                <Input
+                  id="first_name"
                   type="text"
-                  placeholder="e.g., user_12345 or external system ID"
-                  value={formData.external_user_id || ''}
+                  placeholder="John"
+                  value={formData.first_name || ''}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      external_user_id: e.target.value,
-                    })
+                    setFormData({ ...formData, first_name: e.target.value })
                   }
-                  maxLength={255}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
+                  maxLength={100}
+                  className="bg-zinc-800 border-zinc-700"
                 />
-                {formErrors.external_user_id && (
+                {formErrors.first_name && (
                   <p className="text-xs text-red-500">
-                    {formErrors.external_user_id}
+                    {formErrors.first_name}
                   </p>
                 )}
-                <p className="text-[10px] text-zinc-600">
-                  Your unique identifier for this user (max 255 characters)
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-300">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="John"
-                    value={formData.first_name || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, first_name: e.target.value })
-                    }
-                    maxLength={100}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
-                  />
-                  {formErrors.first_name && (
-                    <p className="text-xs text-red-500">
-                      {formErrors.first_name}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-300">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Doe"
-                    value={formData.last_name || ''}
-                    onChange={(e) =>
-                      setFormData({ ...formData, last_name: e.target.value })
-                    }
-                    maxLength={100}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
-                  />
-                  {formErrors.last_name && (
-                    <p className="text-xs text-red-500">
-                      {formErrors.last_name}
-                    </p>
-                  )}
-                </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-300">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  placeholder="john.doe@example.com"
-                  value={formData.email || ''}
+                <Label htmlFor="last_name" className="text-zinc-300">
+                  Last Name
+                </Label>
+                <Input
+                  id="last_name"
+                  type="text"
+                  placeholder="Doe"
+                  value={formData.last_name || ''}
                   onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
+                    setFormData({ ...formData, last_name: e.target.value })
                   }
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 focus:border-zinc-600 transition-all"
+                  maxLength={100}
+                  className="bg-zinc-800 border-zinc-700"
                 />
-                {formErrors.email && (
-                  <p className="text-xs text-red-500">{formErrors.email}</p>
+                {formErrors.last_name && (
+                  <p className="text-xs text-red-500">{formErrors.last_name}</p>
                 )}
               </div>
             </div>
-            <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <Button variant="outline" onClick={handleCloseCreateDialog}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateUser}
-                disabled={createUser.isPending}
-              >
-                {createUser.isPending ? 'Creating...' : 'Create User'}
-              </Button>
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-zinc-300">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="john.doe@example.com"
+                value={formData.email || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                className="bg-zinc-800 border-zinc-700"
+              />
+              {formErrors.email && (
+                <p className="text-xs text-red-500">{formErrors.email}</p>
+              )}
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-3">
+            <Button variant="outline" onClick={handleCloseCreateDialog}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateUser} disabled={createUser.isPending}>
+              {createUser.isPending ? 'Creating...' : 'Create User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {deleteUserId && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl">
-            <div className="p-6 border-b border-zinc-800">
-              <h2 className="text-lg font-medium text-white">Delete User?</h2>
-              <p className="text-sm text-zinc-500 mt-1">
-                This action cannot be undone. This will permanently delete the
-                user and all associated data including:
-              </p>
-            </div>
-            <div className="p-6">
-              <ul className="list-disc list-inside text-sm text-zinc-500 space-y-1">
-                <li>All wearable device connections</li>
-                <li>All health data (sleep, activity)</li>
-                <li>All automation triggers for this user</li>
-              </ul>
-              <div className="mt-4 p-3 bg-zinc-800 rounded-md">
-                <p className="text-xs text-zinc-500">User ID:</p>
-                <code className="font-mono text-sm text-zinc-300">
-                  {deleteUserId}
-                </code>
-              </div>
-            </div>
-            <div className="p-6 border-t border-zinc-800 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setDeleteUserId(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleDeleteUser}
-                disabled={deleteUser.isPending}
-              >
-                {deleteUser.isPending ? 'Deleting...' : 'Delete User'}
-              </Button>
+      <Dialog
+        open={!!deleteUserId}
+        onOpenChange={(open) => !open && setDeleteUserId(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete User?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the
+              user and all associated data including:
+            </DialogDescription>
+          </DialogHeader>
+          <div>
+            <ul className="list-disc list-inside text-sm text-zinc-500 space-y-1">
+              <li>All wearable device connections</li>
+              <li>All health data (sleep, activity)</li>
+              <li>All automation triggers for this user</li>
+            </ul>
+            <div className="mt-4 p-3 bg-zinc-800 rounded-md">
+              <p className="text-xs text-zinc-500">User ID:</p>
+              <code className="font-mono text-sm text-zinc-300">
+                {deleteUserId}
+              </code>
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter className="gap-3">
+            <Button variant="outline" onClick={() => setDeleteUserId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteUser}
+              disabled={deleteUser.isPending}
+            >
+              {deleteUser.isPending ? 'Deleting...' : 'Delete User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
