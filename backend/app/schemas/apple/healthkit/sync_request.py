@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.series_types import AppleCategoryType, AppleMetricType
 from app.constants.workout_statistics import WorkoutStatisticType
@@ -16,16 +16,17 @@ from app.constants.workout_types import SDKWorkoutType
 class OSVersion(BaseModel):
     """Operating system version info from HealthKit source."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     major_version: int = Field(alias="majorVersion")
     minor_version: int = Field(alias="minorVersion")
     patch_version: int = Field(alias="patchVersion")
 
-    class Config:
-        populate_by_name = True
-
 
 class SourceInfo(BaseModel):
     """Source/device information for HealthKit records."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     name: str | None = None
     bundle_identifier: str | None = Field(default=None, alias="bundleIdentifier")
@@ -37,9 +38,6 @@ class SourceInfo(BaseModel):
     device_model: str | None = Field(default=None, alias="deviceModel")
     device_hardware_version: str | None = Field(default=None, alias="deviceHardwareVersion")
     device_software_version: str | None = Field(default=None, alias="deviceSoftwareVersion")
-
-    class Config:
-        populate_by_name = True
 
 
 class MetricRecord(BaseModel):
