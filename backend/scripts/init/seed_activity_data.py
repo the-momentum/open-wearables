@@ -149,24 +149,24 @@ def generate_workout(
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
     device_name: str | None = None
-    provider: str | None = None
+    device_provider: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        provider = str(config["provider"])
+        device_provider = provider.value
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=workout_id,
-        source=provider.value,
+        source=device_provider,
         user_id=user_id,
         category="workout",
         type=fake_instance.random.choice(WORKOUT_TYPES),
         duration_seconds=duration_seconds,
         source_name=config["source_name"],
         device_model=device_name,
-        provider=provider,
+        provider=device_provider,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -225,24 +225,24 @@ def generate_sleep(
     # Simulate device
     has_device = fake_instance.boolean(chance_of_getting_true=80)
     device_name: str | None = None
-    provider: str | None = None
+    device_provider: str | None = None
     sw_version: str | None = None
 
     if has_device:
         device_name = fake_instance.random.choice(config["devices"])
-        provider = str(config["provider"])
+        device_provider = provider.value
         sw_version = fake_instance.random.choice(config["os_versions"])
 
     record = EventRecordCreate(
         id=sleep_id,
-        source=provider.value,
+        source=device_provider,
         user_id=user_id,
         category="sleep",
         type=None,
         duration_seconds=sleep_duration_seconds,
         source_name=config["source_name"],
         device_model=device_name,
-        provider=provider,
+        provider=device_provider,
         software_version=sw_version,
         start_datetime=start_datetime,
         end_datetime=end_datetime,
@@ -415,11 +415,12 @@ def seed_activity_data() -> None:
             user_connections, provider_sync_times = generate_user_connections(user.id, fake, num_connections=2)
             for connection_data in user_connections:
                 created_connection = connection_repo.create(db, connection_data)
-                # Update with last_synced_at (simulating a sync after connection creation)
-                provider = ProviderName(connection_data.provider)
-                update_data = UserConnectionUpdate(last_synced_at=provider_sync_times[provider])
-                connection_repo.update(db, created_connection, update_data)
-                connections_created += 1
+                if created_connection:
+                    # Update with last_synced_at (simulating a sync after connection creation)
+                    provider = ProviderName(connection_data.provider)
+                    update_data = UserConnectionUpdate(last_synced_at=provider_sync_times[provider])
+                    connection_repo.update(db, created_connection, update_data)
+                    connections_created += 1
             provider_names = ", ".join(c.provider for c in user_connections)
             print(f"  ✓ Created {len(user_connections)} provider connections: {provider_names}")
 

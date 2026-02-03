@@ -191,7 +191,6 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
             )}
           </div>
         </div>
-
       </div>
 
       {/* Edit User Dialog */}
