@@ -1,6 +1,6 @@
-import sys
-from logging import INFO, StreamHandler, basicConfig
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -8,23 +8,40 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import head_router
 from app.config import settings
+from app.database import engine
 from app.integrations.celery import create_celery
+from app.integrations.observability import init_observability, init_providers
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
-# Configure logging to use stdout instead of stderr
-# Some platforms convert stderr logs to level.error automatically, so we must use stdout
-# This ensures platforms correctly identify log levels from JSON structured logs
-basicConfig(
-    level=INFO,
-    format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
-    handlers=[StreamHandler(sys.stdout)],
-)
+# Initialize OpenTelemetry providers BEFORE creating the FastAPI app
+# This ensures that middleware added during app creation can use the correct providers
+init_providers()
 
-api = FastAPI(title=settings.api_name)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialize observability instrumentations on API startup."""
+    init_observability(app, engine)
+    init_sentry()
+    yield
+
+
+api = FastAPI(title=settings.api_name, lifespan=lifespan)
 celery_app = create_celery()
-init_sentry()
+
+# Add OpenTelemetry HTTP instrumentation
+# Providers must be passed explicitly since add_middleware stores the class for later instantiation
+if settings.otel_enabled:
+    from opentelemetry import metrics, trace
+    from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+
+    api.add_middleware(
+        OpenTelemetryMiddleware,
+        tracer_provider=trace.get_tracer_provider(),
+        meter_provider=metrics.get_meter_provider(),
+    )
 
 add_cors_middleware(api)
 
