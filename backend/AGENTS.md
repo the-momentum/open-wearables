@@ -349,7 +349,7 @@ app/api/routes/
 
 ## Verifying Changes
 
-When working on backend features, you can verify your changes by:
+When asked or when you consider it appropriate, you can verify changes in several ways:
 
 ### API Testing
 ```bash
