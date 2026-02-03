@@ -48,6 +48,66 @@ src/
 └── styles.css           # Tailwind + CSS variables
 ```
 
+## Reusable Components
+
+### common/
+
+| Component | Description |
+|-----------|-------------|
+| `LoadingSpinner` | Animated spinner with size variants (`sm`, `md`, `lg`) |
+| `LoadingState` | Full-page loading with spinner and optional message |
+| `ErrorState` | Error display with message and optional retry button |
+| `MetricCard` | Statistics card with icon, value, label, and selection state |
+| `SectionHeader` | Section title with optional date range selector |
+| `CursorPagination` | Previous/next navigation for cursor-based pagination |
+
+### layout/
+
+| Component | Description |
+|-----------|-------------|
+| `SimpleSidebar` | Navigation sidebar with menu items and logout button |
+
+### login/
+
+| Component | Description |
+|-----------|-------------|
+| `CodePreviewCard` | Decorative code editor preview for login/register pages |
+
+### pages/dashboard/
+
+| Component | Description |
+|-----------|-------------|
+| `StatsCard` | Dashboard stat with value, icon, and growth percentage indicator |
+| `StatsGrid` | Responsive grid layout for StatsCard instances |
+| `DashboardLoadingState` | Skeleton loading state for dashboard |
+| `DashboardErrorState` | Error state with retry button for dashboard |
+| `DataSummaryCard` | Summary card showing count and label |
+| `DataMetricsSection` | Displays top series and workout types |
+| `RecentUsersSection` | Recent users list with status badges |
+
+### settings/providers/
+
+| Component | Description |
+|-----------|-------------|
+| `ProviderItem` | Wearable provider row with connection toggle switch |
+
+### user/
+
+| Component | Description |
+|-----------|-------------|
+| `ProfileSection` | User profile header with edit dialog and connected providers list |
+| `BodySection` | Body metrics display with period toggle (7d/30d/90d) |
+| `SleepSection` | Sleep data with charts and session details |
+| `ActivitySection` | Activity metrics with dynamic chart selection |
+| `WorkoutSection` | Workout list with heart rate time series chart |
+| `ConnectionCard` | Provider connection status with sync button |
+
+### users/
+
+| Component | Description |
+|-----------|-------------|
+| `UsersTable` | Data table with sorting, search, pagination, and row actions |
+
 ## Common Patterns
 
 ### Creating API Hooks (React Query)
