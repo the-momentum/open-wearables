@@ -149,9 +149,10 @@ async def list_workouts(
             )
 
         # Calculate summary statistics
-        total_duration = sum(durations) if durations else 0
-        total_distance = sum(distances) if distances else 0
-        total_cals = sum(calories) if calories else 0
+        total_duration = sum(durations)
+        total_distance = sum(distances)
+        total_cals = sum(calories)
+        avg_duration = round(total_duration / len(durations)) if durations else None
 
         summary = {
             "total_workouts": len(records),
@@ -159,7 +160,7 @@ async def list_workouts(
             "total_duration_seconds": total_duration,
             "total_distance_meters": total_distance if distances else None,
             "total_calories_kcal": round(total_cals, 1) if calories else None,
-            "avg_duration_seconds": round(total_duration / len(durations)) if durations else None,
+            "avg_duration_seconds": avg_duration,
             "workout_types": workout_types if workout_types else None,
         }
 
