@@ -26,7 +26,7 @@ async def get_activity_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[int, Query(ge=1, le=400)] = 50,
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
 
