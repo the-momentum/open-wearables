@@ -14,19 +14,19 @@ sleep_router = FastMCP(name="Sleep Tools")
 
 
 @sleep_router.tool
-async def list_sleep(
+async def get_sleep_summary(
     user_id: str,
     start_date: str,
     end_date: str,
 ) -> dict:
     """
-    Get sleep records for a user within a date range.
+    Get daily sleep summaries for a user within a date range.
 
     This tool retrieves daily sleep summaries including start time, end time,
     duration, and sleep stages (if available from the wearable device).
 
     Args:
-        user_id: UUID of the user. Use list_users to discover available users.
+        user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
                     Example: "2025-01-01"
         end_date: End date in YYYY-MM-DD format.
@@ -62,7 +62,7 @@ async def list_sleep(
         }
 
     Notes for LLMs:
-        - Call list_users first to get the user_id.
+        - Call get_users first to get the user_id.
         - Calculate dates based on user queries:
           "last week" → start_date = 7 days ago, end_date = today
           "January 2025" → start_date = "2025-01-01", end_date = "2025-01-31"
@@ -140,8 +140,8 @@ async def list_sleep(
         }
 
     except ValueError as e:
-        logger.error(f"API error in list_sleep: {e}")
+        logger.error(f"API error in get_sleep_summary: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in list_sleep: {e}")
-        return {"error": f"Failed to fetch sleep records: {e}"}
+        logger.exception(f"Unexpected error in get_sleep_summary: {e}")
+        return {"error": f"Failed to fetch sleep summary: {e}"}

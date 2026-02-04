@@ -14,20 +14,20 @@ workouts_router = FastMCP(name="Workout Tools")
 
 
 @workouts_router.tool
-async def list_workouts(
+async def get_workout_events(
     user_id: str,
     start_date: str,
     end_date: str,
     workout_type: str | None = None,
 ) -> dict:
     """
-    Get workout records for a user within a date range.
+    Get workout events for a user within a date range.
 
-    This tool retrieves workout sessions including type, duration, distance,
+    This tool retrieves discrete workout sessions including type, duration, distance,
     calories, and heart rate data (if available from the wearable device).
 
     Args:
-        user_id: UUID of the user. Use list_users to discover available users.
+        user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
                     Example: "2025-01-01"
         end_date: End date in YYYY-MM-DD format.
@@ -40,7 +40,7 @@ async def list_workouts(
         A dictionary containing:
         - user: Information about the user (id, first_name, last_name)
         - period: The date range queried (start, end)
-        - records: List of workout records with details
+        - records: List of workout events with details
         - summary: Aggregate statistics (total_workouts, total_duration, etc.)
 
     Example response:
@@ -75,7 +75,7 @@ async def list_workouts(
         }
 
     Notes for LLMs:
-        - Call list_users first to get the user_id.
+        - Call get_users first to get the user_id.
         - Calculate dates based on user queries:
           "last week" -> start_date = 7 days ago, end_date = today
           "this month" -> start_date = first of month, end_date = today
@@ -172,8 +172,8 @@ async def list_workouts(
         }
 
     except ValueError as e:
-        logger.error(f"API error in list_workouts: {e}")
+        logger.error(f"API error in get_workout_events: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in list_workouts: {e}")
-        return {"error": f"Failed to fetch workout records: {e}"}
+        logger.exception(f"Unexpected error in get_workout_events: {e}")
+        return {"error": f"Failed to fetch workout events: {e}"}

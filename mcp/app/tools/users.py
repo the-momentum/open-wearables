@@ -13,9 +13,9 @@ users_router = FastMCP(name="Users Tools")
 
 
 @users_router.tool
-async def list_users(search: str | None = None, limit: int = 10) -> dict:
+async def get_users(search: str | None = None, limit: int = 10) -> dict:
     """
-    List users accessible via the configured API key.
+    Get users accessible via the configured API key.
 
     Use this tool to discover available Open Wearables users before querying their health data.
     The API key determines which users are visible (personal, team, or enterprise scope).
@@ -44,7 +44,7 @@ async def list_users(search: str | None = None, limit: int = 10) -> dict:
     Notes for LLMs:
         - Call this tool first if you don't know the user's ID
         - Use the 'search' parameter to filter by name if the user mentions a specific person
-        - The 'id' field is a UUID that can be used with other tools like list_sleep, list_workouts
+        - The 'id' field is a UUID that can be used with other tools like get_sleep_summary, get_workout_events
         - If only ONE user is returned: use that user automatically (this indicates a personal API key)
         - If MULTIPLE users are returned and user says "my/me": ask which user they mean
         - If MULTIPLE users are returned with a name hint: match by name or use 'search'
@@ -70,8 +70,8 @@ async def list_users(search: str | None = None, limit: int = 10) -> dict:
         }
 
     except ValueError as e:
-        logger.error(f"API error in list_users: {e}")
+        logger.error(f"API error in get_users: {e}")
         return {"error": str(e), "users": [], "total": 0}
     except Exception as e:
-        logger.exception(f"Unexpected error in list_users: {e}")
+        logger.exception(f"Unexpected error in get_users: {e}")
         return {"error": f"Failed to fetch users: {e}", "users": [], "total": 0}

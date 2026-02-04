@@ -13,7 +13,7 @@ activity_router = FastMCP(name="Activity Tools")
 
 
 @activity_router.tool
-async def list_activity(
+async def get_activity_summary(
     user_id: str,
     start_date: str,
     end_date: str,
@@ -25,7 +25,7 @@ async def list_activity(
     heart rate, distance, and intensity minutes from wearable devices.
 
     Args:
-        user_id: UUID of the user. Use list_users to discover available users.
+        user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
                     Example: "2025-01-01"
         end_date: End date in YYYY-MM-DD format.
@@ -82,7 +82,7 @@ async def list_activity(
         }
 
     Notes for LLMs:
-        - Call list_users first to get the user_id.
+        - Call get_users first to get the user_id.
         - Calculate dates based on user queries:
           "last week" -> start_date = 7 days ago, end_date = today
           "this month" -> start_date = first of month, end_date = today
@@ -203,8 +203,8 @@ async def list_activity(
         }
 
     except ValueError as e:
-        logger.error(f"API error in list_activity: {e}")
+        logger.error(f"API error in get_activity_summary: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in list_activity: {e}")
-        return {"error": f"Failed to fetch activity records: {e}"}
+        logger.exception(f"Unexpected error in get_activity_summary: {e}")
+        return {"error": f"Failed to fetch activity summary: {e}"}

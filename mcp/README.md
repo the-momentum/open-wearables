@@ -4,8 +4,10 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 
 ## Features
 
-- **list_users**: Discover users accessible via your API key
-- **list_sleep**: Get sleep data for a user within a date range
+- **get_users**: Discover users accessible via your API key
+- **get_activity_summary**: Get daily activity data (steps, calories, heart rate, intensity minutes)
+- **get_sleep_summary**: Get sleep data for a user within a date range
+- **get_workout_events**: Get workout/exercise sessions for a user within a date range
 
 ## Prerequisites
 
@@ -91,7 +93,7 @@ Add to Cursor MCP settings:
 
 ```
 User: "Who can I query health data for?"
-Claude: [calls list_users()]
+Claude: [calls get_users()]
 Claude: "I found 2 users: John Doe and Jane Smith."
 ```
 
@@ -99,8 +101,8 @@ Claude: "I found 2 users: John Doe and Jane Smith."
 
 ```
 User: "How much sleep did John get last week?"
-Claude: [calls list_users() to get John's user_id]
-Claude: [calls list_sleep(user_id="uuid-1", start_date="2025-01-13", end_date="2025-01-20")]
+Claude: [calls get_users() to get John's user_id]
+Claude: [calls get_sleep_summary(user_id="uuid-1", start_date="2025-01-13", end_date="2025-01-20")]
 Claude: "John slept an average of 7 hours and 45 minutes over the last week.
 His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
 ```
@@ -109,14 +111,14 @@ His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
 
 ```
 User: "Show me Jane's sleep for January 2025"
-Claude: [calls list_sleep(user_id="uuid-2", start_date="2025-01-01", end_date="2025-01-31")]
+Claude: [calls get_sleep_summary(user_id="uuid-2", start_date="2025-01-01", end_date="2025-01-31")]
 ```
 
 ## Available Tools
 
-### list_users
+### get_users
 
-List all users accessible via the configured API key.
+Get all users accessible via the configured API key.
 
 **Parameters:**
 - `search` (optional): Filter users by name or email
@@ -131,9 +133,9 @@ List all users accessible via the configured API key.
 }
 ```
 
-### list_sleep
+### get_sleep_summary
 
-Get sleep records for a user within a date range.
+Get sleep summaries for a user within a date range.
 
 **Parameters:**
 - `user_id` (required): UUID of the user
@@ -174,8 +176,10 @@ mcp/
 │   ├── main.py           # FastMCP entry point
 │   ├── config.py         # Settings (API URL, API key)
 │   ├── tools/
-│   │   ├── users.py      # list_users tool
-│   │   └── sleep.py      # list_sleep tool
+│   │   ├── users.py      # get_users tool
+│   │   ├── activity.py   # get_activity_summary tool
+│   │   ├── sleep.py      # get_sleep_summary tool
+│   │   └── workouts.py   # get_workout_events tool
 │   └── services/
 │       └── api_client.py # HTTP client for backend API
 ├── config/
