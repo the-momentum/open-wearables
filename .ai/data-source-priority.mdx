@@ -70,32 +70,42 @@ Maps a user/provider/device combination into a reusable identifier.
 ```python
 class DataSource(BaseDbModel):
     __tablename__ = "data_source"
-    
+    __table_args__ = (
+        Index("idx_data_source_user_provider", "user_id", "provider"),
+        Index(
+            "uq_data_source_identity",
+            "user_id",
+            "provider",
+            text("COALESCE(device_model, '')"),
+            text("COALESCE(source, '')"),
+            unique=True,
+        ),
+    )
+
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    
+
     # Provider as enum - single source of truth
     provider: Mapped[ProviderName]
-    
+
     # FK to UserConnection - NULL for one-time imports (XML, manual uploads)
     # Populated for active connections (SDK sync, OAuth API)
-    user_connection_id: Mapped[UUID | None]
-    
+    user_connection_id: Mapped[FKUserConnection]
+
     # Technical ingestion channel.
     # Needed because a single provider can have multiple data channels:
     # - Apple: "apple_health_sdk", "apple_health_xml", "apple_health_auto_export"
-    # - Garmin: "garmin_connect_api", potentially "garmin_webhook" or "BLE" for direct integration with watch's sensor 
+    # - Garmin: "garmin_connect_api", potentially "garmin_webhook" or "BLE" for direct integration with watch's sensor
     source: Mapped[str_50 | None]
-    
+
     # Original source name from aggregators (Zepp Life, AutoSleep)
     # NULL for direct provider APIs
     original_source_name: Mapped[str_100 | None]
-    
+
     # Device info
     device_model: Mapped[str_100 | None]    # Watch7,2, iPhone14,5, Forerunner 265
-    device_type: Mapped[DeviceType | None]  # watch, phone, band, scale
+    device_type: Mapped[str_32 | None]      # watch, phone, band, scale, ring
     software_version: Mapped[str_50 | None]
-    manufacturer: Mapped[str_50 | None]
 ```
 
 ### 3. `PROVIDER_PRIORITY` (New)
@@ -105,35 +115,52 @@ System-wide priority configuration for data providers in `/summary` endpoints.
 ```python
 class ProviderPriority(BaseDbModel):
     __tablename__ = "provider_priority"
-    __table_args__ = (
-        UniqueConstraint("provider", name="uq_provider_priority"),
-    )
+    __table_args__ = (Index("idx_provider_priority_order", "priority"),)
 
     id: Mapped[PrimaryKey[UUID]]
-    provider: Mapped[ProviderName]
+    provider: Mapped[Unique[ProviderName]]
     priority: Mapped[int]  # 1 = highest
     created_at: Mapped[datetime_tz]
     updated_at: Mapped[datetime_tz]
 ```
 
-### 4. `DeviceType` (Enum + System Priorities)
+### 4. `DEVICE_TYPE_PRIORITY` (New)
+
+System-wide priority configuration for device types in `/summary` endpoints.
+
+```python
+class DeviceTypePriority(BaseDbModel):
+    __tablename__ = "device_type_priority"
+    __table_args__ = (Index("idx_device_type_priority_order", "priority"),)
+
+    id: Mapped[PrimaryKey[UUID]]
+    device_type: Mapped[Unique[DeviceType]]
+    priority: Mapped[int]  # 1 = highest priority (watch), 99 = lowest (unknown)
+    created_at: Mapped[datetime_tz]
+    updated_at: Mapped[datetime_tz]
+```
+
+### 5. `DeviceType` (Enum + Default Priorities)
 
 ```python
 class DeviceType(StrEnum):
     WATCH = "watch"
-    PHONE = "phone"
     BAND = "band"
+    PHONE = "phone"
     SCALE = "scale"
+    RING = "ring"
     OTHER = "other"
     UNKNOWN = "unknown"
 
-# System-wide device type priority (not a table, just config)
-DEVICE_TYPE_PRIORITY: dict[DeviceType, int] = {
+# System-wide default device type priority (lower = higher priority)
+# Used when database has no entries
+DEFAULT_DEVICE_TYPE_PRIORITY: dict[DeviceType, int] = {
     DeviceType.WATCH: 1,
     DeviceType.BAND: 2,
-    DeviceType.PHONE: 3,
-    DeviceType.SCALE: 4,
-    DeviceType.OTHER: 5,
+    DeviceType.RING: 3,
+    DeviceType.PHONE: 4,
+    DeviceType.SCALE: 5,
+    DeviceType.OTHER: 6,
     DeviceType.UNKNOWN: 99,
 }
 ```
@@ -160,7 +187,7 @@ erDiagram
         enum status "active, revoked, expired"
         datetime last_synced_at
     }
-    
+
     DATA_SOURCE {
         uuid id PK
         uuid user_id FK
@@ -169,14 +196,21 @@ erDiagram
         string source "ingestion channel"
         string original_source_name "nullable"
         string device_model "nullable"
-        enum device_type "nullable"
+        string device_type "nullable"
         string software_version "nullable"
-        string manufacturer "nullable"
     }
 
     PROVIDER_PRIORITY {
         uuid id PK
-        enum provider "ProviderName"
+        enum provider "ProviderName (unique)"
+        int priority
+        datetime created_at
+        datetime updated_at
+    }
+
+    DEVICE_TYPE_PRIORITY {
+        uuid id PK
+        enum device_type "DeviceType (unique)"
         int priority
         datetime created_at
         datetime updated_at
@@ -213,24 +247,24 @@ Only active connections have `UserConnection` records:
 
 ### All Scenarios
 
-| Scenario | provider | user_connection_id | source | original_source_name | device_model | device_type | manufacturer |
-|----------|----------|-------------------|--------|---------------------|--------------|-------------|--------------|
-| **Apple Watch via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Apple Watch (Jan)` | `Watch7,2` | `watch` | `Apple Inc.` |
-| **iPhone via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `iPhone` | `iPhone14,5` | `phone` | `Apple Inc.` |
-| **Zepp Life → Apple Health SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Zepp Life` | `NULL` | `unknown` | `NULL` |
-| **AutoSleep → Apple Health SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `AutoSleep` | `NULL` | `unknown` | `NULL` |
-| **Manual entry via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Health` | `NULL` | `unknown` | `NULL` |
-| **Auto Export app** | `apple` | `conn-apple-ae` | `apple_health_auto_export` | `NULL` | `NULL` | `unknown` | `NULL` |
-| **Apple Health XML import** | `apple` | `NULL` | `apple_health_xml` | `Apple Watch (Jan)` | `Watch3,3` | `watch` | `Apple Inc.` |
-| **XML import: Zepp Life data** | `apple` | `NULL` | `apple_health_xml` | `Zepp Life` | `NULL` | `unknown` | `NULL` |
-| **Garmin Forerunner** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Forerunner 265` | `watch` | `Garmin` |
-| **Garmin Venu** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Venu 3` | `watch` | `Garmin` |
-| **Garmin Index Scale** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Index S2` | `scale` | `Garmin` |
-| **Garmin Vivosmart** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Vivosmart 5` | `band` | `Garmin` |
-| **Suunto Vertical** | `suunto` | `conn-suunto` | `suunto_api` | `NULL` | `Suunto Vertical` | `watch` | `Suunto` |
-| **Polar Vantage** | `polar` | `conn-polar` | `polar_api` | `NULL` | `Vantage V3` | `watch` | `Polar` |
-| **Whoop 4.0** | `whoop` | `conn-whoop` | `whoop_api` | `NULL` | `WHOOP 4.0` | `band` | `WHOOP` |
-| **Oura Ring Gen3** | `oura` | `conn-oura` | `oura_api` | `NULL` | `Oura Ring Gen3` | `band` | `Oura` |
+| Scenario | provider | user_connection_id | source | original_source_name | device_model | device_type |
+|----------|----------|-------------------|--------|---------------------|--------------|-------------|
+| **Apple Watch via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Apple Watch (Jan)` | `Watch7,2` | `watch` |
+| **iPhone via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `iPhone` | `iPhone14,5` | `phone` |
+| **Zepp Life → Apple Health SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Zepp Life` | `NULL` | `unknown` |
+| **AutoSleep → Apple Health SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `AutoSleep` | `NULL` | `unknown` |
+| **Manual entry via SDK** | `apple` | `conn-apple` | `apple_health_sdk` | `Health` | `NULL` | `unknown` |
+| **Auto Export app** | `apple` | `conn-apple-ae` | `apple_health_auto_export` | `NULL` | `NULL` | `unknown` |
+| **Apple Health XML import** | `apple` | `NULL` | `apple_health_xml` | `Apple Watch (Jan)` | `Watch3,3` | `watch` |
+| **XML import: Zepp Life data** | `apple` | `NULL` | `apple_health_xml` | `Zepp Life` | `NULL` | `unknown` |
+| **Garmin Forerunner** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Forerunner 265` | `watch` |
+| **Garmin Venu** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Venu 3` | `watch` |
+| **Garmin Index Scale** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Index S2` | `scale` |
+| **Garmin Vivosmart** | `garmin` | `conn-garmin` | `garmin_connect_api` | `NULL` | `Vivosmart 5` | `band` |
+| **Suunto Vertical** | `suunto` | `conn-suunto` | `suunto_api` | `NULL` | `Suunto Vertical` | `watch` |
+| **Polar Vantage** | `polar` | `conn-polar` | `polar_api` | `NULL` | `Vantage V3` | `watch` |
+| **Whoop 4.0** | `whoop` | `conn-whoop` | `whoop_api` | `NULL` | `WHOOP 4.0` | `band` |
+| **Oura Ring Gen3** | `oura` | `conn-oura` | `oura_api` | `NULL` | `Oura Ring Gen3` | `ring` |
 
 ### Key Observations
 
@@ -299,15 +333,21 @@ def import_xml_data(db: DbSession, user_id: UUID, xml_file: bytes) -> None:
 
 ## Provider Priority Configuration
 
-System-wide provider priority configuration. Example:
+System-wide provider priority configuration stored in the `provider_priority` table. Default values:
 
 | provider | priority | Description |
 |----------|----------|-------------|
 | `apple` | 1 | Apple has highest priority |
 | `garmin` | 2 | Garmin as fallback |
-| `oura` | 3 | Oura third |
-| `polar` | 4 | Polar fourth |
-| `whoop` | 5 | Whoop lowest |
+| `polar` | 3 | Polar third |
+| `suunto` | 4 | Suunto fourth |
+| `whoop` | 5 | Whoop fifth |
+
+<Note>
+**Oura not in default priorities.**
+
+The `oura` provider exists in the `ProviderName` enum but is not included in the default priority configuration. It will be assigned priority 99 (lowest) until explicitly configured.
+</Note>
 
 ## Prioritization Logic
 
@@ -318,7 +358,7 @@ System-wide provider priority configuration. Example:
 │                    GET /v1/users/{id}/summary                   │
 ├─────────────────────────────────────────────────────────────────┤
 │  1. Get PROVIDER_PRIORITY (system-wide config)                  │
-│     → [apple:1, garmin:2, oura:3]                               │
+│     → [apple:1, garmin:2, polar:3, suunto:4, whoop:5]           │
 │                                                                 │
 │  2. For each provider (by priority):                            │
 │     → Check if user has data from this provider                 │
@@ -328,7 +368,7 @@ System-wide provider priority configuration. Example:
 │  3. Within selected provider:                                   │
 │     → Group data by device_type                                 │
 │     → Select device_type by DEVICE_TYPE_PRIORITY                │
-│       (watch > band > phone)                                    │
+│       (watch > band > ring > phone)                             │
 │                                                                 │
 │  4. Aggregate and return data                                   │
 └─────────────────────────────────────────────────────────────────┘
@@ -364,7 +404,7 @@ System-wide provider priority configuration. Example:
 
 1. **Provider priority** (system config): apple=1, garmin=2
 2. **Select Apple** (has data, priority 1)
-3. **Device type priority**: watch > phone > unknown
+3. **Device type priority**: watch > band > ring > phone > unknown
 4. **Return steps from ds-1** (Apple Watch via SDK)
 
 **Fallback scenario:**
@@ -378,10 +418,18 @@ System-wide provider priority configuration. Example:
 
 ### Device Type Detection
 
-Device type is derived from:
-1. **Apple**: Parse `product_type` (e.g., `Watch7,2` → `watch`, `iPhone14,5` → `phone`)
-2. **Garmin**: Match device model keywords (`Forerunner` → `watch`, `Vivosmart` → `band`, `Index` → `scale`)
-3. **Fallback**: Use heuristics from `original_source_name` (e.g., "Mi Band" → `band`)
+Device type is derived using two functions:
+
+1. **`infer_device_type_from_model()`** - Primary method using device model string:
+   - **Apple**: Parse `product_type` (e.g., `Watch7,2` → `watch`, `iPhone14,5` → `phone`)
+   - **Garmin**: Match device model keywords (`Forerunner` → `watch`, `Vivosmart` → `band`, `Index` → `scale`)
+   - **Polar**: Match patterns (`Vantage`, `Pacer` → `watch`)
+   - **Suunto**: Match patterns (`Vertical`, `Race` → `watch`)
+   - **Whoop**: All devices → `band`
+   - **Oura**: Pattern `oura` or `ring` → `ring`
+
+2. **`infer_device_type_from_source_name()`** - Fallback for aggregated data:
+   - Use heuristics from `original_source_name` (e.g., "Mi Band" → `band`, "AutoSleep" → `watch`)
 
 ### Data Storage vs. Data Retrieval
 
@@ -500,56 +548,86 @@ Data from aggregators (Zepp Life, AutoSleep) often lacks device information:
 - `device_model = NULL`
 - `device_type = unknown`
 
-The unique constraint `(user_id, device_model, source)` needs special handling for NULLs.
+The unique constraint `(user_id, provider, device_model, source)` needs special handling for NULLs.
 
 ### PostgreSQL NULL Behavior
 
 ```sql
 -- PostgreSQL: NULL != NULL in unique constraints
 -- These would BOTH succeed (creating duplicates):
-INSERT INTO data_source (user_id, device_model, source)
-VALUES ('user-1', NULL, 'apple_health_sdk');
+INSERT INTO data_source (user_id, provider, device_model, source)
+VALUES ('user-1', 'apple', NULL, 'apple_health_sdk');
 
-INSERT INTO data_source (user_id, device_model, source)
-VALUES ('user-1', NULL, 'apple_health_sdk');
+INSERT INTO data_source (user_id, provider, device_model, source)
+VALUES ('user-1', 'apple', NULL, 'apple_health_sdk');
 ```
 
 ### Solution
 
-Use `COALESCE` in the constraint or a partial unique index:
+Functional unique index with `COALESCE` for both nullable columns:
 
 ```sql
--- Option A: Functional unique index with COALESCE
 CREATE UNIQUE INDEX uq_data_source_identity
-ON data_source (user_id, COALESCE(device_model, ''), source);
-
--- Option B: Partial index for NULL case
-CREATE UNIQUE INDEX uq_data_source_null_device
-ON data_source (user_id, source)
-WHERE device_model IS NULL;
+ON data_source (user_id, provider, COALESCE(device_model, ''), COALESCE(source, ''));
 ```
+
+This ensures that `(user-1, apple, NULL, apple_health_sdk)` is treated as `(user-1, apple, '', 'apple_health_sdk')` for uniqueness purposes.
 
 ### Device Type Inference
 
-When `device_model` is NULL, attempt to infer `device_type` from `original_source_name`:
+Two functions handle device type inference:
+
+**1. From device model string:**
 
 ```python
-ORIGINAL_SOURCE_DEVICE_TYPE_MAP = {
-    "Mi Band": DeviceType.BAND,
-    "Xiaomi Mi Band": DeviceType.BAND,
-    "Amazfit Band": DeviceType.BAND,
-    "Zepp Life": DeviceType.UNKNOWN,  # Could be watch or band
-    "AutoSleep": DeviceType.WATCH,    # iOS-only, requires Apple Watch
-    "Health": DeviceType.UNKNOWN,     # Manual entry
-}
+def infer_device_type_from_model(device_model: str | None) -> DeviceType:
+    """Infer device type from device model string.
 
-def infer_device_type(original_source_name: str | None) -> DeviceType:
-    if not original_source_name:
+    Handles Apple productType codes and common device model patterns.
+    """
+    if not device_model:
         return DeviceType.UNKNOWN
 
-    for pattern, device_type in ORIGINAL_SOURCE_DEVICE_TYPE_MAP.items():
-        if pattern.lower() in original_source_name.lower():
-            return device_type
+    # Apple productType codes
+    if device_model.startswith("Watch"):
+        return DeviceType.WATCH
+    if device_model.startswith("iPhone"):
+        return DeviceType.PHONE
+    if device_model.startswith("iPad"):
+        return DeviceType.PHONE  # Treat iPad as phone for priority purposes
+
+    # Common keywords (watch, band, ring, phone, scale)
+    # Garmin patterns (forerunner, fenix, venu, vivosmart, index)
+    # Polar patterns (vantage, grit x, pacer)
+    # Suunto patterns (suunto, vertical, race)
+    # Whoop patterns (whoop -> band)
+    # ...
+    return DeviceType.OTHER
+```
+
+**2. From original source name (for aggregated data):**
+
+```python
+def infer_device_type_from_source_name(source_name: str | None) -> DeviceType:
+    """Infer device type from original source name.
+
+    Used when device_model is not available (e.g., data from Zepp Life via Apple Health).
+    """
+    if not source_name:
+        return DeviceType.UNKNOWN
+
+    name_lower = source_name.lower()
+
+    if "autosleep" in name_lower:
+        return DeviceType.WATCH  # AutoSleep requires Apple Watch
+    if "mi band" in name_lower or "xiaomi" in name_lower:
+        return DeviceType.BAND
+    if "amazfit band" in name_lower:
+        return DeviceType.BAND
+    if "oura" in name_lower:
+        return DeviceType.RING
+    if "zepp life" in name_lower:
+        return DeviceType.UNKNOWN  # Could be watch or band
 
     return DeviceType.UNKNOWN
 ```
