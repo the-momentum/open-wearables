@@ -251,44 +251,20 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 # View traces, metrics, and logs at http://localhost:3001 (Grafana)
 ```
 
-### Custom Instrumentation
+### Recording Metrics
 
 ```python
-from app.integrations.observability import traced, metered, record_metric
+from app.integrations.observability import record_metric, record_histogram
 
-# Add tracing to a function
-@traced()
-def fetch_user_data(user_id: UUID) -> dict:
-    ...
-
-# Add tracing with custom name and attributes
-@traced(name="provider.sync", attributes={"provider": "garmin"})
-async def sync_provider_data():
-    ...
-
-# Record call count and duration metrics
-@metered(counter_name="app.sync.calls", histogram_name="app.sync.duration")
-async def perform_sync():
-    ...
-
-# Inline metric recording
+# Counter metrics (increment by 1 or custom value)
 record_metric("oauth_attempts", labels={"provider": "garmin"})
+record_metric("workouts_synced", 5, {"provider": "polar"})
+
+# Histogram metrics (durations, sizes, etc.)
+record_histogram("provider_sync_duration", 2.5, {"provider": "garmin"})
 ```
 
-All decorators are no-ops when `OTEL_ENABLED=false`.
-
-### Accessing AppMetrics Directly
-
-For metrics not covered by decorators:
-
-```python
-from app.integrations.observability import get_app_metrics
-
-metrics = get_app_metrics()
-if metrics:
-    metrics.workouts_synced.add(5, {"provider": "garmin"})
-    metrics.provider_sync_duration.record(2.5, {"provider": "garmin"})
-```
+All helpers are no-ops when `OTEL_ENABLED=false`.
 
 ## Detailed Layer Rules
 

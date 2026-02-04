@@ -11,16 +11,11 @@ QUICK START:
     api = FastAPI(lifespan=create_observed_lifespan(engine))
     add_observability_middleware(api)
 
-CUSTOM INSTRUMENTATION:
-    from app.integrations.observability import traced, metered, record_metric
-
-    @traced()
-    def my_function(): ...
-
-    @metered(counter_name="app.calls")
-    async def my_async_function(): ...
+RECORDING METRICS:
+    from app.integrations.observability import record_metric, record_histogram
 
     record_metric("oauth_attempts", labels={"provider": "garmin"})
+    record_histogram("sync_duration", 2.5, {"provider": "polar"})
 
 INITIALIZATION ORDER (if not using simplified API):
     1. Call init_providers() BEFORE creating FastAPI app
@@ -28,13 +23,11 @@ INITIALIZATION ORDER (if not using simplified API):
 """
 
 from app.integrations.observability.decorators import (
-    metered,
     record_histogram,
     record_metric,
     record_task_completed,
     record_task_failed,
     record_task_started,
-    traced,
 )
 from app.integrations.observability.logging import configure_logging
 from app.integrations.observability.metrics import get_app_metrics, init_metrics
@@ -50,9 +43,7 @@ __all__ = [
     "ensure_providers_initialized",
     "add_observability_middleware",
     "create_observed_lifespan",
-    # Decorators and helpers
-    "traced",
-    "metered",
+    # Metric helpers
     "record_metric",
     "record_histogram",
     "record_task_started",
