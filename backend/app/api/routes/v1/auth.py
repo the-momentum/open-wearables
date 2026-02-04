@@ -5,19 +5,19 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.database import DbSession
 from app.schemas import DeveloperRead, DeveloperUpdate
-from app.schemas.oauth import Token
-from app.services import DeveloperDep, developer_service
+from app.schemas.token import TokenResponse
+from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.security import create_access_token, verify_password
 
 router = APIRouter()
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 async def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DbSession,
-):
-    """Authenticate developer and return access token."""
+) -> TokenResponse:
+    """Authenticate developer and return access token with refresh token."""
     # Find developer by email
     developers = developer_service.crud.get_all(
         db,
@@ -42,7 +42,9 @@ async def login(
         )
 
     access_token = create_access_token(subject=str(developer.id))
-    return Token(access_token=access_token, token_type="bearer")
+    refresh_token = refresh_token_service.create_developer_refresh_token(db, developer.id)
+
+    return TokenResponse(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
 
 
 @router.post("/logout")

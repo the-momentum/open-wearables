@@ -19,6 +19,7 @@ from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
+from .token import router as token_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 
@@ -50,5 +51,8 @@ v1_router.include_router(priorities_router, tags=["priorities"])
 v1_router.include_router(summaries_router, tags=["Summaries"])
 v1_router.include_router(timeseries_router, tags=["Timeseries"])
 v1_router.include_router(events_router, tags=["Events"])
+
+# Token refresh endpoint
+v1_router.include_router(token_router, tags=["token"])
 
 __all__ = ["v1_router"]

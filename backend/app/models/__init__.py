@@ -10,6 +10,7 @@ from .invitation import Invitation
 from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
+from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .user import User
@@ -25,6 +26,7 @@ __all__ = [
     "Invitation",
     "ProviderPriority",
     "ProviderSetting",
+    "RefreshToken",
     "User",
     "UserConnection",
     "EventRecord",
