@@ -1,0 +1,899 @@
+# Samsung Health SDK Integration
+
+This document describes the architecture and implementation plan for integrating Samsung Health SDK as a data provider in Open Wearables, designed to work alongside the existing Apple Health SDK integration.
+
+## Overview
+
+Samsung Health SDK will be the **second native SDK integration** after Apple Health. The goal is to:
+
+1. **Unify the ingestion pipeline** - Both SDKs feed into the same backend endpoints
+2. **Minimize provider-specific code** - Shared data transformation layer
+3. **Maintain data fidelity** - Preserve Samsung-specific fields while mapping to unified schema
+4. **Support the same data categories** - Records, Sleep, Workouts
+
+## Architecture Goals
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Mobile SDK Layer                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────┐              ┌──────────────────────┐             │
+│  │   Apple Health SDK   │              │  Samsung Health SDK  │             │
+│  │      (iOS only)      │              │    (Android only)    │             │
+│  └──────────┬───────────┘              └──────────┬───────────┘             │
+│             │                                     │                          │
+│             ▼                                     ▼                          │
+│  ┌──────────────────────┐              ┌──────────────────────┐             │
+│  │  Apple Payload JSON  │              │ Samsung Payload JSON │             │
+│  │  (HK* identifiers)   │              │  (SH* identifiers)   │             │
+│  └──────────┬───────────┘              └──────────┬───────────┘             │
+└─────────────┼───────────────────────────────────┼───────────────────────────┘
+              │                                     │
+              ▼                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Unified Ingestion Endpoint                                │
+│                  POST /v1/health-data/sync                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  1. Detect provider from payload structure or header                         │
+│  2. Route to provider-specific transformer                                   │
+│  3. Transform to unified internal schema                                     │
+│  4. Persist via shared data layer                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Payload Comparison
+
+### Top-Level Structure
+
+Both payloads share the same top-level structure:
+
+```json
+{
+  "data": {
+    "records": [...],
+    "sleep": [...],
+    "workouts": [...]
+  }
+}
+```
+
+<Note>
+**Unified structure is already achieved at the top level.**
+
+Both Apple and Samsung SDKs organize data into the same three categories: `records`, `sleep`, and `workouts`. This allows for a single endpoint with provider-specific transformers.
+</Note>
+
+### Key Differences
+
+| Aspect | Apple Health SDK | Samsung Health SDK |
+|--------|------------------|-------------------|
+| **Timestamps** | ISO 8601 strings (`"2022-05-28T23:56:11Z"`) | Epoch milliseconds (`1706774400000`) |
+| **Record ID** | `uuid` | `uid` |
+| **Type field** | `type` with `HK*` prefix | `dataType` with plain names |
+| **Values** | Single `value` field | `values` array with type/value pairs |
+| **Device info** | Nested in `source` | Separate `device` object + `dataSource` |
+| **Device type** | Inferred from `productType` | Explicit `deviceType` field |
+| **Sleep stages** | Separate records with `value` codes | Single record with `stages` array |
+| **Workout stats** | `workoutStatistics` array | `values` array + `sessions` array |
+
+## Data Type Mapping
+
+### Records
+
+| Samsung `dataType` | Apple `type` | Unified Internal Type |
+|-------------------|--------------|----------------------|
+| `STEPS` | `HKQuantityTypeIdentifierStepCount` | `steps` |
+| `HEART_RATE` | `HKQuantityTypeIdentifierHeartRate` | `heart_rate` |
+| `BLOOD_OXYGEN` | `HKQuantityTypeIdentifierOxygenSaturation` | `blood_oxygen` |
+| `BLOOD_GLUCOSE` | `HKQuantityTypeIdentifierBloodGlucose` | `blood_glucose` |
+| `BLOOD_PRESSURE` | `HKQuantityTypeIdentifierBloodPressureSystolic` | `blood_pressure` |
+| `BODY_TEMPERATURE` | `HKQuantityTypeIdentifierBodyTemperature` | `body_temperature` |
+| `FLOORS_CLIMBED` | `HKQuantityTypeIdentifierFlightsClimbed` | `floors_climbed` |
+| `BODY_COMPOSITION` | Multiple HK types | `body_composition` |
+| `WATER_INTAKE` | `HKQuantityTypeIdentifierDietaryWater` | `water_intake` |
+| `ACTIVITY_SUMMARY` | `HKActivitySummary` | `activity_summary` |
+
+### Sleep Stages
+
+| Samsung `stage` | Apple `value` | Unified Stage |
+|-----------------|---------------|---------------|
+| `AWAKE` | `2` (Awake) | `awake` |
+| `LIGHT` | `3` (Core) | `light` |
+| `DEEP` | `4` (Deep) | `deep` |
+| `REM` | `5` (REM) | `rem` |
+| - | `0` (InBed) | `in_bed` |
+| - | `1` (Asleep - unspecified) | `asleep` |
+
+### Workout/Exercise Types
+
+| Samsung `exerciseType` | Apple workout `type` | Unified Type |
+|------------------------|---------------------|--------------|
+| `RUNNING` | `running` | `running` |
+| `WALKING` | `walking` | `walking` |
+| `CYCLING` | `cycling` | `cycling` |
+| `SWIMMING` | `swimming` | `swimming` |
+| `HIKING` | `hiking` | `hiking` |
+| `STRENGTH_TRAINING` | `traditionalStrengthTraining` | `strength_training` |
+| `YOGA` | `yoga` | `yoga` |
+| `OTHER` | `other` | `other` |
+
+<Note>
+**Complete exercise type mapping required.**
+
+Samsung Health supports 80+ exercise types. A complete mapping table should be created during implementation. Unknown types should map to `other` with the original type preserved in metadata.
+</Note>
+
+### Device Types
+
+| Samsung `deviceType` | Inferred from Apple `productType` | Unified `DeviceType` |
+|---------------------|----------------------------------|---------------------|
+| `WATCH` | `Watch*` | `watch` |
+| `MOBILE` | `iPhone*` | `phone` |
+| `BAND` | - | `band` |
+| `RING` | - | `ring` |
+| `ACCESSORY` | - | `other` |
+
+<Note>
+**Samsung provides explicit device type.**
+
+Unlike Apple Health where we infer device type from `productType` strings, Samsung Health provides `deviceType` directly. This simplifies device classification for Samsung data.
+</Note>
+
+## Unified Endpoint Design
+
+### Endpoint: `POST /v1/health-data/sync`
+
+A single endpoint that handles both Apple and Samsung payloads.
+
+```python
+class HealthDataSyncRequest(BaseModel):
+    """Unified request model for health data sync."""
+    
+    # Provider identification
+    provider: ProviderName  # Required: "apple" or "samsung"
+    
+    # SDK metadata
+    sdk_version: str | None = None
+    app_version: str | None = None
+    
+    # The actual health data payload
+    data: HealthDataPayload
+
+
+class HealthDataPayload(BaseModel):
+    """Provider-agnostic health data container."""
+    
+    records: list[RawHealthRecord] = []
+    sleep: list[RawSleepRecord] = []
+    workouts: list[RawWorkoutRecord] = []
+```
+
+### Provider Detection Strategy
+
+```python
+def detect_provider(request: HealthDataSyncRequest) -> ProviderName:
+    """Detect provider from request."""
+    
+    # Option 1: Explicit provider field (preferred)
+    if request.provider:
+        return request.provider
+    
+    # Option 2: Infer from payload structure
+    if request.data.records:
+        first_record = request.data.records[0]
+        
+        # Apple uses "uuid" and "type" with HK prefix
+        if "uuid" in first_record and first_record.get("type", "").startswith("HK"):
+            return ProviderName.APPLE
+        
+        # Samsung uses "uid" and "dataType"
+        if "uid" in first_record and "dataType" in first_record:
+            return ProviderName.SAMSUNG
+    
+    raise ValueError("Unable to detect provider from payload")
+```
+
+### Transformer Interface
+
+```python
+from typing import Protocol
+
+
+class HealthDataTransformer(Protocol):
+    """Protocol for provider-specific data normalization.
+    
+    Uses Protocol (structural subtyping) instead of ABC because:
+    1. No inheritance required - implementations just need matching methods
+    2. Type checker validates structure at compile time
+    3. More flexible - can work with any object that matches the interface
+    4. Better for testing - easier to create test doubles without inheritance
+    5. More Pythonic - embraces duck typing with type safety
+    """
+    
+    def transform_record(self, raw: dict) -> NormalizedRecord:
+        """Transform a raw record to normalized format."""
+        ...
+    
+    def transform_sleep(self, raw: dict) -> NormalizedSleep:
+        """Transform raw sleep data to normalized format."""
+        ...
+    
+    def transform_workout(self, raw: dict) -> NormalizedWorkout:
+        """Transform raw workout data to normalized format."""
+        ...
+    
+    def extract_device_info(self, raw: dict) -> DeviceInfo:
+        """Extract device information from raw record."""
+        ...
+
+
+class AppleHealthTransformer:
+    """Transformer for Apple Health SDK payloads.
+    
+    No explicit inheritance needed - just implements the Protocol methods.
+    """
+    
+    def transform_record(self, raw: dict) -> NormalizedRecord:
+        # Implementation
+        ...
+    
+    def transform_sleep(self, raw: dict) -> NormalizedSleep:
+        # Implementation
+        ...
+    
+    def transform_workout(self, raw: dict) -> NormalizedWorkout:
+        # Implementation
+        ...
+    
+    def extract_device_info(self, raw: dict) -> DeviceInfo:
+        # Implementation
+        ...
+
+
+class SamsungHealthTransformer:
+    """Transformer for Samsung Health SDK payloads.
+    
+    No explicit inheritance needed - just implements the Protocol methods.
+    """
+    
+    def transform_record(self, raw: dict) -> NormalizedRecord:
+        # Implementation
+        ...
+    
+    def transform_sleep(self, raw: dict) -> NormalizedSleep:
+        # Implementation
+        ...
+    
+    def transform_workout(self, raw: dict) -> NormalizedWorkout:
+        # Implementation
+        ...
+    
+    def extract_device_info(self, raw: dict) -> DeviceInfo:
+        # Implementation
+        ...
+```
+
+<Note>
+**ABC vs Protocol: When to use which**
+
+| Aspect | ABC (Abstract Base Class) | Protocol |
+|--------|--------------------------|----------|
+| **Type system** | Nominal typing | Structural typing |
+| **Inheritance** | Required (`class Child(ABC)`) | Not required |
+| **Validation** | Runtime (at instantiation) | Compile-time (type checker) |
+| **Flexibility** | Less flexible | More flexible |
+| **Use case** | Shared implementation, runtime checks | Pure interface, duck typing |
+
+**Use ABC when:**
+- You want to share implementation (common base methods)
+- You need runtime validation (`isinstance()`, `issubclass()`)
+- You want to enforce inheritance hierarchy
+- You're building a class hierarchy with shared behavior
+
+**Use Protocol when:**
+- You only care about method signatures (interface)
+- You want structural subtyping (duck typing with types)
+- You want flexibility without inheritance
+- You're defining what an object "can do" rather than "what it is"
+
+**For transformers, Protocol is better because:**
+1. Pure interface - no shared implementation needed
+2. Each provider has unique transformation logic
+3. Easier testing - no need to inherit from base class
+4. More Pythonic - "if it walks like a duck..."
+</Note>
+
+## Samsung-Specific Considerations
+
+### 1. Timestamp Conversion
+
+Samsung uses epoch milliseconds while Apple uses ISO 8601 strings:
+
+```python
+from datetime import datetime, UTC
+
+
+def parse_samsung_timestamp(epoch_ms: int | None) -> datetime | None:
+    """Convert Samsung epoch milliseconds to datetime."""
+    if epoch_ms is None:
+        return None
+    return datetime.fromtimestamp(epoch_ms / 1000, tz=UTC)
+
+
+def parse_apple_timestamp(iso_string: str) -> datetime:
+    """Parse Apple ISO 8601 timestamp."""
+    return datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
+```
+
+### 2. Multi-Value Records
+
+Samsung records can have multiple values (e.g., blood pressure has systolic, diastolic, and pulse):
+
+```python
+class SamsungRecordValue(BaseModel):
+    type: str   # e.g., "SYSTOLIC", "DIASTOLIC", "PULSE"
+    value: float | int | str
+
+
+def extract_samsung_values(values: list[SamsungRecordValue]) -> dict[str, Any]:
+    """Convert Samsung values array to dictionary."""
+    return {v.type.lower(): v.value for v in values}
+
+# Example:
+# Input: [{"type": "SYSTOLIC", "value": 120}, {"type": "DIASTOLIC", "value": 80}]
+# Output: {"systolic": 120, "diastolic": 80}
+```
+
+### 3. Sleep Stages vs. Sleep Records
+
+Apple Health sends individual sleep records per stage, while Samsung sends a single sleep record with a `stages` array:
+
+```python
+# Apple: Multiple records
+apple_sleep_records = [
+    {"uuid": "1", "type": "HKCategoryTypeIdentifierSleepAnalysis", "value": 4, ...},  # Deep
+    {"uuid": "2", "type": "HKCategoryTypeIdentifierSleepAnalysis", "value": 5, ...},  # REM
+    {"uuid": "3", "type": "HKCategoryTypeIdentifierSleepAnalysis", "value": 3, ...},  # Core
+]
+
+# Samsung: Single record with stages array
+samsung_sleep_record = {
+    "uid": "sleep-001",
+    "dataType": "SLEEP",
+    "stages": [
+        {"stage": "DEEP", "startTime": 1706746200000, "endTime": 1706752800000},
+        {"stage": "REM", "startTime": 1706752800000, "endTime": 1706756400000},
+        {"stage": "LIGHT", "startTime": 1706756400000, "endTime": 1706760000000},
+    ]
+}
+```
+
+**Normalization approach**: Convert both to a unified `SleepSession` model with embedded stages:
+
+```python
+class SleepStage(BaseModel):
+    stage: SleepStageType  # awake, light, deep, rem, in_bed, asleep
+    start_time: datetime
+    end_time: datetime
+
+
+class NormalizedSleep(BaseModel):
+    external_id: str
+    start_time: datetime
+    end_time: datetime
+    stages: list[SleepStage]
+    efficiency: float | None = None
+    score: int | None = None
+    device_info: DeviceInfo
+```
+
+### 4. Workout Sessions
+
+Samsung workouts can have multiple sessions (segments separated by pauses):
+
+```python
+class WorkoutSession(BaseModel):
+    """A continuous segment of a workout (between pauses)."""
+    
+    start_time: datetime
+    end_time: datetime
+    duration_ms: int
+    distance_m: float | None = None
+    calories: float | None = None
+    mean_heart_rate: float | None = None
+    max_heart_rate: float | None = None
+    min_heart_rate: float | None = None
+    mean_speed_mps: float | None = None
+    max_speed_mps: float | None = None
+    mean_cadence: float | None = None
+    max_cadence: float | None = None
+    step_count: int | None = None
+
+
+class NormalizedWorkout(BaseModel):
+    external_id: str
+    workout_type: WorkoutType
+    start_time: datetime
+    end_time: datetime
+    
+    # Aggregated stats
+    total_duration_ms: int
+    total_calories: float | None = None
+    total_distance_m: float | None = None
+    
+    # Heart rate summary
+    min_heart_rate: float | None = None
+    avg_heart_rate: float | None = None
+    max_heart_rate: float | None = None
+    
+    # Sessions (for Samsung multi-session workouts)
+    sessions: list[WorkoutSession] = []
+    
+    # Device info
+    device_info: DeviceInfo
+    
+    # Provider-specific metadata
+    metadata: dict[str, Any] = {}
+```
+
+### 5. Device Information Extraction
+
+Samsung provides richer device information than Apple:
+
+```python
+class DeviceInfo(BaseModel):
+    """Unified device information model."""
+    
+    # Core fields (both providers)
+    device_id: str | None = None
+    device_model: str | None = None
+    device_type: DeviceType
+    manufacturer: str | None = None
+    
+    # Software info
+    software_version: str | None = None
+    os_type: str | None = None  # iOS, Android
+    os_version: str | None = None
+    
+    # Samsung-specific (preserved in metadata)
+    brand: str | None = None
+    product: str | None = None
+    sdk_version: int | None = None
+    is_source_device: bool | None = None
+
+
+def extract_samsung_device_info(device: dict, data_source: dict) -> DeviceInfo:
+    """Extract device info from Samsung payload."""
+    
+    device_type_map = {
+        "WATCH": DeviceType.WATCH,
+        "MOBILE": DeviceType.PHONE,
+        "BAND": DeviceType.BAND,
+        "RING": DeviceType.RING,
+        "ACCESSORY": DeviceType.OTHER,
+    }
+    
+    return DeviceInfo(
+        device_id=device.get("deviceId"),
+        device_model=device.get("model"),
+        device_type=device_type_map.get(device.get("deviceType"), DeviceType.UNKNOWN),
+        manufacturer=device.get("manufacturer"),
+        software_version=device.get("osVersion"),
+        os_type=device.get("osType"),
+        brand=device.get("brand"),
+        product=device.get("product"),
+        sdk_version=device.get("sdkVersion"),
+        is_source_device=device.get("isSourceDevice"),
+    )
+
+
+def extract_apple_device_info(source: dict) -> DeviceInfo:
+    """Extract device info from Apple Health payload."""
+    
+    product_type = source.get("productType", "")
+    
+    return DeviceInfo(
+        device_id=None,  # Apple doesn't provide stable device ID
+        device_model=product_type,
+        device_type=infer_device_type_from_model(product_type),
+        manufacturer=source.get("deviceManufacturer"),
+        software_version=source.get("deviceSoftwareVersion"),
+        os_type="iOS",
+        os_version=_format_os_version(source.get("operatingSystemVersion")),
+    )
+```
+
+## Data Source Integration
+
+Samsung Health SDK creates `DataSource` records following the same pattern as Apple:
+
+| Scenario | provider | user_connection_id | source | device_model | device_type |
+|----------|----------|-------------------|--------|--------------|-------------|
+| Galaxy Watch via SDK | `samsung` | `conn-samsung` | `samsung_health_sdk` | `SM-R960` | `watch` |
+| Galaxy Phone via SDK | `samsung` | `conn-samsung` | `samsung_health_sdk` | `SM-S928B` | `phone` |
+| Galaxy Ring via SDK | `samsung` | `conn-samsung` | `samsung_health_sdk` | `SM-Q500` | `ring` |
+| 3rd party scale via SDK | `samsung` | `conn-samsung` | `samsung_health_sdk` | `Withings Body+` | `other` |
+
+### UserConnection for Samsung
+
+Like Apple Health SDK, Samsung Health SDK is an active connection without OAuth:
+
+```python
+# UserConnection record for Samsung Health SDK
+{
+    "id": "conn-samsung-uuid",
+    "user_id": "user-uuid",
+    "provider": "samsung",
+    "provider_user_id": None,  # Samsung doesn't provide user ID
+    "access_token": None,      # No OAuth for SDK
+    "refresh_token": None,
+    "token_expires_at": None,
+    "status": "active",
+    "last_synced_at": "2026-02-04T10:00:00Z",
+}
+```
+
+## Provider Priority
+
+Samsung should be added to the provider priority configuration:
+
+| provider | priority | Notes |
+|----------|----------|-------|
+| `apple` | 1 | Highest priority (unchanged) |
+| `samsung` | 2 | Same priority tier as native SDK |
+| `garmin` | 3 | Adjusted |
+| `polar` | 4 | Adjusted |
+| `suunto` | 5 | Adjusted |
+| `whoop` | 6 | Adjusted |
+| `oura` | 99 | Lowest (unchanged) |
+
+<Warning>
+**Priority between Apple and Samsung.**
+
+When a user has both Apple Health (iOS) and Samsung Health (Android) connected, they likely switched phones. The system should use the **most recently synced** provider as a tiebreaker within the same priority tier.
+</Warning>
+
+## Implementation Plan
+
+### Phase 1: Core Infrastructure
+
+<Steps>
+<Step title="Add Samsung provider enum">
+Update `ProviderName` enum to include `samsung`:
+
+```python
+class ProviderName(StrEnum):
+    APPLE = "apple"
+    SAMSUNG = "samsung"  # New
+    GARMIN = "garmin"
+    POLAR = "polar"
+    SUUNTO = "suunto"
+    WHOOP = "whoop"
+    OURA = "oura"
+```
+</Step>
+
+<Step title="Create Samsung transformer">
+Implement `SamsungHealthTransformer` class with methods for:
+- `transform_record()` - Handle all record types
+- `transform_sleep()` - Convert sleep with stages
+- `transform_workout()` - Handle sessions/segments
+- `extract_device_info()` - Parse device object
+</Step>
+
+<Step title="Update unified endpoint">
+Modify `/v1/health-data/sync` to:
+- Accept `provider` field in request
+- Route to appropriate transformer
+- Process normalized data through shared pipeline
+</Step>
+
+<Step title="Update DataSource handling">
+Ensure `ensure_data_source()` handles Samsung:
+- Source channel: `samsung_health_sdk`
+- Device type from explicit field
+- Device model from `model` field
+</Step>
+</Steps>
+
+### Phase 2: Data Type Support
+
+<Steps>
+<Step title="Implement record transformers">
+Add transformation logic for each Samsung record type:
+- `STEPS` → steps count
+- `HEART_RATE` → heart rate with optional status
+- `BLOOD_OXYGEN` → SpO2 percentage
+- `BLOOD_PRESSURE` → systolic/diastolic
+- `BODY_COMPOSITION` → weight, body fat, etc.
+- `WATER_INTAKE` → hydration tracking
+- `ACTIVITY_SUMMARY` → daily activity
+</Step>
+
+<Step title="Implement sleep transformer">
+Convert Samsung sleep structure:
+- Map stage names to unified enum
+- Convert epoch timestamps to datetime
+- Extract efficiency and score values
+</Step>
+
+<Step title="Implement workout transformer">
+Handle Samsung exercise structure:
+- Map exercise types to unified enum
+- Process sessions array
+- Aggregate statistics
+</Step>
+</Steps>
+
+### Phase 3: Testing & Validation
+
+<Steps>
+<Step title="Unit tests">
+Create comprehensive tests for:
+- Timestamp conversion
+- Data type mapping
+- Device info extraction
+- Edge cases (null values, missing fields)
+</Step>
+
+<Step title="Integration tests">
+Test end-to-end flow:
+- Payload parsing
+- Data transformation
+- Database persistence
+- Deduplication logic
+</Step>
+
+<Step title="SDK integration testing">
+Work with mobile team to:
+- Validate payload format
+- Test real device data
+- Handle edge cases from production devices
+</Step>
+</Steps>
+
+### Phase 4: Mobile SDK Development
+
+<Note>
+**Parallel workstream.**
+
+Mobile SDK development for Samsung Health integration is a separate workstream. This spec focuses on the backend API contract.
+</Note>
+
+The Flutter SDK team should implement:
+- Samsung Health Connect API integration
+- Permission handling for Android
+- Data reading and batching
+- Payload construction matching this spec
+- Background sync support
+
+## API Contract
+
+### Request Schema
+
+```typescript
+interface HealthDataSyncRequest {
+  provider: "apple" | "samsung";
+  sdk_version?: string;
+  app_version?: string;
+  data: {
+    records: SamsungRecord[] | AppleRecord[];
+    sleep: SamsungSleep[] | AppleSleep[];
+    workouts: SamsungWorkout[] | AppleWorkout[];
+  };
+}
+
+// Samsung-specific types
+interface SamsungRecord {
+  uid: string;
+  dataType: string;
+  startTime: number;      // epoch ms
+  endTime: number | null; // epoch ms or null for point-in-time
+  dataSource: {
+    appId: string;
+    deviceId: string;
+  };
+  device: SamsungDevice;
+  values: Array<{
+    type: string;
+    value: number | string | boolean;
+  }>;
+}
+
+interface SamsungDevice {
+  deviceId: string;
+  manufacturer: string;
+  model: string;
+  name?: string;
+  brand?: string;
+  product?: string;
+  osType?: string;
+  osVersion?: string;
+  sdkVersion?: number;
+  deviceType: "MOBILE" | "WATCH" | "RING" | "BAND" | "ACCESSORY";
+  isSourceDevice?: boolean;
+}
+
+interface SamsungSleep {
+  uid: string;
+  dataType: "SLEEP";
+  startTime: number;
+  endTime: number;
+  dataSource: { appId: string; deviceId: string };
+  device: SamsungDevice;
+  values: Array<{ type: string; value: number }>;
+  stages: Array<{
+    stage: "AWAKE" | "LIGHT" | "DEEP" | "REM";
+    startTime: number;
+    endTime: number;
+  }>;
+}
+
+interface SamsungWorkout {
+  uid: string;
+  dataType: "EXERCISE";
+  exerciseType: string;
+  startTime: number;
+  endTime: number;
+  dataSource: { appId: string; deviceId: string };
+  device: SamsungDevice;
+  values: Array<{ type: string; value: number | string }>;
+  sessions: Array<{
+    values: Array<{ type: string; value: number }>;
+  }>;
+}
+```
+
+### Response Schema
+
+```typescript
+interface HealthDataSyncResponse {
+  success: boolean;
+  processed: {
+    records: number;
+    sleep: number;
+    workouts: number;
+  };
+  errors?: Array<{
+    index: number;
+    category: "records" | "sleep" | "workouts";
+    error: string;
+  }>;
+}
+```
+
+## Edge Cases
+
+### 1. Missing Device Information
+
+Samsung payload may have incomplete device info when `isSourceDevice: false`:
+
+```python
+def handle_incomplete_device(device: dict) -> DeviceInfo:
+    """Handle cases where device info falls back to phone."""
+    
+    if not device.get("isSourceDevice", True):
+        # Data recorded on watch but device cache unavailable
+        # Falls back to phone info
+        return DeviceInfo(
+            device_type=DeviceType.UNKNOWN,
+            device_model=device.get("model"),
+            manufacturer=device.get("manufacturer"),
+            # Mark as potentially inaccurate
+            metadata={"fallback_device": True},
+        )
+    
+    return extract_samsung_device_info(device)
+```
+
+### 2. Cross-Platform Users
+
+Users switching between iOS and Android:
+
+```
+User timeline:
+- 2025: Used iPhone + Apple Watch (Apple Health)
+- 2026: Switched to Galaxy S24 + Galaxy Watch (Samsung Health)
+
+Result:
+- Two UserConnections: apple (status=active), samsung (status=active)
+- Historical Apple data preserved
+- New data from Samsung
+- /summary uses most recently synced provider within priority tier
+```
+
+### 3. Third-Party Apps Writing to Samsung Health
+
+Similar to Apple Health, Samsung Health acts as an aggregator:
+
+```python
+# Data from Strava written to Samsung Health
+samsung_record = {
+    "uid": "...",
+    "dataType": "EXERCISE",
+    "dataSource": {
+        "appId": "com.strava",  # Third-party app
+        "deviceId": "..."
+    },
+    "device": {...}
+}
+
+# Preserve original source
+data_source = DataSource(
+    provider=ProviderName.SAMSUNG,
+    source="samsung_health_sdk",
+    original_source_name="Strava",  # From dataSource.appId
+    device_model=device.get("model"),
+)
+```
+
+### 4. Partial Workout Sessions
+
+Handle workouts with only some session data available:
+
+```python
+def normalize_workout_sessions(sessions: list[dict]) -> list[WorkoutSession]:
+    """Normalize Samsung workout sessions with graceful degradation."""
+    
+    normalized = []
+    for session in sessions:
+        values = {v["type"]: v["value"] for v in session.get("values", [])}
+        
+        # Required fields
+        start_time = values.get("startTime")
+        end_time = values.get("endTime")
+        
+        if start_time is None or end_time is None:
+            continue  # Skip invalid sessions
+        
+        normalized.append(WorkoutSession(
+            start_time=parse_samsung_timestamp(start_time),
+            end_time=parse_samsung_timestamp(end_time),
+            duration_ms=values.get("duration", 0),
+            distance_m=values.get("distance"),
+            calories=values.get("calories"),
+            mean_heart_rate=values.get("meanHeartRate"),
+            max_heart_rate=values.get("maxHeartRate"),
+            min_heart_rate=values.get("minHeartRate"),
+            mean_speed_mps=values.get("meanSpeed"),
+            max_speed_mps=values.get("maxSpeed"),
+            mean_cadence=values.get("meanCadence"),
+            max_cadence=values.get("maxCadence"),
+            step_count=values.get("totalStepCount"),
+        ))
+    
+    return normalized
+```
+
+## Open Questions
+
+<Warning>
+**Decisions needed before implementation.**
+</Warning>
+
+| Question | Options | Recommendation |
+|----------|---------|----------------|
+| **Samsung user identification** | Use device ID vs generate our own | Generate UUID on first sync (device ID may change) |
+| **Exercise type mapping** | Strict mapping vs preserve original | Preserve original in metadata, map to unified for queries |
+| **Session granularity** | Store sessions separately vs aggregate only | Store sessions for detailed analysis, aggregate for summary |
+| **Payload versioning** | Version in header vs in body | Add `schema_version` field to payload for future compatibility |
+| **Bulk sync limits** | Max records per request | 1000 records, 100 sleep sessions, 100 workouts per request |
+
+## Future Considerations
+
+1. **Health Connect API**: Google's Health Connect may become a better integration point than Samsung Health SDK directly, as it provides cross-manufacturer compatibility.
+
+2. **Real-time sync**: Samsung Health supports real-time data streaming. Consider WebSocket endpoint for live metrics.
+
+3. **Wear OS support**: Samsung watches now run Wear OS. Consider direct Wear OS integration as alternative.
+
+4. **Data export**: Samsung Health allows data export. Consider supporting Samsung Health export files (similar to Apple Health XML).
+
+---
+
+## References
+
+- [Samsung Health SDK Documentation](https://developer.samsung.com/health)
+- [Health Connect API](https://developer.android.com/health-and-fitness/guides/health-connect)
+- [Apple Health SDK Payload Format](#) - Internal documentation
+- [Data Source Priority Spec](./data-source-priority.mdx) - Related specification
