@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
-from app.config import settings
 from app.database import DbSession
 from app.integrations.celery.tasks import sync_vendor_data
+from app.integrations.observability import record_metric
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
@@ -50,11 +50,7 @@ async def authorize_provider(
 
     Returns authorization URL where user should be redirected to log in.
     """
-    if settings.otel_enabled:
-        from app.integrations.observability import get_app_metrics
-        metrics = get_app_metrics()
-        if metrics:
-            metrics.oauth_attempts.add(1, {"provider": provider.value})
+    record_metric("oauth_attempts", labels={"provider": provider.value})
 
     strategy = get_oauth_strategy(provider)
 
@@ -78,24 +74,14 @@ async def oauth_callback(
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
     if error:
-        if settings.otel_enabled:
-            from app.integrations.observability import get_app_metrics
-            metrics = get_app_metrics()
-            if metrics:
-                metrics.oauth_failures.add(1, {"provider": provider.value, "error": error})
-
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": error})
         return RedirectResponse(
             url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",
             status_code=303,
         )
 
     if not code or not state:
-        if settings.otel_enabled:
-            from app.integrations.observability import get_app_metrics
-            metrics = get_app_metrics()
-            if metrics:
-                metrics.oauth_failures.add(1, {"provider": provider.value, "error": "missing_params"})
-
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": "missing_params"})
         return RedirectResponse(
             url="/api/v1/oauth/error?message=Missing+OAuth+parameters",
             status_code=303,
@@ -107,12 +93,8 @@ async def oauth_callback(
         assert strategy.oauth
         oauth_state = strategy.oauth.handle_callback(db, code, state)
 
-        if settings.otel_enabled:
-            from app.integrations.observability import get_app_metrics
-            metrics = get_app_metrics()
-            if metrics:
-                metrics.oauth_successes.add(1, {"provider": provider.value})
-                metrics.provider_connections.add(1, {"provider": provider.value})
+        record_metric("oauth_successes", labels={"provider": provider.value})
+        record_metric("provider_connections", labels={"provider": provider.value})
 
         # schedule sync task
         sync_vendor_data.delay(
@@ -133,13 +115,7 @@ async def oauth_callback(
         )
     except Exception as e:
         logger.exception("OAuth callback failed", extra={"provider": provider.value})
-
-        if settings.otel_enabled:
-            from app.integrations.observability import get_app_metrics
-            metrics = get_app_metrics()
-            if metrics:
-                metrics.oauth_failures.add(1, {"provider": provider.value, "error": type(e).__name__})
-
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": type(e).__name__})
         return RedirectResponse(
             url=f"/api/v1/oauth/error?message=OAuth+callback+failed:+{type(e).__name__}",
             status_code=303,

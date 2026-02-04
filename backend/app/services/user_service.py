@@ -27,23 +27,13 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
 
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""
+        from app.integrations.observability import record_metric
+
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data)
         user = super().create(db_session, internal_creator)
 
-        from app.config import settings
-        print(f"[DEBUG] User created, otel_enabled={settings.otel_enabled}")
-        if settings.otel_enabled:
-            from app.integrations.observability import get_app_metrics
-            metrics = get_app_metrics()
-            print(f"[DEBUG] OTel metrics instance: {metrics}")
-            if metrics:
-                metrics.users_created.add(1)
-                print("[DEBUG] Recorded users_created metric")
-            else:
-                print("[DEBUG] OTel enabled but metrics is None!")
-        else:
-            print("[DEBUG] OTel disabled, skipping metrics")
+        record_metric("users_created")
 
         return user
 

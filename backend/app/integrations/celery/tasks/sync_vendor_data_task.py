@@ -7,8 +7,8 @@ from uuid import UUID
 
 from opentelemetry import trace
 
-from app.config import settings
 from app.database import SessionLocal
+from app.integrations.observability import record_histogram, record_metric
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
@@ -95,8 +95,17 @@ def sync_vendor_data(
                 for connection in connections:
                     provider_name = connection.provider
                     _sync_single_provider(
-                        span, db, user_uuid, user_id, provider_name, connection,
-                        factory, user_connection_repo, start_date, end_date, result,
+                        span,
+                        db,
+                        user_uuid,
+                        user_id,
+                        provider_name,
+                        connection,
+                        factory,
+                        user_connection_repo,
+                        start_date,
+                        end_date,
+                        result,
                     )
 
                 span.set_attribute("sync.providers_synced", len(result.providers_synced))
@@ -154,12 +163,8 @@ def _sync_single_provider(
                         success = strategy.workouts.load_data(db, user_uuid, **params)
                         provider_result.params["workouts"] = {"success": success, **params}
                         workout_span.set_attribute("sync.success", success)
-
-                        if success and settings.otel_enabled:
-                            from app.integrations.observability import get_app_metrics
-                            metrics = get_app_metrics()
-                            if metrics:
-                                metrics.workouts_synced.add(1, {"provider": provider_name})
+                        if success:
+                            record_metric("workouts_synced", labels={"provider": provider_name})
                     except Exception as e:
                         logger.warning(
                             "Workouts sync failed",
@@ -212,12 +217,7 @@ def _sync_single_provider(
                             "247 data synced",
                             extra={"provider": provider_name, "results": results_247},
                         )
-
-                        if settings.otel_enabled:
-                            from app.integrations.observability import get_app_metrics
-                            metrics = get_app_metrics()
-                            if metrics:
-                                metrics.activities_synced.add(1, {"provider": provider_name})
+                        record_metric("activities_synced", labels={"provider": provider_name})
                     except Exception as e:
                         logger.warning(
                             "247 data sync failed",
@@ -232,14 +232,9 @@ def _sync_single_provider(
             result.providers_synced[provider_name] = provider_result
             span.set_attribute("sync.success", True)
 
-            # Record metrics
             sync_duration = time.time() - sync_start_time
-            if settings.otel_enabled:
-                from app.integrations.observability import get_app_metrics
-                metrics = get_app_metrics()
-                if metrics:
-                    metrics.provider_syncs.add(1, {"provider": provider_name, "status": "success"})
-                    metrics.provider_sync_duration.record(sync_duration, {"provider": provider_name})
+            record_metric("provider_syncs", labels={"provider": provider_name, "status": "success"})
+            record_histogram("provider_sync_duration", sync_duration, {"provider": provider_name})
 
             logger.info(
                 "Successfully synced provider",
@@ -260,16 +255,10 @@ def _sync_single_provider(
             span.set_attribute("error", True)
             span.record_exception(e)
             result.errors[provider_name] = str(e)
-
-            # Record error metrics
-            if settings.otel_enabled:
-                from app.integrations.observability import get_app_metrics
-                metrics = get_app_metrics()
-                if metrics:
-                    metrics.provider_sync_errors.add(
-                        1,
-                        {"provider": provider_name, "error_type": type(e).__name__},
-                    )
+            record_metric(
+                "provider_sync_errors",
+                labels={"provider": provider_name, "error_type": type(e).__name__},
+            )
 
 
 def _build_sync_params(provider_name: str, start_date: str | None, end_date: str | None) -> dict[str, Any]:

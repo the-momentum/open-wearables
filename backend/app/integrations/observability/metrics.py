@@ -23,11 +23,13 @@ def init_metrics() -> None:
 
     logger.info(f"Initializing OpenTelemetry metrics for {settings.otel_service_name}")
 
-    resource = Resource.create({
-        "service.name": settings.otel_service_name,
-        "service.version": settings.otel_service_version,
-        "deployment.environment": settings.environment.value,
-    })
+    resource = Resource.create(
+        {
+            "service.name": settings.otel_service_name,
+            "service.version": settings.otel_service_version,
+            "deployment.environment": settings.environment.value,
+        }
+    )
 
     reader = PeriodicExportingMetricReader(
         OTLPMetricExporter(
@@ -164,14 +166,21 @@ class AppMetrics:
         )
 
 
-# Global metrics instance (initialized by init_metrics)
+# Global metrics instance - intentionally a singleton to avoid creating duplicate meters.
+# Initialized by init_metrics() when OTEL is enabled, otherwise remains None.
 _app_metrics: AppMetrics | None = None
 
 
 def get_app_metrics() -> AppMetrics | None:
     """Get the global AppMetrics instance.
 
-    Returns None if metrics are not enabled or not yet initialized.
-    Always check for None before using.
+    Returns None when OTEL_ENABLED=false or before initialization.
+    This allows callers to gracefully skip metric recording:
+
+        metrics = get_app_metrics()
+        if metrics:
+            metrics.oauth_attempts.add(1, {"provider": "garmin"})
+
+    For simpler inline usage, prefer record_metric() from decorators module.
     """
     return _app_metrics

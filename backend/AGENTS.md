@@ -230,6 +230,66 @@ uv run pytest -v --cov=app
 Use `uv add <package-name>` to add new dependencies (automatically updates pyproject.toml, lockfile, and venv).
 Run `uv run ruff check . --fix && uv run ruff format .` after making changes.
 
+## Observability
+
+OpenTelemetry-based tracing and metrics. Auto-instruments HTTP requests, database queries, Redis, httpx, and Celery tasks.
+
+### Configuration
+
+```bash
+OTEL_ENABLED=true                           # Enable/disable all observability
+OTEL_EXPORTER_ENDPOINT=localhost:4317       # OTLP collector endpoint
+OTEL_SERVICE_NAME=open-wearables-api        # Service name in traces
+```
+
+### Running the Stack
+
+```bash
+# Start observability services (Grafana, Tempo, Prometheus, Loki, OTEL Collector)
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+
+# View traces, metrics, and logs at http://localhost:3001 (Grafana)
+```
+
+### Custom Instrumentation
+
+```python
+from app.integrations.observability import traced, metered, record_metric
+
+# Add tracing to a function
+@traced()
+def fetch_user_data(user_id: UUID) -> dict:
+    ...
+
+# Add tracing with custom name and attributes
+@traced(name="provider.sync", attributes={"provider": "garmin"})
+async def sync_provider_data():
+    ...
+
+# Record call count and duration metrics
+@metered(counter_name="app.sync.calls", histogram_name="app.sync.duration")
+async def perform_sync():
+    ...
+
+# Inline metric recording
+record_metric("oauth_attempts", labels={"provider": "garmin"})
+```
+
+All decorators are no-ops when `OTEL_ENABLED=false`.
+
+### Accessing AppMetrics Directly
+
+For metrics not covered by decorators:
+
+```python
+from app.integrations.observability import get_app_metrics
+
+metrics = get_app_metrics()
+if metrics:
+    metrics.workouts_synced.add(5, {"provider": "garmin"})
+    metrics.provider_sync_duration.record(2.5, {"provider": "garmin"})
+```
+
 ## Detailed Layer Rules
 
 ### Models Layer (`app/models/`)

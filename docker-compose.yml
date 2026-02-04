@@ -160,87 +160,9 @@ services:
           path: ./frontend/vite.config.ts
     restart: on-failure
 
-  # Observability Stack
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
-    container_name: otel-collector__open-wearables
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./infra/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # Prometheus metrics
-    depends_on:
-      - tempo
-      - loki
-    profiles:
-      - observability
-
-  tempo:
-    image: grafana/tempo:2.4.1
-    container_name: tempo__open-wearables
-    command: ["-config.file=/etc/tempo.yaml"]
-    volumes:
-      - ./infra/tempo.yaml:/etc/tempo.yaml:ro
-      - tempo_data:/var/tempo
-    ports:
-      - "3200:3200"   # Tempo API
-    profiles:
-      - observability
-
-  loki:
-    image: grafana/loki:2.9.6
-    container_name: loki__open-wearables
-    command: ["-config.file=/etc/loki/local-config.yaml"]
-    volumes:
-      - ./infra/loki.yaml:/etc/loki/local-config.yaml:ro
-      - loki_data:/loki
-    ports:
-      - "3100:3100"
-    profiles:
-      - observability
-
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    container_name: prometheus__open-wearables
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-remote-write-receiver"
-    volumes:
-      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
-    profiles:
-      - observability
-
-  grafana:
-    image: grafana/grafana:10.4.1
-    container_name: grafana__open-wearables
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-    volumes:
-      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana_data:/var/lib/grafana
-    ports:
-      - "3001:3000"
-    depends_on:
-      - prometheus
-      - loki
-      - tempo
-    profiles:
-      - observability
+  # Observability stack defined in docker-compose.observability.yml
+  # Run with: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 
 volumes:
   postgres_data:
   redis_data:
-  tempo_data:
-  loki_data:
-  prometheus_data:
-  grafana_data:

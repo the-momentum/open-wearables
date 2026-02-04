@@ -18,10 +18,10 @@ from app.config import settings
 # Mapping Python log levels to OTel severity numbers (1-24 scale)
 # See: https://opentelemetry.io/docs/specs/otel/logs/data-model/#severity-fields
 SEVERITY_NUMBER_MAP = {
-    logging.DEBUG: 5,      # DEBUG
-    logging.INFO: 9,       # INFO
-    logging.WARNING: 13,   # WARN
-    logging.ERROR: 17,     # ERROR
+    logging.DEBUG: 5,  # DEBUG
+    logging.INFO: 9,  # INFO
+    logging.WARNING: 13,  # WARN
+    logging.ERROR: 17,  # ERROR
     logging.CRITICAL: 21,  # FATAL
 }
 
@@ -80,29 +80,45 @@ class OTelStructuredFormatter(jsonlogger.JsonFormatter):
         # Exception attributes (OTel semantic conventions)
         if record.exc_info and record.exc_info[0] is not None:
             exc_type, exc_value, exc_tb = record.exc_info
-            log_record["attributes"].update({
-                "exception.type": exc_type.__name__ if exc_type else "Unknown",
-                "exception.message": str(exc_value) if exc_value else "",
-                "exception.stacktrace": "".join(
-                    traceback.format_exception(exc_type, exc_value, exc_tb)
-                ),
-                "exception.escaped": False,
-            })
+            log_record["attributes"].update(
+                {
+                    "exception.type": exc_type.__name__ if exc_type else "Unknown",
+                    "exception.message": str(exc_value) if exc_value else "",
+                    "exception.stacktrace": "".join(traceback.format_exception(exc_type, exc_value, exc_tb)),
+                    "exception.escaped": False,
+                }
+            )
 
         # Merge extra attributes from log call (e.g., logger.info("msg", extra={...}))
         reserved_keys = {
-            "message", "asctime", "args", "msg", "exc_info", "exc_text",
-            "levelname", "levelno", "name", "pathname", "lineno", "funcName",
-            "created", "msecs", "relativeCreated", "thread", "threadName",
-            "processName", "process", "stack_info", "taskName",
+            "message",
+            "asctime",
+            "args",
+            "msg",
+            "exc_info",
+            "exc_text",
+            "levelname",
+            "levelno",
+            "name",
+            "pathname",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "stack_info",
+            "taskName",
         }
         for key, value in record.__dict__.items():
             if key not in reserved_keys and not key.startswith("_"):
                 log_record["attributes"][key] = value
 
         # Clean up redundant fields from base formatter
-        for key in ["levelname", "levelno", "name", "pathname", "lineno",
-                    "funcName", "message", "asctime"]:
+        for key in ["levelname", "levelno", "name", "pathname", "lineno", "funcName", "message", "asctime"]:
             log_record.pop(key, None)
 
 
@@ -144,11 +160,13 @@ def configure_logging() -> None:
 
     # OTLP log export (when enabled)
     if settings.otel_enabled:
-        resource = Resource.create({
-            "service.name": settings.otel_service_name,
-            "service.version": settings.otel_service_version,
-            "deployment.environment": settings.environment.value,
-        })
+        resource = Resource.create(
+            {
+                "service.name": settings.otel_service_name,
+                "service.version": settings.otel_service_version,
+                "deployment.environment": settings.environment.value,
+            }
+        )
 
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(

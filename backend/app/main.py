@@ -1,6 +1,4 @@
-from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -10,39 +8,21 @@ from app.api import head_router
 from app.config import settings
 from app.database import engine
 from app.integrations.celery import create_celery
-from app.integrations.observability import init_observability, init_providers
+from app.integrations.observability import (
+    add_observability_middleware,
+    create_observed_lifespan,
+    ensure_providers_initialized,
+)
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
-# Initialize OpenTelemetry providers BEFORE creating the FastAPI app
-# This ensures that middleware added during app creation can use the correct providers
-init_providers()
+ensure_providers_initialized()
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Initialize observability instrumentations on API startup."""
-    init_observability(app, engine)
-    init_sentry()
-    yield
-
-
-api = FastAPI(title=settings.api_name, lifespan=lifespan)
+api = FastAPI(title=settings.api_name, lifespan=create_observed_lifespan(engine, init_sentry))
 celery_app = create_celery()
 
-# Add OpenTelemetry HTTP instrumentation
-# Providers must be passed explicitly since add_middleware stores the class for later instantiation
-if settings.otel_enabled:
-    from opentelemetry import metrics, trace
-    from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
-
-    api.add_middleware(
-        OpenTelemetryMiddleware,
-        tracer_provider=trace.get_tracer_provider(),
-        meter_provider=metrics.get_meter_provider(),
-    )
-
+add_observability_middleware(api)
 add_cors_middleware(api)
 
 # Mount static files for provider icons

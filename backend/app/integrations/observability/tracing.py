@@ -4,9 +4,7 @@ from logging import getLogger
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.celery import CeleryInstrumentor
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -25,8 +23,14 @@ _providers_initialized = False
 def init_providers() -> None:
     """Initialize OpenTelemetry trace and metric providers.
 
-    This must be called BEFORE the FastAPI app is created so that
-    middleware added at app creation time can use the correct providers.
+    TIMING: Must be called BEFORE FastAPI app creation.
+
+    The reason is that FastAPI's add_middleware() captures provider references
+    at call time, not when middleware is instantiated. If providers aren't set
+    up yet, the ASGI middleware receives None/proxy references and won't create
+    traces or metrics for HTTP requests.
+
+    Safe to call multiple times - will only initialize once.
     """
     global _providers_initialized
 
@@ -40,11 +44,13 @@ def init_providers() -> None:
     logger.info(f"Initializing OpenTelemetry providers for {settings.otel_service_name}")
 
     # Create resource with service information
-    resource = Resource.create({
-        "service.name": settings.otel_service_name,
-        "service.version": settings.otel_service_version,
-        "deployment.environment": settings.environment.value,
-    })
+    resource = Resource.create(
+        {
+            "service.name": settings.otel_service_name,
+            "service.version": settings.otel_service_version,
+            "deployment.environment": settings.environment.value,
+        }
+    )
 
     # Configure trace provider with OTLP exporter
     tracer_provider = TracerProvider(resource=resource)
@@ -59,6 +65,7 @@ def init_providers() -> None:
 
     # Initialize metrics (this sets the global MeterProvider)
     from app.integrations.observability.metrics import init_metrics
+
     init_metrics()
 
     _providers_initialized = True
@@ -116,20 +123,21 @@ def init_celery_tracing() -> None:
     if not settings.otel_enabled:
         return
 
-    from opentelemetry import metrics
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-    from app.integrations.observability.metrics import _app_metrics, AppMetrics
     import app.integrations.observability.metrics as metrics_module
+    from app.integrations.observability.metrics import AppMetrics
 
     # Create resource with service information for workers
-    resource = Resource.create({
-        "service.name": f"{settings.otel_service_name}-worker",
-        "service.version": settings.otel_service_version,
-        "deployment.environment": settings.environment.value,
-    })
+    resource = Resource.create(
+        {
+            "service.name": f"{settings.otel_service_name}-worker",
+            "service.version": settings.otel_service_version,
+            "deployment.environment": settings.environment.value,
+        }
+    )
 
     # Configure trace provider
     provider = TracerProvider(resource=resource)
