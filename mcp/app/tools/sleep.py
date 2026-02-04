@@ -28,9 +28,9 @@ async def get_sleep_summary(
     Args:
         user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
-                    Example: "2025-01-01"
+                    Example: "2026-01-01"
         end_date: End date in YYYY-MM-DD format.
-                  Example: "2025-01-07"
+                  Example: "2026-01-07"
 
     Returns:
         A dictionary containing:
@@ -42,12 +42,12 @@ async def get_sleep_summary(
     Example response:
         {
             "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
-            "period": {"start": "2025-01-05", "end": "2025-01-12"},
+            "period": {"start": "2026-01-05", "end": "2026-01-12"},
             "records": [
                 {
-                    "date": "2025-01-11",
-                    "start_datetime": "2025-01-11T23:15:00+00:00",
-                    "end_datetime": "2025-01-12T07:30:00+00:00",
+                    "date": "2026-01-11",
+                    "start_datetime": "2026-01-11T23:15:00+00:00",
+                    "end_datetime": "2026-01-12T07:30:00+00:00",
                     "duration_minutes": 495,
                     "source": "whoop"
                 }
@@ -65,7 +65,7 @@ async def get_sleep_summary(
         - Call get_users first to get the user_id.
         - Calculate dates based on user queries:
           "last week" → start_date = 7 days ago, end_date = today
-          "January 2025" → start_date = "2025-01-01", end_date = "2025-01-31"
+          "January 2026" → start_date = "2026-01-01", end_date = "2026-01-31"
         - Duration is in minutes.
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically

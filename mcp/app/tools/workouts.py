@@ -29,9 +29,9 @@ async def get_workout_events(
     Args:
         user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
-                    Example: "2025-01-01"
+                    Example: "2026-01-01"
         end_date: End date in YYYY-MM-DD format.
-                  Example: "2025-01-07"
+                  Example: "2026-01-07"
         workout_type: Optional filter by workout type.
                       Examples: "running", "cycling", "swimming", "strength_training",
                       "walking", "hiking", "yoga", "hiit"
@@ -46,13 +46,13 @@ async def get_workout_events(
     Example response:
         {
             "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
-            "period": {"start": "2025-01-05", "end": "2025-01-12"},
+            "period": {"start": "2026-01-05", "end": "2026-01-12"},
             "records": [
                 {
                     "id": "uuid-workout-1",
                     "type": "running",
-                    "start_datetime": "2025-01-11T07:00:00+00:00",
-                    "end_datetime": "2025-01-11T07:45:00+00:00",
+                    "start_datetime": "2026-01-11T07:00:00+00:00",
+                    "end_datetime": "2026-01-11T07:45:00+00:00",
                     "duration_seconds": 2700,
                     "distance_meters": 7500.0,
                     "calories_kcal": 520.0,

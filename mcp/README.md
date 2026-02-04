@@ -102,16 +102,25 @@ Claude: "I found 2 users: John Doe and Jane Smith."
 ```
 User: "How much sleep did John get last week?"
 Claude: [calls get_users() to get John's user_id]
-Claude: [calls get_sleep_summary(user_id="uuid-1", start_date="2025-01-13", end_date="2025-01-20")]
+Claude: [calls get_sleep_summary(user_id="uuid-1", start_date="2026-01-28", end_date="2026-02-04")]
 Claude: "John slept an average of 7 hours and 45 minutes over the last week.
 His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
+```
+
+### Generic request (no time range specified)
+
+```
+User: "Fetch workouts for John"
+Claude: [calls get_users() to get John's user_id]
+Claude: [defaults to last 2 weeks: calls get_workout_events(user_id="uuid-1", start_date="2026-01-21", end_date="2026-02-04")]
+Claude: "Over the last 2 weeks, John completed 8 workouts..."
 ```
 
 ### Specifying time range
 
 ```
-User: "Show me Jane's sleep for January 2025"
-Claude: [calls get_sleep_summary(user_id="uuid-2", start_date="2025-01-01", end_date="2025-01-31")]
+User: "Show me Jane's sleep for January 2026"
+Claude: [calls get_sleep_summary(user_id="uuid-2", start_date="2026-01-01", end_date="2026-01-31")]
 ```
 
 ## Available Tools
@@ -146,12 +155,12 @@ Get sleep summaries for a user within a date range.
 ```json
 {
   "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
-  "period": {"start": "2025-01-05", "end": "2025-01-12"},
+  "period": {"start": "2026-01-21", "end": "2026-02-04"},
   "records": [
     {
-      "date": "2025-01-11",
-      "start_datetime": "2025-01-11T23:15:00+00:00",
-      "end_datetime": "2025-01-12T07:30:00+00:00",
+      "date": "2026-02-03",
+      "start_datetime": "2026-02-03T23:15:00+00:00",
+      "end_datetime": "2026-02-04T07:30:00+00:00",
       "duration_minutes": 495,
       "duration_formatted": "8h 15m",
       "source": "whoop"

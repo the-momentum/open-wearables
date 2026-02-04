@@ -27,9 +27,9 @@ async def get_activity_summary(
     Args:
         user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
-                    Example: "2025-01-01"
+                    Example: "2026-01-01"
         end_date: End date in YYYY-MM-DD format.
-                  Example: "2025-01-07"
+                  Example: "2026-01-07"
 
     Returns:
         A dictionary containing:
@@ -41,10 +41,10 @@ async def get_activity_summary(
     Example response:
         {
             "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
-            "period": {"start": "2025-01-05", "end": "2025-01-12"},
+            "period": {"start": "2026-01-05", "end": "2026-01-12"},
             "records": [
                 {
-                    "date": "2025-01-11",
+                    "date": "2026-01-11",
                     "steps": 8432,
                     "distance_meters": 6240.5,
                     "active_calories_kcal": 342.5,
