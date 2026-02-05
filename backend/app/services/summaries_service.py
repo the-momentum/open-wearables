@@ -87,9 +87,9 @@ class SummariesService:
         self,
         db_session: DbSession,
         user_id: UUID,
-        results: list[dict] | list,  # type: ignore[type-arg]
+        results: list[dict] | list,
         date_key: str = "activity_date",
-    ) -> list[dict] | list:  # type: ignore[type-arg]
+    ) -> list[dict] | list:
         """Filter results to highest priority source per date.
 
         Args:
