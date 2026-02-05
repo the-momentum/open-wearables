@@ -1,0 +1,86 @@
+# SDK User Invitation Code
+
+Single-use codes for simplified demo app onboarding.
+
+## Problem
+
+Currently demo app users only need to enter `user_id`. With refresh token support, they would need to enter 3 values: `user_id`, `access_token`, `refresh_token` - which is cumbersome.
+
+## Solution
+
+Single invitation code that can be exchanged for all auth credentials.
+
+## API Design
+
+### Generate Code (authenticated)
+
+```
+POST /api/v1/users/{user_id}/invitation-code
+Authorization: Bearer <developer_jwt>
+
+Response:
+{
+  "code": "inv_a1b2c3d4e5f6...",
+  "user_id": "uuid-here",
+  "expires_at": "2024-02-12T10:00:00Z"
+}
+```
+
+### Redeem Code (public)
+
+> **Note**: Endpoint namespace TBD
+
+```
+POST /api/v1/invitation-code/redeem
+{
+  "code": "inv_a1b2c3d4e5f6..."
+}
+
+Response:
+{
+  "user_id": "uuid-here",
+  "access_token": "eyJhbG...",
+  "refresh_token": "rt-...",
+  "token_type": "bearer"
+}
+```
+
+## Database Model
+
+```python
+class InvitationCode(BaseDbModel):
+    __tablename__ = "invitation_code"
+
+    id: Mapped[PrimaryKey[UUID]]
+    code: Mapped[Unique[str_64]]          # inv_{32 hex chars}
+    user_id: Mapped[FKUser]
+    developer_id: Mapped[FKDeveloper]     # who generated it
+    app_id: Mapped[str | None]            # optional scope
+
+    created_at: Mapped[datetime_tz]
+    expires_at: Mapped[datetime_tz]       # 7 days from creation
+    redeemed_at: Mapped[datetime_tz | None]
+    revoked_at: Mapped[datetime_tz | None]
+```
+
+## Spec
+
+| Property | Value |
+|----------|-------|
+| Validity | 7 days |
+| Usage | Single-use (invalidated after redemption) |
+| Generator | Developer (via dashboard/API) |
+| Code format | `inv_{32 hex chars}` |
+
+## Security
+
+- Cryptographically random codes (like refresh tokens)
+- Rate limiting on redeem endpoint
+- Codes revocable by developer
+- Optional `app_id` scope
+
+## Related
+
+- GitHub Issue: #430
+- Refresh token spec: [refresh-token.mdx](./refresh-token.mdx)
+- Developer invitation system: `/api/v1/invitations/`
