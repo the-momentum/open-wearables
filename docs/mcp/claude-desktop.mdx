@@ -1,0 +1,90 @@
+---
+title: "Claude Desktop"
+sidebarTitle: "Claude Desktop"
+description: "Configure the Open Wearables MCP server with Claude Desktop"
+---
+
+## Configuration
+
+Add the following to your Claude Desktop configuration file:
+
+<Tabs>
+  <Tab title="macOS">
+    Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "open-wearables": {
+          "command": "uv",
+          "args": [
+            "run",
+            "--frozen",
+            "--directory",
+            "/path/to/open-wearables/mcp",
+            "start"
+          ]
+        }
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Windows">
+    Edit `%APPDATA%\Claude\claude_desktop_config.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "open-wearables": {
+          "command": "uv",
+          "args": [
+            "run",
+            "--frozen",
+            "--directory",
+            "C:\\path\\to\\open-wearables\\mcp",
+            "start"
+          ]
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Replace `/path/to/open-wearables/mcp` with the actual path to the MCP directory on your system.
+</Warning>
+
+## Verifying the Connection
+
+After configuring Claude Desktop:
+
+1. Restart Claude Desktop
+2. Look for the MCP tools icon in the chat interface
+3. Try asking: "Who can I query health data for?"
+
+If configured correctly, Claude will use the `get_users` tool to fetch available users from your Open Wearables instance.
+
+## Troubleshooting
+
+### "Invalid API key" error
+
+Ensure your `OPEN_WEARABLES_API_KEY` in `config/.env` is valid. You can get an API key from:
+1. The Open Wearables developer portal
+2. Or via the backend admin panel at `/api/v1/developer/api-keys`
+
+### "Connection refused" error
+
+Make sure the backend is running at the URL specified in `OPEN_WEARABLES_API_URL`.
+
+For local development:
+```bash
+# From project root
+docker compose up -d
+```
+
+### No users found
+
+The API key determines which users you can see. Ensure:
+1. Users have been created via the API or SDK
+2. Your API key has access to those users

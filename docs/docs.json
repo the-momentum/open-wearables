@@ -50,6 +50,14 @@
             ]
           },
           {
+            "group": "MCP Server",
+            "pages": [
+              "mcp/index",
+              "mcp/claude-desktop",
+              "mcp/cursor"
+            ]
+          },
+          {
             "group": "Developer Guides",
             "pages": [
               "dev-guides/backend-e2e-integration",
