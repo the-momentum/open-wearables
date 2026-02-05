@@ -67,24 +67,6 @@ class UserRead(BaseModel):
         return v
 ```
 
-**Incorrect example (DO NOT USE):**
-```python
-from pydantic import BaseModel, validator
-from typing import Optional, List
-
-class UserRead(BaseModel):
-    class Config:
-        orm_mode = True
-
-    id: UUID
-    email: Optional[str] = None
-    tags: List[str] = []
-
-    @validator("email")
-    def validate_email(cls, v):
-        # ...
-```
-
 ### Layer Separation (CRITICAL)
 
 #### Repositories (`app/repositories/`)
@@ -101,21 +83,6 @@ class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
 
     def get_active_users(self, db: DbSession) -> list[User]:
         return db.query(self.model).filter(self.model.is_active == True).all()
-```
-
-**Incorrect (business logic in repository):**
-```python
-class UserRepository(CrudRepository):
-    def create_user_with_welcome_email(self, db, data):  # BAD: business logic
-        user = self.create(db, data)
-        send_email(user.email, "Welcome!")  # BAD: side effect
-        return user
-
-    def get_premium_users_with_discount(self, db):  # BAD: business rule
-        users = db.query(User).filter(User.is_premium == True).all()
-        for user in users:
-            user.discount = self.calculate_discount(user)  # BAD: calculation
-        return users
 ```
 
 #### Services (`app/services/`)
@@ -135,17 +102,6 @@ class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
     def get_premium_users_with_discount(self, db: DbSession) -> list[UserWithDiscount]:
         users = self.crud.get_premium(db)  # Repository handles query
         return [self._apply_discount(u) for u in users]  # Logic in service
-```
-
-**Incorrect (direct DB operations in service):**
-```python
-class UserService:
-    def get_user(self, db: DbSession, user_id: UUID) -> User:
-        return db.query(User).filter(User.id == user_id).first()  # BAD: direct query
-
-    def update_user(self, db: DbSession, user_id: UUID, data: dict):
-        db.execute(update(User).where(User.id == user_id).values(**data))  # BAD
-        db.commit()
 ```
 
 ### Type Hints
