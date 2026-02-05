@@ -89,7 +89,7 @@ class UserRepository(CrudRepository[User, UserCreate, UserUpdate]):
 - Contains **ALL** business logic
 - **NEVER** performs database operations directly (use repositories)
 - Coordinates between repositories, external APIs, and other services
-- Handles validation beyond Pydantic schema validation
+- Handles validation beyond Pydantic schema validation and error handling
 
 **Correct:**
 ```python
