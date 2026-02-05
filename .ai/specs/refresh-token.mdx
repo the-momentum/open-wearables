@@ -12,7 +12,6 @@ The system implements **opaque refresh tokens** stored in the database with **to
 - **Token rotation**: Each refresh invalidates the old token and issues a new one
 - **Multiple active tokens**: Users/developers can have multiple valid refresh tokens (e.g., different devices)
 - **Revoked tokens retained**: Old tokens are marked as revoked but kept in database for audit purposes
-- **Admin tokens excluded**: Admin-generated SDK tokens do NOT receive refresh tokens
 
 ## Database Schema
 
@@ -130,18 +129,12 @@ return TokenResponse(
 
 ### SDK Token (`POST /api/v1/users/{user_id}/token`)
 
-Two authentication methods with different refresh token behavior:
+Two authentication methods, both returning refresh tokens:
 
 | Method | Auth | Refresh Token |
 |--------|------|---------------|
 | App credentials | `app_id` + `app_secret` in body | Yes |
-| Admin auth | Bearer token (developer) | No |
-
-<Note>
-**Why no refresh token for admin-generated tokens?**
-
-Admin tokens are for testing and debugging. They should be short-lived and require re-authentication via the admin dashboard. This prevents long-lived tokens from being accidentally distributed.
-</Note>
+| Admin auth | Bearer token (developer) | Yes |
 
 ## Security Considerations
 

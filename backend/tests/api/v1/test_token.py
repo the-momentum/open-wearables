@@ -250,8 +250,8 @@ class TestSDKTokenReturnsRefreshToken:
         assert data["token_type"] == "bearer"
         assert data["refresh_token"].startswith("rt-")
 
-    def test_admin_sdk_token_no_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Admin-generated SDK token should NOT return refresh token."""
+    def test_admin_sdk_token_returns_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Admin-generated SDK token should return refresh token."""
         # Arrange
         from tests.utils import developer_auth_headers
 
@@ -269,5 +269,6 @@ class TestSDKTokenReturnsRefreshToken:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
-        assert data["refresh_token"] is None
+        assert "refresh_token" in data
+        assert data["refresh_token"].startswith("rt-")
         assert data["token_type"] == "bearer"

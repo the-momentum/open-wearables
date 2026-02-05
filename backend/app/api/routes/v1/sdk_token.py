@@ -23,10 +23,10 @@ async def create_user_token(
 
     Supports two authentication methods:
     1. App credentials: Provide app_id and app_secret in the request body
-       - Returns access_token with refresh_token
     2. Admin authentication: Authenticate as a developer/admin via Bearer token
        (app_id and app_secret can be omitted)
-       - Returns access_token WITHOUT refresh_token
+
+    Both methods return access_token with refresh_token.
 
     Returns a JWT token scoped to SDK endpoints only.
     Tokens expire after configured time (default: 60 minutes).
@@ -38,14 +38,13 @@ async def create_user_token(
         developer: Optional authenticated developer (from Bearer token)
 
     Returns:
-        TokenResponse containing access_token, token_type, and optionally refresh_token
+        TokenResponse containing access_token, token_type, and refresh_token
 
     Raises:
         401: If app credentials are invalid or admin auth is missing
         400: If neither app credentials nor admin auth is provided
     """
     app_id: str
-    is_admin_token = False
 
     # Method 1: App credentials provided
     if payload and payload.app_id and payload.app_secret:
@@ -56,7 +55,6 @@ async def create_user_token(
         # Use developer ID as app_id for admin-generated tokens (enables audit trail)
         # Format: "admin:{developer_id}" to distinguish from app-generated tokens
         app_id = f"admin:{developer.id}"
-        is_admin_token = True
     else:
         # Neither method provided
         raise HTTPException(
@@ -70,9 +68,6 @@ async def create_user_token(
         user_id=str(user_id),
     )
 
-    # Admin tokens don't get refresh tokens
-    refresh_token = None
-    if not is_admin_token:
-        refresh_token = refresh_token_service.create_sdk_refresh_token(db, user_id, app_id)
+    refresh_token = refresh_token_service.create_sdk_refresh_token(db, user_id, app_id)
 
     return TokenResponse(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
