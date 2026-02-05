@@ -45,8 +45,6 @@ Pydantic v1 syntax is **DEPRECATED**. Always use v2 patterns:
 | `.parse_obj()` | `.model_validate()` |
 | `.parse_raw()` | `.model_validate_json()` |
 | `Field(regex=...)` | `Field(pattern=...)` |
-| `Optional[X] = None` | `X \| None = None` |
-| `List[X]`, `Dict[K, V]` | `list[X]`, `dict[K, V]` |
 
 **Correct example:**
 ```python
@@ -104,9 +102,39 @@ class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
         return [self._apply_discount(u) for u in users]  # Logic in service
 ```
 
-### Type Hints
+### Modern Python Syntax
 
-All functions **MUST** have type annotations:
+Use modern Python 3.10+ and 3.12+ syntax:
+
+| Deprecated | Modern |
+|------------|--------|
+| `Optional[X]` | `X \| None` |
+| `Union[X, Y]` | `X \| Y` |
+| `List[X]` | `list[X]` |
+| `Dict[K, V]` | `dict[K, V]` |
+| `Tuple[X, ...]` | `tuple[X, ...]` |
+| `Set[X]` | `set[X]` |
+
+**Generics (Python 3.12+):**
+```python
+# Deprecated - using TypeVar
+from typing import TypeVar, Generic
+
+T = TypeVar("T")
+
+class Repository(Generic[T]):
+    def get(self, id: int) -> T: ...
+
+# Modern - using type parameter syntax
+class Repository[T]:
+    def get(self, id: int) -> T: ...
+
+# Function generics
+def first[T](items: list[T]) -> T | None:
+    return items[0] if items else None
+```
+
+**Type hints are required** - all functions must have type annotations:
 ```python
 # Correct
 def process_user(db: DbSession, user_id: UUID, active: bool = True) -> User | None:
