@@ -200,7 +200,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
-        duration_seconds=total_duration,
+        duration_seconds=int(total_duration),
         category="sleep",
         type="sleep_session",
         source_name=state.get("source_name") or "Apple",
