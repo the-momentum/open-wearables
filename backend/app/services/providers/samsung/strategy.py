@@ -1,5 +1,5 @@
-from app.services.providers.samsung.workouts import SamsungWorkouts
 from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.samsung.workouts import SamsungWorkouts
 
 
 class SamsungStrategy(BaseProviderStrategy):
