@@ -5,6 +5,7 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
+from app.integrations.celery.tasks.process_samsung_upload_task import process_samsung_upload
 from app.schemas import UploadDataResponse
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
@@ -13,20 +14,52 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.post("/sdk/users/{user_id}/sync/apple")
+@router.post("/sdk/users/{user_id}/sync/{provider}")
 async def sync_sdk_data(
     user_id: str,
+    provider: str,
     body: dict,
     auth: SDKAuthDep,
 ) -> UploadDataResponse:
-    """Import health data from JSON body asynchronously via Celery.
+    """Import health data from SDK provider asynchronously via Celery.
 
-    Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
+    Supports Apple HealthKit and Samsung Health SDK formats (identical payloads):
+    ```json
+    {
+        "data": {
+            "records": [...],
+            "sleep": [...],
+            "workouts": [...]
+        }
+    }
+    ```
+
+    Args:
+        user_id: SDK user identifier
+        provider: Provider name (apple, samsung)
+        body: Health data payload
+        auth: SDK authentication (Bearer token or API key)
+
+    Returns:
+        UploadDataResponse with 202 status and task queued message
+
+    Raises:
+        HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Token does not match user_id",
+        )
+
+    # Normalize provider name
+    provider = provider.lower()
+
+    # Validate provider
+    if provider not in {"apple", "samsung"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported provider: {provider}. Supported: apple, samsung",
         )
 
     # Generate unique batch ID for tracking
@@ -42,54 +75,34 @@ async def sync_sdk_data(
     log_structured(
         logger,
         "info",
-        "Apple sync batch received",
-        action="apple_sdk_batch_received",
+        f"{provider.capitalize()} sync batch received",
+        action=f"{provider}_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,
+        provider=provider,
         records_count=records_count,
         workouts_count=workouts_count,
         sleep_count=sleep_count,
         total_items=records_count + workouts_count + sleep_count,
-        source="healthion",
     )
 
     content_str = json.dumps(body)
 
-    # Queue the import task in Celery with batch_id
-    process_apple_upload.delay(
-        content=content_str,
-        content_type="application/json",
-        user_id=user_id,
-        source="healthion",
-        batch_id=batch_id,
-    )
-
-    return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
-
-
-@router.post("/sdk/users/{user_id}/sync/samsung", tags=["beta"])
-async def sync_data_samsung(
-    user_id: str,
-    body: dict,
-    auth: SDKAuthDep,
-) -> UploadDataResponse:
-    """Import health data from Samsung SDK.
-
-    **⚠️ BETA / NOT READY:** This endpoint is currently in development.
-    It accepts authentication but does not process data yet.
-
-    **⚠️ PATH MAY CHANGE:** The endpoint path may change in future versions.
-    Do not rely on this path for production integrations.
-
-    Accepts either SDK user token (Bearer) or API key (X-Open-Wearables-API-Key header).
-    Currently returns success without processing data.
-    """
-    if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token does not match user_id",
+    # Route to appropriate Celery task based on provider
+    if provider == "apple":
+        process_apple_upload.delay(
+            content=content_str,
+            content_type="application/json",
+            user_id=user_id,
+            source="healthion",
+            batch_id=batch_id,
+        )
+    elif provider == "samsung":
+        process_samsung_upload.delay(
+            content=content_str,
+            content_type="application/json",
+            user_id=user_id,
+            batch_id=batch_id,
         )
 
-    return UploadDataResponse(
-        status_code=200, response="Samsung sync endpoint ready (hardcoded - no data processing yet)", user_id=user_id
-    )
+    return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
