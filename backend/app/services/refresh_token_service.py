@@ -14,17 +14,17 @@ from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 
 
-def _generate_refresh_token_id() -> str:
-    """Generate an opaque refresh token ID with rt- prefix."""
-    return f"rt-{secrets.token_hex(16)}"
-
-
 class RefreshTokenService:
     """Service for managing refresh tokens."""
 
     def __init__(self, log: Logger) -> None:
         self.logger = log
         self.repo = refresh_token_repository
+
+    @staticmethod
+    def _generate_refresh_token_id() -> str:
+        """Generate an opaque refresh token ID with rt- prefix."""
+        return f"rt-{secrets.token_hex(16)}"
 
     def create_sdk_refresh_token(self, db_session: DbSession, user_id: UUID, app_id: str) -> str:
         """Create a refresh token for an SDK token.
@@ -37,7 +37,7 @@ class RefreshTokenService:
         Returns:
             The refresh token string (rt-{hex})
         """
-        token_id = _generate_refresh_token_id()
+        token_id = self._generate_refresh_token_id()
         token = RefreshToken(
             id=token_id,
             token_type=TokenType.SDK,
@@ -62,7 +62,7 @@ class RefreshTokenService:
         Returns:
             The refresh token string (rt-{hex})
         """
-        token_id = _generate_refresh_token_id()
+        token_id = self._generate_refresh_token_id()
         token = RefreshToken(
             id=token_id,
             token_type=TokenType.DEVELOPER,
