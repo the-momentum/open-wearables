@@ -2,6 +2,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, datetime_tz, str_64
+from app.schemas.token_type import TokenType
 
 
 class RefreshToken(BaseDbModel):
@@ -14,7 +15,7 @@ class RefreshToken(BaseDbModel):
     __tablename__ = "refresh_token"
 
     id: Mapped[PrimaryKey[str_64]]  # rt-{32 hex chars}
-    token_type: Mapped[str_64]  # "sdk" | "developer"
+    token_type: Mapped[TokenType]
 
     # For SDK tokens
     user_id: Mapped[Indexed[FKUser] | None]

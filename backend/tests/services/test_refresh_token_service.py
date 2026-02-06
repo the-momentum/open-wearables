@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
+from app.schemas.token_type import TokenType
 from app.services.refresh_token_service import refresh_token_service
 from tests.factories import DeveloperFactory, UserFactory
 
@@ -39,7 +40,7 @@ class TestCreateSDKRefreshToken:
         # Assert
         db_token = db.query(RefreshToken).filter(RefreshToken.id == token).first()
         assert db_token is not None
-        assert db_token.token_type == "sdk"
+        assert db_token.token_type == TokenType.SDK
         assert db_token.user_id == user.id
         assert db_token.app_id == app_id
         assert db_token.developer_id is None
@@ -72,7 +73,7 @@ class TestCreateDeveloperRefreshToken:
         # Assert
         db_token = db.query(RefreshToken).filter(RefreshToken.id == token).first()
         assert db_token is not None
-        assert db_token.token_type == "developer"
+        assert db_token.token_type == TokenType.DEVELOPER
         assert db_token.developer_id == developer.id
         assert db_token.user_id is None
         assert db_token.app_id is None

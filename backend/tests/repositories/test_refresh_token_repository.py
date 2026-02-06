@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
+from app.schemas.token_type import TokenType
 from tests.factories import DeveloperFactory, UserFactory
 
 
@@ -20,7 +21,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token = RefreshToken(
             id="rt-test123456789012345678901234",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="test_app",
             developer_id=None,
@@ -34,7 +35,7 @@ class TestRefreshTokenRepository:
 
         # Assert
         assert created.id == "rt-test123456789012345678901234"
-        assert created.token_type == "sdk"
+        assert created.token_type == TokenType.SDK
         assert created.user_id == user.id
 
     def test_get_valid_token(self, db: Session) -> None:
@@ -43,7 +44,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token = RefreshToken(
             id="rt-validtoken123456789012345678",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="test_app",
             developer_id=None,
@@ -67,7 +68,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token = RefreshToken(
             id="rt-revokedtoken12345678901234567",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="test_app",
             developer_id=None,
@@ -90,7 +91,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token1 = RefreshToken(
             id="rt-user1token1234567890123456789",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="app1",
             developer_id=None,
@@ -100,7 +101,7 @@ class TestRefreshTokenRepository:
         )
         token2 = RefreshToken(
             id="rt-user1token2345678901234567890",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="app2",
             developer_id=None,
@@ -124,7 +125,7 @@ class TestRefreshTokenRepository:
         developer = DeveloperFactory()
         token1 = RefreshToken(
             id="rt-dev1token12345678901234567890",
-            token_type="developer",
+            token_type=TokenType.DEVELOPER,
             user_id=None,
             app_id=None,
             developer_id=developer.id,
@@ -148,7 +149,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token = RefreshToken(
             id="rt-torevoke123456789012345678901",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="test_app",
             developer_id=None,
@@ -172,7 +173,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token1 = RefreshToken(
             id="rt-revokeall123456789012345678901",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="app1",
             developer_id=None,
@@ -182,7 +183,7 @@ class TestRefreshTokenRepository:
         )
         token2 = RefreshToken(
             id="rt-revokeall234567890123456789012",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="app2",
             developer_id=None,
@@ -210,7 +211,7 @@ class TestRefreshTokenRepository:
         developer = DeveloperFactory()
         token = RefreshToken(
             id="rt-revokedev123456789012345678901",
-            token_type="developer",
+            token_type=TokenType.DEVELOPER,
             user_id=None,
             app_id=None,
             developer_id=developer.id,
@@ -235,7 +236,7 @@ class TestRefreshTokenRepository:
         user = UserFactory()
         token = RefreshToken(
             id="rt-updateused12345678901234567890",
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user.id,
             app_id="test_app",
             developer_id=None,

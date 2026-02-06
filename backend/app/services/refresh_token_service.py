@@ -9,6 +9,7 @@ from app.database import DbSession
 from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
 from app.schemas.token import TokenResponse
+from app.schemas.token_type import TokenType
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 
@@ -39,7 +40,7 @@ class RefreshTokenService:
         token_id = _generate_refresh_token_id()
         token = RefreshToken(
             id=token_id,
-            token_type="sdk",
+            token_type=TokenType.SDK,
             user_id=user_id,
             app_id=app_id,
             developer_id=None,
@@ -64,7 +65,7 @@ class RefreshTokenService:
         token_id = _generate_refresh_token_id()
         token = RefreshToken(
             id=token_id,
-            token_type="developer",
+            token_type=TokenType.DEVELOPER,
             user_id=None,
             app_id=None,
             developer_id=developer_id,
@@ -104,7 +105,7 @@ class RefreshTokenService:
         self.repo.revoke_token(db_session, token)
 
         # Generate new access token and refresh token based on token type
-        if token.token_type == "sdk":
+        if token.token_type == TokenType.SDK:
             access_token = create_sdk_user_token(
                 app_id=token.app_id,  # type: ignore[arg-type]
                 user_id=str(token.user_id),
@@ -115,7 +116,7 @@ class RefreshTokenService:
                 app_id=token.app_id,  # type: ignore[arg-type]
             )
             self.logger.debug(f"Refreshed SDK token for user {token.user_id} (rotated)")
-        elif token.token_type == "developer":
+        elif token.token_type == TokenType.DEVELOPER:
             access_token = create_access_token(subject=str(token.developer_id))
             new_refresh_token = self.create_developer_refresh_token(
                 db_session,
