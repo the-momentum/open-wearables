@@ -1,8 +1,10 @@
 import {
+  Calendar,
   CheckCircle2,
   EllipsisVertical,
   Loader2,
   RefreshCw,
+  RotateCcw,
   TriangleAlert,
   Unlink,
   Watch,
@@ -23,26 +25,70 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   useSynchronizeDataFromProvider,
+  useGarminSummarySyncStatus,
+  useStartGarminSummarySync,
+  useCancelGarminSummarySync,
   useGarminBackfillStatus,
+  useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
+import { SyncProgress } from './sync-progress';
 
 interface ConnectionCardProps {
   connection: UserConnection;
   className?: string;
 }
 
+// Format data type name for display (e.g., "bodyComps" -> "Body Comps")
+function formatTypeName(typeName: string): string {
+  return typeName
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (str) => str.toUpperCase())
+    .trim();
+}
+
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
 
-  // For Garmin, check backfill status
+  // For Garmin, check summary sync status (365-day REST sync)
+  const { data: summarySyncStatus } = useGarminSummarySyncStatus(
+    connection.user_id,
+    connection.provider === 'garmin'
+  );
+
+  // For Garmin, check backfill status (90-day webhook sync)
   const { data: backfillStatus } = useGarminBackfillStatus(
     connection.user_id,
     connection.provider === 'garmin'
   );
 
-  const isGarminBackfilling =
-    connection.provider === 'garmin' && backfillStatus?.in_progress;
+  const { mutate: startSummarySync, isPending: isStartingSummarySync } =
+    useStartGarminSummarySync(connection.user_id);
+
+  const { mutate: cancelSummarySync } = useCancelGarminSummarySync(
+    connection.user_id
+  );
+
+  const { mutate: retryBackfill, isPending: isRetrying } =
+    useRetryGarminBackfill(connection.user_id);
+
+  // Check if Garmin sync is active
+  const isGarminSyncing =
+    connection.provider === 'garmin' &&
+    (summarySyncStatus?.status === 'SYNCING' ||
+      summarySyncStatus?.status === 'WAITING');
+
+  // Check if backfill is in progress
+  const isBackfillInProgress =
+    connection.provider === 'garmin' &&
+    backfillStatus?.overall_status === 'in_progress';
+
+  // Get failed types from backfill status
+  const failedTypes = backfillStatus?.types
+    ? Object.entries(backfillStatus.types)
+        .filter(([, v]) => v.status === 'failed')
+        .map(([type, v]) => ({ type, error: v.error }))
+    : [];
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
@@ -120,32 +166,114 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
-          onClick={() => synchronizeDataFromProvider()}
-          disabled={isSynchronizing || isGarminBackfilling}
-        >
-          {isGarminBackfilling ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Day {(backfillStatus?.days_completed ?? 0) + 1}/
-              {backfillStatus?.target_days ?? 30} (
-              {backfillStatus?.current_data_type ?? 'syncing'})
-            </>
-          ) : isSynchronizing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Sync Now
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4" />
-              Sync Now
-            </>
+        {/* Show sync progress for Garmin when syncing */}
+        {isGarminSyncing && summarySyncStatus && (
+          <SyncProgress
+            status={summarySyncStatus}
+            onCancel={() => cancelSummarySync()}
+          />
+        )}
+
+        {/* Show backfill progress for Garmin */}
+        {isBackfillInProgress && backfillStatus && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Fetching historical data...{' '}
+                <span className="font-medium">
+                  {backfillStatus.success_count}/{backfillStatus.total_types}{' '}
+                  complete
+                </span>
+              </span>
+            </div>
+            {/* Progress bar */}
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300"
+                style={{
+                  width: `${(backfillStatus.success_count / backfillStatus.total_types) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Show failed backfill types with retry buttons */}
+        {failedTypes.length > 0 && (
+          <div className="space-y-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+            <p className="text-sm font-medium text-destructive">
+              Some data failed to sync:
+            </p>
+            <div className="space-y-1.5">
+              {failedTypes.map(({ type, error }) => (
+                <div
+                  key={type}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium">{formatTypeName(type)}</span>
+                    {error && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {error}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs ml-2"
+                    onClick={() => retryBackfill(type)}
+                    disabled={isRetrying}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Retry
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Sync buttons */}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={() => synchronizeDataFromProvider()}
+            disabled={isSynchronizing || isGarminSyncing}
+          >
+            {isSynchronizing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Sync Now
+              </>
+            )}
+          </Button>
+
+          {/* Garmin-specific: Sync 1 Year button */}
+          {connection.provider === 'garmin' && !isGarminSyncing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => startSummarySync({ resume: false })}
+              disabled={isStartingSummarySync || isGarminSyncing}
+            >
+              {isStartingSummarySync ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Calendar className="h-4 w-4" />
+              )}
+              <span className="ml-1 hidden sm:inline">1 Year</span>
+            </Button>
           )}
-        </Button>
+        </div>
       </CardContent>
     </Card>
   );

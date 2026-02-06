@@ -58,7 +58,7 @@ class TestGarminWorkoutImport:
         db: Session,
         sample_garmin_activities: list[dict[str, Any]],
     ) -> None:
-        """Test successful import of Garmin activities via backfill."""
+        """Test successful import of Garmin activities via Summary API."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -66,13 +66,10 @@ class TestGarminWorkoutImport:
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
-            mock_trigger.return_value = {
-                "triggered": ["activities"],
-                "failed": {},
-                "start_time": "2024-01-15T00:00:00+00:00",
-                "end_time": "2024-01-20T00:00:00+00:00",
-            }
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_single_chunk"
+        ) as mock_fetch:
+            mock_fetch.return_value = {"fetched": 2, "saved": 2}
 
             # Act
             result = strategy.workouts.load_data(
@@ -84,7 +81,7 @@ class TestGarminWorkoutImport:
 
             # Assert
             assert result is True
-            mock_trigger.assert_called_once()
+            mock_fetch.assert_called_once()
 
     def test_import_garmin_activities_with_date_range(
         self,
@@ -215,7 +212,7 @@ class TestGarminWorkoutImport:
             assert result is True
 
     def test_import_handles_api_error(self, db: Session) -> None:
-        """Test handling API errors during import."""
+        """Test handling API errors during import returns False."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(user=user, provider="garmin")
@@ -223,14 +220,12 @@ class TestGarminWorkoutImport:
         strategy = GarminStrategy()
         assert strategy.workouts is not None
 
-        with (
-            patch(
-                "app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill",
-                side_effect=Exception("API Error"),
-            ),
-            pytest.raises(Exception, match="API Error"),
+        with patch(
+            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_single_chunk",
+            side_effect=Exception("API Error"),
         ):
-            strategy.workouts.load_data(db, user.id)
+            result = strategy.workouts.load_data(db, user.id)
+            assert result is False
 
     def test_get_workouts_from_api_with_params(self, db: Session) -> None:
         """Test getting workouts from API with custom parameters.

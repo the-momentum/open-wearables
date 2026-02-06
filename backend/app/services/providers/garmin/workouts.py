@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -245,15 +245,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         user_id: UUID,
         **kwargs: Any,
     ) -> bool:
-        """Load data from Garmin API via backfill.
+        """Load activities from Garmin API via REST Summary endpoint.
 
-        Note: Garmin Health API requires pull tokens for direct polling.
-        Instead, we use the backfill API which triggers Garmin to send
-        data to our configured webhooks asynchronously.
+        Uses the Summary API which returns data immediately (synchronous).
+        Requires Consumer Pull Token (CPT) for authentication.
         """
         from contextlib import suppress
 
-        from app.services.providers.garmin.backfill import GarminBackfillService
+        from app.services.providers.garmin.summary import GarminSummaryService
 
         # Parse date range from kwargs
         start_dt: datetime | None = None
@@ -276,27 +275,32 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                 elif isinstance(summary_end_time, datetime):
                     end_dt = summary_end_time
 
-        # Use backfill API - data will arrive via webhooks
-        backfill_service = GarminBackfillService(
-            provider_name=self.provider_name,
-            api_base_url=self.api_base_url,
-            oauth=self.oauth,
-        )
+        # Default to last 7 days if no range specified
+        if end_dt is None:
+            end_dt = datetime.now(timezone.utc)
+        if start_dt is None:
+            start_dt = end_dt - timedelta(days=7)
 
-        result = backfill_service.trigger_backfill(
-            db=db,
-            user_id=user_id,
-            data_types=["activities"],
-            start_time=start_dt,
-            end_time=end_dt,
-        )
+        try:
+            summary_service = GarminSummaryService()
+            result = summary_service.fetch_and_save_single_chunk(
+                db=db,
+                user_id=user_id,
+                data_type="activities",
+                start_time=start_dt,
+                end_time=end_dt,
+            )
 
-        self.logger.info(
-            f"Garmin activities backfill triggered for user {user_id}: "
-            f"triggered={result['triggered']}, failed={result['failed']}"
-        )
+            self.logger.info(
+                f"Garmin activities loaded via Summary API for user {user_id}: "
+                f"fetched={result.get('fetched', 0)}, saved={result.get('saved', 0)}"
+            )
 
-        return "activities" in result["triggered"]
+            return result.get("error") is None
+
+        except Exception as e:
+            self.logger.error(f"Failed to load Garmin activities for user {user_id}: {e}")
+            return False
 
     def get_activity_detail(
         self,

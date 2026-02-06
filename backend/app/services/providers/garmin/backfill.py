@@ -25,20 +25,31 @@ class GarminBackfillService:
     - Don't require pull tokens (unlike regular summary endpoints)
     - Use summaryStartTimeInSeconds/summaryEndTimeInSeconds params
     - Return 202 Accepted (async processing)
-    - Data is sent to configured webhook endpoints
+    - Data is sent to configured webhook endpoints (PING/PUSH)
 
     Official Garmin backfill limits (from documentation):
-    - Max per request: 90 days
-    - Per user limit: 1 month since first connection
-    - Total history available: 2 years (Health) / 5 years (Activity)
-    - Rate limit (prod): 10,000 days/minute
+    - Max per request: Health API = 90 days, Activity API = 30 days
+    - Time limit: Only available within 1 month of user's first connection
+    - One-time per timeframe: 1 request per user per timeframe per summary type
     - Duplicate requests: HTTP 409
+    - Rate limit (prod): 10,000 days/minute
+    - Requires HISTORICAL_DATA_EXPORT permission from user
     """
 
-    # Backfill configuration
-    BACKFILL_CHUNK_DAYS = 1  # Per request (1 day at a time)
-    MAX_BACKFILL_DAYS = 30  # Target: 1 month of history
-    MAX_REQUEST_DAYS = 90  # Max days per single backfill request (Garmin limit)
+    # Backfill configuration - optimized for fewer round-trips
+    # Health API: 90 days max per request
+    # Activity API: 30 days max per request
+    MAX_BACKFILL_DAYS = 90  # Target: 3 months of history
+    MAX_HEALTH_API_DAYS = 90  # Health API limit
+    MAX_ACTIVITY_API_DAYS = 30  # Activity API limit
+
+    # Constants for compatibility and clarity
+    BACKFILL_CHUNK_DAYS = 90  # Max days per request (Health API limit)
+    MAX_REQUEST_DAYS = 90  # Alias for BACKFILL_CHUNK_DAYS
+    SUMMARY_DAYS = 7  # Summary covers last 7 days; backfill starts after this
+
+    # Data types that use the Activity API (30-day limit)
+    ACTIVITY_API_TYPES = {"activities", "activityDetails"}
 
     # Mapping of data type to backfill endpoint
     BACKFILL_ENDPOINTS = {
@@ -60,17 +71,39 @@ class GarminBackfillService:
         "mct": "/wellness-api/rest/backfill/mct",
     }
 
-    # Default data types to backfill for wellness sync
+    # All 16 data types to backfill for complete sync
     DEFAULT_DATA_TYPES = [
         "sleeps",
         "dailies",
         "epochs",
         "bodyComps",
         "hrv",
+        "activities",
+        "activityDetails",
+        "moveiq",
+        "healthSnapshot",
+        "stressDetails",
+        "respiration",
+        "pulseOx",
+        "bloodPressures",
+        "userMetrics",
+        "skinTemp",
+        "mct",
     ]
 
     DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
     REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
+
+    @classmethod
+    def get_max_days_for_type(cls, data_type: str) -> int:
+        """Get maximum backfill days allowed for a data type.
+
+        Activity API types (activities, activityDetails) are limited to 30 days.
+        Health API types are limited to 90 days.
+        """
+        if data_type in cls.ACTIVITY_API_TYPES:
+            return cls.MAX_ACTIVITY_API_DAYS
+        return cls.MAX_HEALTH_API_DAYS
 
     def __init__(
         self,
