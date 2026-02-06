@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Annotated
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
 from app.integrations.celery.tasks import sync_vendor_data
+from app.integrations.observability import record_metric
 from app.schemas import (
     AuthorizationURLResponse,
     BulkProviderSettingsUpdate,
@@ -17,6 +19,8 @@ from app.services import DeveloperDep
 from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
+
+logger = getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -46,6 +50,8 @@ async def authorize_provider(
 
     Returns authorization URL where user should be redirected to log in.
     """
+    record_metric("oauth_attempts", labels={"provider": provider.value})
+
     strategy = get_oauth_strategy(provider)
 
     assert strategy.oauth
@@ -68,12 +74,14 @@ async def oauth_callback(
     Provider redirects here after user authorizes. Exchanges code for tokens.
     """
     if error:
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": error})
         return RedirectResponse(
             url=f"/api/v1/oauth/error?message={error}:+{error_description or 'Unknown+error'}",
             status_code=303,
         )
 
     if not code or not state:
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": "missing_params"})
         return RedirectResponse(
             url="/api/v1/oauth/error?message=Missing+OAuth+parameters",
             status_code=303,
@@ -81,26 +89,37 @@ async def oauth_callback(
 
     strategy = get_oauth_strategy(provider)
 
-    assert strategy.oauth
-    oauth_state = strategy.oauth.handle_callback(db, code, state)
+    try:
+        assert strategy.oauth
+        oauth_state = strategy.oauth.handle_callback(db, code, state)
 
-    # schedule sync task
-    sync_vendor_data.delay(
-        user_id=str(oauth_state.user_id),
-        start_date=None,
-        end_date=None,
-        providers=[provider.value],
-    )
+        record_metric("oauth_successes", labels={"provider": provider.value})
+        record_metric("provider_connections", labels={"provider": provider.value})
 
-    # If a specific redirect_uri was requested (e.g. by frontend), redirect there
-    if oauth_state.redirect_uri:
-        return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+        # schedule sync task
+        sync_vendor_data.delay(
+            user_id=str(oauth_state.user_id),
+            start_date=None,
+            end_date=None,
+            providers=[provider.value],
+        )
 
-    # Otherwise, redirect to internal success page
-    return RedirectResponse(
-        url=f"/api/v1/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}",
-        status_code=303,
-    )
+        # If a specific redirect_uri was requested (e.g. by frontend), redirect there
+        if oauth_state.redirect_uri:
+            return RedirectResponse(url=oauth_state.redirect_uri, status_code=303)
+
+        # Otherwise, redirect to internal success page
+        return RedirectResponse(
+            url=f"/api/v1/oauth/success?provider={provider.value}&user_id={oauth_state.user_id}",
+            status_code=303,
+        )
+    except Exception as e:
+        logger.exception("OAuth callback failed", extra={"provider": provider.value})
+        record_metric("oauth_failures", labels={"provider": provider.value, "error": type(e).__name__})
+        return RedirectResponse(
+            url=f"/api/v1/oauth/error?message=OAuth+callback+failed:+{type(e).__name__}",
+            status_code=303,
+        )
 
 
 @router.get("/success")

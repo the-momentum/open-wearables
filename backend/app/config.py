@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
 
+    # OpenTelemetry
+    otel_enabled: bool = False
+    otel_service_name: str = "open-wearables-api"
+    otel_service_version: str = "1.0.0"
+    otel_exporter_endpoint: str = "otel-collector:4317"
+    otel_log_level: str = "INFO"
+
     # AUTH SETTINGS
     secret_key: str
     algorithm: str = "HS256"
