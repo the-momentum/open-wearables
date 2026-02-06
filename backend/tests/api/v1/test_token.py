@@ -36,6 +36,7 @@ class TestRefreshToken:
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         # Refresh token should be rotated (new token returned)
         assert data["refresh_token"] != refresh_token
         assert data["refresh_token"].startswith("rt-")
@@ -65,6 +66,7 @@ class TestRefreshToken:
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         # Refresh token should be rotated (new token returned)
         assert data["refresh_token"] != refresh_token
         assert data["refresh_token"].startswith("rt-")
@@ -221,6 +223,7 @@ class TestLoginReturnsRefreshToken:
         assert "access_token" in data
         assert "refresh_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert data["refresh_token"].startswith("rt-")
 
 
@@ -248,6 +251,7 @@ class TestSDKTokenReturnsRefreshToken:
         assert "access_token" in data
         assert "refresh_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert data["refresh_token"].startswith("rt-")
 
     def test_admin_sdk_token_returns_refresh_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
@@ -272,3 +276,4 @@ class TestSDKTokenReturnsRefreshToken:
         assert "refresh_token" in data
         assert data["refresh_token"].startswith("rt-")
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60

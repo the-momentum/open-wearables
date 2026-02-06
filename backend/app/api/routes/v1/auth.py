@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
+from app.config import settings
 from app.database import DbSession
 from app.schemas import DeveloperRead, DeveloperUpdate
 from app.schemas.token import TokenResponse
@@ -44,7 +45,12 @@ async def login(
     access_token = create_access_token(subject=str(developer.id))
     refresh_token = refresh_token_service.create_developer_refresh_token(db, developer.id)
 
-    return TokenResponse(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
 
 
 @router.post("/logout")

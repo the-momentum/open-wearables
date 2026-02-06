@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
@@ -133,6 +134,7 @@ class RefreshTokenService:
             access_token=access_token,
             token_type="bearer",
             refresh_token=new_refresh_token,
+            expires_in=settings.access_token_expire_minutes * 60,
         )
 
     def revoke_token(self, db_session: DbSession, refresh_token_str: str) -> bool:

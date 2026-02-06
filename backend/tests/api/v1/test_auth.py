@@ -14,6 +14,7 @@ Tests cover:
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -37,6 +38,7 @@ class TestLogin:
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert isinstance(data["access_token"], str)
         assert len(data["access_token"]) > 0
 

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
 from app.schemas.sdk import SDKTokenRequest
 from app.schemas.token import TokenResponse
@@ -70,4 +71,9 @@ async def create_user_token(
 
     refresh_token = refresh_token_service.create_sdk_refresh_token(db, user_id, app_id)
 
-    return TokenResponse(access_token=access_token, token_type="bearer", refresh_token=refresh_token)
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )

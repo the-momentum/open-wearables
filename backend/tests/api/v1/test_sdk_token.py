@@ -28,6 +28,7 @@ class TestCreateUserToken:
         assert "access_token" in data
         assert "refresh_token" in data
         assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.access_token_expire_minutes * 60
         assert data["refresh_token"].startswith("rt-")
 
     def test_create_token_invalid_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
