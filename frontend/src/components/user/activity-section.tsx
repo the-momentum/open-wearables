@@ -361,10 +361,7 @@ export function ActivitySection({
   );
 
   // Get displayed days from current page data (sorted by backend via sort_order=desc)
-  const displayedDays = useMemo(
-    () => daysData?.data || [],
-    [daysData]
-  );
+  const displayedDays = useMemo(() => daysData?.data || [], [daysData]);
   const hasData = displayedDays.length > 0;
 
   // Selected metric for the chart

@@ -241,10 +241,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         parsed_activities = []
         for raw in raw_activities:
             try:
-                if isinstance(raw, dict):
-                    activity = StravaActivityJSON(**raw)
-                else:
-                    activity = raw
+                activity = StravaActivityJSON(**raw) if isinstance(raw, dict) else raw
                 parsed_activities.append(activity)
             except Exception as e:
                 self.logger.warning(f"Failed to parse Strava activity: {e}")

@@ -182,15 +182,15 @@ from .timeseries import (
     TimeSeriesSampleResponse,
     TimeSeriesSampleUpdate,
 )
+from .strava.activity_import import (
+    ActivityJSON as StravaActivityJSON,
+)
 from .user import (
     UserCreate,
     UserCreateInternal,
     UserRead,
     UserUpdate,
     UserUpdateInternal,
-)
-from .strava.activity_import import (
-    ActivityJSON as StravaActivityJSON,
 )
 from .whoop.workout_import import (
     WhoopWorkoutCollectionJSON,
