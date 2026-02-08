@@ -193,6 +193,9 @@ from .user import (
     UserUpdate,
     UserUpdateInternal,
 )
+from .strava.activity_import import (
+    ActivityJSON as StravaActivityJSON,
+)
 from .whoop.workout_import import (
     WhoopWorkoutCollectionJSON,
     WhoopWorkoutJSON,
@@ -297,6 +300,8 @@ __all__ = [
     "GarminRespirationJSON",
     # Polar schemas
     "PolarExerciseJSON",
+    # Strava schemas
+    "StravaActivityJSON",
     # Whoop schemas
     "WhoopWorkoutJSON",
     "WhoopWorkoutCollectionJSON",

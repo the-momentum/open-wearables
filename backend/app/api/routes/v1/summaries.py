@@ -27,6 +27,7 @@ async def get_activity_summary(
     _api_key: ApiKeyDep,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=400)] = 50,
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "asc",
 ) -> PaginatedResponse[ActivitySummary]:
     """Returns daily aggregated activity metrics.
 
@@ -34,7 +35,9 @@ async def get_activity_summary(
     """
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
-    return await summaries_service.get_activity_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
+    return await summaries_service.get_activity_summaries(
+        db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
+    )
 
 
 @router.get("/users/{user_id}/summaries/sleep")

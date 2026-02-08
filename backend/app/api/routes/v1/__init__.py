@@ -9,6 +9,7 @@ from .developers import router as developers_router
 from .events import router as events_router
 from .external_connectors import router as external_connectors_router
 from .garmin_webhooks import router as garmin_webhooks_router
+from .strava_webhooks import router as strava_webhooks_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
@@ -32,6 +33,8 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"]
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
+# Strava webhooks for event notifications
+v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])

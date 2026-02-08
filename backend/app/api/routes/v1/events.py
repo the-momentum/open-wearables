@@ -26,7 +26,7 @@ async def list_workouts(
     _api_key: ApiKeyDep,
     record_type: str | None = None,
     cursor: str | None = None,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
