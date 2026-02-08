@@ -1,7 +1,7 @@
 """Strava webhook endpoints for receiving push event notifications."""
 
 from logging import getLogger
-from typing import Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -21,9 +21,9 @@ logger = getLogger(__name__)
 
 @router.get("/webhook")
 async def strava_webhook_verification(
-    hub_mode: str = Query(alias="hub.mode", default=""),
-    hub_challenge: str = Query(alias="hub.challenge", default=""),
-    hub_verify_token: str = Query(alias="hub.verify_token", default=""),
+    hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
+    hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
+    hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",
 ) -> dict:
     """Strava webhook subscription verification (GET).
 
