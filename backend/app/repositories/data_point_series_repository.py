@@ -1,19 +1,21 @@
-from datetime import datetime
+import contextlib
+from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, asc, case, cast, func, literal_column, tuple_
+from sqlalchemy import Date, String, asc, case, cast, func, literal_column, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource
+from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas import (
     ActiveMinutesResult,
     ActivityAggregateResult,
     IntensityMinutesResult,
+    ProviderName,
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
@@ -55,7 +57,8 @@ class DataPointSeriesRepository(
             "user_id",
             "source",
             "device_model",
-            "manufacturer",
+            "provider",
+            "user_connection_id",
             "software_version",
             "series_type",
             "data_source_id",
@@ -93,13 +96,28 @@ class DataPointSeriesRepository(
     def _resolve_data_sources(
         self, db_session: DbSession, creators: list[TimeSeriesSampleCreate]
     ) -> dict[DataSourceIdentity, UUID]:
-        """Resolve data source identities to IDs. Returns map of (user_id, device_model, source) -> data_source_id."""
-        unique_identities: set[DataSourceIdentity] = set()
+        by_provider: dict[ProviderName, list[TimeSeriesSampleCreate]] = {}
         for c in creators:
-            unique_identities.add((c.user_id, c.device_model, c.source))
+            provider = self.data_source_repo.infer_provider_from_source(c.source)
+            if c.provider:
+                with contextlib.suppress(ValueError):
+                    provider = ProviderName(c.provider)
+            by_provider.setdefault(provider, []).append(c)
 
-        # Use batch operation - single query + batch insert
-        return self.data_source_repo.batch_ensure_data_sources(db_session, unique_identities)
+        identity_to_source_id: dict[DataSourceIdentity, UUID] = {}
+
+        for provider, provider_creators in by_provider.items():
+            unique_identities: set[DataSourceIdentity] = set()
+            user_connection_id = provider_creators[0].user_connection_id if provider_creators else None
+            for c in provider_creators:
+                unique_identities.add((c.user_id, c.device_model, c.source))
+
+            batch_result = self.data_source_repo.batch_ensure_data_sources(
+                db_session, provider, user_connection_id, unique_identities
+            )
+            identity_to_source_id.update(batch_result)
+
+        return identity_to_source_id
 
     def _insert_data_points(
         self,
@@ -167,15 +185,19 @@ class DataPointSeriesRepository(
             raise
 
     def create_data_source(self, db_session: DbSession, creator: TimeSeriesSampleCreate) -> DataSource:
-        """Create or get existing data source for the creator."""
+        provider = self.data_source_repo.infer_provider_from_source(creator.source)
+        if creator.provider:
+            with contextlib.suppress(ValueError):
+                provider = ProviderName(creator.provider)
+
         return self.data_source_repo.ensure_data_source(
             db_session,
             user_id=creator.user_id,
+            provider=provider,
+            user_connection_id=creator.user_connection_id,
             device_model=creator.device_model,
             software_version=creator.software_version,
-            manufacturer=creator.manufacturer,
             source=creator.source,
-            data_source_id=creator.data_source_id,
         )
 
     def get_samples(
@@ -213,7 +235,12 @@ class DataPointSeriesRepository(
             query = query.filter(self.model.recorded_at >= params.start_datetime)
 
         if params.end_datetime:
-            query = query.filter(self.model.recorded_at < params.end_datetime)
+            # If user didnt specify an hour, minute nor second, add 1 day to include the entire day
+            end_dt = params.end_datetime
+            # Check if the time part after the date is 00:00:00
+            if end_dt.time() == time.min:
+                end_dt = end_dt + timedelta(days=1)
+            query = query.filter(self.model.recorded_at < end_dt)
 
         # Calculate total count BEFORE applying cursor pagination
         # This gives us the total matching records (after all other filters)
@@ -708,6 +735,7 @@ class DataPointSeriesRepository(
 
         # Main query to get the actual values at those timestamps
         # Use DISTINCT ON to handle multiple records with identical timestamps
+        # Order by priorities to prefer higher priority sources
         results = (
             db_session.query(
                 self.model.series_type_definition_id,
@@ -717,6 +745,11 @@ class DataPointSeriesRepository(
                 DataSource.device_model,
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
+            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
+            .outerjoin(
+                DeviceTypePriority,
+                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+            )
             .join(
                 latest_subq,
                 (self.model.series_type_definition_id == latest_subq.c.series_type_definition_id)
@@ -724,9 +757,14 @@ class DataPointSeriesRepository(
             )
             .filter(DataSource.user_id == user_id)
             # DISTINCT ON (PostgreSQL) ensures exactly one result per series type
-            # Order by id desc as tiebreaker for deterministic selection
+            # Order by priorities (lower number = higher priority), then id desc as tiebreaker
             .distinct(self.model.series_type_definition_id)
-            .order_by(self.model.series_type_definition_id, self.model.id.desc())
+            .order_by(
+                self.model.series_type_definition_id,
+                ProviderPriority.priority.asc().nulls_last(),
+                DeviceTypePriority.priority.asc().nulls_last(),
+                self.model.id.desc(),
+            )
             .all()
         )
 
@@ -829,13 +867,22 @@ class DataPointSeriesRepository(
                 DataSource.device_model,
             )
             .join(DataSource, self.model.data_source_id == DataSource.id)
+            .outerjoin(ProviderPriority, DataSource.provider == ProviderPriority.provider)
+            .outerjoin(
+                DeviceTypePriority,
+                DataSource.device_type == cast(DeviceTypePriority.device_type, String),
+            )
             .filter(
                 DataSource.user_id == user_id,
                 self.model.series_type_definition_id == type_id,
                 self.model.recorded_at >= window_start,
                 self.model.recorded_at <= window_end,
             )
-            .order_by(self.model.recorded_at.desc())
+            .order_by(
+                self.model.recorded_at.desc(),
+                ProviderPriority.priority.asc().nulls_last(),
+                DeviceTypePriority.priority.asc().nulls_last(),
+            )
             .first()
         )
 

@@ -1,0 +1,250 @@
+# Refresh Token Architecture
+
+This document describes the refresh token implementation for Open Wearables, enabling secure token refresh for both SDK and Developer authentication flows.
+
+## Overview
+
+The system implements **opaque refresh tokens** stored in the database with **token rotation** for enhanced security. Refresh tokens allow clients to obtain new access tokens without re-authenticating.
+
+### Key Features
+
+- **Two token types**: SDK tokens (for mobile apps) and Developer tokens (for admin dashboard)
+- **Token rotation**: Each refresh invalidates the old token and issues a new one
+- **Multiple active tokens**: Users/developers can have multiple valid refresh tokens (e.g., different devices)
+- **Revoked tokens retained**: Old tokens are marked as revoked but kept in database for audit purposes
+
+## Database Schema
+
+### `REFRESH_TOKEN` Table
+
+```python
+class RefreshToken(BaseDbModel):
+    __tablename__ = "refresh_token"
+
+    id: Mapped[PrimaryKey[str_64]]       # rt-{32 hex chars}
+    token_type: Mapped[str_64]           # "sdk" | "developer"
+
+    # For SDK tokens
+    user_id: Mapped[Indexed[FKUser] | None]
+    app_id: Mapped[str_64 | None]
+
+    # For Developer tokens
+    developer_id: Mapped[Indexed[FKDeveloper] | None]
+
+    created_at: Mapped[datetime_tz]
+    last_used_at: Mapped[datetime_tz | None]  # Not used with rotation
+    revoked_at: Mapped[datetime_tz | None]
+```
+
+<Note>
+**Token Storage Strategy**
+
+The database stores ALL refresh tokens ever created. Revoked tokens have `revoked_at` set but are NOT deleted. This enables:
+- Security auditing (detect token reuse attacks)
+- Usage analytics
+- Debugging authentication issues
+
+Consider periodic cleanup of old revoked tokens in production.
+</Note>
+
+### Indexes
+
+- `idx_refresh_token_user_id` - Fast lookup by user
+- `idx_refresh_token_developer_id` - Fast lookup by developer
+
+### Foreign Keys
+
+- `user_id` → `user.id` (CASCADE on delete)
+- `developer_id` → `developer.id` (SET NULL on delete)
+
+## Token Format
+
+Refresh tokens use an opaque format with a recognizable prefix:
+
+```
+rt-{32 hex characters}
+```
+
+Example: `rt-a1b2c3d4e5f6789012345678901234ab`
+
+The `rt-` prefix allows easy identification and filtering in logs.
+
+## API Endpoints
+
+### POST `/api/v1/token/refresh`
+
+Exchange a refresh token for new access token. Implements **token rotation**.
+
+**Request:**
+```json
+{
+  "refresh_token": "rt-a1b2c3d4e5f6789012345678901234ab"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbG...",
+  "token_type": "bearer",
+  "refresh_token": "rt-NEW_TOKEN_DIFFERENT_FROM_INPUT"
+}
+```
+
+<Warning>
+**Token Rotation**
+
+The returned `refresh_token` is ALWAYS different from the input token. The old token is immediately revoked and cannot be used again. Clients MUST store and use the new refresh token for subsequent refreshes.
+</Warning>
+
+### POST `/api/v1/token/revoke`
+
+Explicitly revoke a refresh token (e.g., on logout).
+
+**Request:**
+```json
+{
+  "refresh_token": "rt-a1b2c3d4e5f6789012345678901234ab"
+}
+```
+
+**Response:** `204 No Content`
+
+## Token Issuance
+
+### Developer Login (`POST /api/v1/auth/login`)
+
+Returns both access token and refresh token:
+
+```python
+access_token = create_access_token(subject=str(developer.id))
+refresh_token = refresh_token_service.create_developer_refresh_token(db, developer.id)
+
+return TokenResponse(
+    access_token=access_token,
+    token_type="bearer",
+    refresh_token=refresh_token
+)
+```
+
+### SDK Token (`POST /api/v1/users/{user_id}/token`)
+
+Two authentication methods, both returning refresh tokens:
+
+| Method | Auth | Refresh Token |
+|--------|------|---------------|
+| App credentials | `app_id` + `app_secret` in body | Yes |
+| Admin auth | Bearer token (developer) | Yes |
+
+## Security Considerations
+
+### Token Rotation Benefits
+
+1. **Limits exposure window**: Stolen tokens become invalid after first use
+2. **Detects theft**: If legitimate user's refresh fails (token already used), indicates compromise
+3. **Automatic cleanup**: Old tokens are invalidated without manual intervention
+
+### Multiple Active Tokens
+
+The system allows multiple valid refresh tokens per user/developer:
+
+```python
+def get_by_user_id(self, db_session, user_id) -> list[RefreshToken]:
+    """Get all refresh tokens for a user."""
+    stmt = select(self.model).where(
+        self.model.user_id == user_id,
+        self.model.revoked_at.is_(None)
+    )
+    return list(db_session.execute(stmt).scalars().all())
+```
+
+This supports:
+- Multiple devices (phone, tablet, etc.)
+- Multiple app instances
+- Concurrent sessions
+
+### Revoke All Tokens
+
+For security incidents, all tokens can be revoked:
+
+```python
+# Revoke all for a user (e.g., password change, account compromise)
+refresh_token_repository.revoke_all_for_user(db, user_id)
+
+# Revoke all for a developer
+refresh_token_repository.revoke_all_for_developer(db, developer_id)
+```
+
+## Implementation Files
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `app/models/refresh_token.py` | SQLAlchemy model |
+| `app/repositories/refresh_token_repository.py` | Database operations |
+| `app/services/refresh_token_service.py` | Business logic |
+| `app/api/routes/v1/token.py` | API endpoints |
+| `app/schemas/token.py` | Pydantic schemas |
+| `migrations/.../add_refresh_token_table.py` | Database migration |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `app/api/routes/v1/auth.py` | Added refresh token to login response |
+| `app/api/routes/v1/sdk_token.py` | Added refresh token for app credentials |
+| `app/api/routes/v1/__init__.py` | Registered token router |
+| `app/models/__init__.py` | Export RefreshToken |
+| `app/repositories/__init__.py` | Export refresh_token_repository |
+| `app/services/__init__.py` | Export refresh_token_service |
+| `app/schemas/__init__.py` | Export token schemas |
+
+## Sequence Diagrams
+
+### SDK Token Flow with Refresh
+
+```
+Mobile App                    API                      Database
+    |                          |                          |
+    |-- POST /users/{id}/token |                          |
+    |   (app_id, app_secret)   |                          |
+    |                          |-- validate credentials --|
+    |                          |<-- application ---------|
+    |                          |-- create refresh token --|
+    |                          |<-- rt-xxx --------------|
+    |<-- access_token, rt-xxx -|                          |
+    |                          |                          |
+    |   ... token expires ...  |                          |
+    |                          |                          |
+    |-- POST /token/refresh ---|                          |
+    |   (rt-xxx)               |                          |
+    |                          |-- get valid token -------|
+    |                          |<-- token data ----------|
+    |                          |-- revoke old token -----|
+    |                          |-- create new token -----|
+    |                          |<-- rt-yyy --------------|
+    |<-- access_token, rt-yyy -|                          |
+```
+
+### Developer Login Flow
+
+```
+Dashboard                     API                      Database
+    |                          |                          |
+    |-- POST /auth/login ------|                          |
+    |   (email, password)      |                          |
+    |                          |-- find developer --------|
+    |                          |<-- developer ------------|
+    |                          |-- verify password        |
+    |                          |-- create refresh token --|
+    |                          |<-- rt-xxx --------------|
+    |<-- access_token, rt-xxx -|                          |
+```
+
+## Future Considerations
+
+1. **Token expiration**: Add `expires_at` field for refresh tokens (currently they never expire, only revoke)
+2. **Device tracking**: Add `device_id` or `user_agent` to track which device issued the token
+3. **Rate limiting**: Limit refresh attempts per token/user to prevent abuse
+4. **Cleanup job**: Periodic deletion of old revoked tokens to manage database size

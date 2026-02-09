@@ -1,0 +1,106 @@
+---
+title: "MCP Server"
+sidebarTitle: "Overview"
+description: "Connect AI assistants like Claude Desktop and Cursor to query wearable health data through natural language"
+---
+
+## What is MCP?
+
+MCP (Model Context Protocol) is a standard for connecting AI assistants to external data sources. The Open Wearables MCP server enables AI tools like **Claude Desktop** and **Cursor** to query your wearable health data through natural language conversations.
+
+<Note>
+  The MCP server is **decoupled** from the backend - it communicates via REST API using your API key. This means it can be deployed independently and uses existing, tested API endpoints.
+</Note>
+
+## Available Tools
+
+The MCP server provides the following tools for AI assistants:
+
+<CardGroup cols={2}>
+  <Card title="List Users" icon="users">
+    Discover users accessible via your API key. Optionally filter by name or email.
+  </Card>
+  <Card title="Activity Summary" icon="person-running">
+    Get daily activity data including steps, calories, heart rate, and intensity minutes.
+  </Card>
+  <Card title="Sleep Summary" icon="bed">
+    Get sleep data for a user within a date range.
+  </Card>
+  <Card title="Workout Events" icon="dumbbell">
+    Get workout and exercise sessions for a user within a date range.
+  </Card>
+</CardGroup>
+
+## Example Interactions
+
+### Discovering users
+
+```
+User: "Who can I query health data for?"
+Claude: [calls get_users()]
+Claude: "I found 2 users: John Doe and Jane Smith."
+```
+
+### Querying sleep data
+
+```
+User: "How much sleep did John get last week?"
+Claude: [calls get_users() to get John's user_id]
+Claude: [calls get_sleep_summary(user_id="uuid-1", start_date="2026-01-28", end_date="2026-02-04")]
+Claude: "John slept an average of 7 hours and 45 minutes over the last week.
+His longest sleep was 8h 15m on Monday, and shortest was 6h 30m on Thursday."
+```
+
+### Generic request (no time range specified)
+
+```
+User: "Fetch workouts for John"
+Claude: [calls get_users() to get John's user_id]
+Claude: [defaults to last 2 weeks: calls get_workout_events(user_id="uuid-1", start_date="2026-01-21", end_date="2026-02-04")]
+Claude: "Over the last 2 weeks, John completed 8 workouts..."
+```
+
+## Quick Start
+
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) package manager
+- Running Open Wearables backend (or access to a deployed instance)
+- Valid Open Wearables API key
+
+### 1. Install dependencies
+
+```bash
+cd mcp
+uv sync --group code-quality
+```
+
+### 2. Configure environment
+
+```bash
+cp config/.env.example config/.env
+```
+
+Edit `config/.env` with your settings:
+
+```bash
+OPEN_WEARABLES_API_URL=http://localhost:8000
+OPEN_WEARABLES_API_KEY=ow_your_api_key_here
+```
+
+### 3. Test the server
+
+```bash
+uv run start
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Claude Desktop Setup" icon="message-bot" href="/mcp-server/claude-desktop">
+    Configure the MCP server with Claude Desktop.
+  </Card>
+  <Card title="Cursor Setup" icon="code" href="/mcp-server/cursor">
+    Configure the MCP server with Cursor IDE.
+  </Card>
+</CardGroup>

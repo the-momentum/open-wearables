@@ -5,15 +5,18 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, User
-from app.repositories import EventRecordRepository
+from app.models import DataPointSeries, EventRecord, ProviderPriority, User
+from app.repositories import EventRecordRepository, ProviderPriorityRepository
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
     IntensityMinutesResult,
 )
+from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
+from app.schemas.device_type import infer_device_type_from_model
+from app.schemas.oauth import ProviderName
 from app.schemas.series_types import SeriesType
 from app.schemas.summaries import (
     ActivitySummary,
@@ -80,6 +83,68 @@ class SummariesService:
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
         self.user_repo = UserRepository(User)
 
+    def _filter_by_priority(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        results: list[dict] | list,  # type: ignore[type-arg]
+        date_key: str = "activity_date",
+    ) -> list[dict] | list:  # type: ignore[type-arg]
+        """Filter results to highest priority source per date.
+
+        Args:
+            results: List of dicts with date, source (provider), device_model
+            date_key: Key name for date field (activity_date or sleep_date)
+
+        Returns:
+            Filtered list with only highest priority entry per date
+        """
+        if not results:
+            return results
+
+        provider_order = ProviderPriorityRepository(ProviderPriority).get_priority_order(db_session)
+        device_type_order = DeviceTypePriorityRepository().get_priority_order(db_session)
+
+        # Group results by date
+        by_date: dict[date, list[dict]] = {}
+        for result in results:
+            dt = result[date_key]
+            if dt not in by_date:
+                by_date[dt] = []
+            by_date[dt].append(result)
+
+        # For each date, pick highest priority
+        filtered = []
+        for dt, entries in by_date.items():
+            if len(entries) == 1:
+                filtered.append(entries[0])
+                continue
+
+            # Sort by priority
+            def sort_key(entry: dict) -> tuple[int, int, str]:
+                # Parse provider
+                source = entry.get("source", "unknown")
+                try:
+                    provider = ProviderName(source)
+                except ValueError:
+                    provider = ProviderName.UNKNOWN
+
+                provider_priority = provider_order.get(provider, 99)
+
+                # Parse device type
+                device_model = entry.get("device_model")
+                device_type_priority = 99
+                if device_model:
+                    device_type = infer_device_type_from_model(device_model)
+                    device_type_priority = device_type_order.get(device_type, 99)
+
+                return (provider_priority, device_type_priority, device_model or "")
+
+            entries_sorted = sorted(entries, key=sort_key)
+            filtered.append(entries_sorted[0])
+
+        return filtered
+
     def _get_user_max_hr(self, db_session: DbSession, user_id: UUID, reference_date: datetime) -> int:
         """Calculate user's max HR based on age.
 
@@ -127,6 +192,9 @@ class SummariesService:
 
         # Get aggregated data from repository (now returns list of dicts)
         results = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, cursor, limit)
+
+        # Filter by priority to get best source per date
+        results = self._filter_by_priority(db_session, user_id, results, date_key="sleep_date")
 
         # Check if there's more data
         has_more = len(results) > limit
@@ -251,6 +319,9 @@ class SummariesService:
         # Get aggregated data from time-series repository
         results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
 
+        # Filter by priority to get best source per date
+        results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")
+
         # Get workout aggregates (elevation, distance, energy from workouts)
         workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
             db_session, user_id, start_date, end_date
@@ -331,14 +402,14 @@ class SummariesService:
             if has_more:
                 last = results[-1]
                 next_cursor = encode_activity_cursor(
-                    last["activity_date"], last["source"], last.get("device_model"), "next"
+                    last["activity_date"], last["source"] or "unknown", last.get("device_model"), "next"
                 )
 
             # Previous cursor if we had a cursor (not first page)
             if cursor:
                 first = results[0]
                 previous_cursor = encode_activity_cursor(
-                    first["activity_date"], first["source"], first.get("device_model"), "prev"
+                    first["activity_date"], first["source"] or "unknown", first.get("device_model"), "prev"
                 )
 
         # Transform to schema

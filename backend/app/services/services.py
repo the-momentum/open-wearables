@@ -100,10 +100,10 @@ class AppService[
         if originator := self.get(db_session, object_id, print_log=False, raise_404=raise_404):
             fetched = self.crud.update(db_session, originator, updater)
             self.logger.debug(f"Updated {self.name} with ID: {fetched.id}.")
-            return fetched  # type: ignore[return-value]
+            return fetched
 
     def delete(self, db_session: DbSession, object_id: UUID | str | int, raise_404: bool = False) -> ModelType | None:
         if originator := self.get(db_session, object_id, print_log=False, raise_404=raise_404):
             deleted = self.crud.delete(db_session, originator)
             self.logger.debug(f"Deleted {self.name} with ID: {deleted.id}.")
-            return deleted  # type: ignore[return-value]
+            return deleted

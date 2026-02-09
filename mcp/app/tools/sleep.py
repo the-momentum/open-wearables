@@ -1,11 +1,11 @@
 """MCP tools for querying sleep records."""
 
 import logging
-from datetime import datetime
 
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.utils import normalize_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -13,45 +13,24 @@ logger = logging.getLogger(__name__)
 sleep_router = FastMCP(name="Sleep Tools")
 
 
-def _format_duration(minutes: int | None) -> str | None:
-    """Format duration in minutes to human-readable string."""
-    if minutes is None:
-        return None
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours}h {mins}m"
-
-
-def _normalize_datetime(dt_str: str | None) -> str | None:
-    """Normalize datetime string to ISO 8601 format."""
-    if not dt_str:
-        return None
-    try:
-        # Parse and normalize to consistent ISO format
-        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        return dt.isoformat()
-    except (ValueError, AttributeError):
-        return dt_str
-
-
 @sleep_router.tool
-async def list_sleep(
+async def get_sleep_summary(
     user_id: str,
     start_date: str,
     end_date: str,
 ) -> dict:
     """
-    Get sleep records for a user within a date range.
+    Get daily sleep summaries for a user within a date range.
 
     This tool retrieves daily sleep summaries including start time, end time,
     duration, and sleep stages (if available from the wearable device).
 
     Args:
-        user_id: UUID of the user. Use list_users to discover available users.
+        user_id: UUID of the user. Use get_users to discover available users.
         start_date: Start date in YYYY-MM-DD format.
-                    Example: "2025-01-01"
+                    Example: "2026-01-01"
         end_date: End date in YYYY-MM-DD format.
-                  Example: "2025-01-07"
+                  Example: "2026-01-07"
 
     Returns:
         A dictionary containing:
@@ -63,14 +42,13 @@ async def list_sleep(
     Example response:
         {
             "user": {"id": "uuid-1", "first_name": "John", "last_name": "Doe"},
-            "period": {"start": "2025-01-05", "end": "2025-01-12"},
+            "period": {"start": "2026-01-05", "end": "2026-01-12"},
             "records": [
                 {
-                    "date": "2025-01-11",
-                    "start_datetime": "2025-01-11T23:15:00+00:00",
-                    "end_datetime": "2025-01-12T07:30:00+00:00",
+                    "date": "2026-01-11",
+                    "start_datetime": "2026-01-11T23:15:00+00:00",
+                    "end_datetime": "2026-01-12T07:30:00+00:00",
                     "duration_minutes": 495,
-                    "duration_formatted": "8h 15m",
                     "source": "whoop"
                 }
             ],
@@ -78,18 +56,17 @@ async def list_sleep(
                 "total_nights": 7,
                 "nights_with_data": 6,
                 "avg_duration_minutes": 465,
-                "avg_duration_formatted": "7h 45m",
                 "min_duration_minutes": 360,
                 "max_duration_minutes": 540
             }
         }
 
     Notes for LLMs:
-        - Call list_users first to get the user_id.
+        - Call get_users first to get the user_id.
         - Calculate dates based on user queries:
           "last week" → start_date = 7 days ago, end_date = today
-          "January 2025" → start_date = "2025-01-01", end_date = "2025-01-31"
-        - Duration is in minutes. Use duration_formatted for human-readable output.
+          "January 2026" → start_date = "2026-01-01", end_date = "2026-01-31"
+        - Duration is in minutes.
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
           spans midnight, so end_datetime is often the day after start_datetime.
@@ -129,10 +106,9 @@ async def list_sleep(
             records.append(
                 {
                     "date": str(record.get("date")),
-                    "start_datetime": _normalize_datetime(record.get("start_time")),
-                    "end_datetime": _normalize_datetime(record.get("end_time")),
+                    "start_datetime": normalize_datetime(record.get("start_time")),
+                    "end_datetime": normalize_datetime(record.get("end_time")),
                     "duration_minutes": duration,
-                    "duration_formatted": _format_duration(duration),
                     "source": source.get("provider") if isinstance(source, dict) else source,
                 }
             )
@@ -142,7 +118,6 @@ async def list_sleep(
             "total_nights": len(records),
             "nights_with_data": len(durations),
             "avg_duration_minutes": None,
-            "avg_duration_formatted": None,
             "min_duration_minutes": None,
             "max_duration_minutes": None,
         }
@@ -152,7 +127,6 @@ async def list_sleep(
             summary.update(
                 {
                     "avg_duration_minutes": round(avg),
-                    "avg_duration_formatted": _format_duration(round(avg)),
                     "min_duration_minutes": min(durations),
                     "max_duration_minutes": max(durations),
                 }
@@ -166,8 +140,8 @@ async def list_sleep(
         }
 
     except ValueError as e:
-        logger.error(f"API error in list_sleep: {e}")
+        logger.error(f"API error in get_sleep_summary: {e}")
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in list_sleep: {e}")
-        return {"error": f"Failed to fetch sleep records: {e}"}
+        logger.exception(f"Unexpected error in get_sleep_summary: {e}")
+        return {"error": f"Failed to fetch sleep summary: {e}"}

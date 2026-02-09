@@ -29,9 +29,9 @@ dependencies = [
 
 [dependency-groups]
 code-quality = [
-    "pre-commit>=4.3.0",
-    "ruff>=0.14.3",
-    "ty>=0.0.1a25",
+    "pre-commit>=4.5.1",
+    "ruff>=0.14.14",
+    "ty>=0.0.14",
 ]
 dev = [
     "pytest>=8.4.1",

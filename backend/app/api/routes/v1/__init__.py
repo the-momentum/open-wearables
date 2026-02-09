@@ -12,12 +12,14 @@ from .garmin_webhooks import router as garmin_webhooks_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
+from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
+from .token import router as token_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 
@@ -43,10 +45,14 @@ v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])
 v1_router.include_router(applications_router, tags=["applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
+v1_router.include_router(priorities_router, tags=["priorities"])
 
 # RFC Taxonomy Routes
 v1_router.include_router(summaries_router, tags=["Summaries"])
 v1_router.include_router(timeseries_router, tags=["Timeseries"])
 v1_router.include_router(events_router, tags=["Events"])
+
+# Token refresh endpoint
+v1_router.include_router(token_router, tags=["token"])
 
 __all__ = ["v1_router"]

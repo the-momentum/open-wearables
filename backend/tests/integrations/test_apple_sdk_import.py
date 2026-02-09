@@ -198,7 +198,7 @@ class TestAppleSDKImport:
                             {"type": "indoorWorkout", "unit": "bool", "value": True},
                         ],
                     }
-                ]
+                ],
             }
         }
 

@@ -20,6 +20,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      mcp: ${{ steps.filter.outputs.mcp }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -30,7 +31,8 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
-
+            mcp:
+              - 'mcp/**'
   backend-build:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -119,6 +121,51 @@ jobs:
       - name: Run tests with coverage
         working-directory: backend
         run: uv run pytest -v --cov=app --cov-report=xml --cov-report=term-missing
+
+  mcp-build:
+    needs: changes
+    if: ${{ needs.changes.outputs.mcp == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: mcp
+        run: uv sync
+
+  mcp-code-quality:
+    needs: changes
+    if: ${{ needs.changes.outputs.mcp == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: mcp
+        run: uv sync --group code-quality
+      - name: Run linter
+        working-directory: mcp
+        run: uv run ruff check
+      - name: Run formatter
+        working-directory: mcp
+        run: uv run ruff format --check
+      - name: Run type checker
+        working-directory: mcp
+        run: uv run ty check
 
   frontend-setup:
     needs: changes

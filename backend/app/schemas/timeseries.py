@@ -74,11 +74,10 @@ class TimeSeriesSampleBase(BaseModel):
 
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):
-    """Generic create payload for data point series."""
-
     id: UUID
     external_id: str | None = None
-    manufacturer: str | None = None
+    provider: str | None = None
+    user_connection_id: UUID | None = None
     software_version: str | None = None
 
 

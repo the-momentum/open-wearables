@@ -33,7 +33,7 @@ from app.models import (
     UserConnection,
     WorkoutDetails,
 )
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.oauth import ConnectionStatus, ProviderName
 from app.utils.security import get_password_hash
 
 
@@ -319,10 +319,11 @@ class DataSourceFactory(BaseFactory):
         model = DataSource
 
     id = LazyFunction(uuid4)
+    provider = ProviderName.APPLE
     device_model = LazyFunction(lambda: f"TestDevice-{uuid4().hex[:8]}")
     software_version = "1.0.0"
-    manufacturer = "TestManufacturer"
-    source = "test_source"
+    source = "apple_health_sdk"
+    device_type = "watch"
 
     @classmethod
     def _create(
@@ -331,19 +332,20 @@ class DataSourceFactory(BaseFactory):
         *args: Any,
         **kwargs: Any,
     ) -> DataSource:
-        """Override create to handle user relationship."""
         user = kwargs.pop("user", None)
-        # Remove any stale user_id
         kwargs.pop("user_id", None)
 
         if user is None:
             user = UserFactory()
         kwargs["user_id"] = user.id
 
-        # Handle legacy source parameter (ProviderName enum -> str)
-        source = kwargs.get("source")
-        if source is not None and hasattr(source, "value"):
-            kwargs["source"] = source.value
+        # Handle provider parameter (ProviderName enum -> enum value)
+        provider = kwargs.get("provider")
+        if provider is not None and isinstance(provider, str):
+            try:
+                kwargs["provider"] = ProviderName(provider)
+            except ValueError:
+                kwargs["provider"] = ProviderName.UNKNOWN
 
         return super()._create(model_class, *args, **kwargs)
 

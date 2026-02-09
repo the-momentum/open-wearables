@@ -335,7 +335,7 @@ export function ActivitySection({
     {
       start_date: startDate,
       end_date: endDate,
-      limit: 100,
+      limit: dateRange,
     }
   );
 

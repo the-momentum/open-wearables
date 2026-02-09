@@ -2,33 +2,49 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.oauth import ProviderName
+
 
 class DataSourceBase(BaseModel):
-    """Shared fields for data source mappings."""
-
     user_id: UUID
+    provider: ProviderName
+    user_connection_id: UUID | None = None
     device_model: str | None = None
     software_version: str | None = None
-    manufacturer: str | None = None
     source: str | None = None
+    device_type: str | None = None
+    original_source_name: str | None = None
 
 
 class DataSourceCreate(DataSourceBase):
-    """Payload used when persisting a new data source."""
-
     id: UUID
 
 
 class DataSourceUpdate(BaseModel):
-    """Payload used when adjusting an existing data source."""
-
+    provider: ProviderName | None = None
+    user_connection_id: UUID | None = None
     device_model: str | None = None
     software_version: str | None = None
-    manufacturer: str | None = None
     source: str | None = None
+    device_type: str | None = None
+    original_source_name: str | None = None
 
 
-class DataSourceResponse(DataSourceBase):
-    """Representation returned via APIs."""
-
+class DataSourceResponse(BaseModel):
     id: UUID
+    user_id: UUID
+    provider: ProviderName
+    user_connection_id: UUID | None = None
+    device_model: str | None = None
+    software_version: str | None = None
+    source: str | None = None
+    device_type: str | None = None
+    original_source_name: str | None = None
+    display_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DataSourceListResponse(BaseModel):
+    items: list[DataSourceResponse]
+    total: int

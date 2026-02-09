@@ -9,14 +9,20 @@ from .apple.auto_export.json_schemas import (
 from .apple.auto_export.json_schemas import (
     WorkoutJSON as AEWorkoutJSON,
 )
-from .apple.healthkit.record_import import (
-    RecordJSON as HKRecordJSON,
+from .apple.healthkit.sync_request import (
+    MetricRecord as HKMetricRecordJSON,
 )
-from .apple.healthkit.workout_import import (
-    WorkoutJSON as HKWorkoutJSON,
+from .apple.healthkit.sync_request import (
+    SleepRecord as HKSleepRecordJSON,
 )
-from .apple.healthkit.workout_import import (
-    WorkoutStatisticJSON as HKWorkoutStatisticJSON,
+from .apple.healthkit.sync_request import (
+    SyncRequest as AppleHealthDataRequest,
+)
+from .apple.healthkit.sync_request import (
+    Workout as HKWorkoutJSON,
+)
+from .apple.healthkit.sync_request import (
+    WorkoutStatistic as HKWorkoutStatisticJSON,
 )
 from .application import (
     ApplicationCreate,
@@ -46,6 +52,14 @@ from .developer import (
     DeveloperRead,
     DeveloperUpdate,
     DeveloperUpdateInternal,
+)
+from .device_type import DeviceType
+from .device_type_priority import (
+    DeviceTypePriorityBulkUpdate,
+    DeviceTypePriorityCreate,
+    DeviceTypePriorityListResponse,
+    DeviceTypePriorityResponse,
+    DeviceTypePriorityUpdate,
 )
 from .error_codes import ErrorCode
 from .event_record import (
@@ -112,6 +126,13 @@ from .personal_record import (
 from .polar.exercise_import import (
     ExerciseJSON as PolarExerciseJSON,
 )
+from .provider_priority import (
+    ProviderPriorityBulkUpdate,
+    ProviderPriorityCreate,
+    ProviderPriorityListResponse,
+    ProviderPriorityResponse,
+    ProviderPriorityUpdate,
+)
 from .provider_setting import (
     BulkProviderSettingsUpdate,
     ProviderSettingRead,
@@ -160,6 +181,10 @@ from .timeseries import (
     TimeSeriesSampleCreate,
     TimeSeriesSampleResponse,
     TimeSeriesSampleUpdate,
+)
+from .token import (
+    RefreshTokenRequest,
+    TokenResponse,
 )
 from .user import (
     UserCreate,
@@ -245,9 +270,11 @@ __all__ = [
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
-    "HKRecordJSON",
+    "HKMetricRecordJSON",
+    "HKSleepRecordJSON",
     "HKWorkoutJSON",
     "HKWorkoutStatisticJSON",
+    "AppleHealthDataRequest",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",
@@ -303,4 +330,20 @@ __all__ = [
     "RecoverySummary",
     "SleepStagesSummary",
     "SleepSummary",
+    # Priority schemas
+    "ProviderPriorityCreate",
+    "ProviderPriorityUpdate",
+    "ProviderPriorityResponse",
+    "ProviderPriorityListResponse",
+    "ProviderPriorityBulkUpdate",
+    "DeviceTypePriorityCreate",
+    "DeviceTypePriorityUpdate",
+    "DeviceTypePriorityResponse",
+    "DeviceTypePriorityListResponse",
+    "DeviceTypePriorityBulkUpdate",
+    # Device type
+    "DeviceType",
+    # Token schemas
+    "TokenResponse",
+    "RefreshTokenRequest",
 ]

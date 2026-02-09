@@ -50,24 +50,14 @@ class EventRecordBase(BaseModel):
 
 
 class EventRecordCreate(EventRecordBase):
-    """Schema for creating an event record entry."""
-
     id: UUID
-    external_id: str | None = Field(
-        None,
-        description="Provider-specific record identifier (e.g., Suunto workoutId) for deduplication.",
-    )
-    source: str | None = Field(
-        None,
-        description="Source name (e.g., 'suunto_api', 'garmin_connect') for data source tracking.",
-    )
+    external_id: str | None = None
+    source: str | None = None
     user_id: UUID
-    data_source_id: UUID | None = Field(
-        None,
-        description="Existing data source identifier if the caller has already created one.",
-    )
-    manufacturer: str | None = Field(None, description="Device manufacturer")
-    software_version: str | None = Field(None, description="Device/app software version")
+    provider: str | None = None
+    user_connection_id: UUID | None = None
+    data_source_id: UUID | None = None
+    software_version: str | None = None
 
 
 class EventRecordUpdate(EventRecordBase):

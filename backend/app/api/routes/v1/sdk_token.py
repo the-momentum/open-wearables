@@ -3,10 +3,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, HTTPException, status
 
+from app.config import settings
 from app.database import DbSession
-from app.schemas.oauth import Token
 from app.schemas.sdk import SDKTokenRequest
-from app.services import application_service, create_sdk_user_token
+from app.schemas.token import TokenResponse
+from app.services import application_service, create_sdk_user_token, refresh_token_service
 from app.utils.auth import DeveloperOptionalDep
 
 router = APIRouter()
@@ -18,7 +19,7 @@ async def create_user_token(
     db: DbSession,
     payload: Annotated[SDKTokenRequest | None, Body()] = None,
     developer: DeveloperOptionalDep = None,
-) -> Token:
+) -> TokenResponse:
     """Exchange app credentials or admin auth for user-scoped access token.
 
     Supports two authentication methods:
@@ -26,9 +27,10 @@ async def create_user_token(
     2. Admin authentication: Authenticate as a developer/admin via Bearer token
        (app_id and app_secret can be omitted)
 
+    Both methods return access_token with refresh_token.
+
     Returns a JWT token scoped to SDK endpoints only.
-    - App-generated tokens: valid for 60 minutes
-    - Admin-generated tokens: infinite (no expiration)
+    Tokens expire after configured time (default: 60 minutes).
 
     Args:
         user_id: OpenWearables User ID (UUID)
@@ -37,7 +39,7 @@ async def create_user_token(
         developer: Optional authenticated developer (from Bearer token)
 
     Returns:
-        Token containing access_token and token_type
+        TokenResponse containing access_token, token_type, and refresh_token
 
     Raises:
         401: If app credentials are invalid or admin auth is missing
@@ -65,7 +67,13 @@ async def create_user_token(
     access_token = create_sdk_user_token(
         app_id=app_id,
         user_id=str(user_id),
-        infinite=True,
     )
 
-    return Token(access_token=access_token, token_type="bearer")
+    refresh_token = refresh_token_service.create_sdk_refresh_token(db, user_id, app_id)
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        expires_in=settings.access_token_expire_minutes * 60,
+    )

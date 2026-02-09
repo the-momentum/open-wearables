@@ -12,7 +12,7 @@ repos:
     hooks:
       - id: ty
         name: ty check
-        entry: sh -c 'cd backend && .venv/bin/ty check .'
+        entry: sh -c 'cd backend && uv run ty check .'
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false

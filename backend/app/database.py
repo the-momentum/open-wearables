@@ -22,6 +22,7 @@ from app.config import settings
 from app.mappings import email, str_10, str_32, str_50, str_64, str_100, str_255
 from app.schemas.invitation import InvitationStatus
 from app.schemas.oauth import ConnectionStatus, ProviderName
+from app.schemas.token_type import TokenType
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(
@@ -44,7 +45,7 @@ def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
 
 
 class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
-    @declared_attr
+    @declared_attr.directive
     def __tablename__(self) -> str:
         return self.__name__.lower()
 
@@ -70,6 +71,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         ConnectionStatus: String(64),
         InvitationStatus: String(50),
         ProviderName: String(50),
+        TokenType: String(64),
     }
 
 

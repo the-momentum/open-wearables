@@ -134,7 +134,9 @@ const ACTIVITY_FIELD_DEFINITIONS: ActivityFieldDefinition[] = [
     key: 'elevation',
     label: 'Elevation',
     getValue: (s) =>
-      s.elevation_meters !== null ? `${Math.round(s.elevation_meters)} m` : null,
+      s.elevation_meters !== null
+        ? `${Math.round(s.elevation_meters)} m`
+        : null,
   },
   {
     key: 'totalCalories',
@@ -154,19 +156,23 @@ const ACTIVITY_FIELD_DEFINITIONS: ActivityFieldDefinition[] = [
     key: 'maxHr',
     label: 'Max Heart Rate',
     getValue: (s) =>
-      s.heart_rate?.max_bpm !== null ? `${s.heart_rate.max_bpm} bpm` : null,
+      s.heart_rate !== null && s.heart_rate.max_bpm !== null
+        ? `${s.heart_rate.max_bpm} bpm`
+        : null,
   },
   {
     key: 'minHr',
     label: 'Min Heart Rate',
     getValue: (s) =>
-      s.heart_rate?.min_bpm !== null ? `${s.heart_rate.min_bpm} bpm` : null,
+      s.heart_rate !== null && s.heart_rate.min_bpm !== null
+        ? `${s.heart_rate.min_bpm} bpm`
+        : null,
   },
   {
     key: 'lightActivity',
     label: 'Light Activity',
     getValue: (s) =>
-      s.intensity_minutes?.light !== null
+      s.intensity_minutes !== null && s.intensity_minutes.light !== null
         ? formatMinutes(s.intensity_minutes.light)
         : null,
   },
@@ -174,7 +180,7 @@ const ACTIVITY_FIELD_DEFINITIONS: ActivityFieldDefinition[] = [
     key: 'moderateActivity',
     label: 'Moderate Activity',
     getValue: (s) =>
-      s.intensity_minutes?.moderate !== null
+      s.intensity_minutes !== null && s.intensity_minutes.moderate !== null
         ? formatMinutes(s.intensity_minutes.moderate)
         : null,
   },
@@ -182,7 +188,7 @@ const ACTIVITY_FIELD_DEFINITIONS: ActivityFieldDefinition[] = [
     key: 'vigorousActivity',
     label: 'Vigorous Activity',
     getValue: (s) =>
-      s.intensity_minutes?.vigorous !== null
+      s.intensity_minutes !== null && s.intensity_minutes.vigorous !== null
         ? formatMinutes(s.intensity_minutes.vigorous)
         : null,
   },
