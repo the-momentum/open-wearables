@@ -140,12 +140,60 @@ class AppleMetricType(StrEnum):
 
 
 class AppleCategoryType(StrEnum):
-    """Apple HealthKit category type identifiers (HKCategoryTypeIdentifier...).
+    """
+    Apple HealthKit category type identifiers (HKCategoryTypeIdentifier...).
 
     These represent categorical health data like sleep analysis.
     """
 
     SLEEP_ANALYSIS = "HKCategoryTypeIdentifierSleepAnalysis"
+
+    """
+    EVENTS
+    Values: 0 = nonApplicable, 1 = depends on event type
+    """
+    HIGH_HEART_RATE_EVENT = "HKCategoryTypeIdentifierHighHeartRateEvent"
+    LOW_HEART_RATE_EVENT = "HKCategoryTypeIdentifierLowHeartRateEvent"
+    IRREGULAR_HEART_RHYTHM_EVENT = "HKCategoryTypeIdentifierIrregularHeartRhythmEvent"
+    HANDWASHING_EVENT = "HKCategoryTypeIdentifierHandwashingEvent"
+    APPLE_WALKING_STEADINESS_EVENT = "HKCategoryTypeIdentifierAppleWalkingSteadinessEvent"
+    LOW_CARDIO_FITNESS_EVENT = "HKCategoryTypeIdentifierLowCardioFitnessEvent"
+    ENVIRONMENTAL_AUDIO_EXPOSURE_EVENT = "HKCategoryTypeIdentifierEnvironmentalAudioExposureEvent"
+    HEADPHONE_AUDIO_EXPOSURE_EVENT = "HKCategoryTypeIdentifierHeadphoneAudioExposureEvent"
+
+    """
+    TEST RESULTS
+    Values: 1 = negative, 2 = positive, 3 = indeterminate
+    """
+    PREGNANCY_TEST_RESULT = "HKCategoryTypeIdentifierPregnancyTestResult"
+    PROGESTERONE_TEST_RESULT = "HKCategoryTypeIdentifierProgesteroneTestResult"
+
+    """
+    CONTRACEPTIVE METHODS
+    Values: 1 = unspecified, 2 = implant, 3 = injection,
+    4 = intrauterineDevice, 5 = intravaginalRing, 6 = oral, 7 = patch
+    """
+    CONTRACEPTIVE_METHODS = "HKCategoryTypeIdentifierContraceptive"
+
+    """
+    LAB RESULTS
+    Values: 1 = unspecified, 2 = positive, 3 = negative
+    """
+    LAB_RESULTS = "HKCategoryTypeIdentifierLabResult"
+
+    """
+    LOSS OF SMELL OR TASTE   
+    Values: 0 = present, 1 = notPresent
+    """
+    LOSS_OF_SMELL = "HKCategoryTypeIdentifierLossOfSmell"
+    LOSS_OF_TASTE = "HKCategoryTypeIdentifierLossOfTaste"
+
+    """
+    APPETITE CHANGE   
+    Values: 0 = unspecified, 1 = noChange, 2 = decreased, 3 = increased
+    """
+    APPETITE_CHANGE = "HKCategoryTypeIdentifierAppetiteChange"
+
 
 
 METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
@@ -285,7 +333,8 @@ def get_series_type_from_metric_type(metric_type: AppleMetricType | str) -> Seri
     Map a HealthKit metric type identifier to the unified SeriesType enum.
     Returns None when the metric type is not supported.
     """
-    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # type: ignore[arg-type]
+    return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)
+
 
 
 def get_series_type_from_healthion_type(healthion_type: str) -> SeriesType | None:
