@@ -58,20 +58,16 @@ WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD: dict[str, str] = {
     # Distance & Movement
     "distance": "distance",
     "stepCount": "steps_count",
-    
     # Heart Rate
     "minHeartRate": "heart_rate_min",
     "averageHeartRate": "heart_rate_avg",
     "maxHeartRate": "heart_rate_max",
-    
     # Running Metrics
     "averageRunningPower": "average_watts",
     "averageRunningSpeed": "average_speed",
-    
     # Elevation
     "elevationAscended": "total_elevation_gain",
     # elevationDescended: not stored
-    
     # Speed
     "averageSpeed": "average_speed",
     "maxSpeed": "max_speed",
@@ -83,20 +79,16 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "averageRunningStrideLength": SeriesType.running_stride_length,
     "averageVerticalOscillation": SeriesType.running_vertical_oscillation,
     "averageGroundContactTime": SeriesType.running_ground_contact_time,
-    
     # Other Metrics
     "averageMETs": SeriesType.physical_effort,
     "lapLength": SeriesType.distance_other,
     "swimmingLocationType": SeriesType.distance_other,
     "indoorWorkout": SeriesType.physical_effort,
-    
     # Weather
     "weatherTemperature": SeriesType.water_temperature,
     "weatherHumidity": SeriesType.environmental_sound_reduction,
-    
     # Swimming specific
     "swimmingStrokeCount": SeriesType.swimming_stroke_count,
-    
     # Legacy mappings
     "totalEnergyBurned": SeriesType.energy,
     "totalCalories": SeriesType.energy,
@@ -112,11 +104,10 @@ def get_detail_field_from_workout_statistic_type(workout_statistic_type: str) ->
     """
     return WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD.get(workout_statistic_type)
 
+
 def get_series_type_from_workout_statistic_type(workout_statistic_type: str) -> SeriesType | None:
     """
     Map a HealthKit metric type identifier to the unified SeriesType enum.
     Returns None when the metric type is not supported.
     """
     return WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE.get(workout_statistic_type)
-
-
