@@ -71,6 +71,7 @@ class SeriesType(str, Enum):
     distance_cycling = "distance_cycling"
     distance_swimming = "distance_swimming"
     distance_downhill_snow_sports = "distance_downhill_snow_sports"
+    distance_other = "distance_other"
 
     # =========================================================================
     # ACTIVITY - Walking Metrics (IDs 120-139)

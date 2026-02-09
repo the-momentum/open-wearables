@@ -48,6 +48,11 @@ class AppleMetricType(StrEnum):
     DISTANCE_CYCLING = "HKQuantityTypeIdentifierDistanceCycling"
     DISTANCE_SWIMMING = "HKQuantityTypeIdentifierDistanceSwimming"
     DISTANCE_DOWNHILL_SNOW_SPORTS = "HKQuantityTypeIdentifierDistanceDownhillSnowSports"
+    DISTANCE_PADDLE_SPORTS = "HKQuantityTypeIdentifierDistancePaddleSports"
+    DISTANCE_ROWING = "HKQuantityTypeIdentifierDistanceRowing"
+    DISTANCE_SKATING_SPORTS = "HKQuantityTypeIdentifierDistanceSkatingSports"
+    DISTANCE_WHEELCHAIR = "HKQuantityTypeIdentifierDistanceWheelchair"
+    DISTANCE_CROSS_COUNTRY_SKIING = "HKQuantityTypeIdentifierDistanceCrossCountrySkiing"
 
     # Walking Metrics
     WALKING_STEP_LENGTH = "HKQuantityTypeIdentifierWalkingStepLength"
@@ -71,6 +76,67 @@ class AppleMetricType(StrEnum):
     # Environmental
     ENVIRONMENTAL_AUDIO_EXPOSURE = "HKQuantityTypeIdentifierEnvironmentalAudioExposure"
     HEADPHONE_AUDIO_EXPOSURE = "HKQuantityTypeIdentifierHeadphoneAudioExposure"
+    ENVIRONMENTAL_SOUND_REDUCTION = "HKQuantityTypeIdentifierEnvironmentalSoundReduction"
+    TIME_IN_DAYLIGHT = "HKQuantityTypeIdentifierTimeInDaylight"
+
+    # Workout Metrics
+    PHYSICAL_EFFORT = "HKQuantityTypeIdentifierPhysicalEffort"
+    WORKOUT_EFFORT_SCORE = "HKQuantityTypeIdentifierWorkoutEffortScore"
+    ESTIMATED_WORKOUT_EFFORT_SCORE = "HKQuantityTypeIdentifierEstimatedWorkoutEffortScore"
+
+    # Apple-specific Activity Metrics
+    APPLE_MOVE_TIME = "HKQuantityTypeIdentifierAppleMoveTime"
+    APPLE_SLEEPING_WRIST_TEMPERATURE = "HKQuantityTypeIdentifierAppleSleepingWristTemperature"
+
+    # Blood & Respiratory - Extended
+    BLOOD_ALCOHOL_CONTENT = "HKQuantityTypeIdentifierBloodAlcoholContent"
+    PERIPHERAL_PERFUSION_INDEX = "HKQuantityTypeIdentifierPeripheralPerfusionIndex"
+    FORCED_VITAL_CAPACITY = "HKQuantityTypeIdentifierForcedVitalCapacity"
+    FORCED_EXPIRATORY_VOLUME_1 = "HKQuantityTypeIdentifierForcedExpiratoryVolume1"
+    PEAK_EXPIRATORY_FLOW_RATE = "HKQuantityTypeIdentifierPeakExpiratoryFlowRate"
+    BASAL_BODY_TEMPERATURE = "HKQuantityTypeIdentifierBasalBodyTemperature"
+    SLEEPING_BREATHING_DISTURBANCES = "HKQuantityTypeIdentifierAppleSleepingBreathingDisturbances"
+
+    # Body Metrics - Extended
+    WAIST_CIRCUMFERENCE = "HKQuantityTypeIdentifierWaistCircumference"
+    INSULIN_DELIVERY = "HKQuantityTypeIdentifierInsulinDelivery"
+
+    # Behavioral
+    NUMBER_OF_TIMES_FALLEN = "HKQuantityTypeIdentifierNumberOfTimesFallen"
+    INHALER_USAGE = "HKQuantityTypeIdentifierInhalerUsage"
+    NUMBER_OF_ALCOHOLIC_BEVERAGES = "HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"
+
+    # Electrodermal
+    ELECTRODERMAL_ACTIVITY = "HKQuantityTypeIdentifierElectrodermalActivity"
+
+    # Ultraviolet Exposure
+    UV_EXPOSURE = "HKQuantityTypeIdentifierUVExposure"
+
+    # Wheelchair Metrics
+    PUSH_COUNT = "HKQuantityTypeIdentifierPushCount"
+
+    # Atrial Fibrillation
+    ATRIAL_FIBRILLATION_BURDEN = "HKQuantityTypeIdentifierAtrialFibrillationBurden"
+
+    # Water/Diving Metrics
+    UNDERWATER_DEPTH = "HKQuantityTypeIdentifierUnderwaterDepth"
+    WATER_TEMPERATURE = "HKQuantityTypeIdentifierWaterTemperature"
+
+    # Cycling Metrics
+    CYCLING_CADENCE = "HKQuantityTypeIdentifierCyclingCadence"
+    CYCLING_FUNCTIONAL_THRESHOLD_POWER = "HKQuantityTypeIdentifierCyclingFunctionalThresholdPower"
+    CYCLING_POWER = "HKQuantityTypeIdentifierCyclingPower"
+    CYCLING_SPEED = "HKQuantityTypeIdentifierCyclingSpeed"
+
+    # Winter/Snow Sports
+    CROSS_COUNTRY_SKIING_SPEED = "HKQuantityTypeIdentifierCrossCountrySkiingSpeed"
+
+    # Water Sports
+    PADDLE_SPORTS_SPEED = "HKQuantityTypeIdentifierPaddleSportsSpeed"
+    ROWING_SPEED = "HKQuantityTypeIdentifierRowingSpeed"
+
+    # Nike Fuel (deprecated but included for backwards compatibility)
+    NIKE_FUEL = "HKQuantityTypeIdentifierNikeFuel"
 
 
 class AppleCategoryType(StrEnum):
@@ -95,6 +161,14 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
     AppleMetricType.BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
     AppleMetricType.BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
     AppleMetricType.RESPIRATORY_RATE: SeriesType.respiratory_rate,
+    AppleMetricType.BASAL_BODY_TEMPERATURE: SeriesType.body_temperature,
+    AppleMetricType.SLEEPING_BREATHING_DISTURBANCES: SeriesType.sleeping_breathing_disturbances,
+    # Blood & Respiratory - Extended (no corresponding metric type)
+    # BLOOD_ALCOHOL_CONTENT
+    # PERIPHERAL_PERFUSION_INDEX
+    # FORCED_VITAL_CAPACITY
+    # FORCED_EXPIRATORY_VOLUME_1
+    # PEAK_EXPIRATORY_FLOW_RATE
     # Body Composition
     AppleMetricType.HEIGHT: SeriesType.height,
     AppleMetricType.BODY_MASS: SeriesType.weight,
@@ -102,6 +176,8 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
     AppleMetricType.BODY_MASS_INDEX: SeriesType.body_mass_index,
     AppleMetricType.LEAN_BODY_MASS: SeriesType.lean_body_mass,
     AppleMetricType.BODY_TEMPERATURE: SeriesType.body_temperature,
+    # Body Composition - Extended (no corresponding metric type)
+    # WAIST_CIRCUMFERENCE
     # Fitness Metrics
     AppleMetricType.VO2_MAX: SeriesType.vo2_max,
     AppleMetricType.SIX_MINUTE_WALK_TEST_DISTANCE: SeriesType.six_minute_walk_test_distance,
@@ -112,11 +188,19 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
     AppleMetricType.APPLE_STAND_TIME: SeriesType.stand_time,
     AppleMetricType.APPLE_EXERCISE_TIME: SeriesType.exercise_time,
     AppleMetricType.FLIGHTS_CLIMBED: SeriesType.flights_climbed,
+    AppleMetricType.PHYSICAL_EFFORT: SeriesType.physical_effort,
+    AppleMetricType.APPLE_MOVE_TIME: SeriesType.exercise_time,
     # Activity - Distance
     AppleMetricType.DISTANCE_WALKING_RUNNING: SeriesType.distance_walking_running,
     AppleMetricType.DISTANCE_CYCLING: SeriesType.distance_cycling,
     AppleMetricType.DISTANCE_SWIMMING: SeriesType.distance_swimming,
     AppleMetricType.DISTANCE_DOWNHILL_SNOW_SPORTS: SeriesType.distance_downhill_snow_sports,
+    # Activity - Distance - Extended (no corresponding metric type)
+    AppleMetricType.DISTANCE_WHEELCHAIR: SeriesType.distance_other,
+    AppleMetricType.DISTANCE_CROSS_COUNTRY_SKIING: SeriesType.distance_other,
+    AppleMetricType.DISTANCE_PADDLE_SPORTS: SeriesType.distance_other,
+    AppleMetricType.DISTANCE_ROWING: SeriesType.distance_other,
+    AppleMetricType.DISTANCE_SKATING_SPORTS: SeriesType.distance_other,
     # Walking Metrics
     AppleMetricType.WALKING_STEP_LENGTH: SeriesType.walking_step_length,
     AppleMetricType.WALKING_SPEED: SeriesType.walking_speed,
@@ -133,9 +217,46 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
     AppleMetricType.RUNNING_STRIDE_LENGTH: SeriesType.running_stride_length,
     # Swimming Metrics
     AppleMetricType.SWIMMING_STROKE_COUNT: SeriesType.swimming_stroke_count,
+    # Cycling Metrics
+    AppleMetricType.CYCLING_CADENCE: SeriesType.cadence,
+    AppleMetricType.CYCLING_POWER: SeriesType.power,
+    AppleMetricType.CYCLING_FUNCTIONAL_THRESHOLD_POWER: SeriesType.power,
+    # Cycling Metrics - Extended (no corresponding metric type)
+    # CYCLING_SPEED
     # Environmental
     AppleMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: SeriesType.environmental_audio_exposure,
     AppleMetricType.HEADPHONE_AUDIO_EXPOSURE: SeriesType.headphone_audio_exposure,
+    AppleMetricType.ENVIRONMENTAL_SOUND_REDUCTION: SeriesType.environmental_sound_reduction,
+    AppleMetricType.TIME_IN_DAYLIGHT: SeriesType.time_in_daylight,
+    AppleMetricType.WATER_TEMPERATURE: SeriesType.water_temperature,
+    # Environmental - Extended (no corresponding metric type)
+    # UNDERWATER_DEPTH
+    # Behavioral (no corresponding metric type)
+    # NUMBER_OF_TIMES_FALLEN
+    # INHALER_USAGE
+    # NUMBER_OF_ALCOHOLIC_BEVERAGES
+    # Electrodermal (no corresponding metric type)
+    # ELECTRODERMAL_ACTIVITY
+    # Ultraviolet Exposure (no corresponding metric type)
+    # UV_EXPOSURE
+    # Wheelchair Metrics (no corresponding metric type)
+    # PUSH_COUNT
+    # Apple-specific Temperature
+    AppleMetricType.APPLE_SLEEPING_WRIST_TEMPERATURE: SeriesType.body_temperature,
+    # Atrial Fibrillation (no corresponding metric type)
+    # ATRIAL_FIBRILLATION_BURDEN
+    # Workout Metrics (no corresponding metric type)
+    # WORKOUT_EFFORT_SCORE
+    # ESTIMATED_WORKOUT_EFFORT_SCORE
+    # Winter/Snow Sports (no corresponding metric type)
+    # CROSS_COUNTRY_SKIING_SPEED
+    # Other Sports (no corresponding metric type)
+    # PADDLE_SPORTS_SPEED
+    # ROWING_SPEED
+    # Nike Fuel (deprecated, no corresponding metric type)
+    # NIKE_FUEL
+    # Insulin & Other (no corresponding metric type)
+    # INSULIN_DELIVERY
 }
 
 HEALTHION_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
