@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Iterable
@@ -13,6 +14,8 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+
+logger = logging.getLogger(__name__)
 
 
 class GarminWorkouts(BaseWorkoutsTemplate):
@@ -81,9 +84,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                     all_activities.extend(activities)
             except Exception as e:
                 # Log error but continue with other chunks
-                import logging
-
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}"
                 )
 

@@ -21,7 +21,7 @@ from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.garmin.backfill import GarminBackfillService
+from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 from app.utils.structured_logging import log_structured
 from celery import shared_task
 

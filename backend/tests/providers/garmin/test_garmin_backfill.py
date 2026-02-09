@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.services.providers.garmin.backfill import GarminBackfillService
+from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 
 
 class TestGarminBackfillServiceUnit:
