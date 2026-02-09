@@ -102,7 +102,10 @@ function WorkoutRow({
               {workoutDate ? format(new Date(workoutDate), 'MMM d, yyyy') : '-'}
             </p>
             {workout.source?.provider && (
-              <SourceBadge provider={workout.source.provider} className="mt-1" />
+              <SourceBadge
+                provider={workout.source.provider}
+                className="mt-1"
+              />
             )}
           </div>
 

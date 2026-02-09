@@ -3,13 +3,20 @@ interface SourceBadgeProps {
   className?: string;
 }
 
-const PROVIDER_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+const PROVIDER_STYLES: Record<
+  string,
+  { bg: string; text: string; label: string }
+> = {
   garmin: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Garmin' },
   fitbit: { bg: 'bg-teal-500/20', text: 'text-teal-400', label: 'Fitbit' },
   oura: { bg: 'bg-violet-500/20', text: 'text-violet-400', label: 'Oura' },
   whoop: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'WHOOP' },
   strava: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Strava' },
-  'google-fit': { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Google Fit' },
+  'google-fit': {
+    bg: 'bg-green-500/20',
+    text: 'text-green-400',
+    label: 'Google Fit',
+  },
   withings: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Withings' },
 };
 
