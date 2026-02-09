@@ -90,7 +90,7 @@ class DataPointSeriesRepository(
         # 2. Build and execute data point batch insert
         self._insert_data_points(db_session, creators, identity_to_source_id)
 
-        # Return empty list (ON CONFLICT DO NOTHING means strict tracking is omitted)
+        # Return empty list (upsert path does not track individual inserts vs updates)
         return []
 
     def _resolve_data_sources(
@@ -149,12 +149,13 @@ class DataPointSeriesRepository(
         if values_list:
             for i in range(0, len(values_list), self.BATCH_INSERT_CHUNK_SIZE):
                 chunk = values_list[i : i + self.BATCH_INSERT_CHUNK_SIZE]
-                stmt = (
-                    insert(self.model)
-                    .values(chunk)
-                    .on_conflict_do_nothing(
-                        index_elements=["data_source_id", "series_type_definition_id", "recorded_at"]
-                    )
+                stmt = insert(self.model).values(chunk)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["data_source_id", "series_type_definition_id", "recorded_at"],
+                    set_={
+                        "value": stmt.excluded.value,
+                        "external_id": stmt.excluded.external_id,
+                    },
                 )
                 db_session.execute(stmt)
             # NOTE: Caller should commit - allows batching multiple operations

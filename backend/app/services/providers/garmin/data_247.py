@@ -365,7 +365,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save daily data to DataPointSeries (multiple series types).
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_dailies_samples(user_id, normalized_daily)
         if samples:
@@ -537,7 +537,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save epoch samples to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_epochs_samples(user_id, normalized_epochs)
         if samples:
@@ -628,7 +628,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save body composition metrics to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_body_comp_samples(user_id, raw_body_comp)
         if samples:
@@ -701,7 +701,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save HRV (Heart Rate Variability) data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_hrv_samples(user_id, raw_hrv)
         if samples:
@@ -858,7 +858,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save stress level data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_stress_samples(user_id, raw_stress)
         if samples:
@@ -930,7 +930,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save respiration rate data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_respiration_samples(user_id, raw_respiration)
         if samples:
@@ -1002,7 +1002,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save SpO2 (blood oxygen saturation) data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_pulse_ox_samples(user_id, raw_pulse_ox)
         if samples:
@@ -1072,7 +1072,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save blood pressure data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_blood_pressure_samples(user_id, raw_bp)
         if samples:
@@ -1141,7 +1141,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save user metrics (VO2max, fitness age) to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_user_metrics_samples(user_id, raw_metrics)
         if samples:
@@ -1191,7 +1191,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save skin temperature data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_skin_temp_samples(user_id, raw_skin_temp)
         if samples:
@@ -1302,7 +1302,7 @@ class Garmin247Data(Base247DataTemplate):
     ) -> int:
         """Save health snapshot data to DataPointSeries.
 
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        Uses bulk_create with ON CONFLICT DO UPDATE for efficient upserts.
         """
         samples = self._build_health_snapshot_samples(user_id, raw_snapshot)
         if samples:
