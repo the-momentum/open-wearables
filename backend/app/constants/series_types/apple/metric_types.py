@@ -249,10 +249,10 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[AppleMetricType, SeriesType] = {
     AppleMetricType.NIKE_FUEL: SeriesType.distance_other,
 }
 
+
 def get_series_type_from_metric_type(metric_type: AppleMetricType | str) -> SeriesType | None:
     """
     Map a HealthKit metric type identifier to the unified SeriesType enum.
     Returns None when the metric type is not supported.
     """
     return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # type: ignore[arg-type]
-

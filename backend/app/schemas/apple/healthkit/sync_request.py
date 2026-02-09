@@ -8,8 +8,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.series_types import AppleCategoryType, AppleMetricType
-from app.constants.workout_statistics import WorkoutStatisticType
+from app.constants.series_types import (
+    AppleCategoryType,
+    AppleMetricType,
+    WorkoutStatisticType,
+)
 from app.constants.workout_types import SDKWorkoutType
 
 

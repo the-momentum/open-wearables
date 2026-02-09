@@ -1,7 +1,5 @@
 from enum import StrEnum
 
-from app.schemas.series_types import SeriesType
-
 
 class AppleCategoryType(StrEnum):
     """
@@ -47,14 +45,14 @@ class AppleCategoryType(StrEnum):
     LAB_RESULTS = "HKCategoryTypeIdentifierLabResult"
 
     """
-    LOSS OF SMELL OR TASTE   
+    LOSS OF SMELL OR TASTE
     Values: 0 = present, 1 = notPresent
     """
     LOSS_OF_SMELL = "HKCategoryTypeIdentifierLossOfSmell"
     LOSS_OF_TASTE = "HKCategoryTypeIdentifierLossOfTaste"
 
     """
-    APPETITE CHANGE   
+    APPETITE CHANGE
     Values: 0 = unspecified, 1 = noChange, 2 = decreased, 3 = increased
     """
     APPETITE_CHANGE = "HKCategoryTypeIdentifierAppetiteChange"
