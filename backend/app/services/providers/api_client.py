@@ -15,9 +15,9 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 logger = logging.getLogger(__name__)
 
-# Rate limiting configuration
+# Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
-RETRY_BASE_DELAY = 1.0  # Base delay for exponential backoff (seconds)
+RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
 
 
 def _get_valid_token(

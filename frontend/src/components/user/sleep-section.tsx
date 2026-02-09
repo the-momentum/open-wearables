@@ -27,6 +27,7 @@ import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
+import { SourceBadge } from '@/components/common/source-badge';
 import { SectionHeader } from '@/components/common/section-header';
 import {
   Tooltip,
@@ -201,11 +202,16 @@ function SleepSessionRow({
       >
         {/* Date */}
         <div className="w-28 flex-shrink-0">
-          {session.is_nap && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">
-              NAP
-            </span>
-          )}
+          <div className="flex items-center gap-1">
+            {session.is_nap && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">
+                NAP
+              </span>
+            )}
+            {session.source?.provider && (
+              <SourceBadge provider={session.source.provider} />
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-white">
               {format(new Date(session.end_time), 'EEE, MMM d')}
