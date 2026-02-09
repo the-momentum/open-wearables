@@ -223,26 +223,17 @@ class TestGarminWorkouts:
             assert isinstance(record, EventRecordCreate)
             assert isinstance(detail, EventRecordDetailCreate)
 
-    def test_load_data_fetches_via_summary_service(
+    def test_load_data_is_noop(
         self,
         garmin_workouts: GarminWorkouts,
         db: Session,
-        sample_activity: dict[str, Any],
     ) -> None:
-        """Test load_data fetches activities via Summary API."""
+        """Test load_data is a no-op (data arrives via webhooks)."""
         user = UserFactory()
 
-        with patch(
-            "app.services.providers.garmin.summary.GarminSummaryService.fetch_and_save_single_chunk"
-        ) as mock_fetch:
-            mock_fetch.return_value = {"fetched": 2, "saved": 2}
+        result = garmin_workouts.load_data(db, user.id)
 
-            result = garmin_workouts.load_data(db, user.id)
-
-            assert result is True
-            mock_fetch.assert_called_once()
-            call_kwargs = mock_fetch.call_args[1]
-            assert call_kwargs["data_type"] == "activities"
+        assert result is True
 
     def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting activity detail from API."""

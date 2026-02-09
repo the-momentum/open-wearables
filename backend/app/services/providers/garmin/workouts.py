@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
@@ -245,62 +245,13 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         user_id: UUID,
         **kwargs: Any,
     ) -> bool:
-        """Load activities from Garmin API via REST Summary endpoint.
+        """No-op: Garmin activity data arrives via webhooks.
 
-        Uses the Summary API which returns data immediately (synchronous).
-        Requires Consumer Pull Token (CPT) for authentication.
+        REST/summary endpoints are not used. Historical data is fetched
+        via the backfill API which delivers data through webhooks.
         """
-        from contextlib import suppress
-
-        from app.services.providers.garmin.summary import GarminSummaryService
-
-        # Parse date range from kwargs
-        start_dt: datetime | None = None
-        end_dt: datetime | None = None
-
-        summary_start_time = kwargs.get("summary_start_time")
-        summary_end_time = kwargs.get("summary_end_time")
-
-        if summary_start_time:
-            with suppress(ValueError, AttributeError):
-                if isinstance(summary_start_time, str):
-                    start_dt = datetime.fromisoformat(summary_start_time.replace("Z", "+00:00"))
-                elif isinstance(summary_start_time, datetime):
-                    start_dt = summary_start_time
-
-        if summary_end_time:
-            with suppress(ValueError, AttributeError):
-                if isinstance(summary_end_time, str):
-                    end_dt = datetime.fromisoformat(summary_end_time.replace("Z", "+00:00"))
-                elif isinstance(summary_end_time, datetime):
-                    end_dt = summary_end_time
-
-        # Default to last 7 days if no range specified
-        if end_dt is None:
-            end_dt = datetime.now(timezone.utc)
-        if start_dt is None:
-            start_dt = end_dt - timedelta(days=7)
-
-        try:
-            summary_service = GarminSummaryService()
-            result = summary_service.fetch_and_save_single_chunk(
-                db=db,
-                user_id=user_id,
-                data_type="activities",
-                start_time=start_dt,
-                end_time=end_dt,
-            )
-
-            self.logger.info(
-                f"Garmin activities loaded via Summary API for user {user_id}: "
-                f"fetched={result.get('fetched', 0)}, saved={result.get('saved', 0)}"
-            )
-
-            return result.get("error") is None
-
-        except Exception as e:
-            self.logger.error(f"Failed to load Garmin activities for user {user_id}: {e}")
-            return False
+        self.logger.info(f"Garmin activities for user {user_id} arrive via webhooks (no REST fetch)")
+        return True
 
     def get_activity_detail(
         self,

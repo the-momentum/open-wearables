@@ -187,13 +187,12 @@ class Garmin247Data(Base247DataTemplate):
             "raw": raw_sleep,
         }
 
-    def save_sleep_data(
+    def _build_sleep_record(
         self,
-        db: DbSession,
         user_id: UUID,
         normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data as EventRecord + EventRecordDetail."""
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate] | None:
+        """Build EventRecord + EventRecordDetail for a sleep session (no DB interaction)."""
         sleep_id = normalized_sleep["id"]
 
         # Parse start and end times
@@ -206,9 +205,8 @@ class Garmin247Data(Base247DataTemplate):
 
         if not start_dt or not end_dt:
             self.logger.warning(f"Missing start/end time for sleep {sleep_id}")
-            return
+            return None
 
-        # Create EventRecord for sleep
         record = EventRecordCreate(
             id=sleep_id,
             category="sleep",
@@ -223,7 +221,6 @@ class Garmin247Data(Base247DataTemplate):
             user_id=user_id,
         )
 
-        # Create detail with sleep-specific fields
         stages = normalized_sleep.get("stages", {})
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
@@ -235,19 +232,33 @@ class Garmin247Data(Base247DataTemplate):
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
-            is_nap=False,  # Garmin doesn't distinguish naps in the same way
+            is_nap=False,
             heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
             heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
         )
 
+        return record, detail
+
+    def save_sleep_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_sleep: dict[str, Any],
+    ) -> None:
+        """Save normalized sleep data as EventRecord + EventRecordDetail."""
+        result = self._build_sleep_record(user_id, normalized_sleep)
+        if not result:
+            return
+
+        record, detail = result
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
         except Exception as e:
-            self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            self.logger.error(f"Error saving sleep record {normalized_sleep['id']}: {e}")
 
     # -------------------------------------------------------------------------
     # Dailies Data - /wellness-api/rest/dailies
@@ -294,35 +305,29 @@ class Garmin247Data(Base247DataTemplate):
             "garmin_summary_id": raw_daily.get("summaryId"),
         }
 
-    def save_dailies_data(
+    def _build_dailies_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         normalized_daily: dict[str, Any],
-    ) -> int:
-        """Save daily data to DataPointSeries (multiple series types).
-
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from normalized daily data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         calendar_date = normalized_daily.get("calendar_date")
         start_ts = normalized_daily.get("start_time_seconds")
 
         if not calendar_date and not start_ts:
-            return 0
+            return samples
 
-        # Use start timestamp or parse calendar date (noon UTC as reference time)
         if start_ts:
             recorded_at = self._from_epoch_seconds(start_ts)
         elif calendar_date:
             try:
                 recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
             except ValueError:
-                return 0
+                return samples
         else:
-            return 0
+            return samples
 
-        # Collect individual metrics as DataPointSeries samples
         series_mappings: list[tuple[str, SeriesType]] = [
             ("steps", SeriesType.steps),
             ("active_calories", SeriesType.energy),
@@ -346,15 +351,25 @@ class Garmin247Data(Base247DataTemplate):
                     )
                 )
 
-        # Collect heart rate samples if present
         hr_samples = normalized_daily.get("heart_rate_samples")
         if hr_samples and isinstance(hr_samples, dict):
             samples.extend(self._collect_heart_rate_samples(user_id, start_ts or 0, hr_samples))
 
-        # Bulk insert with ON CONFLICT DO NOTHING (silent upsert)
+        return samples
+
+    def save_dailies_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_daily: dict[str, Any],
+    ) -> int:
+        """Save daily data to DataPointSeries (multiple series types).
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_dailies_samples(user_id, normalized_daily)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     def _collect_heart_rate_samples(
@@ -473,29 +488,25 @@ class Garmin247Data(Base247DataTemplate):
             "energy": energy_samples,
         }
 
-    def save_epochs_data(
+    def _build_epochs_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         normalized_epochs: dict[str, list[dict[str, Any]]],
-    ) -> int:
-        """Save epoch samples to DataPointSeries.
-
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
-        """
-        samples_to_insert: list[TimeSeriesSampleCreate] = []
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from normalized epoch data (no DB interaction)."""
+        samples: list[TimeSeriesSampleCreate] = []
         type_mapping: dict[str, SeriesType] = {
             "heart_rate": SeriesType.heart_rate,
             "steps": SeriesType.steps,
             "energy": SeriesType.energy,
         }
 
-        for key, samples in normalized_epochs.items():
+        for key, epoch_samples in normalized_epochs.items():
             series_type = type_mapping.get(key)
             if not series_type:
                 continue
 
-            for sample in samples:
+            for sample in epoch_samples:
                 timestamp_str = sample.get("timestamp")
                 value = sample.get("value")
 
@@ -512,15 +523,26 @@ class Garmin247Data(Base247DataTemplate):
                         value=Decimal(str(value)),
                         series_type=series_type,
                     )
-                    samples_to_insert.append(sample_create)
+                    samples.append(sample_create)
                 except Exception:
                     pass
 
-        # Bulk insert with ON CONFLICT DO NOTHING (silent upsert)
-        if samples_to_insert:
-            self.data_point_repo.bulk_create(db, samples_to_insert)
+        return samples
 
-        return len(samples_to_insert)
+    def save_epochs_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_epochs: dict[str, list[dict[str, Any]]],
+    ) -> int:
+        """Save epoch samples to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_epochs_samples(user_id, normalized_epochs)
+        if samples:
+            self.data_point_repo.bulk_create(db, samples)
+        return len(samples)
 
     # -------------------------------------------------------------------------
     # Body Composition - /wellness-api/rest/bodyComps
@@ -536,21 +558,17 @@ class Garmin247Data(Base247DataTemplate):
         """Fetch body composition from Garmin /wellness-api/rest/bodyComps."""
         return self._fetch_in_chunks(db, user_id, "/wellness-api/rest/bodyComps", start_time, end_time)
 
-    def save_body_composition(
+    def _build_body_comp_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_body_comp: dict[str, Any],
-    ) -> int:
-        """Save body composition metrics to DataPointSeries.
-
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from body composition data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         measurement_ts = raw_body_comp.get("measurementTimeInSeconds", 0)
 
         if not measurement_ts:
-            return 0
+            return samples
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
         summary_id = raw_body_comp.get("summaryId")
@@ -600,41 +618,33 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
-        # Bulk insert with ON CONFLICT DO NOTHING (silent upsert)
+        return samples
+
+    def save_body_composition(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_body_comp: dict[str, Any],
+    ) -> int:
+        """Save body composition metrics to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_body_comp_samples(user_id, raw_body_comp)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # HRV (Heart Rate Variability) - /wellness-api/rest/hrv
     # -------------------------------------------------------------------------
 
-    def save_hrv_data(
+    def _build_hrv_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_hrv: dict[str, Any],
-    ) -> int:
-        """Save HRV (Heart Rate Variability) data to DataPointSeries.
-
-        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
-
-        Garmin HRV data includes:
-        - lastNightAvg: Average HRV during sleep (ms)
-        - lastNight5MinHigh: Highest 5-min HRV average during sleep (ms)
-        - hrvValues: Individual HRV readings at time offsets (seconds: ms)
-        - startTimeInSeconds: Start timestamp
-        - durationInSeconds: Duration of measurement period
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_hrv: Raw HRV data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from HRV data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_hrv.get("startTimeInSeconds", 0)
         summary_id = raw_hrv.get("summaryId")
@@ -642,12 +652,11 @@ class Garmin247Data(Base247DataTemplate):
 
         if not start_ts:
             self.logger.warning("HRV data missing startTimeInSeconds")
-            return 0
+            return samples
 
         # Collect lastNightAvg as the main HRV value for the night
         last_night_avg = raw_hrv.get("lastNightAvg")
         if last_night_avg is not None:
-            # Use the start time as recorded_at for the nightly average
             recorded_at = self._from_epoch_seconds(start_ts)
             samples.append(
                 TimeSeriesSampleCreate(
@@ -663,7 +672,6 @@ class Garmin247Data(Base247DataTemplate):
             self.logger.debug(f"Collecting HRV nightly avg={last_night_avg}ms for {calendar_date}")
 
         # Collect individual HRV readings from hrvValues
-        # These are keyed by time offset in seconds from start_ts
         hrv_values = raw_hrv.get("hrvValues", {})
         if hrv_values and isinstance(hrv_values, dict):
             for offset_str, hrv_ms in hrv_values.items():
@@ -683,49 +691,46 @@ class Garmin247Data(Base247DataTemplate):
                 except Exception as e:
                     self.logger.debug(f"Failed to collect HRV value at offset {offset_str}: {e}")
 
-        # Bulk insert with ON CONFLICT DO NOTHING (silent upsert)
+        return samples
+
+    def save_hrv_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_hrv: dict[str, Any],
+    ) -> int:
+        """Save HRV (Heart Rate Variability) data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_hrv_samples(user_id, raw_hrv)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Activity Data - /wellness-api/rest/activities
     # -------------------------------------------------------------------------
 
-    def save_activity_data(
+    def _build_activity_record(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_activity: dict[str, Any],
-    ) -> int:
-        """Save activity data as EventRecord with WorkoutDetails.
-
-        Garmin activities include running, cycling, swimming, etc.
-        These are distinct from Move IQ auto-detected activities.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_activity: Raw activity data from Garmin API
-
-        Returns:
-            1 if saved, 0 otherwise
-        """
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate] | None:
+        """Build EventRecord + WorkoutDetail for an activity (no DB interaction)."""
         activity_id = raw_activity.get("activityId")
         if not activity_id:
-            return 0
+            return None
 
         start_ts = raw_activity.get("startTimeInSeconds", 0)
         duration = raw_activity.get("durationInSeconds", 0)
 
         if not start_ts:
-            return 0
+            return None
 
         start_dt = self._from_epoch_seconds(start_ts)
         end_dt = self._from_epoch_seconds(start_ts + duration) if duration else start_dt
 
-        # Map Garmin activity type to our category
         activity_type = raw_activity.get("activityType", "unknown")
 
         record_id = uuid4()
@@ -743,27 +748,40 @@ class Garmin247Data(Base247DataTemplate):
             user_id=user_id,
         )
 
+        distance = raw_activity.get("distanceInMeters")
+        calories = raw_activity.get("activeKilocalories")
+        avg_hr = raw_activity.get("averageHeartRateInBeatsPerMinute")
+        max_hr = raw_activity.get("maxHeartRateInBeatsPerMinute")
+        elevation_gain = raw_activity.get("elevationGainInMeters")
+        avg_speed = raw_activity.get("averageSpeedInMetersPerSecond")
+
+        detail = EventRecordDetailCreate(
+            record_id=record_id,
+            distance=Decimal(str(distance)) if distance is not None else None,
+            energy_burned=Decimal(str(calories)) if calories is not None else None,
+            heart_rate_avg=Decimal(str(avg_hr)) if avg_hr is not None else None,
+            heart_rate_max=max_hr,
+            total_elevation_gain=Decimal(str(elevation_gain)) if elevation_gain is not None else None,
+            average_speed=Decimal(str(avg_speed)) if avg_speed is not None else None,
+        )
+
+        return record, detail
+
+    def save_activity_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_activity: dict[str, Any],
+    ) -> int:
+        """Save activity data as EventRecord with WorkoutDetails."""
+        result = self._build_activity_record(user_id, raw_activity)
+        if not result:
+            return 0
+
+        record, detail = result
         try:
             created_record = event_record_service.create(db, record)
-
-            # Create WorkoutDetails with activity metrics
-            distance = raw_activity.get("distanceInMeters")
-            calories = raw_activity.get("activeKilocalories")
-            avg_hr = raw_activity.get("averageHeartRateInBeatsPerMinute")
-            max_hr = raw_activity.get("maxHeartRateInBeatsPerMinute")
-            elevation_gain = raw_activity.get("elevationGainInMeters")
-            avg_speed = raw_activity.get("averageSpeedInMetersPerSecond")
-
-            detail = EventRecordDetailCreate(
-                record_id=created_record.id,
-                distance=Decimal(str(distance)) if distance is not None else None,
-                energy_burned=Decimal(str(calories)) if calories is not None else None,
-                heart_rate_avg=Decimal(str(avg_hr)) if avg_hr is not None else None,
-                heart_rate_max=max_hr,
-                total_elevation_gain=Decimal(str(elevation_gain)) if elevation_gain is not None else None,
-                average_speed=Decimal(str(avg_speed)) if avg_speed is not None else None,
-            )
-
+            detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="workout")
             return 1
         except Exception as e:
@@ -774,40 +792,23 @@ class Garmin247Data(Base247DataTemplate):
     # Stress Data - /wellness-api/rest/stressDetails
     # -------------------------------------------------------------------------
 
-    def save_stress_data(
+    def _build_stress_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_stress: dict[str, Any],
-    ) -> int:
-        """Save stress level data to DataPointSeries.
-
-        Garmin stress data includes:
-        - calendarDate: Date of the stress data
-        - startTimeInSeconds: Start timestamp
-        - stressLevelValues: Dict of offset -> stress level (1-100)
-        - bodyBatteryValues: Dict of offset -> body battery (0-100)
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_stress: Raw stress data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from stress data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_stress.get("startTimeInSeconds", 0)
 
         if not start_ts:
-            return 0
+            return samples
 
-        # Save stress level values
+        # Stress level values
         stress_values = raw_stress.get("stressLevelValues", {})
         if stress_values and isinstance(stress_values, dict):
             for offset_str, stress_value in stress_values.items():
                 try:
-                    # Skip invalid values (-1, -2 indicate no data)
                     if stress_value is None or stress_value < 0:
                         continue
                     offset_seconds = int(offset_str)
@@ -825,7 +826,7 @@ class Garmin247Data(Base247DataTemplate):
                 except Exception:
                     pass
 
-        # Save body battery values
+        # Body battery values
         battery_values = raw_stress.get("bodyBatteryValues", {})
         if battery_values and isinstance(battery_values, dict):
             for offset_str, battery_value in battery_values.items():
@@ -847,37 +848,39 @@ class Garmin247Data(Base247DataTemplate):
                 except Exception:
                     pass
 
+        return samples
+
+    def save_stress_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_stress: dict[str, Any],
+    ) -> int:
+        """Save stress level data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_stress_samples(user_id, raw_stress)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Respiration Data - /wellness-api/rest/respiration
     # -------------------------------------------------------------------------
 
-    def save_respiration_data(
+    def _build_respiration_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_respiration: dict[str, Any],
-    ) -> int:
-        """Save respiration rate data to DataPointSeries.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_respiration: Raw respiration data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from respiration data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_respiration.get("startTimeInSeconds", 0)
         summary_id = raw_respiration.get("summaryId")
 
         if not start_ts:
-            return 0
+            return samples
 
         # Average respiration for the period
         avg_respiration = raw_respiration.get("avgWakingRespirationValue")
@@ -917,37 +920,39 @@ class Garmin247Data(Base247DataTemplate):
                 except Exception:
                     pass
 
+        return samples
+
+    def save_respiration_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_respiration: dict[str, Any],
+    ) -> int:
+        """Save respiration rate data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_respiration_samples(user_id, raw_respiration)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Pulse Ox Data - /wellness-api/rest/pulseOx
     # -------------------------------------------------------------------------
 
-    def save_pulse_ox_data(
+    def _build_pulse_ox_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_pulse_ox: dict[str, Any],
-    ) -> int:
-        """Save SpO2 (blood oxygen saturation) data to DataPointSeries.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_pulse_ox: Raw pulse ox data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from pulse ox data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_pulse_ox.get("startTimeInSeconds", 0)
         summary_id = raw_pulse_ox.get("summaryId")
 
         if not start_ts:
-            return 0
+            return samples
 
         # Average SpO2
         avg_spo2 = raw_pulse_ox.get("avgSpo2")
@@ -987,31 +992,33 @@ class Garmin247Data(Base247DataTemplate):
                 except Exception:
                     pass
 
+        return samples
+
+    def save_pulse_ox_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_pulse_ox: dict[str, Any],
+    ) -> int:
+        """Save SpO2 (blood oxygen saturation) data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_pulse_ox_samples(user_id, raw_pulse_ox)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Blood Pressure - /wellness-api/rest/bloodPressures
     # -------------------------------------------------------------------------
 
-    def save_blood_pressure_data(
+    def _build_blood_pressure_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_bp: dict[str, Any],
-    ) -> int:
-        """Save blood pressure data to DataPointSeries.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_bp: Raw blood pressure data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from blood pressure data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         measurement_ts = raw_bp.get("measurementTimestampGMT", 0)
         summary_id = raw_bp.get("summaryId")
@@ -1021,7 +1028,7 @@ class Garmin247Data(Base247DataTemplate):
             measurement_ts = raw_bp.get("startTimeInSeconds", 0)
 
         if not measurement_ts:
-            return 0
+            return samples
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
 
@@ -1055,42 +1062,44 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        return samples
+
+    def save_blood_pressure_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_bp: dict[str, Any],
+    ) -> int:
+        """Save blood pressure data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_blood_pressure_samples(user_id, raw_bp)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # User Metrics - /wellness-api/rest/userMetrics
     # -------------------------------------------------------------------------
 
-    def save_user_metrics_data(
+    def _build_user_metrics_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_metrics: dict[str, Any],
-    ) -> int:
-        """Save user metrics (VO2max, fitness age) to DataPointSeries.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_metrics: Raw user metrics from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from user metrics data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         calendar_date = raw_metrics.get("calendarDate")
         summary_id = raw_metrics.get("summaryId")
 
         if not calendar_date:
-            return 0
+            return samples
 
         try:
             recorded_at = datetime.strptime(calendar_date, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
         except ValueError:
-            return 0
+            return samples
 
         # VO2 max
         vo2_max = raw_metrics.get("vo2Max")
@@ -1122,43 +1131,42 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        return samples
+
+    def save_user_metrics_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_metrics: dict[str, Any],
+    ) -> int:
+        """Save user metrics (VO2max, fitness age) to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_user_metrics_samples(user_id, raw_metrics)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Skin Temperature - /wellness-api/rest/skinTemp
     # -------------------------------------------------------------------------
 
-    def save_skin_temp_data(
+    def _build_skin_temp_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_skin_temp: dict[str, Any],
-    ) -> int:
-        """Save skin temperature data to DataPointSeries.
-
-        Garmin skin temp is a deviation from personal baseline.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_skin_temp: Raw skin temp data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from skin temperature data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_skin_temp.get("startTimeInSeconds", 0)
         summary_id = raw_skin_temp.get("summaryId")
 
         if not start_ts:
-            return 0
+            return samples
 
         recorded_at = self._from_epoch_seconds(start_ts)
 
-        # Skin temperature deviation
         skin_temp = raw_skin_temp.get("skinTemperature")
         if skin_temp is not None:
             samples.append(
@@ -1173,40 +1181,39 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        return samples
+
+    def save_skin_temp_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_skin_temp: dict[str, Any],
+    ) -> int:
+        """Save skin temperature data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_skin_temp_samples(user_id, raw_skin_temp)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Health Snapshot - /wellness-api/rest/healthSnapshot
     # -------------------------------------------------------------------------
 
-    def save_health_snapshot_data(
+    def _build_health_snapshot_samples(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_snapshot: dict[str, Any],
-    ) -> int:
-        """Save health snapshot data to DataPointSeries.
-
-        Health snapshots are quick 2-minute measurements that capture
-        multiple metrics simultaneously.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_snapshot: Raw health snapshot data from Garmin API
-
-        Returns:
-            Number of records saved
-        """
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build time series samples from health snapshot data (no DB interaction)."""
         samples: list[TimeSeriesSampleCreate] = []
         start_ts = raw_snapshot.get("startTimeInSeconds", 0)
         summary_id = raw_snapshot.get("summaryId")
 
         if not start_ts:
-            return 0
+            return samples
 
         recorded_at = self._from_epoch_seconds(start_ts)
 
@@ -1285,47 +1292,46 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
+        return samples
+
+    def save_health_snapshot_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_snapshot: dict[str, Any],
+    ) -> int:
+        """Save health snapshot data to DataPointSeries.
+
+        Uses bulk_create with ON CONFLICT DO NOTHING for efficient upserts.
+        """
+        samples = self._build_health_snapshot_samples(user_id, raw_snapshot)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
-
         return len(samples)
 
     # -------------------------------------------------------------------------
     # Move IQ - /wellness-api/rest/moveiq
     # -------------------------------------------------------------------------
 
-    def save_moveiq_data(
+    def _build_moveiq_record(
         self,
-        db: DbSession,
         user_id: UUID,
         raw_moveiq: dict[str, Any],
-    ) -> int:
-        """Save Move IQ auto-detected activities as EventRecords.
-
-        Move IQ automatically detects activities like walking, running,
-        cycling, etc. without user intervention.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_moveiq: Raw Move IQ data from Garmin API
-
-        Returns:
-            1 if saved, 0 otherwise
-        """
+    ) -> EventRecordCreate | None:
+        """Build EventRecord for a Move IQ activity (no DB interaction)."""
         start_ts = raw_moveiq.get("startTimeInSeconds", 0)
         duration = raw_moveiq.get("durationInSeconds", 0)
         summary_id = raw_moveiq.get("summaryId")
 
         if not start_ts:
-            return 0
+            return None
 
         start_dt = self._from_epoch_seconds(start_ts)
         end_dt = self._from_epoch_seconds(start_ts + duration) if duration else start_dt
 
         activity_type = raw_moveiq.get("activityType", "unknown")
 
-        record = EventRecordCreate(
+        return EventRecordCreate(
             id=uuid4(),
             category="activity",
             type=f"moveiq_{activity_type.lower()}",
@@ -1338,6 +1344,17 @@ class Garmin247Data(Base247DataTemplate):
             source=self.provider_name,
             user_id=user_id,
         )
+
+    def save_moveiq_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_moveiq: dict[str, Any],
+    ) -> int:
+        """Save Move IQ auto-detected activities as EventRecords."""
+        record = self._build_moveiq_record(user_id, raw_moveiq)
+        if not record:
+            return 0
 
         try:
             event_record_service.create(db, record)
@@ -1379,6 +1396,118 @@ class Garmin247Data(Base247DataTemplate):
 
         # TODO: Implement proper MCT storage if needed
         return 0
+
+    # -------------------------------------------------------------------------
+    # Batch Processing (for webhook handlers)
+    # -------------------------------------------------------------------------
+
+    def process_items_batch(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        summary_type: str,
+        items: list[dict[str, Any]],
+    ) -> int:
+        """Process a batch of webhook items with minimal DB round-trips.
+
+        Accumulates all samples/records across all items, then performs
+        single bulk inserts instead of per-item DB calls.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            summary_type: Garmin data type (e.g. "dailies", "sleeps")
+            items: List of raw items from webhook payload
+
+        Returns:
+            Number of data points saved
+        """
+        all_samples: list[TimeSeriesSampleCreate] = []
+        all_records: list[EventRecordCreate] = []
+        all_workout_details: list[EventRecordDetailCreate] = []
+        all_sleep_details: list[EventRecordDetailCreate] = []
+
+        for item in items:
+            try:
+                # DataPointSeries types - accumulate samples
+                if summary_type == "dailies":
+                    normalized = self.normalize_dailies(item, user_id)
+                    all_samples.extend(self._build_dailies_samples(user_id, normalized))
+                elif summary_type == "epochs":
+                    normalized = self.normalize_epochs([item], user_id)
+                    all_samples.extend(self._build_epochs_samples(user_id, normalized))
+                elif summary_type == "bodyComps":
+                    all_samples.extend(self._build_body_comp_samples(user_id, item))
+                elif summary_type == "hrv":
+                    all_samples.extend(self._build_hrv_samples(user_id, item))
+                elif summary_type == "stressDetails":
+                    all_samples.extend(self._build_stress_samples(user_id, item))
+                elif summary_type == "respiration":
+                    all_samples.extend(self._build_respiration_samples(user_id, item))
+                elif summary_type == "pulseOx":
+                    all_samples.extend(self._build_pulse_ox_samples(user_id, item))
+                elif summary_type == "bloodPressures":
+                    all_samples.extend(self._build_blood_pressure_samples(user_id, item))
+                elif summary_type == "userMetrics":
+                    all_samples.extend(self._build_user_metrics_samples(user_id, item))
+                elif summary_type == "skinTemp":
+                    all_samples.extend(self._build_skin_temp_samples(user_id, item))
+                elif summary_type == "healthSnapshot":
+                    all_samples.extend(self._build_health_snapshot_samples(user_id, item))
+
+                # EventRecord types - accumulate records + details
+                elif summary_type == "sleeps":
+                    normalized = self.normalize_sleep(item, user_id)
+                    result = self._build_sleep_record(user_id, normalized)
+                    if result:
+                        record, detail = result
+                        all_records.append(record)
+                        all_sleep_details.append(detail)
+                elif summary_type in ("activities", "activityDetails"):
+                    result = self._build_activity_record(user_id, item)
+                    if result:
+                        record, detail = result
+                        all_records.append(record)
+                        all_workout_details.append(detail)
+                elif summary_type == "moveiq":
+                    record = self._build_moveiq_record(user_id, item)
+                    if record:
+                        all_records.append(record)
+
+                # No-op types
+                elif summary_type == "mct":
+                    self.save_mct_data(db, user_id, item)
+
+            except Exception as e:
+                self.logger.warning(f"Error building batch item for {summary_type}: {e}")
+
+        count = 0
+
+        # Single bulk insert for DataPointSeries
+        if all_samples:
+            self.data_point_repo.bulk_create(db, all_samples)
+            count += len(all_samples)
+
+        # Single bulk insert for EventRecords
+        if all_records:
+            inserted_ids = event_record_service.bulk_create(db, all_records)
+            db.flush()
+
+            inserted_set = set(inserted_ids)
+
+            # Bulk create sleep details for actually inserted records
+            sleep_details = [d for d in all_sleep_details if d.record_id in inserted_set]
+            if sleep_details:
+                event_record_service.bulk_create_details(db, sleep_details, detail_type="sleep")
+
+            # Bulk create workout details for actually inserted records
+            workout_details = [d for d in all_workout_details if d.record_id in inserted_set]
+            if workout_details:
+                event_record_service.bulk_create_details(db, workout_details, detail_type="workout")
+
+            count += len(inserted_ids)
+
+        return count
 
     # -------------------------------------------------------------------------
     # Abstract Method Implementations (from Base247DataTemplate)
@@ -1519,67 +1648,26 @@ class Garmin247Data(Base247DataTemplate):
         end_time: datetime | str | None = None,
         is_first_sync: bool = False,
     ) -> dict[str, Any]:
-        """Load and save Garmin 247 data via REST Summary endpoints.
+        """No-op: Garmin 247 data arrives via webhooks.
 
-        Uses the Summary API which returns data immediately (synchronous).
-        For historical data beyond 7 days, use the summary-sync endpoint
-        which handles rate limiting and chunked fetching.
+        REST/summary endpoints are not used. Historical data is fetched
+        via the backfill API which delivers data through webhooks.
 
         Args:
             db: Database session
             user_id: User ID
-            start_time: Start of date range (datetime or ISO string)
-            end_time: End of date range (datetime or ISO string)
-            is_first_sync: If True, use 7 days. If False, use 1 day.
+            start_time: Unused (kept for interface compatibility)
+            end_time: Unused (kept for interface compatibility)
+            is_first_sync: Unused (kept for interface compatibility)
 
         Returns:
-            Dict with sync results
+            Dict indicating data arrives via webhooks
         """
-        from contextlib import suppress
-
-        from app.services.providers.garmin.summary import GarminSummaryService
-
-        # Parse dates
-        start_dt: datetime | None = None
-        end_dt: datetime | None = None
-
-        if isinstance(start_time, str):
-            with suppress(ValueError, AttributeError):
-                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        elif isinstance(start_time, datetime):
-            start_dt = start_time
-
-        if isinstance(end_time, str):
-            with suppress(ValueError, AttributeError):
-                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-        elif isinstance(end_time, datetime):
-            end_dt = end_time
-
-        # Default to last 7 days for first sync, 1 day otherwise
-        if end_dt is None:
-            end_dt = datetime.now(timezone.utc)
-        if start_dt is None:
-            days = 7 if is_first_sync else 1
-            start_dt = end_dt - timedelta(days=days)
-
-        self.logger.info(
-            f"Loading Garmin 247 data via Summary API for user {user_id} ({start_dt.date()} to {end_dt.date()})"
-        )
-
-        # Use the GarminSummaryService to fetch and save data
-        summary_service = GarminSummaryService()
-        result = summary_service.fetch_and_save_all_summaries(
-            db=db,
-            user_id=user_id,
-            days=min((end_dt - start_dt).days, 30),  # Allow up to 30 days
-        )
-
+        self.logger.info(f"Garmin 247 data for user {user_id} arrives via webhooks (no REST fetch)")
         return {
             "sync_complete": True,
-            "total_saved": result.get("total_saved", 0),
-            "fetch_results": result.get("fetch_results", {}),
-            "save_results": result.get("save_results", {}),
-            "message": "Garmin data synced via Summary API.",
+            "total_saved": 0,
+            "message": "Garmin data arrives via webhooks. No REST fetch performed.",
         }
 
     # -------------------------------------------------------------------------

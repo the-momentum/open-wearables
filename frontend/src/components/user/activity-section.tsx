@@ -110,7 +110,7 @@ const METRICS: MetricDefinition[] = [
     bgColor: 'bg-rose-500/10',
     glowColor: 'shadow-[0_0_15px_rgba(244,63,94,0.5)]',
     getValue: (stats) => stats.avgHeartRate,
-    formatValue: (v) => (v != null ? Math.round(v).toString() : '-'),
+    formatValue: (v) => (v !== null ? Math.round(v).toString() : '-'),
     getChartValue: (s) => s.heart_rate?.avg_bpm || 0,
     unit: 'bpm',
   },

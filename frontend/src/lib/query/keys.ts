@@ -95,8 +95,6 @@ export const queryKeys = {
 
   garmin: {
     all: ['garmin'] as const,
-    summarySyncStatus: (userId: string) =>
-      [...queryKeys.garmin.all, 'summary-sync', userId] as const,
     backfillStatus: (userId: string) =>
       [...queryKeys.garmin.all, 'backfill', userId] as const,
   },

@@ -14,20 +14,9 @@ from app.integrations.celery.tasks import (
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
-from app.integrations.celery.tasks.garmin_summary_sync_task import (
-    cancel_sync as cancel_summary_sync,
-)
-from app.integrations.celery.tasks.garmin_summary_sync_task import (
-    get_sync_status as get_summary_sync_status,
-)
-from app.integrations.celery.tasks.garmin_summary_sync_task import (
-    start_garmin_summary_sync,
-)
-from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.garmin.summary import GarminSummaryService
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 
 logger = logging.getLogger(__name__)
@@ -102,7 +91,7 @@ async def sync_user_data(
     **Provider-specific:**
     - **Suunto**: Supports workouts and 247 data with pagination
     - **Polar**: Supports workouts (exercises) only
-    - **Garmin**: Uses REST Summary endpoints for immediate data sync
+    - **Garmin**: Data arrives via webhooks (backfill for 30-day history)
     - **Whoop**: Supports workouts and 247 data (sleep/recovery)
 
     **Execution Mode:**
@@ -113,37 +102,6 @@ async def sync_user_data(
     """
     # Async mode: dispatch to Celery and return immediately
     if run_async:
-        # For Garmin: Check if summary sync is already in progress
-        if provider.value == "garmin":
-            sync_status = get_summary_sync_status(str(user_id))
-            if sync_status["status"] in ("SYNCING", "WAITING"):
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail={
-                        "message": "Garmin sync already in progress. Please wait for completion.",
-                        "sync_status": sync_status,
-                    },
-                )
-
-            # Fetch immediate data (last 7 days) via Summary endpoints
-            connection_repo = UserConnectionRepository()
-            connection = connection_repo.get_by_user_and_provider(db, user_id, "garmin")
-
-            summary_result: dict[str, Any] | None = None
-            if connection:
-                try:
-                    logger.info(f"Fetching Garmin summary data for user {user_id}")
-                    summary_service = GarminSummaryService()
-                    summary_result = summary_service.fetch_and_save_all_summaries(
-                        db=db,
-                        user_id=user_id,
-                        days=7,  # Last 7 days via Summary API
-                    )
-                    logger.info(f"Garmin summary fetch complete: {summary_result.get('total_saved', 0)} records saved")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch Garmin summary data: {e}")
-                    summary_result = {"error": str(e)}
-
         # Convert since timestamp to ISO date if provided
         start_date_iso = None
         if since > 0:
@@ -160,18 +118,12 @@ async def sync_user_data(
             providers=[provider.value],
         )
 
-        # Include sync status and summary result in response for Garmin
         response: dict[str, Any] = {
             "success": True,
             "async": True,
             "task_id": task.id,
             "message": f"Sync task queued for {provider.value}. Check task status for results.",
         }
-        if provider.value == "garmin":
-            response["sync_status"] = get_summary_sync_status(str(user_id))
-            if summary_result:
-                response["summary_result"] = summary_result
-                response["message"] = "Garmin data (last 7 days) synced successfully."
 
         return response
 
@@ -245,148 +197,7 @@ async def sync_user_data(
 
 
 # =============================================================================
-# Garmin Summary Sync Endpoints (REST-based, 365-day sync)
-# =============================================================================
-
-
-@router.post("/garmin/users/{user_id}/summary-sync")
-async def start_garmin_summary_fetch(
-    user_id: UUID,
-    db: DbSession,
-    _api_key: ApiKeyDep,
-    resume: Annotated[
-        bool,
-        Query(description="Resume interrupted sync from last position"),
-    ] = False,
-) -> dict[str, Any]:
-    """
-    Start 365-day Garmin summary sync via REST endpoints.
-
-    This endpoint initiates a background sync process that fetches historical
-    Garmin data using the REST Summary endpoints. Unlike the webhook-based
-    backfill, this approach:
-
-    - Fetches data directly via HTTP (no webhook setup required)
-    - Supports 365 days of historical data (vs 90 days for backfill)
-    - Includes 16 data types (vs 5 for backfill)
-    - Supports pause/resume functionality
-
-    **Rate Limiting:**
-    The sync process respects Garmin's rate limits by adding delays between
-    requests (3 minutes default, 10 minutes for HRV).
-
-    **Progress:**
-    Use GET /garmin/users/{user_id}/summary-sync/status to monitor progress.
-
-    **Estimated Time:**
-    Full sync takes ~12 days due to rate limiting (365 days x 16 types x 3 min).
-
-    Args:
-        user_id: User UUID with active Garmin connection
-        resume: If True, resume from last position. If False, start fresh.
-
-    Returns:
-        Dict with sync initialization status
-    """
-    # Verify Garmin connection exists
-    connection_repo = UserConnectionRepository()
-    connection = connection_repo.get_by_user_and_provider(db, user_id, "garmin")
-
-    if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No Garmin connection found for user",
-        )
-
-    # Check if already syncing (unless resuming)
-    current_status = get_summary_sync_status(str(user_id))
-    if current_status["status"] in ("SYNCING", "WAITING") and not resume:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "message": "Garmin summary sync already in progress. Use resume=true to continue.",
-                "sync_status": current_status,
-            },
-        )
-
-    # Start async sync task
-    task = start_garmin_summary_sync.delay(str(user_id), resume=resume)
-
-    logger.info(f"Started Garmin summary sync for user {user_id} (task_id={task.id}, resume={resume})")
-
-    return {
-        "success": True,
-        "task_id": task.id,
-        "message": f"Garmin summary sync {'resumed' if resume else 'started'}. Check status endpoint for progress.",
-        "sync_status": get_summary_sync_status(str(user_id)),
-    }
-
-
-@router.get("/garmin/users/{user_id}/summary-sync/status")
-async def get_garmin_summary_sync_status(
-    user_id: UUID,
-    _api_key: ApiKeyDep,
-) -> dict[str, Any]:
-    """
-    Get Garmin summary sync status for a user.
-
-    Returns sync progress including:
-    - `status`: IDLE | SYNCING | WAITING | COMPLETED | FAILED
-    - `progress_percent`: Overall progress (0-100)
-    - `current_data_type`: Current data type being synced
-    - `current_type_index`: Index of current type (0-15)
-    - `total_types`: Total data types (16)
-    - `current_day`: Current day being processed (0-364)
-    - `target_days`: Total days to sync (365)
-    - `started_at`: ISO timestamp when sync started
-    - `last_chunk_at`: ISO timestamp of last successful chunk
-    - `errors`: List of recent errors (max 10)
-
-    **Status Meanings:**
-    - IDLE: No sync in progress
-    - SYNCING: Currently fetching data
-    - WAITING: Paused between requests (rate limiting)
-    - COMPLETED: Sync finished successfully
-    - FAILED: Sync stopped due to errors
-    """
-    sync_status = get_summary_sync_status(str(user_id))
-    return {
-        "user_id": str(user_id),
-        "provider": "garmin",
-        **sync_status,
-    }
-
-
-@router.delete("/garmin/users/{user_id}/summary-sync")
-async def cancel_garmin_summary_sync(
-    user_id: UUID,
-    _api_key: ApiKeyDep,
-) -> dict[str, Any]:
-    """
-    Cancel in-progress Garmin summary sync.
-
-    Stops the sync process gracefully. The sync can be resumed later
-    using POST /garmin/users/{user_id}/summary-sync?resume=true.
-
-    Returns:
-        Dict with cancellation status
-    """
-    result = cancel_summary_sync(str(user_id))
-
-    if result.get("cancelled"):
-        logger.info(f"Cancelled Garmin summary sync for user {user_id}")
-    else:
-        logger.debug(f"No active sync to cancel for user {user_id}")
-
-    return {
-        "user_id": str(user_id),
-        "provider": "garmin",
-        **result,
-    }
-
-
-# =============================================================================
-# Garmin Backfill Endpoints (webhook-based, 90-day sync)
+# Garmin Backfill Endpoints (webhook-based, 30-day sync)
 # =============================================================================
 
 
@@ -399,7 +210,7 @@ async def get_garmin_backfill_status_endpoint(
     Get Garmin backfill status for all 16 data types.
 
     The backfill is webhook-based and auto-triggered after OAuth connection.
-    Returns status for each data type independently.
+    Returns status for each data type independently. Max 30 days of history.
 
     **Response Fields:**
     - `overall_status`: pending | in_progress | complete | partial
@@ -432,7 +243,8 @@ async def retry_garmin_backfill_type(
     """
     Retry backfill for a specific failed data type.
 
-    Use this endpoint to retry fetching historical data for a type that failed.
+    Use this endpoint to retry fetching historical data (up to 30 days)
+    for a type that failed.
 
     **Valid Type Names:**
     sleeps, dailies, epochs, bodyComps, hrv, activities, activityDetails,

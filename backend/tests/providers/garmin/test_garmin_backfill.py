@@ -23,12 +23,12 @@ class TestGarminBackfillServiceUnit:
 
     def test_backfill_limits_constants(self, backfill_service: GarminBackfillService) -> None:
         """Test that backfill limit constants are set correctly."""
-        # Optimized constants: 90-day batches instead of 1-day
-        assert backfill_service.BACKFILL_CHUNK_DAYS == 90  # Per request (90 days = max allowed)
-        assert backfill_service.MAX_BACKFILL_DAYS == 90  # Target: 3 months of history
-        assert backfill_service.MAX_REQUEST_DAYS == 90  # Max days per single backfill request (Garmin limit)
+        # 30-day max for all data types (confirmed by Garmin support)
+        assert backfill_service.BACKFILL_CHUNK_DAYS == 30  # Per request (30 days = max allowed)
+        assert backfill_service.MAX_BACKFILL_DAYS == 30  # Target: 30 days of history
+        assert backfill_service.MAX_REQUEST_DAYS == 30  # Max days per single backfill request (Garmin limit)
         assert backfill_service.DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
-        assert backfill_service.SUMMARY_DAYS == 7  # Summary covers last 7 days; backfill starts after
+        assert backfill_service.SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)
 
     def test_backfill_endpoints_mapping(self, backfill_service: GarminBackfillService) -> None:
         """Test that all backfill endpoints are mapped."""
@@ -90,12 +90,12 @@ class TestGarminBackfillTimeframeLogic:
     def test_first_sync_timeframe_calculation(self) -> None:
         """Test that first sync calculates appropriate timeframe.
 
-        Note: With optimization, first sync uses BACKFILL_CHUNK_DAYS (90 days)
-        which is the max allowed by Garmin per request.
+        First sync uses BACKFILL_CHUNK_DAYS (30 days)
+        which is the max allowed by Garmin per request for all types.
         """
         # Simulate the logic from trigger_backfill
         is_first_sync = True
-        backfill_chunk_days = 90  # Optimized implementation value
+        backfill_chunk_days = 30  # 30-day max (confirmed by Garmin support)
         default_backfill_days = 1
 
         end_time = datetime.now(timezone.utc)
@@ -103,13 +103,13 @@ class TestGarminBackfillTimeframeLogic:
         start_time = end_time - timedelta(days=days)
 
         days_diff = (end_time - start_time).days
-        assert days_diff == 90
+        assert days_diff == 30
 
     def test_subsequent_sync_timeframe_calculation(self) -> None:
         """Test that subsequent sync calculates 1-day timeframe."""
         # Simulate the logic from trigger_backfill
         is_first_sync = False
-        backfill_chunk_days = 90
+        backfill_chunk_days = 30
         default_backfill_days = 1
 
         end_time = datetime.now(timezone.utc)
@@ -121,9 +121,9 @@ class TestGarminBackfillTimeframeLogic:
 
     def test_custom_timeframe_overrides_defaults(self) -> None:
         """Test that custom start/end times are preserved."""
-        custom_start = datetime.now(timezone.utc) - timedelta(days=90)
+        custom_start = datetime.now(timezone.utc) - timedelta(days=30)
         custom_end = datetime.now(timezone.utc)
 
         # When start_time is provided, it should be used as-is
         days_diff = (custom_end - custom_start).days
-        assert days_diff == 90
+        assert days_diff == 30

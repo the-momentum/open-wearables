@@ -1,6 +1,6 @@
 """Celery task for Garmin backfill requests with per-type status tracking.
 
-This task manages the fetching of historical Garmin data using 90-day batch requests.
+This task manages the fetching of historical Garmin data using 30-day batch requests.
 Each of the 16 data types is tracked independently with status: pending|triggered|success|failed.
 
 Flow:
@@ -13,7 +13,7 @@ Flow:
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 
@@ -22,6 +22,7 @@ from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.backfill import GarminBackfillService
+from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
@@ -58,6 +59,20 @@ ALL_DATA_TYPES = [
 def _get_key(user_id: str | UUID, *parts: str) -> str:
     """Generate Redis key for backfill tracking."""
     return ":".join([REDIS_PREFIX, str(user_id), *parts])
+
+
+def set_trace_id(user_id: str | UUID) -> str:
+    """Generate and store a trace ID for a user's backfill session."""
+    redis_client = get_redis_client()
+    trace_id = str(uuid4())[:8]  # Short trace ID for readability
+    redis_client.setex(_get_key(user_id, "trace_id"), REDIS_TTL, trace_id)
+    return trace_id
+
+
+def get_trace_id(user_id: str | UUID) -> str | None:
+    """Get the active backfill trace ID for a user, if any."""
+    redis_client = get_redis_client()
+    return redis_client.get(_get_key(user_id, "trace_id"))
 
 
 def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
@@ -161,7 +176,10 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "triggered")
     redis_client.setex(_get_key(user_id_str, "types", data_type, "triggered_at"), REDIS_TTL, now)
 
-    logger.info(f"Marked {data_type} as triggered for user {user_id_str}")
+    trace_id = get_trace_id(user_id_str)
+    log_structured(
+        logger, "info", "Marked type as triggered", trace_id=trace_id, data_type=data_type, user_id=user_id_str
+    )
 
 
 def mark_type_success(user_id: str | UUID, data_type: str) -> None:
@@ -173,7 +191,10 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> None:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "success")
     redis_client.setex(_get_key(user_id_str, "types", data_type, "completed_at"), REDIS_TTL, now)
 
-    logger.info(f"Marked {data_type} as success for user {user_id_str}")
+    trace_id = get_trace_id(user_id_str)
+    log_structured(
+        logger, "info", "Marked type as success", trace_id=trace_id, data_type=data_type, user_id=user_id_str
+    )
 
 
 def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
@@ -184,7 +205,16 @@ def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "failed")
     redis_client.setex(_get_key(user_id_str, "types", data_type, "error"), REDIS_TTL, error)
 
-    logger.error(f"Marked {data_type} as failed for user {user_id_str}: {error}")
+    trace_id = get_trace_id(user_id_str)
+    log_structured(
+        logger,
+        "error",
+        "Marked type as failed",
+        trace_id=trace_id,
+        data_type=data_type,
+        error=error,
+        user_id=user_id_str,
+    )
 
 
 def reset_type_status(user_id: str | UUID, data_type: str) -> None:
@@ -207,12 +237,13 @@ def complete_backfill(user_id: str | UUID) -> None:
     # Set overall complete marker with shorter TTL (1 day)
     redis_client.setex(_get_key(user_id_str, "overall_complete"), 86400, "1")
 
-    logger.info(f"Completed full backfill for user {user_id_str}")
+    trace_id = get_trace_id(user_id_str)
+    log_structured(logger, "info", "Completed full backfill", trace_id=trace_id, user_id=user_id_str)
 
 
 @shared_task
 def start_full_backfill(user_id: str) -> dict[str, Any]:
-    """Initialize and start full 90-day backfill for all 16 data types.
+    """Initialize and start full 30-day backfill for all 16 data types.
 
     This is called after OAuth connection to auto-trigger historical sync.
     Triggers the first type and the rest will chain via webhooks.
@@ -223,13 +254,24 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     Returns:
         Dict with initialization status
     """
-    logger.info(f"Starting full backfill for user {user_id} (16 types, 90 days)")
-
     try:
         UUID(user_id)  # Validate UUID format
     except ValueError as e:
         logger.error(f"Invalid user_id: {user_id}")
         return {"error": f"Invalid user_id: {e}"}
+
+    # Generate trace ID for this backfill session
+    trace_id = set_trace_id(user_id)
+
+    log_structured(
+        logger,
+        "info",
+        "Starting full backfill",
+        trace_id=trace_id,
+        user_id=user_id,
+        total_types=len(ALL_DATA_TYPES),
+        max_days=GarminBackfillService.MAX_BACKFILL_DAYS,
+    )
 
     # Reset all type statuses to pending
     for data_type in ALL_DATA_TYPES:
@@ -242,6 +284,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     return {
         "status": "started",
         "user_id": user_id,
+        "trace_id": trace_id,
         "total_types": len(ALL_DATA_TYPES),
         "first_type": first_type,
     }
@@ -267,18 +310,25 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
         logger.error(f"Invalid user_id: {user_id}")
         return {"error": f"Invalid user_id: {e}"}
 
-    # Calculate date range based on API type
-    # Activity API: 30 days max, Health API: 90 days max
-    # Backfill starts AFTER summary coverage (7 days) to avoid overlap
-    max_days = GarminBackfillService.get_max_days_for_type(data_type)
-    summary_days = GarminBackfillService.SUMMARY_DAYS  # 7 days covered by REST summary
-    now = datetime.now(timezone.utc)
-    end_time = now - timedelta(days=summary_days)  # End at day 7 (summary covers 0-7)
-    start_time = now - timedelta(days=max_days)  # Start at max days (90 or 30)
+    trace_id = get_trace_id(user_id)
 
-    logger.info(
-        f"Triggering backfill for {data_type} ({max_days} days) "
-        f"({start_time.date()} to {end_time.date()}) for user {user_id}"
+    # Calculate date range: 30 days max for all data types
+    # No summary gap since REST endpoints are removed - backfill from now
+    max_days = GarminBackfillService.get_max_days_for_type(data_type)
+    now = datetime.now(timezone.utc)
+    end_time = now
+    start_time = now - timedelta(days=max_days)  # Start at 30 days ago
+
+    log_structured(
+        logger,
+        "info",
+        "Triggering backfill for type",
+        trace_id=trace_id,
+        data_type=data_type,
+        max_days=max_days,
+        start_date=str(start_time.date()),
+        end_date=str(end_time.date()),
+        user_id=user_id,
     )
 
     with SessionLocal() as db:
@@ -318,6 +368,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     data_types=[data_type],
                     start_time=start_time,
                     end_time=end_time,
+                    trace_id=trace_id,
                 )
             except HTTPException as e:
                 # Garmin rejects requests for users connected less than max days ago
@@ -325,13 +376,22 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     # Retry with shorter range (14 days for Activity API, 31 for Health API)
                     fallback_days = 14 if data_type in GarminBackfillService.ACTIVITY_API_TYPES else 31
                     start_time_fallback = end_time - timedelta(days=fallback_days)
-                    logger.info(f"Retrying {data_type} with {fallback_days}-day range for user {user_id}")
+                    log_structured(
+                        logger,
+                        "info",
+                        "Retrying with shorter range",
+                        trace_id=trace_id,
+                        data_type=data_type,
+                        fallback_days=fallback_days,
+                        user_id=user_id,
+                    )
                     result = backfill_service.trigger_backfill(
                         db=db,
                         user_id=user_uuid,
                         data_types=[data_type],
                         start_time=start_time_fallback,
                         end_time=end_time,
+                        trace_id=trace_id,
                     )
                 else:
                     raise
@@ -344,7 +404,15 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 is_rate_limit = "429" in error or "rate limit" in error.lower()
                 delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
                 if is_rate_limit:
-                    logger.warning(f"Rate limit hit for {data_type}, waiting {delay}s before next type")
+                    log_structured(
+                        logger,
+                        "warn",
+                        "Rate limit hit, delaying next type",
+                        trace_id=trace_id,
+                        data_type=data_type,
+                        delay_seconds=delay,
+                        user_id=user_id,
+                    )
                 # Still trigger next type even if this one failed (with delay)
                 trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
                 return {"status": "failed", "error": error}
@@ -358,20 +426,64 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
         except HTTPException as e:
             error = str(e.detail)
-            logger.error(f"HTTP error in trigger_backfill_for_type for {data_type}: {error}")
+            log_structured(
+                logger,
+                "error",
+                "HTTP error triggering backfill",
+                trace_id=trace_id,
+                data_type=data_type,
+                status_code=e.status_code,
+                error=error,
+                user_id=user_id,
+            )
             mark_type_failed(user_id, data_type, error)
+
+            # 403 = user didn't grant HISTORICAL_DATA_EXPORT permission during OAuth
+            # All types will fail the same way, so don't chain to next type
+            if e.status_code == 403:
+                error_msg = "Historical data access not granted. User must re-authorize."
+                log_structured(
+                    logger,
+                    "warn",
+                    "403: marking all remaining types as failed",
+                    trace_id=trace_id,
+                    data_type=data_type,
+                    user_id=user_id,
+                )
+                # Mark all remaining pending types as failed
+                pending = get_pending_types(user_id)
+                for pending_type in pending:
+                    mark_type_failed(user_id, pending_type, error_msg)
+                return {"status": "failed", "error": error_msg}
+
             # Determine delay based on error type
             is_rate_limit = e.status_code == 429 or "rate limit" in error.lower()
             delay = DELAY_AFTER_RATE_LIMIT if is_rate_limit else DELAY_BETWEEN_TYPES
             if is_rate_limit:
-                logger.warning(f"Rate limit hit for {data_type}, waiting {delay}s before next type")
+                log_structured(
+                    logger,
+                    "warn",
+                    "Rate limit hit, delaying next type",
+                    trace_id=trace_id,
+                    data_type=data_type,
+                    delay_seconds=delay,
+                    user_id=user_id,
+                )
             # Try to continue with next type (with delay)
             trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
             return {"status": "failed", "error": error}
 
         except Exception as e:
             error = str(e)
-            logger.error(f"Error in trigger_backfill_for_type for {data_type}: {error}")
+            log_structured(
+                logger,
+                "error",
+                "Error triggering backfill",
+                trace_id=trace_id,
+                data_type=data_type,
+                error=error,
+                user_id=user_id,
+            )
             mark_type_failed(user_id, data_type, error)
             # Try to continue with next type (with small delay)
             trigger_next_pending_type.apply_async(args=[user_id], countdown=DELAY_BETWEEN_TYPES)
@@ -390,15 +502,31 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
     Returns:
         Dict with status
     """
+    trace_id = get_trace_id(user_id)
     pending_types = get_pending_types(user_id)
 
     if not pending_types:
         status = get_backfill_status(user_id)
         if status["failed_count"] == 0:
             complete_backfill(user_id)
-            logger.info(f"All {len(ALL_DATA_TYPES)} types complete for user {user_id}")
+            log_structured(
+                logger,
+                "info",
+                "Backfill complete",
+                trace_id=trace_id,
+                user_id=user_id,
+                success_count=status["success_count"],
+            )
             return {"status": "complete", "success_count": status["success_count"]}
-        logger.info(f"Backfill finished with {status['failed_count']} failures for user {user_id}")
+        log_structured(
+            logger,
+            "info",
+            "Backfill finished with failures",
+            trace_id=trace_id,
+            user_id=user_id,
+            success_count=status["success_count"],
+            failed_count=status["failed_count"],
+        )
         return {
             "status": "partial",
             "success_count": status["success_count"],
@@ -406,7 +534,15 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         }
 
     next_type = pending_types[0]
-    logger.info(f"Triggering next type {next_type} for user {user_id} ({len(pending_types)} remaining)")
+    log_structured(
+        logger,
+        "info",
+        "Triggering next backfill type",
+        trace_id=trace_id,
+        user_id=user_id,
+        next_type=next_type,
+        remaining=len(pending_types),
+    )
 
     # Add small delay between types to avoid rate limiting
     trigger_backfill_for_type.apply_async(args=[user_id, next_type], countdown=DELAY_BETWEEN_TYPES)
