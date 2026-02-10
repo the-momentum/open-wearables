@@ -245,6 +245,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (180, SeriesType.cadence, "rpm"),
     (181, SeriesType.power, "watts"),
     (182, SeriesType.speed, "m_per_s"),
+    (183, SeriesType.workout_effort_score, "score"),
+    (184, SeriesType.estimated_workout_effort_score, "score"),
     # -------------------------------------------------------------------------
     # ENVIRONMENTAL (IDs 200-219)
     # -------------------------------------------------------------------------
