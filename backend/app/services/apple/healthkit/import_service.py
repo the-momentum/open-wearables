@@ -154,12 +154,12 @@ class ImportService:
         device_model: str | None,
         software_version: str | None,
         end_date: datetime,
-    ) -> tuple[EventRecordMetrics, int | float | None]:
+    ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
-        Returns a dictionary with the metrics and duration.
+        Returns a tuple with the metrics, time series samples, and duration.
         """
         if stats is None:
-            return EventRecordMetrics(), None
+            return EventRecordMetrics(), [], None
 
         stats_dict: dict[str, Decimal | int] = {}
         stats_dict["energy_burned"] = Decimal("0")
@@ -229,7 +229,8 @@ class ImportService:
         if workout_bundles:
             records = [record for record, _, _ in workout_bundles]
             details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
-            time_series_samples = [time_series_samples for _, _, time_series_samples in workout_bundles]
+            # Flatten all time series samples from all workouts into a single list
+            time_series_samples = [sample for _, _, samples in workout_bundles for sample in samples]
 
             # Bulk create records - returns only IDs that were actually inserted
             inserted_ids = self.event_record_service.bulk_create(db_session, records)
