@@ -94,9 +94,12 @@ export interface AuthResponse {
   developer_id: string;
 }
 
-export interface Token {
-  access_token: string;
-  token_type: string;
+export interface InvitationCode {
+  id: string;
+  code: string;
+  user_id: string;
+  expires_at: string;
+  created_at: string;
 }
 
 export interface RegisterRequest {
