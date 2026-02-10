@@ -4,13 +4,54 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
+from logging import getLogger
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.series_types import AppleCategoryType, AppleMetricType
 from app.constants.workout_statistics import WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
+from app.utils.structured_logging import log_structured
+
+logger = getLogger(__name__)
+
+
+def _is_known_type(value: Any, enum_cls: type[StrEnum]) -> bool:
+    """Return True if value is None or a valid enum member."""
+    if value is None:
+        return True
+    try:
+        enum_cls(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _filter_and_log(
+    items: list[Any],
+    enum_cls: type[StrEnum],
+    category: str,
+) -> list[Any]:
+    """Filter unknown types from a list and log what was removed."""
+    known = []
+    unknown_types: list[str] = []
+    for item in items:
+        if not isinstance(item, dict) or _is_known_type(item.get("type"), enum_cls):
+            known.append(item)
+        else:
+            unknown_types.append(item.get("type", ""))
+    if unknown_types:
+        log_structured(
+            logger,
+            "info",
+            f"Filtered {len(unknown_types)} {category} with unknown types",
+            action="unknown_types_filtered",
+            category=category,
+            unknown_types=unknown_types,
+        )
+    return known
 
 
 class OSVersion(BaseModel):
@@ -94,6 +135,24 @@ class SyncRequestData(BaseModel):
 
     Contains the actual health data arrays.
     """
+
+    @model_validator(mode="before")
+    @classmethod
+    def filter_unknown_types(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "records" in data and isinstance(data["records"], list):
+            data["records"] = _filter_and_log(data["records"], AppleMetricType, "records")
+        if "sleep" in data and isinstance(data["sleep"], list):
+            data["sleep"] = _filter_and_log(data["sleep"], AppleCategoryType, "sleep")
+        if "workouts" in data and isinstance(data["workouts"], list):
+            data["workouts"] = _filter_and_log(data["workouts"], SDKWorkoutType, "workouts")
+            for w in data["workouts"]:
+                if isinstance(w, dict) and isinstance(w.get("workoutStatistics"), list):
+                    w["workoutStatistics"] = _filter_and_log(
+                        w["workoutStatistics"], WorkoutStatisticType, "workout_statistics"
+                    )
+        return data
 
     records: list[MetricRecord] = Field(
         default_factory=list,

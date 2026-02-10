@@ -416,6 +416,84 @@ class TestAppleSDKImport:
         assert details.distance == Decimal("3200")
 
 
+class TestAppleSDKImportUnknownTypes:
+    """Tests that unknown types are filtered at schema level before reaching the service."""
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    def test_import_with_unknown_record_type_filtered_before_processing(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """Unknown-type records are removed at schema level; only valid records reach the service."""
+        user = UserFactory()
+        payload = {
+            "data": {
+                "records": [
+                    {
+                        "uuid": "AAAA0000-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+                        "type": "HKQuantityTypeIdentifierStepCount",
+                        "unit": "count",
+                        "value": 100,
+                        "startDate": "2025-01-15T10:00:00Z",
+                        "endDate": "2025-01-15T10:05:00Z",
+                    },
+                    {
+                        "uuid": "BBBB0000-BBBB-BBBB-BBBB-BBBBBBBBBBBB",
+                        "type": "HKQuantityTypeIdentifierSomeNewAppleType",
+                        "unit": "count",
+                        "value": 42,
+                        "startDate": "2025-01-15T10:05:00Z",
+                        "endDate": "2025-01-15T10:10:00Z",
+                    },
+                ]
+            }
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        # Only 1 valid record should be saved (step count)
+        assert result["records_saved"] == 1
+
+    def test_import_with_unknown_workout_type_filtered_before_processing(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """Unknown-type workouts never reach the service."""
+        user = UserFactory()
+        payload = {
+            "data": {
+                "workouts": [
+                    {
+                        "uuid": "CCCC0000-CCCC-CCCC-CCCC-CCCCCCCCCCCC",
+                        "type": "running",
+                        "startDate": "2025-01-15T08:00:00Z",
+                        "endDate": "2025-01-15T08:30:00Z",
+                        "workoutStatistics": [
+                            {"type": "duration", "unit": "s", "value": 1800},
+                        ],
+                    },
+                    {
+                        "uuid": "DDDD0000-DDDD-DDDD-DDDD-DDDDDDDDDDDD",
+                        "type": "underwater_basket_weaving",
+                        "startDate": "2025-01-15T09:00:00Z",
+                        "endDate": "2025-01-15T09:45:00Z",
+                        "workoutStatistics": [],
+                    },
+                ]
+            }
+        }
+
+        result = import_service.load_data(db, payload, str(user.id))
+
+        # Only 1 valid workout should be saved (running)
+        assert result["workouts_saved"] == 1
+
+
 class TestAppleSDKImportEdgeCases:
     """Edge case tests for Apple SDK import."""
 
