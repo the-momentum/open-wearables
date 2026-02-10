@@ -57,11 +57,11 @@ export const API_ENDPOINTS = {
   testAutomation: (id: string) => `/api/v1/automations/${id}/test`,
 
   // Developers endpoints
-  developers: '/api/v1/developers/',
+  developers: '/api/v1/developers',
   developerDetail: (id: string) => `/api/v1/developers/${id}`,
 
   // Invitations endpoints (authenticated)
-  invitations: '/api/v1/invitations/',
+  invitations: '/api/v1/invitations',
   invitationDetail: (id: string) => `/api/v1/invitations/${id}`,
   invitationResend: (id: string) => `/api/v1/invitations/${id}/resend`,
 

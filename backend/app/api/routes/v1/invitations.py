@@ -14,7 +14,7 @@ router = APIRouter()
 # ============ Invitation Management (Authenticated) ============
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED, response_model=InvitationRead)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=InvitationRead)
 async def create_invitation(
     payload: InvitationCreate,
     db: DbSession,
@@ -24,7 +24,7 @@ async def create_invitation(
     return invitation_service.create_invitation(db, payload, developer)
 
 
-@router.get("/", response_model=list[InvitationRead])
+@router.get("", response_model=list[InvitationRead])
 async def list_invitations(db: DbSession, _auth: DeveloperDep):
     """List all pending invitations."""
     return invitation_service.get_active_invitations(db)

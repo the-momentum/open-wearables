@@ -343,7 +343,7 @@ app/api/routes/
 - Define functions as `async` by default
 - Use **kebab-case** for paths: `/heart-rate`, `/import-data`
 - Keep route code minimal, delegate to services
-- **Trailing slashes matter:** When a router is mounted with a prefix (e.g., `/developers`) and the route path is `"/"`, the canonical URL has a trailing slash. The frontend endpoint must match (e.g., `'/api/v1/developers/'`), otherwise FastAPI issues a 307 redirect that causes mixed content errors behind HTTPS reverse proxies.
+- **No trailing slashes:** Use `""` (empty string) instead of `"/"` for root routes on prefixed routers. A `"/"` path creates a trailing-slash canonical URL, causing FastAPI 307 redirects that break behind HTTPS reverse proxies.
 
 **Flow:**
 - Request: request → main.py → head_router → version_router → router → endpoint → service
