@@ -73,6 +73,7 @@ class SeriesType(str, Enum):
     exercise_time = "exercise_time"
     physical_effort = "physical_effort"
     flights_climbed = "flights_climbed"
+    average_met = "average_met"
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)
@@ -130,6 +131,8 @@ class SeriesType(str, Enum):
     water_temperature = "water_temperature"
     uv_exposure = "uv_exposure"
     inhaler_usage = "inhaler_usage"
+    weather_temperature = "weather_temperature"
+    weather_humidity = "weather_humidity"
 
     # =========================================================================
     # OTHER (IDs 220-)
@@ -209,6 +212,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (84, SeriesType.exercise_time, "minutes"),
     (85, SeriesType.physical_effort, "score"),
     (86, SeriesType.flights_climbed, "count"),
+    (87, SeriesType.average_met, "met"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------
@@ -258,6 +262,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (204, SeriesType.water_temperature, "celsius"),
     (205, SeriesType.uv_exposure, "count"),
     (206, SeriesType.inhaler_usage, "count"),
+    (207, SeriesType.weather_temperature, "celsius"),
+    (208, SeriesType.weather_humidity, "percent"),
     # -------------------------------------------------------------------------
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # -------------------------------------------------------------------------

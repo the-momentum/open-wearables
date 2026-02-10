@@ -80,13 +80,13 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "averageVerticalOscillation": SeriesType.running_vertical_oscillation,
     "averageGroundContactTime": SeriesType.running_ground_contact_time,
     # Other Metrics
-    "averageMETs": SeriesType.physical_effort,
-    "lapLength": SeriesType.distance_other,
-    "swimmingLocationType": SeriesType.distance_other,
-    "indoorWorkout": SeriesType.physical_effort,
+    "averageMETs": SeriesType.average_met,
+    # "lapLength": -- unhandled
+    # "swimmingLocationType": -- unhandled
+    # "indoorWorkout": -- unhandled
     # Weather
-    "weatherTemperature": SeriesType.water_temperature,
-    "weatherHumidity": SeriesType.environmental_sound_reduction,
+    "weatherTemperature": SeriesType.weather_temperature,
+    "weatherHumidity": SeriesType.weather_humidity,
     # Swimming specific
     "swimmingStrokeCount": SeriesType.swimming_stroke_count,
     # Legacy mappings
