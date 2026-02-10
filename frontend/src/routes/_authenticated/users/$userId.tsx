@@ -339,8 +339,8 @@ function UserDetailPage() {
             <DialogTitle>Invitation Code Generated</DialogTitle>
             <DialogDescription>
               Share this code with the mobile app user. They can enter it to
-              receive SDK access without manually configuring tokens. The code is
-              single-use and will expire.
+              receive SDK access without manually configuring tokens. The code
+              is single-use and will expire.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -370,7 +370,8 @@ function UserDetailPage() {
               </div>
               {invitationCodeData?.expires_at && (
                 <p className="text-xs text-zinc-500">
-                  Expires: {new Date(invitationCodeData.expires_at).toLocaleString()}
+                  Expires:{' '}
+                  {new Date(invitationCodeData.expires_at).toLocaleString()}
                 </p>
               )}
             </div>
