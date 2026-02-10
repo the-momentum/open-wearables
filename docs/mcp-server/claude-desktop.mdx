@@ -55,6 +55,15 @@ Add the following to your Claude Desktop configuration file:
   Replace `/path/to/open-wearables/mcp` with the actual path to the MCP directory on your system.
 </Warning>
 
+<Tip>
+  If the server fails to start, you may need to use the full path to `uv` instead of just `"uv"`. You can find it by running:
+  ```bash
+  which uv
+  # e.g. /Users/bart/.local/bin/uv
+  ```
+  Then replace `"command": "uv"` with the full path, e.g. `"command": "/Users/bart/.local/bin/uv"`.
+</Tip>
+
 ## Verifying the Connection
 
 After configuring Claude Desktop:
