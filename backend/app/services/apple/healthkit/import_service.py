@@ -47,7 +47,7 @@ class ImportService:
         self,
         request: SyncRequest,
         user_id: str,
-    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
+    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate, list[TimeSeriesSampleCreate]]]:
         """
         Given the parsed SyncRequest, yield tuples of
         (EventRecordCreate, EventRecordDetailCreate) ready to insert into your ORM session.
@@ -59,7 +59,7 @@ class ImportService:
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
-            metrics, duration = self._extract_metrics_from_workout_stats(
+            metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.workoutStatistics,
                 user_uuid,
                 device_model,
@@ -91,7 +91,7 @@ class ImportService:
                 **metrics,
             )
 
-            yield record, detail
+            yield record, detail, time_series_samples
 
     def _build_statistic_bundles(
         self,
@@ -204,7 +204,7 @@ class ImportService:
             if detail_field:
                 stats_dict[detail_field] = value
 
-        return EventRecordMetrics(**stats_dict), duration
+        return EventRecordMetrics(**stats_dict), time_series_samples, duration
 
     def load_data(
         self,
@@ -227,8 +227,9 @@ class ImportService:
         # Process workouts in batch
         workout_bundles = list(self._build_workout_bundles(request, user_id))
         if workout_bundles:
-            records = [record for record, _ in workout_bundles]
-            details_by_id = {detail.record_id: detail for _, detail in workout_bundles}
+            records = [record for record, _, _ in workout_bundles]
+            details_by_id = {detail.record_id: detail for _, detail, _ in workout_bundles}
+            time_series_samples = [time_series_samples for _, _, time_series_samples in workout_bundles]
 
             # Bulk create records - returns only IDs that were actually inserted
             inserted_ids = self.event_record_service.bulk_create(db_session, records)
@@ -242,11 +243,16 @@ class ImportService:
                 self.event_record_service.bulk_create_details(db_session, details_to_insert, detail_type="workout")
             workouts_saved = len(inserted_ids)
 
+            # Bulk create time series samples
+            if time_series_samples:
+                self.timeseries_service.bulk_create_samples(db_session, time_series_samples)
+                records_saved += len(time_series_samples)
+
         # Process time series samples (records)
         samples = self._build_statistic_bundles(request, user_id)
         if samples:
             self.timeseries_service.bulk_create_samples(db_session, samples)
-            records_saved = len(samples)
+            records_saved += len(samples)
 
         # Commit all workout and timeseries changes in one transaction
         db_session.commit()

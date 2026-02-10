@@ -216,6 +216,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (101, SeriesType.distance_cycling, "meters"),
     (102, SeriesType.distance_swimming, "meters"),
     (103, SeriesType.distance_downhill_snow_sports, "meters"),
+    (104, SeriesType.distance_other, "meters"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Walking Metrics (IDs 120-139)
     # -------------------------------------------------------------------------
