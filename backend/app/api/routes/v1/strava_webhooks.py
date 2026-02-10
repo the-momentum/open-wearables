@@ -7,8 +7,8 @@ from fastapi import APIRouter, Query, Request
 
 from app.database import DbSession
 from app.services.providers.strava.handlers.webhook_helpers import (
-    handle_webhook_verification,
     handle_webhook_event,
+    handle_webhook_verification,
 )
 
 router = APIRouter()

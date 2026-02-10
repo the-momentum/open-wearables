@@ -113,7 +113,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         """Get detailed activity data from Strava API."""
         return self._make_api_request(db, user_id, f"/api/v3/activities/{workout_id}")
 
-    def _extract_dates(self, start_iso: str, elapsed_time: int) -> tuple[datetime, datetime]:
+    def _extract_dates_from_iso(self, start_iso: str, elapsed_time: int) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO string and elapsed time."""
         start_date = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
         if start_date.tzinfo is None:
@@ -182,7 +182,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         # Prefer moving_time (excludes pauses) over elapsed_time
         duration_seconds = raw_workout.moving_time or raw_workout.elapsed_time
-        start_date, end_date = self._extract_dates(raw_workout.start_date, duration_seconds)
+        start_date, end_date = self._extract_dates_from_iso(raw_workout.start_date, duration_seconds)
 
         metrics = self._build_metrics(raw_workout)
 

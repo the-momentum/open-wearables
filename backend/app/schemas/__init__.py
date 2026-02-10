@@ -141,6 +141,9 @@ from .provider_setting import (
 from .response import UploadDataResponse
 from .sdk import SDKAuthContext, SDKTokenRequest
 from .series_types import SeriesType
+from .strava.activity_import import (
+    ActivityJSON as StravaActivityJSON,
+)
 from .summaries import (
     ActivitySummary,
     BloodPressure,
@@ -185,9 +188,6 @@ from .timeseries import (
 from .token import (
     RefreshTokenRequest,
     TokenResponse,
-)
-from .strava.activity_import import (
-    ActivityJSON as StravaActivityJSON,
 )
 from .user import (
     UserCreate,

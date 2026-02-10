@@ -1,25 +1,27 @@
 from logging import getLogger
 from typing import Annotated
-from fastapi import Request, Query, HTTPException
+from uuid import UUID
+
+from fastapi import HTTPException, Query, Request
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
+from app.schemas import StravaActivityJSON
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.strava.workouts import StravaWorkouts
-from app.schemas import StravaActivityJSON
 from app.utils.structured_logging import log_structured
-from sqlalchemy.exc import IntegrityError
-from pydantic import ValidationError
-from uuid import UUID
-
 
 logger = getLogger(__name__)
 
 
-async def handle_webhook_verification(hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
+async def handle_webhook_verification(
+    hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
     hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
-    hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",) -> dict:
+    hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",
+) -> dict:
     """Handle Strava webhook subscription verification."""
     if hub_mode != "subscribe":
         raise HTTPException(status_code=400, detail="Invalid hub.mode")
@@ -134,9 +136,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
 
         try:
             # Fetch full activity detail from Strava API
-            activity_data = strava_workouts.get_workout_detail_from_api(
-                db, internal_user_id, str(object_id)
-            )
+            activity_data = strava_workouts.get_workout_detail_from_api(db, internal_user_id, str(object_id))
 
             if not activity_data:
                 log_structured(
