@@ -28,6 +28,8 @@ async def generate_invitation_code(
     The code can be shared with a mobile app user who enters it to receive
     SDK access and refresh tokens without manually entering user_id and tokens.
 
+    Previously generated codes for this user are marked as expired.
+
     Requires developer authentication.
     """
     return user_invitation_code_service.generate(db, user_id, developer.id)
