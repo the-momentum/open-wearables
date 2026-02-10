@@ -20,6 +20,7 @@ from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
 from .token import router as token_router
+from .user_invitation_code import router as user_invitation_code_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 
@@ -43,6 +44,7 @@ v1_router.include_router(import_xml_router, tags=["Apple Health XML import"])
 v1_router.include_router(external_connectors_router, tags=["External connectors"])
 v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])
+v1_router.include_router(user_invitation_code_router, tags=["Mobile SDK"])
 v1_router.include_router(applications_router, tags=["applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 v1_router.include_router(priorities_router, tags=["priorities"])
