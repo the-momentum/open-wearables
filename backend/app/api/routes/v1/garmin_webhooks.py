@@ -375,6 +375,9 @@ async def garmin_ping_notification(
                         notification_count=len(payload[summary_type]),
                     )
 
+        # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
+        db.commit()
+
         return {
             "processed": processed_count,
             "errors": errors,
@@ -383,6 +386,7 @@ async def garmin_ping_notification(
         }
 
     except Exception as e:
+        db.rollback()
         log_structured(logger, "error", "Error processing Garmin ping webhook", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
@@ -678,6 +682,9 @@ async def garmin_push_notification(
 
                 wellness_results[data_type] = {"processed": len(payload[data_type]), "saved": type_count}
 
+        # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
+        db.commit()
+
         # Also add users from activity processing (only if newly succeeded)
         for act in processed_activities:
             uid_str = act.get("internal_user_id")
@@ -715,6 +722,7 @@ async def garmin_push_notification(
         }
 
     except Exception as e:
+        db.rollback()
         log_structured(logger, "error", "Error processing Garmin push webhook", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
