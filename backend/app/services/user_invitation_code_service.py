@@ -47,7 +47,7 @@ class UserInvitationCodeService:
             code=self._generate_code(),
             user_id=user_id,
             created_by_id=developer_id,
-            expires_at=now + timedelta(days=settings.invitation_expire_days),
+            expires_at=now + timedelta(days=settings.user_invitation_code_expire_days),
             created_at=now,
         )
         row = self.crud.create(db_session, code_data)

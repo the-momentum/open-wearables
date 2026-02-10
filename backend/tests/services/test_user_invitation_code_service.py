@@ -43,7 +43,7 @@ class TestGenerate:
         result = user_invitation_code_service.generate(db, user.id, developer.id)
 
         # Assert
-        expected_expiry = datetime.now(timezone.utc) + timedelta(days=settings.invitation_expire_days)
+        expected_expiry = datetime.now(timezone.utc) + timedelta(days=settings.user_invitation_code_expire_days)
         assert abs((result.expires_at - expected_expiry).total_seconds()) < 5
 
     def test_generate_stores_in_db(self, db: Session) -> None:

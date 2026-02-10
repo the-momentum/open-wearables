@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     invitation_expire_days: int = 7
     email_max_retries: int = 5
 
+    # SDK INVITATION CODE SETTINGS
+    user_invitation_code_expire_days: int = 7
+
     # AWS SETTINGS
     aws_bucket_name: str | None = None
     aws_access_key_id: str | None = None
