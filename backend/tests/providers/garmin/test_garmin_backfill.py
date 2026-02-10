@@ -23,9 +23,10 @@ class TestGarminBackfillServiceUnit:
 
     def test_backfill_limits_constants(self, backfill_service: GarminBackfillService) -> None:
         """Test that backfill limit constants are set correctly."""
-        # 30-day max for all data types (confirmed by Garmin support)
+        # 30-day max per request, 365 days total via 12 windows
         assert backfill_service.BACKFILL_CHUNK_DAYS == 30  # Per request (30 days = max allowed)
-        assert backfill_service.MAX_BACKFILL_DAYS == 30  # Target: 30 days of history
+        assert backfill_service.MAX_BACKFILL_DAYS == 365  # Target: ~1 year of history
+        assert backfill_service.BACKFILL_WINDOW_COUNT == 12  # 12 x 30-day windows
         assert backfill_service.MAX_REQUEST_DAYS == 30  # Max days per single backfill request (Garmin limit)
         assert backfill_service.DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
         assert backfill_service.SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)

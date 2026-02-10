@@ -581,4 +581,9 @@ export interface GarminBackfillStatus {
   pending_count: number;
   triggered_count: number;
   total_types: number;
+  current_window?: number;
+  total_windows?: number;
+  completed_windows?: number;
+  days_completed?: number;
+  target_days?: number;
 }

@@ -38,13 +38,14 @@ class GarminBackfillService:
     - 403 returned if user didn't grant historical data access during OAuth
     """
 
-    # Backfill configuration - 30 days max per request for ALL types
-    MAX_BACKFILL_DAYS = 30
+    # Backfill configuration
+    MAX_BACKFILL_DAYS = 365  # Total target: ~1 year of history
+    BACKFILL_WINDOW_COUNT = 12  # Number of 30-day windows to cover ~365 days
     MAX_HEALTH_API_DAYS = 30
     MAX_ACTIVITY_API_DAYS = 30
 
     # Constants for compatibility and clarity
-    BACKFILL_CHUNK_DAYS = 30  # Max days per request
+    BACKFILL_CHUNK_DAYS = 30  # Max days per single request (Garmin limit)
     MAX_REQUEST_DAYS = 30  # Alias for BACKFILL_CHUNK_DAYS
     SUMMARY_DAYS = 0  # No summary coverage gap (REST endpoints removed)
 
@@ -100,7 +101,7 @@ class GarminBackfillService:
 
         All data types are limited to 30 days per request.
         """
-        return cls.MAX_BACKFILL_DAYS
+        return cls.BACKFILL_CHUNK_DAYS
 
     def __init__(
         self,

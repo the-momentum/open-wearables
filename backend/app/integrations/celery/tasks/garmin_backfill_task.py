@@ -41,6 +41,10 @@ _backfill_budget = int(GARMIN_RATE_LIMIT_REQUESTS * GARMIN_BACKFILL_BUDGET_PCT) 
 DELAY_BETWEEN_TYPES = GARMIN_RATE_LIMIT_WINDOW // _backfill_budget  # 2s between types
 DELAY_AFTER_RATE_LIMIT = GARMIN_RATE_LIMIT_WINDOW  # Wait for full window reset (60s)
 
+# Stale request timeout settings
+TRIGGERED_TIMEOUT_SECONDS = 300  # 5 min before skipping a triggered type
+MAX_TYPE_ATTEMPTS = 3  # Total attempts (1 original + 2 retries)
+
 # All 16 data types to backfill
 ALL_DATA_TYPES = [
     "sleeps",
@@ -75,10 +79,25 @@ def set_trace_id(user_id: str | UUID) -> str:
     return trace_id
 
 
-def get_trace_id(user_id: str | UUID) -> str | None:
-    """Get the active backfill trace ID for a user, if any."""
+def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | None:
+    """Get the active backfill trace ID for a user, optionally per-type.
+
+    Args:
+        user_id: UUID string of the user
+        data_type: If provided, returns the per-type trace ID instead of session trace ID
+    """
     redis_client = get_redis_client()
+    if data_type:
+        return redis_client.get(_get_key(user_id, "types", data_type, "trace_id"))
     return redis_client.get(_get_key(user_id, "trace_id"))
+
+
+def set_type_trace_id(user_id: str | UUID, data_type: str) -> str:
+    """Generate and store a per-type trace ID for a specific backfill data type."""
+    redis_client = get_redis_client()
+    trace_id = str(uuid4())[:8]
+    redis_client.setex(_get_key(user_id, "types", data_type, "trace_id"), REDIS_TTL, trace_id)
+    return trace_id
 
 
 def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
@@ -107,12 +126,21 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
     failed_count = 0
     pending_count = 0
     triggered_count = 0
+    skipped_count = 0
 
     for data_type in ALL_DATA_TYPES:
         type_status = redis_client.get(_get_key(user_id_str, "types", data_type, "status"))
         status = type_status if type_status else "pending"
 
         type_info: dict[str, Any] = {"status": status}
+
+        # Include per-type trace ID and skip count if available
+        type_tid = redis_client.get(_get_key(user_id_str, "types", data_type, "trace_id"))
+        if type_tid:
+            type_info["trace_id"] = type_tid
+        skip_cnt = redis_client.get(_get_key(user_id_str, "types", data_type, "skip_count"))
+        if skip_cnt:
+            type_info["skip_count"] = int(skip_cnt)
 
         if status == "triggered":
             triggered_at = redis_client.get(_get_key(user_id_str, "types", data_type, "triggered_at"))
@@ -129,20 +157,25 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
             if error:
                 type_info["error"] = error
             failed_count += 1
+        elif status == "skipped":
+            skipped_count += 1
         else:
             pending_count += 1
 
         types_status[data_type] = type_info
 
     # Determine overall status
+    # "skipped" types are treated like in_progress (chain isn't done yet)
     if success_count == len(ALL_DATA_TYPES):
         overall_status = "complete"
-    elif success_count > 0 and failed_count > 0 and pending_count == 0 and triggered_count == 0:
+    elif success_count > 0 and failed_count > 0 and pending_count == 0 and triggered_count == 0 and skipped_count == 0:
         overall_status = "partial"
-    elif triggered_count > 0 or (success_count > 0 and pending_count > 0):
+    elif triggered_count > 0 or skipped_count > 0 or (success_count > 0 and pending_count > 0):
         overall_status = "in_progress"
     else:
         overall_status = "pending"
+
+    completed_windows = get_completed_window_count(user_id_str)
 
     return {
         "overall_status": overall_status,
@@ -151,10 +184,15 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         "failed_count": failed_count,
         "pending_count": pending_count,
         "triggered_count": triggered_count,
+        "skipped_count": skipped_count,
         "total_types": len(ALL_DATA_TYPES),
         # Legacy compatibility
         "in_progress": overall_status == "in_progress",
-        "days_completed": GarminBackfillService.MAX_BACKFILL_DAYS if overall_status == "complete" else 0,
+        # Window tracking
+        "current_window": get_current_window(user_id_str),
+        "total_windows": get_total_windows(user_id_str),
+        "completed_windows": completed_windows,
+        "days_completed": completed_windows * GarminBackfillService.BACKFILL_CHUNK_DAYS,
         "target_days": GarminBackfillService.MAX_BACKFILL_DAYS,
     }
 
@@ -183,8 +221,15 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "triggered_at"), REDIS_TTL, now)
 
     trace_id = get_trace_id(user_id_str)
+    type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
-        logger, "info", "Marked type as triggered", trace_id=trace_id, data_type=data_type, user_id=user_id_str
+        logger,
+        "info",
+        "Marked type as triggered",
+        trace_id=trace_id,
+        type_trace_id=type_trace_id,
+        data_type=data_type,
+        user_id=user_id_str,
     )
 
 
@@ -208,8 +253,15 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "completed_at"), REDIS_TTL, now)
 
     trace_id = get_trace_id(user_id_str)
+    type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
-        logger, "info", "Marked type as success", trace_id=trace_id, data_type=data_type, user_id=user_id_str
+        logger,
+        "info",
+        "Marked type as success",
+        trace_id=trace_id,
+        type_trace_id=type_trace_id,
+        data_type=data_type,
+        user_id=user_id_str,
     )
     return True
 
@@ -223,11 +275,13 @@ def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
     redis_client.setex(_get_key(user_id_str, "types", data_type, "error"), REDIS_TTL, error)
 
     trace_id = get_trace_id(user_id_str)
+    type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
         logger,
         "error",
         "Marked type as failed",
         trace_id=trace_id,
+        type_trace_id=type_trace_id,
         data_type=data_type,
         error=error,
         user_id=user_id_str,
@@ -240,10 +294,156 @@ def reset_type_status(user_id: str | UUID, data_type: str) -> None:
     user_id_str = str(user_id)
 
     # Delete all keys for this type
-    for key_suffix in ["status", "triggered_at", "completed_at", "error"]:
+    for key_suffix in ["status", "triggered_at", "completed_at", "error", "trace_id"]:
         redis_client.delete(_get_key(user_id_str, "types", data_type, key_suffix))
 
     logger.info(f"Reset {data_type} status for user {user_id_str}")
+
+
+def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
+    """Mark a data type as skipped (timed out waiting for webhook).
+
+    Returns:
+        The new skip_count for this type.
+    """
+    redis_client = get_redis_client()
+    user_id_str = str(user_id)
+
+    redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "skipped")
+
+    # Increment skip count (persists across retries)
+    skip_key = _get_key(user_id_str, "types", data_type, "skip_count")
+    new_count = redis_client.incr(skip_key)
+    redis_client.expire(skip_key, REDIS_TTL)
+
+    trace_id = get_trace_id(user_id_str)
+    type_trace_id = get_trace_id(user_id_str, data_type)
+    log_structured(
+        logger,
+        "info",
+        "Marked type as skipped (timeout)",
+        trace_id=trace_id,
+        type_trace_id=type_trace_id,
+        data_type=data_type,
+        skip_count=new_count,
+        user_id=user_id_str,
+    )
+    return new_count
+
+
+def get_skipped_types(user_id: str | UUID) -> list[str]:
+    """Get list of skipped data types for a user."""
+    redis_client = get_redis_client()
+    user_id_str = str(user_id)
+    skipped = []
+
+    for data_type in ALL_DATA_TYPES:
+        status = redis_client.get(_get_key(user_id_str, "types", data_type, "status"))
+        if status == "skipped":
+            skipped.append(data_type)
+
+    return skipped
+
+
+def get_type_skip_count(user_id: str | UUID, data_type: str) -> int:
+    """Get the number of times a type has been skipped."""
+    redis_client = get_redis_client()
+    count = redis_client.get(_get_key(str(user_id), "types", data_type, "skip_count"))
+    return int(count) if count else 0
+
+
+def init_window_state(user_id: str | UUID, total_windows: int = GarminBackfillService.BACKFILL_WINDOW_COUNT) -> None:
+    """Initialize multi-window backfill state in Redis."""
+    redis_client = get_redis_client()
+    uid = str(user_id)
+    anchor = datetime.now(timezone.utc).isoformat()
+    redis_client.setex(_get_key(uid, "window", "current"), REDIS_TTL, "0")
+    redis_client.setex(_get_key(uid, "window", "total"), REDIS_TTL, str(total_windows))
+    redis_client.setex(_get_key(uid, "window", "anchor_ts"), REDIS_TTL, anchor)
+    redis_client.setex(_get_key(uid, "window", "completed_count"), REDIS_TTL, "0")
+
+
+def get_current_window(user_id: str | UUID) -> int:
+    """Get current window index (0-indexed)."""
+    redis_client = get_redis_client()
+    val = redis_client.get(_get_key(str(user_id), "window", "current"))
+    return int(val) if val else 0
+
+
+def get_total_windows(user_id: str | UUID) -> int:
+    """Get total number of windows for this backfill."""
+    redis_client = get_redis_client()
+    val = redis_client.get(_get_key(str(user_id), "window", "total"))
+    return int(val) if val else GarminBackfillService.BACKFILL_WINDOW_COUNT
+
+
+def get_anchor_timestamp(user_id: str | UUID) -> datetime:
+    """Get the fixed anchor timestamp for window calculation."""
+    redis_client = get_redis_client()
+    val = redis_client.get(_get_key(str(user_id), "window", "anchor_ts"))
+    if val:
+        return datetime.fromisoformat(val)
+    return datetime.now(timezone.utc)
+
+
+def get_window_date_range(user_id: str | UUID) -> tuple[datetime, datetime]:
+    """Get (start_time, end_time) for the current window.
+
+    Window 0: anchor-30d  →  anchor
+    Window 1: anchor-60d  →  anchor-30d
+    Window N: anchor-(N+1)*30d  →  anchor-N*30d
+    """
+    anchor = get_anchor_timestamp(user_id)
+    window = get_current_window(user_id)
+    chunk = GarminBackfillService.BACKFILL_CHUNK_DAYS
+    end_time = anchor - timedelta(days=window * chunk)
+    start_time = anchor - timedelta(days=(window + 1) * chunk)
+    return start_time, end_time
+
+
+def get_completed_window_count(user_id: str | UUID) -> int:
+    """Get number of completed windows."""
+    redis_client = get_redis_client()
+    val = redis_client.get(_get_key(str(user_id), "window", "completed_count"))
+    return int(val) if val else 0
+
+
+def advance_window(user_id: str | UUID) -> bool:
+    """Advance to next window. Returns True if more windows remain."""
+    redis_client = get_redis_client()
+    uid = str(user_id)
+
+    # Increment completed count
+    completed_key = _get_key(uid, "window", "completed_count")
+    redis_client.incr(completed_key)
+    redis_client.expire(completed_key, REDIS_TTL)
+
+    # Increment current window
+    current_key = _get_key(uid, "window", "current")
+    new_window = redis_client.incr(current_key)
+    redis_client.expire(current_key, REDIS_TTL)
+
+    total = get_total_windows(uid)
+    if new_window >= total:
+        return False
+
+    # Reset all 16 types to pending for the new window
+    for data_type in ALL_DATA_TYPES:
+        reset_type_status(uid, data_type)
+        # Delete skip_count keys (fresh retry budget per window)
+        redis_client.delete(_get_key(uid, "types", data_type, "skip_count"))
+
+    trace_id = get_trace_id(uid)
+    log_structured(
+        logger,
+        "info",
+        "Advanced to next backfill window",
+        trace_id=trace_id,
+        user_id=uid,
+        window=new_window,
+        total_windows=total,
+    )
+    return True
 
 
 def complete_backfill(user_id: str | UUID) -> None:
@@ -255,12 +455,20 @@ def complete_backfill(user_id: str | UUID) -> None:
     redis_client.setex(_get_key(user_id_str, "overall_complete"), 86400, "1")
 
     trace_id = get_trace_id(user_id_str)
-    log_structured(logger, "info", "Completed full backfill", trace_id=trace_id, user_id=user_id_str)
+    completed_windows = get_completed_window_count(user_id_str)
+    log_structured(
+        logger,
+        "info",
+        "Completed full backfill",
+        trace_id=trace_id,
+        user_id=user_id_str,
+        completed_windows=completed_windows,
+    )
 
 
 @shared_task
 def start_full_backfill(user_id: str) -> dict[str, Any]:
-    """Initialize and start full 30-day backfill for all 16 data types.
+    """Initialize and start full 365-day backfill (12 x 30-day windows) for all 16 data types.
 
     This is called after OAuth connection to auto-trigger historical sync.
     Triggers the first type and the rest will chain via webhooks.
@@ -280,6 +488,9 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     # Generate trace ID for this backfill session
     trace_id = set_trace_id(user_id)
 
+    # Initialize multi-window state
+    init_window_state(user_id, total_windows=GarminBackfillService.BACKFILL_WINDOW_COUNT)
+
     log_structured(
         logger,
         "info",
@@ -287,7 +498,8 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         trace_id=trace_id,
         user_id=user_id,
         total_types=len(ALL_DATA_TYPES),
-        max_days=GarminBackfillService.MAX_BACKFILL_DAYS,
+        total_windows=GarminBackfillService.BACKFILL_WINDOW_COUNT,
+        target_days=GarminBackfillService.MAX_BACKFILL_DAYS,
     )
 
     # Reset all type statuses to pending
@@ -303,7 +515,104 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         "user_id": user_id,
         "trace_id": trace_id,
         "total_types": len(ALL_DATA_TYPES),
+        "total_windows": GarminBackfillService.BACKFILL_WINDOW_COUNT,
+        "target_days": GarminBackfillService.MAX_BACKFILL_DAYS,
         "first_type": first_type,
+    }
+
+
+@shared_task
+def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
+    """Check if a triggered type has timed out and skip/fail it.
+
+    Scheduled by trigger_backfill_for_type with countdown=TRIGGERED_TIMEOUT_SECONDS.
+    If the type is still "triggered" after the timeout, it means Garmin never sent
+    a webhook (e.g., user has no data for this type).
+
+    Args:
+        user_id: UUID string of the user
+        data_type: The data type to check
+
+    Returns:
+        Dict with timeout check result
+    """
+    redis_client = get_redis_client()
+    user_id_str = str(user_id)
+
+    trace_id = get_trace_id(user_id_str)
+    type_trace_id = get_trace_id(user_id_str, data_type)
+
+    # 1. Read current status
+    status = redis_client.get(_get_key(user_id_str, "types", data_type, "status"))
+
+    # 2. If not "triggered" → already resolved by webhook
+    if status != "triggered":
+        log_structured(
+            logger,
+            "info",
+            "Timeout check: type already resolved",
+            trace_id=trace_id,
+            type_trace_id=type_trace_id,
+            data_type=data_type,
+            current_status=status,
+            user_id=user_id_str,
+        )
+        return {"status": "already_resolved", "current_status": status}
+
+    # 3. Verify triggered_at is actually older than TRIGGERED_TIMEOUT_SECONDS
+    triggered_at_str = redis_client.get(_get_key(user_id_str, "types", data_type, "triggered_at"))
+    if triggered_at_str:
+        triggered_at = datetime.fromisoformat(triggered_at_str)
+        elapsed = (datetime.now(timezone.utc) - triggered_at).total_seconds()
+        if elapsed < TRIGGERED_TIMEOUT_SECONDS:
+            # Re-triggered since timeout was scheduled; reschedule with remaining time
+            remaining = int(TRIGGERED_TIMEOUT_SECONDS - elapsed) + 1
+            log_structured(
+                logger,
+                "info",
+                "Timeout check: not yet expired, rescheduling",
+                trace_id=trace_id,
+                type_trace_id=type_trace_id,
+                data_type=data_type,
+                elapsed=int(elapsed),
+                remaining=remaining,
+                user_id=user_id_str,
+            )
+            check_triggered_timeout.apply_async(args=[user_id, data_type], countdown=remaining)
+            return {"status": "rescheduled", "remaining": remaining}
+
+    # 4. Read skip count for this type
+    skip_count = get_type_skip_count(user_id_str, data_type)
+
+    # 5. If skip_count + 1 >= MAX_TYPE_ATTEMPTS → mark failed
+    if skip_count + 1 >= MAX_TYPE_ATTEMPTS:
+        mark_type_failed(
+            user_id_str,
+            data_type,
+            f"Timeout after {MAX_TYPE_ATTEMPTS} attempts (no webhook received)",
+        )
+        log_structured(
+            logger,
+            "warn",
+            "Type failed after max timeout attempts",
+            trace_id=trace_id,
+            type_trace_id=type_trace_id,
+            data_type=data_type,
+            attempts=skip_count + 1,
+            user_id=user_id_str,
+        )
+    else:
+        # 6. Mark as skipped
+        mark_type_skipped(user_id_str, data_type)
+
+    # 7. Chain to next type
+    trigger_next_pending_type.apply_async(args=[user_id], countdown=DELAY_BETWEEN_TYPES)
+
+    return {
+        "status": "timed_out",
+        "data_type": data_type,
+        "skip_count": skip_count + 1,
+        "action": "failed" if skip_count + 1 >= MAX_TYPE_ATTEMPTS else "skipped",
     }
 
 
@@ -328,21 +637,20 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
         return {"error": f"Invalid user_id: {e}"}
 
     trace_id = get_trace_id(user_id)
+    type_trace_id = set_type_trace_id(user_id, data_type)
 
-    # Calculate date range: 30 days max for all data types
-    # No summary gap since REST endpoints are removed - backfill from now
-    max_days = GarminBackfillService.get_max_days_for_type(data_type)
-    now = datetime.now(timezone.utc)
-    end_time = now
-    start_time = now - timedelta(days=max_days)  # Start at 30 days ago
+    # Calculate date range from the current window
+    start_time, end_time = get_window_date_range(user_id)
+    current_window = get_current_window(user_id)
 
     log_structured(
         logger,
         "info",
         "Triggering backfill for type",
         trace_id=trace_id,
+        type_trace_id=type_trace_id,
         data_type=data_type,
-        max_days=max_days,
+        window=current_window,
         start_date=str(start_time.date()),
         end_date=str(end_time.date()),
         user_id=user_id,
@@ -398,6 +706,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         "info",
                         "Retrying with shorter range",
                         trace_id=trace_id,
+                        type_trace_id=type_trace_id,
                         data_type=data_type,
                         fallback_days=fallback_days,
                         user_id=user_id,
@@ -427,6 +736,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         "warn",
                         "Endpoint not enabled: stopping backfill for all types",
                         trace_id=trace_id,
+                        type_trace_id=type_trace_id,
                         data_type=data_type,
                         user_id=user_id,
                     )
@@ -444,6 +754,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         "warn",
                         "Rate limit hit, delaying next type",
                         trace_id=trace_id,
+                        type_trace_id=type_trace_id,
                         data_type=data_type,
                         delay_seconds=delay,
                         user_id=user_id,
@@ -451,6 +762,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 # Still trigger next type even if this one failed (with delay)
                 trigger_next_pending_type.apply_async(args=[user_id], countdown=delay)
                 return {"status": "failed", "error": error}
+
+            # Schedule timeout check in case Garmin never sends a webhook
+            check_triggered_timeout.apply_async(args=[user_id, data_type], countdown=TRIGGERED_TIMEOUT_SECONDS)
 
             return {
                 "status": "triggered",
@@ -466,6 +780,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 "error",
                 "HTTP error triggering backfill",
                 trace_id=trace_id,
+                type_trace_id=type_trace_id,
                 data_type=data_type,
                 status_code=e.status_code,
                 error=error,
@@ -489,6 +804,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     "warn",
                     log_msg,
                     trace_id=trace_id,
+                    type_trace_id=type_trace_id,
                     data_type=data_type,
                     user_id=user_id,
                 )
@@ -507,6 +823,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     "warn",
                     "Rate limit hit, delaying next type",
                     trace_id=trace_id,
+                    type_trace_id=type_trace_id,
                     data_type=data_type,
                     delay_seconds=delay,
                     user_id=user_id,
@@ -522,6 +839,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 "error",
                 "Error triggering backfill",
                 trace_id=trace_id,
+                type_trace_id=type_trace_id,
                 data_type=data_type,
                 error=error,
                 user_id=user_id,
@@ -548,6 +866,42 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
     pending_types = get_pending_types(user_id)
 
     if not pending_types:
+        # Check for skipped types that need retry
+        skipped_types = get_skipped_types(user_id)
+        if skipped_types:
+            log_structured(
+                logger,
+                "info",
+                "Retrying skipped types",
+                trace_id=trace_id,
+                user_id=user_id,
+                skipped_types=skipped_types,
+            )
+            # Reset skipped types to pending for retry
+            for data_type in skipped_types:
+                reset_type_status(user_id, data_type)
+            # Trigger the first one
+            trigger_backfill_for_type.apply_async(args=[user_id, skipped_types[0]], countdown=DELAY_BETWEEN_TYPES)
+            return {"status": "retrying_skipped", "types": skipped_types}
+
+        # No pending, no skipped — current window done. Try advancing.
+        has_more = advance_window(user_id)
+        if has_more:
+            current_window = get_current_window(user_id)
+            log_structured(
+                logger,
+                "info",
+                "Window complete, advancing to next",
+                trace_id=trace_id,
+                user_id=user_id,
+                window=current_window,
+                total_windows=get_total_windows(user_id),
+            )
+            first_type = ALL_DATA_TYPES[0]
+            trigger_backfill_for_type.apply_async(args=[user_id, first_type], countdown=DELAY_BETWEEN_TYPES)
+            return {"status": "advancing_window", "window": current_window}
+
+        # All windows exhausted — finalize
         status = get_backfill_status(user_id)
         if status["failed_count"] == 0:
             complete_backfill(user_id)
@@ -558,6 +912,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 trace_id=trace_id,
                 user_id=user_id,
                 success_count=status["success_count"],
+                completed_windows=status["completed_windows"],
             )
             return {"status": "complete", "success_count": status["success_count"]}
         log_structured(
@@ -568,6 +923,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             user_id=user_id,
             success_count=status["success_count"],
             failed_count=status["failed_count"],
+            completed_windows=status["completed_windows"],
         )
         return {
             "status": "partial",
