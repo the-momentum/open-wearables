@@ -182,12 +182,6 @@ series_types:
     max_value: 30
     percentage: 1
 
-  # Cycling Metrics
-  cycling_speed:
-    min_value: 15
-    max_value: 45
-    percentage: 5
-
   # Generic
   speed:
     min_value: 1.0
