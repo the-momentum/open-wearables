@@ -15,6 +15,7 @@ class UserInvitationCodeCreate(BaseModel):
     created_by_id: UUID
     expires_at: datetime
     redeemed_at: None = None
+    revoked_at: None = None
     created_at: datetime
 
 

@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
+from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.database import DbSession
 from app.models.user_invitation_code import UserInvitationCode
@@ -14,11 +15,12 @@ class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvita
         super().__init__(model)
 
     def get_valid_by_code(self, db_session: DbSession, code: str) -> UserInvitationCode | None:
-        """Get an invitation code that is not yet redeemed and not expired."""
+        """Get an invitation code that is not yet redeemed, not revoked, and not expired."""
         now = datetime.now(timezone.utc)
         stmt = select(self.model).where(
             self.model.code == code,
             self.model.redeemed_at.is_(None),
+            self.model.revoked_at.is_(None),
             self.model.expires_at > now,
         )
         return db_session.execute(stmt).scalar_one_or_none()
@@ -29,3 +31,19 @@ class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvita
         db_session.commit()
         db_session.refresh(invitation_code)
         return invitation_code
+
+    def revoke_active_for_user(self, db_session: DbSession, user_id: UUID) -> None:
+        """Revoke all active invitation codes for a user."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            update(self.model)
+            .where(
+                self.model.user_id == user_id,
+                self.model.redeemed_at.is_(None),
+                self.model.revoked_at.is_(None),
+                self.model.expires_at > now,
+            )
+            .values(revoked_at=now)
+        )
+        db_session.execute(stmt)
+        db_session.commit()

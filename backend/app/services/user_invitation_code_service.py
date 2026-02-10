@@ -39,6 +39,7 @@ class UserInvitationCodeService:
     ) -> UserInvitationCodeRead:
         """Generate a new invitation code for a user."""
         user_service.get(db_session, user_id, raise_404=True)
+        self.crud.revoke_active_for_user(db_session, user_id)
 
         now = datetime.now(timezone.utc)
         code_data = UserInvitationCodeCreate(

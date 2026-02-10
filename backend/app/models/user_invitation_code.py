@@ -21,4 +21,5 @@ class UserInvitationCode(BaseDbModel):
     created_by_id: Mapped[FKDeveloper]
     expires_at: Mapped[datetime_tz]
     redeemed_at: Mapped[datetime_tz | None]
+    revoked_at: Mapped[datetime_tz | None]
     created_at: Mapped[datetime_tz]

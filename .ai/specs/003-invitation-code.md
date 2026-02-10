@@ -8,7 +8,7 @@ This is **separate** from the existing developer `Invitation` system (email-base
 
 ## Scope Decision: SDK vs Sample App
 
-**Recommendation: Backend only (this repo).** The two API endpoints are the deliverable. The mobile SDK (`open_wearables_health_sdk`) can add a convenience `redeemInvitationCode()` method later — it's just a single HTTP POST call, so the sample app can also call it directly without SDK support. This keeps the scope focused.
+**Backend only (this repo).** The two API endpoints are the deliverable. The mobile SDK (`open_wearables_health_sdk`) can add a convenience `redeemInvitationCode()` method later — it's just a single HTTP POST call, so the sample app can also call it directly without SDK support.
 
 ## Endpoints
 
@@ -19,7 +19,7 @@ This is **separate** from the existing developer `Invitation` system (email-base
 
 ### Redeem Response
 
-The response **must include `user_id`** (the whole point is replacing manual entry of user_id + tokens). A new `InvitationCodeRedeemResponse` schema extends `TokenResponse` with `user_id`:
+The response includes `user_id` (the whole point is replacing manual entry of user_id + tokens). `InvitationCodeRedeemResponse` extends `TokenResponse` with `user_id`:
 
 ```python
 class InvitationCodeRedeemResponse(TokenResponse):
@@ -33,9 +33,9 @@ class InvitationCodeRedeemResponse(TokenResponse):
 - 32^8 ≈ 1.1 trillion combinations — collision-proof at any realistic scale
 - Easy to type on mobile keyboards
 
-## Implementation
+## Database Schema
 
-### 1. Model — `backend/app/models/user_invitation_code.py` (NEW)
+### `user_invitation_code` Table
 
 ```python
 class UserInvitationCode(BaseDbModel):
@@ -46,54 +46,72 @@ class UserInvitationCode(BaseDbModel):
     user_id: Mapped[Indexed[FKUser]]       # SDK user
     created_by_id: Mapped[FKDeveloper]     # Developer who generated
     expires_at: Mapped[datetime_tz]
-    redeemed_at: Mapped[datetime_tz | None]  # NULL = not yet used
+    redeemed_at: Mapped[datetime_tz | None]  # Set when code is exchanged for tokens
+    revoked_at: Mapped[datetime_tz | None]   # Set when code is invalidated (e.g., new code generated)
     created_at: Mapped[datetime_tz]
 ```
 
-No status enum needed — state is fully determined by `redeemed_at` (NULL = active) + `expires_at`.
+**State logic** — no status enum needed, state is derived from fields:
+- **Active**: `redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > now`
+- **Redeemed**: `redeemed_at IS NOT NULL` — code was exchanged for tokens
+- **Revoked**: `revoked_at IS NOT NULL` — code was invalidated (new code generated for same user)
+- **Expired**: `expires_at <= now`
 
-### 2. Schemas — `backend/app/schemas/user_invitation_code.py` (NEW)
+**Auto-revocation**: When a new code is generated for a user, all previous active codes for that user are automatically revoked (`revoked_at` set to current timestamp).
 
-- `UserInvitationCodeCreate` — all DB fields for repository creation (no separate API input schema needed since the endpoint has no request body)
+### Indexes
+- PK on `id`
+- Unique index on `code`
+- Index on `user_id`
+- FK `user_id -> user.id` (CASCADE)
+- FK `created_by_id -> developer.id` (SET NULL)
+
+## Implementation
+
+### Schemas — `backend/app/schemas/user_invitation_code.py`
+
+- `UserInvitationCodeCreate` — all DB fields for repository creation
 - `UserInvitationCodeRead` — response after generating (id, code, user_id, expires_at, created_at)
 - `UserInvitationCodeRedeem` — input for redeem (`code` with validation: 8 chars, `[A-Z2-9]`)
-- `InvitationCodeRedeemResponse(TokenResponse)` — extends existing `TokenResponse` with `user_id: UUID`
+- `InvitationCodeRedeemResponse(TokenResponse)` — extends `TokenResponse` with `user_id: UUID`
 
-### 3. Repository — `backend/app/repositories/user_invitation_code_repository.py` (NEW)
+### Repository — `backend/app/repositories/user_invitation_code_repository.py`
 
 Extends `CrudRepository`. Custom methods:
-- `get_valid_by_code(db, code)` — finds code where `redeemed_at IS NULL AND expires_at > now`
+- `get_valid_by_code(db, code)` — finds code where `redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > now`
 - `mark_redeemed(db, invitation_code)` — sets `redeemed_at = now()`
+- `revoke_active_for_user(db, user_id)` — bulk UPDATE setting `revoked_at = now()` on all active codes for a user
 
-### 4. Service — `backend/app/services/user_invitation_code_service.py` (NEW)
+### Service — `backend/app/services/user_invitation_code_service.py`
 
 Pattern follows `InvitationService` (standalone class, not `AppService`).
 
-**`generate(db, user_id, developer_id) -> UserInvitationCode`**
+**`generate(db, user_id, developer_id) -> UserInvitationCodeRead`**
 1. Verify user exists via `user_service.get(db, user_id, raise_404=True)`
-2. Generate 8-char code using `secrets.choice()` over unambiguous charset
-3. Create DB record with `expires_at = now + invitation_expire_days` (reuses existing config)
+2. Revoke all active codes for this user
+3. Generate 8-char code using `secrets.choice()` over unambiguous charset
+4. Create DB record with `expires_at = now + invitation_expire_days` (reuses existing config)
 
 **`redeem(db, code) -> InvitationCodeRedeemResponse`**
 1. Lookup via `get_valid_by_code(db, code.upper())`
-2. 404 if not found / expired / already redeemed
+2. 404 if not found / expired / redeemed / revoked
 3. Mark as redeemed
 4. Generate tokens reusing existing functions:
    - `create_sdk_user_token(app_id, user_id)` from `sdk_token_service.py`
    - `refresh_token_service.create_sdk_refresh_token(db, user_id, app_id)`
 5. `app_id = f"invite:{created_by_id}"` — follows existing pattern (`admin:{dev_id}` for admin tokens)
 
-### 5. Routes — `backend/app/api/routes/v1/user_invitation_code.py` (NEW)
+### Routes — `backend/app/api/routes/v1/user_invitation_code.py`
 
 ```python
-@router.post("/users/{user_id}/invitation-code", status_code=201, response_model=UserInvitationCodeRead)
-async def generate_invitation_code(user_id: UUID, db: DbSession, developer: DeveloperDep): ...
+@router.post("/users/{user_id}/invitation-code", status_code=201)
+async def generate_invitation_code(user_id: UUID, db: DbSession, developer: DeveloperDep) -> UserInvitationCodeRead: ...
 
-@router.post("/invitation-code/redeem", response_model=InvitationCodeRedeemResponse)
-async def redeem_invitation_code(payload: UserInvitationCodeRedeem, db: DbSession): ...
+@router.post("/invitation-code/redeem")
+async def redeem_invitation_code(payload: UserInvitationCodeRedeem, db: DbSession) -> InvitationCodeRedeemResponse: ...
 ```
 
-### 6. Registration (MODIFY existing files)
+### Registration (modified existing files)
 
 | File | Change |
 |------|--------|
@@ -101,20 +119,7 @@ async def redeem_invitation_code(payload: UserInvitationCodeRedeem, db: DbSessio
 | `backend/app/services/__init__.py` | Add `user_invitation_code_service` import + `__all__` |
 | `backend/app/api/routes/v1/__init__.py` | Register router with `tags=["Mobile SDK"]` (no prefix) |
 
-### 7. Alembic Migration
-
-```bash
-make create_migration m="add_user_invitation_code_table"
-```
-
-Creates `user_invitation_code` table with:
-- PK on `id`
-- Unique index on `code`
-- Index on `user_id`
-- FK `user_id -> user.id` (CASCADE)
-- FK `created_by_id -> developer.id` (SET NULL)
-
-## Existing Code to Reuse
+## Existing Code Reused
 
 | What | File |
 |------|------|
@@ -126,31 +131,20 @@ Creates `user_invitation_code` table with:
 | `settings.invitation_expire_days` (7 days) | `backend/app/config.py` |
 | `settings.access_token_expire_minutes` | `backend/app/config.py` |
 
-## Implementation Order
-
-1. Create model + register in `models/__init__.py`
-2. Create schemas
-3. Create repository
-4. Create service + register in `services/__init__.py`
-5. Create routes + register in `routes/v1/__init__.py`
-6. Generate Alembic migration
-7. Run lint: `uv run ruff check . --fix && uv run ruff format .`
-8. Run tests: `uv run pytest -v`
-
 ## Verification
 
-1. **Generate migration and apply**: `make create_migration m="add_user_invitation_code_table" && make migrate`
-2. **Generate a code** (requires developer auth):
+1. **Generate a code** (requires developer auth):
    ```bash
    curl -X POST http://localhost:8000/api/v1/users/{user_id}/invitation-code \
      -H "Authorization: Bearer {dev_token}"
    ```
-3. **Redeem the code** (no auth):
+2. **Redeem the code** (no auth):
    ```bash
    curl -X POST http://localhost:8000/api/v1/invitation-code/redeem \
      -H "Content-Type: application/json" \
      -d '{"code": "A3K9M7X2"}'
    ```
-4. Verify response contains `user_id`, `access_token`, `refresh_token`, `expires_in`
-5. Verify second redemption of same code returns 404
+3. Verify response contains `user_id`, `access_token`, `refresh_token`, `expires_in`
+4. Verify second redemption of same code returns 404
+5. Generate a new code for the same user — verify old code is revoked (returns 404 on redeem)
 6. Run existing tests to ensure no regressions
