@@ -1,4 +1,5 @@
 import { Provider } from '@/lib/api/types';
+import { API_CONFIG } from '@/lib/api/config';
 import { Switch } from '@/components/ui/switch';
 import { useState } from 'react';
 
@@ -15,11 +16,9 @@ export function ProviderItem({
 }: ProviderItemProps) {
   const [imageError, setImageError] = useState(false);
   const isEnabledInBackend = provider.is_enabled;
-  const apiUrl = import.meta.env.VITE_API_URL;
-  const iconUrl =
-    provider.icon_url && apiUrl
-      ? new URL(provider.icon_url, apiUrl).toString()
-      : null;
+  const iconUrl = provider.icon_url
+    ? new URL(provider.icon_url, API_CONFIG.baseUrl).toString()
+    : null;
 
   return (
     <div className="px-6 py-4 hover:bg-zinc-800/30 transition-colors">

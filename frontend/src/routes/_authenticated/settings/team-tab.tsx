@@ -47,9 +47,18 @@ export function TeamTab() {
   } | null>(null);
 
   const { me } = useAuth();
-  const { data: developers, isLoading: isLoadingDevelopers } = useDevelopers();
-  const { data: invitations, isLoading: isLoadingInvitations } =
-    useInvitations();
+  const {
+    data: developers,
+    isLoading: isLoadingDevelopers,
+    error: developersError,
+    refetch: refetchDevelopers,
+  } = useDevelopers();
+  const {
+    data: invitations,
+    isLoading: isLoadingInvitations,
+    error: invitationsError,
+    refetch: refetchInvitations,
+  } = useInvitations();
 
   const deleteMutation = useDeleteDeveloper();
   const createInvitationMutation = useCreateInvitation();
@@ -135,6 +144,22 @@ export function TeamTab() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (developersError || invitationsError) {
+    return (
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
+        <p className="text-zinc-400 mb-4">Failed to load team data</p>
+        <Button
+          onClick={() => {
+            refetchDevelopers();
+            refetchInvitations();
+          }}
+        >
+          Retry
+        </Button>
       </div>
     );
   }

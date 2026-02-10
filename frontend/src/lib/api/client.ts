@@ -45,11 +45,6 @@ async function fetchWithRetry(
       throw ApiError.timeout();
     }
 
-    if (attempt < retries) {
-      await delay(API_CONFIG.retryDelay * (attempt + 1));
-      return fetchWithRetry(url, options, attempt + 1);
-    }
-
     const message = error instanceof Error ? error.message : 'Network error';
     throw ApiError.networkError(message);
   }
