@@ -188,12 +188,22 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
     )
 
 
-def mark_type_success(user_id: str | UUID, data_type: str) -> None:
-    """Mark a data type as successfully completed (webhook received data)."""
+def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
+    """Mark a data type as successfully completed (webhook received data).
+
+    Returns:
+        True if this was a new transition (type was not already 'success').
+        False if the type was already marked as success (duplicate webhook).
+    """
     redis_client = get_redis_client()
     user_id_str = str(user_id)
-    now = datetime.now(timezone.utc).isoformat()
 
+    # Check if already success to avoid duplicate triggers
+    current_status = redis_client.get(_get_key(user_id_str, "types", data_type, "status"))
+    if current_status == "success":
+        return False
+
+    now = datetime.now(timezone.utc).isoformat()
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "success")
     redis_client.setex(_get_key(user_id_str, "types", data_type, "completed_at"), REDIS_TTL, now)
 
@@ -201,6 +211,7 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> None:
     log_structured(
         logger, "info", "Marked type as success", trace_id=trace_id, data_type=data_type, user_id=user_id_str
     )
+    return True
 
 
 def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:

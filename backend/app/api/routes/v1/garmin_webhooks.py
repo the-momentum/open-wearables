@@ -550,8 +550,8 @@ async def garmin_push_notification(
                         activity_id=activity_id,
                         record_ids=[str(rid) for rid in created_ids],
                     )
-                    # Mark activities type as success for backfill tracking
-                    mark_type_success(str(internal_user_id), "activities")
+                    # Activities backfill tracking is handled in the
+                    # backfill chaining section below (with dedup protection)
 
                 except IntegrityError:
                     # Duplicate activity - already exists in database
@@ -587,6 +587,7 @@ async def garmin_push_notification(
 
         # Process all wellness data types (batch processing)
         wellness_results: dict[str, Any] = {}
+        users_with_new_success: set[str] = set()  # Track first-time successes only
 
         if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
             garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
@@ -671,38 +672,23 @@ async def garmin_push_notification(
                         user_count=len(type_users),
                     )
                     for uid_str in type_users:
-                        mark_type_success(uid_str, data_type)
+                        if mark_type_success(uid_str, data_type):
+                            # First success for this type — schedule next backfill
+                            users_with_new_success.add(uid_str)
 
                 wellness_results[data_type] = {"processed": len(payload[data_type]), "saved": type_count}
 
-        # Collect all user IDs that were processed for wellness data
-        all_users: set[str] = set()
-        for type_result in wellness_results.values():
-            # Users tracked per-type above via mark_type_success
-            pass
-
-        # Re-collect users from wellness results for backfill chaining
-        if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
-            repo = UserConnectionRepository()
-            for data_type_key in wellness_results:
-                if data_type_key in payload:
-                    for item_data in payload[data_type_key]:
-                        garmin_user_id = item_data.get("userId")
-                        if garmin_user_id:
-                            connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
-                            if connection:
-                                all_users.add(str(connection.user_id))
-
-        # Also add users from activity processing
+        # Also add users from activity processing (only if newly succeeded)
         for act in processed_activities:
-            if act.get("internal_user_id"):
-                all_users.add(act["internal_user_id"])
+            uid_str = act.get("internal_user_id")
+            if uid_str and act.get("status") == "saved" and mark_type_success(uid_str, "activities"):
+                users_with_new_success.add(uid_str)
 
-        # Chain next backfill request for users with active backfill
-        # Sequential flow: each webhook triggers the NEXT data type
-        # sleeps → webhook → dailies → webhook → epochs → ... → complete
+        # Chain next backfill request ONLY for users with a new type transition.
+        # This prevents duplicate triggers when Garmin sends multiple webhooks
+        # for the same data type (e.g. epochs split across many payloads).
         backfill_triggered = []
-        for user_id_str in all_users:
+        for user_id_str in users_with_new_success:
             backfill_status = get_backfill_status(user_id_str)
             if backfill_status["overall_status"] == "in_progress":
                 trace_id = get_trace_id(user_id_str) or request_trace_id
