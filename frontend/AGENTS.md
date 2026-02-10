@@ -337,6 +337,20 @@ function AuthenticatedLayout() {
 }
 ```
 
+### API Endpoints
+
+All API endpoint paths in `src/lib/api/config.ts` **must end with a trailing slash** for collection endpoints (e.g., `/api/v1/developers/`, `/api/v1/invitations/`). FastAPI redirects non-trailing-slash requests with a 307, which causes mixed content errors behind HTTPS reverse proxies.
+
+```typescript
+// CORRECT
+developers: '/api/v1/developers/',
+invitations: '/api/v1/invitations/',
+
+// WRONG - causes 307 redirect → mixed content on HTTPS
+developers: '/api/v1/developers',
+invitations: '/api/v1/invitations',
+```
+
 ### API Client
 
 ```typescript
