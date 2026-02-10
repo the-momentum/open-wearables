@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     strava_redirect_uri: str = "http://localhost:8000/api/v1/oauth/strava/callback"
     strava_default_scope: str = "activity:read_all,profile:read_all"
     strava_webhook_verify_token: str = "open-wearables-strava-verify"
+    # Strava API max is 200 activities per page
+    strava_events_per_page: int = 200
 
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None

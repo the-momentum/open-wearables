@@ -14,10 +14,15 @@ from app.schemas import (
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured
-
+from app.config import settings
 
 class StravaWorkouts(BaseWorkoutsTemplate):
     """Strava implementation of workouts template."""
+
+    @property
+    def events_per_page(self) -> int:
+        """Get the number of events per page."""
+        return settings.strava_events_per_page
 
     def get_workouts(
         self,
@@ -33,7 +38,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         """
         all_activities: list[Any] = []
         page = 1
-        per_page = 200  # Strava API max
+        per_page = self.events_per_page
 
         after = int(start_date.timestamp())
         before = int(end_date.timestamp())
@@ -93,7 +98,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
         """Get activities from Strava API with specific options."""
         page = kwargs.get("page", 1)
-        per_page = min(kwargs.get("per_page", 30), 200)
+        per_page = self.events_per_page
 
         params: dict[str, Any] = {
             "page": page,
