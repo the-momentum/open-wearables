@@ -60,6 +60,7 @@ async def _process_wellness_notification(
         "saved": 0,
         "errors": [],
         "items": [],
+        "new_success_users": [],
     }
 
     repo = UserConnectionRepository()
@@ -157,8 +158,8 @@ async def _process_wellness_notification(
             )
 
             # Mark type as success for backfill tracking
-            if count > 0:
-                mark_type_success(str(user_id), summary_type)
+            if count > 0 and mark_type_success(str(user_id), summary_type):
+                results["new_success_users"].append(str(user_id))
 
         except httpx.HTTPError as e:
             log_structured(
@@ -378,11 +379,32 @@ async def garmin_ping_notification(
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
 
+        # Collect user IDs with new success transitions from wellness results
+        users_with_new_success: set[str] = set()
+        for result in wellness_results.values():
+            if isinstance(result, dict):
+                users_with_new_success.update(result.get("new_success_users", []))
+
+        # Also mark activities from PING callbacks
+        for act in processed_activities:
+            uid_str = act.get("internal_user_id")
+            if uid_str and act.get("status") == "fetched" and mark_type_success(uid_str, "activities"):
+                users_with_new_success.add(uid_str)
+
+        # Chain next backfill type for users with new success transitions
+        backfill_triggered = []
+        for user_id_str in users_with_new_success:
+            backfill_status = get_backfill_status(user_id_str)
+            if backfill_status["overall_status"] == "in_progress":
+                trigger_next_pending_type.delay(user_id_str)
+                backfill_triggered.append(user_id_str)
+
         return {
             "processed": processed_count,
             "errors": errors,
             "activities": processed_activities,
             "wellness": wellness_results,
+            "backfill_chained": backfill_triggered,
         }
 
     except Exception as e:

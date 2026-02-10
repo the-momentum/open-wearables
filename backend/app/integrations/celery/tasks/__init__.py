@@ -3,6 +3,9 @@ from .garmin_backfill_task import (
     ALL_DATA_TYPES as GARMIN_BACKFILL_DATA_TYPES,
 )
 from .garmin_backfill_task import (
+    check_triggered_timeout as check_garmin_triggered_timeout,
+)
+from .garmin_backfill_task import (
     get_backfill_status as get_garmin_backfill_status,
 )
 from .garmin_backfill_task import (
@@ -34,6 +37,7 @@ from .sync_vendor_data_task import sync_vendor_data
 __all__ = [
     # Garmin backfill (30-day webhook-based sync)
     "GARMIN_BACKFILL_DATA_TYPES",
+    "check_garmin_triggered_timeout",
     "get_garmin_backfill_status",
     "get_garmin_pending_types",
     "mark_garmin_type_success",
