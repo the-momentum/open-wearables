@@ -13,6 +13,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.structured_logging import log_structured
 
 
 class StravaWorkouts(BaseWorkoutsTemplate):
@@ -65,9 +66,25 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 page += 1
 
             except Exception as e:
-                self.logger.error(f"Error fetching Strava activities page {page}: {e}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    "Error fetching Strava activities page",
+                    action="strava_fetch_page_error",
+                    page=page,
+                    user_id=str(user_id),
+                    error=str(e),
+                )
                 if all_activities:
-                    self.logger.warning(f"Returning partial activity data due to error: {e}")
+                    log_structured(
+                        self.logger,
+                        "warn",
+                        "Returning partial activity data due to error",
+                        action="strava_partial_data",
+                        activities_count=len(all_activities),
+                        user_id=str(user_id),
+                        error=str(e),
+                    )
                     break
                 raise
 
@@ -244,7 +261,14 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 activity = StravaActivityJSON(**raw) if isinstance(raw, dict) else raw
                 parsed_activities.append(activity)
             except Exception as e:
-                self.logger.warning(f"Failed to parse Strava activity: {e}")
+                log_structured(
+                    self.logger,
+                    "warn",
+                    "Failed to parse Strava activity",
+                    action="strava_parse_error",
+                    user_id=str(user_id),
+                    error=str(e),
+                )
 
         for record, detail in self._build_bundles(parsed_activities, user_id):
             created_record = event_record_service.create(db, record)

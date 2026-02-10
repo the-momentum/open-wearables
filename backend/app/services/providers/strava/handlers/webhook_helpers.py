@@ -8,6 +8,7 @@ from app.repositories import UserConnectionRepository
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.schemas import StravaActivityJSON
+from app.utils.structured_logging import log_structured
 from sqlalchemy.exc import IntegrityError
 from pydantic import ValidationError
 from uuid import UUID
@@ -24,10 +25,21 @@ async def handle_webhook_verification(hub_mode: Annotated[str, Query(alias="hub.
         raise HTTPException(status_code=400, detail="Invalid hub.mode")
 
     if hub_verify_token != settings.strava_webhook_verify_token:
-        logger.warning(f"Invalid verify token received: {hub_verify_token}")
+        log_structured(
+            logger,
+            "warn",
+            "Invalid verify token received",
+            action="webhook_verification_failed",
+            verify_token=hub_verify_token,
+        )
         raise HTTPException(status_code=403, detail="Invalid verify token")
 
-    logger.info("Strava webhook subscription verified successfully")
+    log_structured(
+        logger,
+        "info",
+        "Strava webhook subscription verified successfully",
+        action="webhook_verified",
+    )
     return {"hub.challenge": hub_challenge}
 
 
@@ -35,7 +47,13 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
     """Handle Strava webhook event."""
     try:
         payload = await request.json()
-        logger.info(f"Received Strava webhook event: {payload}")
+        log_structured(
+            logger,
+            "info",
+            "Received Strava webhook event",
+            action="webhook_received",
+            payload=payload,
+        )
 
         object_type = payload.get("object_type")
         object_id = payload.get("object_id")
@@ -44,16 +62,36 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
 
         # Only process activity events
         if object_type != "activity":
-            logger.info(f"Ignoring non-activity event: {object_type}")
+            log_structured(
+                logger,
+                "info",
+                "Ignoring non-activity event",
+                action="webhook_ignored",
+                object_type=object_type,
+            )
             return {"status": "ok", "message": f"Ignoring {object_type} event"}
 
         # Only process create and update events
         if aspect_type not in ("create", "update"):
-            logger.info(f"Ignoring {aspect_type} event for activity {object_id}")
+            log_structured(
+                logger,
+                "info",
+                "Ignoring aspect type event for activity",
+                action="webhook_ignored",
+                aspect_type=aspect_type,
+                object_id=object_id,
+            )
             return {"status": "ok", "message": f"Ignoring {aspect_type} event"}
 
         if not owner_id or not object_id:
-            logger.warning("Missing owner_id or object_id in webhook payload")
+            log_structured(
+                logger,
+                "warn",
+                "Missing owner_id or object_id in webhook payload",
+                action="webhook_invalid",
+                owner_id=owner_id,
+                object_id=object_id,
+            )
             return {"status": "ok", "message": "Missing required fields"}
 
         # Map Strava athlete ID to internal user
@@ -61,17 +99,35 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
         connection = repo.get_by_provider_user_id(db, "strava", str(owner_id))
 
         if not connection:
-            logger.warning(f"No connection found for Strava athlete {owner_id}")
+            log_structured(
+                logger,
+                "warn",
+                "No connection found for Strava athlete",
+                action="webhook_no_connection",
+                strava_athlete_id=owner_id,
+            )
             return {"status": "ok", "message": "User not connected"}
 
         internal_user_id: UUID = connection.user_id
-        logger.info(f"Mapped Strava athlete {owner_id} to internal user {internal_user_id}")
+        log_structured(
+            logger,
+            "info",
+            "Mapped Strava athlete to internal user",
+            action="webhook_user_mapped",
+            strava_athlete_id=owner_id,
+            user_id=str(internal_user_id),
+        )
 
         # Get Strava workouts service via factory
         factory = ProviderFactory()
         strava_strategy = factory.get_provider("strava")
         if not isinstance(strava_strategy.workouts, StravaWorkouts):
-            logger.error("Strava workouts service not available")
+            log_structured(
+                logger,
+                "error",
+                "Strava workouts service not available",
+                action="webhook_service_unavailable",
+            )
             return {"status": "ok", "message": "Service unavailable"}
 
         strava_workouts: StravaWorkouts = strava_strategy.workouts
@@ -83,7 +139,14 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             )
 
             if not activity_data:
-                logger.warning(f"No data returned for Strava activity {object_id}")
+                log_structured(
+                    logger,
+                    "warn",
+                    "No data returned for Strava activity",
+                    action="webhook_no_activity_data",
+                    activity_id=object_id,
+                    user_id=str(internal_user_id),
+                )
                 return {"status": "ok", "message": "No activity data"}
 
             # Parse activity
@@ -96,7 +159,16 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 user_id=internal_user_id,
             )
 
-            logger.info(f"Saved Strava activity {object_id} with record IDs: {created_ids}")
+            log_structured(
+                logger,
+                "info",
+                "Saved Strava activity with record IDs",
+                action="webhook_activity_saved",
+                activity_id=object_id,
+                user_id=str(internal_user_id),
+                record_ids=[str(rid) for rid in created_ids],
+                record_count=len(created_ids),
+            )
             return {
                 "status": "ok",
                 "activity_id": object_id,
@@ -105,18 +177,47 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
 
         except IntegrityError:
             db.rollback()
-            logger.info(f"Strava activity {object_id} already exists, skipping")
+            log_structured(
+                logger,
+                "info",
+                "Strava activity already exists, skipping",
+                action="webhook_duplicate_activity",
+                activity_id=object_id,
+                user_id=str(internal_user_id),
+            )
             return {"status": "ok", "message": "Duplicate activity"}
 
         except ValidationError as e:
-            logger.error(f"Failed to parse Strava activity {object_id}: {e}")
+            log_structured(
+                logger,
+                "error",
+                "Failed to parse Strava activity",
+                action="webhook_validation_error",
+                activity_id=object_id,
+                user_id=str(internal_user_id),
+                error=str(e),
+            )
             return {"status": "ok", "message": "Validation error"}
 
         except Exception as e:
-            logger.error(f"Error processing Strava activity {object_id}: {e}")
+            log_structured(
+                logger,
+                "error",
+                "Error processing Strava activity",
+                action="webhook_processing_error",
+                activity_id=object_id,
+                user_id=str(internal_user_id),
+                error=str(e),
+            )
             return {"status": "ok", "message": "Processing error"}
 
     except Exception as e:
-        logger.error(f"Error processing Strava webhook: {e}")
+        log_structured(
+            logger,
+            "error",
+            "Error processing Strava webhook",
+            action="webhook_error",
+            error=str(e),
+        )
         # Always return 200 to prevent Strava retries
         return {"status": "ok", "message": "Error processing event"}
