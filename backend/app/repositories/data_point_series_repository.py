@@ -147,6 +147,14 @@ class DataPointSeriesRepository(
             )
 
         if values_list:
+            # Deduplicate within the batch: PostgreSQL cannot upsert the same row
+            # twice in one INSERT. Keep the last value for each conflict key.
+            deduped: dict[tuple, dict] = {}
+            for v in values_list:
+                key = (v["data_source_id"], v["series_type_definition_id"], v["recorded_at"])
+                deduped[key] = v
+            values_list = list(deduped.values())
+
             for i in range(0, len(values_list), self.BATCH_INSERT_CHUNK_SIZE):
                 chunk = values_list[i : i + self.BATCH_INSERT_CHUNK_SIZE]
                 stmt = insert(self.model).values(chunk)
