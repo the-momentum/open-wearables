@@ -108,9 +108,9 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         after = kwargs.get("after")
         before = kwargs.get("before")
         if after:
-            params["after"] = int(after) if not isinstance(after, int) else after
+            params["after"] = int(after)
         if before:
-            params["before"] = int(before) if not isinstance(before, int) else before
+            params["before"] = int(before)
 
         return self._make_api_request(db, user_id, "/athlete/activities", params=params)
 
@@ -132,41 +132,41 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         # Heart rate
         if raw_workout.average_heartrate is not None:
-            metrics["heart_rate_avg"] = Decimal(str(raw_workout.average_heartrate))
+            metrics["heart_rate_avg"] = Decimal(raw_workout.average_heartrate)
         if raw_workout.max_heartrate is not None:
             metrics["heart_rate_max"] = int(raw_workout.max_heartrate)
 
         # Distance (meters)
         if raw_workout.distance is not None:
-            metrics["distance"] = Decimal(str(raw_workout.distance))
+            metrics["distance"] = Decimal(raw_workout.distance)
 
         # Speed (m/s)
         if raw_workout.average_speed is not None:
-            metrics["average_speed"] = Decimal(str(raw_workout.average_speed))
+            metrics["average_speed"] = Decimal(raw_workout.average_speed)
         if raw_workout.max_speed is not None:
-            metrics["max_speed"] = Decimal(str(raw_workout.max_speed))
+            metrics["max_speed"] = Decimal(raw_workout.max_speed)
 
         # Power (watts)
         if raw_workout.average_watts is not None:
-            metrics["average_watts"] = Decimal(str(raw_workout.average_watts))
+            metrics["average_watts"] = Decimal(raw_workout.average_watts)
         if raw_workout.max_watts is not None:
-            metrics["max_watts"] = Decimal(str(raw_workout.max_watts))
+            metrics["max_watts"] = Decimal(raw_workout.max_watts)
 
         # Elevation
         if raw_workout.total_elevation_gain is not None:
-            metrics["total_elevation_gain"] = Decimal(str(raw_workout.total_elevation_gain))
+            metrics["total_elevation_gain"] = Decimal(raw_workout.total_elevation_gain)
         if raw_workout.elev_high is not None:
-            metrics["elev_high"] = Decimal(str(raw_workout.elev_high))
+            metrics["elev_high"] = Decimal(raw_workout.elev_high)
         if raw_workout.elev_low is not None:
-            metrics["elev_low"] = Decimal(str(raw_workout.elev_low))
+            metrics["elev_low"] = Decimal(raw_workout.elev_low)
 
         # Energy: prefer calories (if available and non-zero), fallback to kilojoules.
         # Strava's list endpoint often returns calories=None, so we fall back to kilojoules.
         # Standard exercise approximation: kcal ≈ kJ (human efficiency ~25% cancels the unit factor).
         if raw_workout.calories is not None and raw_workout.calories > 0:
-            metrics["energy_burned"] = Decimal(str(raw_workout.calories))
+            metrics["energy_burned"] = Decimal(raw_workout.calories)
         elif raw_workout.kilojoules is not None:
-            metrics["energy_burned"] = Decimal(str(raw_workout.kilojoules))
+            metrics["energy_burned"] = Decimal(raw_workout.kilojoules) * Decimal("0.239") # convert to kcal  
 
         # Moving time
         if raw_workout.moving_time is not None:
