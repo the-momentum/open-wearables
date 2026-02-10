@@ -10,6 +10,7 @@ from .events import router as events_router
 from .external_connectors import router as external_connectors_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .import_xml import router as import_xml_router
+from .oura_webhooks import router as oura_webhooks_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .priorities import router as priorities_router
@@ -32,6 +33,8 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"]
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
+# Oura webhooks for data notifications
+v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])

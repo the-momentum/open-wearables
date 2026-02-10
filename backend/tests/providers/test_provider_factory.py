@@ -15,6 +15,7 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 
@@ -66,6 +67,41 @@ class TestProviderFactory:
         assert isinstance(strategy, SuuntoStrategy)
         assert isinstance(strategy, BaseProviderStrategy)
         assert strategy.name == "suunto"
+
+    def test_get_provider_oura(self, factory: ProviderFactory) -> None:
+        """Should return OuraStrategy instance."""
+        # Act
+        strategy = factory.get_provider("oura")
+
+        # Assert
+        assert isinstance(strategy, OuraStrategy)
+        assert isinstance(strategy, BaseProviderStrategy)
+        assert strategy.name == "oura"
+
+    def test_get_provider_oura_has_oauth(self, factory: ProviderFactory) -> None:
+        """Should initialize OAuth component for Oura."""
+        # Act
+        strategy = factory.get_provider("oura")
+
+        # Assert
+        assert strategy.oauth is not None
+        assert strategy.has_cloud_api is True
+
+    def test_get_provider_oura_has_workouts(self, factory: ProviderFactory) -> None:
+        """Should initialize workouts component for Oura."""
+        # Act
+        strategy = factory.get_provider("oura")
+
+        # Assert
+        assert strategy.workouts is not None
+
+    def test_get_provider_oura_has_data_247(self, factory: ProviderFactory) -> None:
+        """Should initialize 247 data component for Oura."""
+        # Act
+        strategy = factory.get_provider("oura")
+
+        # Assert
+        assert strategy.data_247 is not None
 
     def test_get_provider_unknown_raises_error(self, factory: ProviderFactory) -> None:
         """Should raise ValueError for unknown provider."""

@@ -161,6 +161,73 @@ def sample_apple_healthkit_workout() -> dict:
 
 
 @pytest.fixture
+def sample_oura_workout() -> dict:
+    """Sample Oura workout JSON data."""
+    return {
+        "id": "oura-workout-abc123",
+        "activity": "running",
+        "calories": 350.5,
+        "day": "2024-01-15",
+        "distance": 5000.0,
+        "end_datetime": "2024-01-15T09:00:00+00:00",
+        "intensity": "moderate",
+        "start_datetime": "2024-01-15T08:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def sample_oura_sleep() -> dict:
+    """Sample Oura sleep JSON data."""
+    return {
+        "id": "sleep-abc123",
+        "average_breath": 15.5,
+        "average_heart_rate": 55.0,
+        "average_hrv": 45,
+        "awake_time": 1800,
+        "bedtime_end": "2024-01-15T07:00:00+00:00",
+        "bedtime_start": "2024-01-15T23:00:00+00:00",
+        "day": "2024-01-15",
+        "deep_sleep_duration": 5400,
+        "efficiency": 88,
+        "latency": 300,
+        "light_sleep_duration": 14400,
+        "low_battery_alert": False,
+        "lowest_heart_rate": 48,
+        "period": 0,
+        "rem_sleep_duration": 7200,
+        "restless_periods": 5,
+        "time_in_bed": 28800,
+        "total_sleep_duration": 27000,
+        "type": "long_sleep",
+    }
+
+
+@pytest.fixture
+def sample_oura_readiness() -> dict:
+    """Sample Oura daily readiness JSON data."""
+    return {
+        "id": "readiness-abc123",
+        "day": "2024-01-15",
+        "score": 82,
+        "temperature_deviation": 0.15,
+        "temperature_trend_deviation": 0.05,
+        "timestamp": "2024-01-15T07:00:00+00:00",
+    }
+
+
+@pytest.fixture
+def sample_oura_webhook_notification() -> dict:
+    """Sample Oura webhook notification payload."""
+    return {
+        "event_type": "create",
+        "data_type": "daily_sleep",
+        "user_id": "oura-user-123",
+        "event_timestamp": "2024-01-15T08:00:00+00:00",
+        "data_timestamp": "2024-01-15",
+    }
+
+
+@pytest.fixture
 def mock_oauth_token_response() -> dict:
     """Mock OAuth token exchange response."""
     return {

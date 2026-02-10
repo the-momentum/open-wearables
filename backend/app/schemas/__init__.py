@@ -193,6 +193,16 @@ from .user import (
     UserUpdate,
     UserUpdateInternal,
 )
+from .oura.imports import (
+    OuraDailyActivityJSON,
+    OuraDailyReadinessJSON,
+    OuraDailySpo2JSON,
+    OuraHeartRateJSON,
+    OuraSleepJSON,
+    OuraWebhookNotification,
+    OuraWorkoutCollectionJSON,
+    OuraWorkoutJSON,
+)
 from .whoop.workout_import import (
     WhoopWorkoutCollectionJSON,
     WhoopWorkoutJSON,
@@ -297,6 +307,15 @@ __all__ = [
     "GarminRespirationJSON",
     # Polar schemas
     "PolarExerciseJSON",
+    # Oura schemas
+    "OuraWorkoutJSON",
+    "OuraWorkoutCollectionJSON",
+    "OuraSleepJSON",
+    "OuraDailyReadinessJSON",
+    "OuraDailyActivityJSON",
+    "OuraHeartRateJSON",
+    "OuraDailySpo2JSON",
+    "OuraWebhookNotification",
     # Whoop schemas
     "WhoopWorkoutJSON",
     "WhoopWorkoutCollectionJSON",
