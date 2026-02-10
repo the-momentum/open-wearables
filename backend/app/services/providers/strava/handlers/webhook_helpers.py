@@ -92,7 +92,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 owner_id=owner_id,
                 object_id=object_id,
             )
-            return {"status": "ok", "message": "Missing required fields"}
+            return {"status": "error", "message": "Missing required fields"}
 
         # Map Strava athlete ID to internal user
         repo = UserConnectionRepository()
@@ -106,7 +106,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 action="webhook_no_connection",
                 strava_athlete_id=owner_id,
             )
-            return {"status": "ok", "message": "User not connected"}
+            return {"status": "error", "message": "User not connected"}
 
         internal_user_id: UUID = connection.user_id
         log_structured(
@@ -128,7 +128,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 "Strava workouts service not available",
                 action="webhook_service_unavailable",
             )
-            return {"status": "ok", "message": "Service unavailable"}
+            return {"status": "error", "message": "Service unavailable"}
 
         strava_workouts: StravaWorkouts = strava_strategy.workouts
 
@@ -147,7 +147,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                     activity_id=object_id,
                     user_id=str(internal_user_id),
                 )
-                return {"status": "ok", "message": "No activity data"}
+                return {"status": "warning", "message": "No activity data"}
 
             # Parse activity
             activity = StravaActivityJSON(**activity_data)
@@ -170,7 +170,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 record_count=len(created_ids),
             )
             return {
-                "status": "ok",
+                "status": "success",
                 "activity_id": object_id,
                 "record_ids": [str(rid) for rid in created_ids],
             }
@@ -185,7 +185,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 activity_id=object_id,
                 user_id=str(internal_user_id),
             )
-            return {"status": "ok", "message": "Duplicate activity"}
+            return {"status": "warning", "message": "Duplicate activity"}
 
         except ValidationError as e:
             log_structured(
@@ -197,7 +197,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 user_id=str(internal_user_id),
                 error=str(e),
             )
-            return {"status": "ok", "message": "Validation error"}
+            return {"status": "error", "message": "Validation error"}
 
         except Exception as e:
             log_structured(
@@ -209,7 +209,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 user_id=str(internal_user_id),
                 error=str(e),
             )
-            return {"status": "ok", "message": "Processing error"}
+            return {"status": "error", "message": "Processing error"}
 
     except Exception as e:
         log_structured(
@@ -219,5 +219,4 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             action="webhook_error",
             error=str(e),
         )
-        # Always return 200 to prevent Strava retries
-        return {"status": "ok", "message": "Error processing event"}
+        return {"status": "error", "message": "Error processing webhook event"}
