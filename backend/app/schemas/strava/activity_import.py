@@ -1,6 +1,18 @@
 from pydantic import BaseModel, ConfigDict
 
 
+class StravaGearJSON(BaseModel):
+    """Strava gear data from API responses."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    primary: bool
+    name: str
+    resource_state: int
+    distance: int
+
+
 class ActivityJSON(BaseModel):
     """Strava activity data from API responses or webhook fetches.
 
@@ -47,6 +59,7 @@ class ActivityJSON(BaseModel):
     athlete: dict | None = None  # {"id": 12345}
 
     # Metadata
+    gear: StravaGearJSON | None = None
     gear_id: str | None = None
     device_name: str | None = None
     trainer: bool | None = None

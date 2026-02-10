@@ -5,8 +5,8 @@ from .apple_xml import get_activity_name as get_activity_name_apple_xml
 from .apple_xml import get_unified_workout_type as get_unified_apple_workout_type_xml
 from .garmin import get_unified_workout_type as get_unified_garmin_workout_type
 from .polar import get_unified_workout_type as get_unified_polar_workout_type
-from .suunto import get_unified_workout_type as get_unified_suunto_workout_type
 from .strava import get_unified_workout_type as get_unified_strava_workout_type
+from .suunto import get_unified_workout_type as get_unified_suunto_workout_type
 from .whoop import get_unified_workout_type as get_unified_whoop_workout_type
 
 __all__ = [

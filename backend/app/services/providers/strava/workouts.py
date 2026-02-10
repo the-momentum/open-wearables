@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas import (
@@ -11,11 +12,11 @@ from app.schemas import (
     EventRecordMetrics,
     StravaActivityJSON,
 )
-from app.services.event_record_service import event_record_service
 from app.schemas.workout_types import WorkoutType
+from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured
-from app.config import settings
+
 
 class StravaWorkouts(BaseWorkoutsTemplate):
     """Strava implementation of workouts template."""
@@ -167,7 +168,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         if raw_workout.calories is not None and raw_workout.calories > 0:
             metrics["energy_burned"] = Decimal(raw_workout.calories)
         elif raw_workout.kilojoules is not None:
-            metrics["energy_burned"] = Decimal(raw_workout.kilojoules) * Decimal("0.239") # convert to kcal  
+            metrics["energy_burned"] = Decimal(raw_workout.kilojoules) * Decimal("0.239")  # convert to kcal
 
         # Moving time
         if raw_workout.moving_time is not None:
@@ -195,12 +196,15 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         metrics = self._build_metrics(raw_workout)
 
         device_name = raw_workout.device_name or "Strava"
+        gear = raw_workout.gear
+        if gear:
+            device_name = gear.name or None
 
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
-            source_name=device_name,
-            device_model=device_name,
+            source_name="Strava",  # needs update
+            device_model=device_name,  # needs update as well
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,

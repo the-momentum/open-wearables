@@ -67,6 +67,7 @@ SPORT_TYPE_TO_UNIFIED: dict[str, WorkoutType] = {
     "VirtualRow": WorkoutType.ROWING_MACHINE,
 }
 
+
 def get_unified_workout_type(strava_sport_type: str) -> WorkoutType:
     """Convert Strava sport_type to unified WorkoutType.
 
