@@ -18,7 +18,7 @@ class StravaOAuth(BaseOAuthTemplate):
         """OAuth endpoints for authorization and token exchange."""
         return ProviderEndpoints(
             authorize_url="https://www.strava.com/oauth/authorize",
-            token_url="https://www.strava.com/api/v3/oauth/token",
+            token_url=f"{self.api_base_url}/oauth/token",
         )
 
     @property
@@ -39,7 +39,7 @@ class StravaOAuth(BaseOAuthTemplate):
         """Fetches Strava athlete ID and username via API."""
         try:
             response = httpx.get(
-                "https://www.strava.com/api/v3/athlete",
+                f"{self.api_base_url}/athlete",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )

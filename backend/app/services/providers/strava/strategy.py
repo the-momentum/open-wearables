@@ -37,4 +37,4 @@ class StravaStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
-        return "https://www.strava.com"
+        return "https://www.strava.com/api/v3"
