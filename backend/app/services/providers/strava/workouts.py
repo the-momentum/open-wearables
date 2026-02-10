@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
-from app.constants.workout_types.strava import get_unified_workout_type
+from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas import (
     EventRecordCreate,
@@ -12,6 +12,7 @@ from app.schemas import (
     StravaActivityJSON,
 )
 from app.services.event_record_service import event_record_service
+from app.schemas.workout_types import WorkoutType
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured
 from app.config import settings
@@ -183,7 +184,9 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         workout_id = uuid4()
 
         # Use sport_type for more specific mapping, fallback to type
-        workout_type = get_unified_workout_type(raw_workout.sport_type)
+        workout_type = get_unified_strava_workout_type(raw_workout.sport_type)
+        if workout_type is WorkoutType.OTHER:
+            workout_type = get_unified_strava_workout_type(raw_workout.type)
 
         # Prefer moving_time (excludes pauses) over elapsed_time
         duration_seconds = raw_workout.moving_time or raw_workout.elapsed_time
