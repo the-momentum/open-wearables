@@ -11,6 +11,7 @@ from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordM
 from app.schemas.oura.imports import OuraWorkoutCollectionJSON, OuraWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.structured_logging import log_structured
 
 
 class OuraWorkouts(BaseWorkoutsTemplate):
@@ -53,9 +54,21 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                self.logger.error(f"Error fetching Oura workout data: {e}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    "Error fetching Oura workout data",
+                    action="oura_workout_fetch_error",
+                    error=str(e),
+                )
                 if all_workouts:
-                    self.logger.warning(f"Returning partial workout data due to error: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Returning partial workout data due to error",
+                        action="oura_workout_partial_data",
+                        error=str(e),
+                    )
                     break
                 raise
 

@@ -8,8 +8,10 @@ from uuid import UUID
 import httpx
 
 from app.config import settings
+from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.oura.imports import OuraWebhookNotification
+from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.workouts import OuraWorkouts
@@ -69,7 +71,7 @@ class OuraWebhookService:
 
     def process_notification(
         self,
-        db: Any,
+        db: DbSession,
         notification: OuraWebhookNotification,
     ) -> dict:
         """Process a single Oura webhook notification.
@@ -160,9 +162,9 @@ class OuraWebhookService:
 
     @staticmethod
     def _dispatch_data_type(
-        db: Any,
+        db: DbSession,
         notification: OuraWebhookNotification,
-        oura_strategy: Any,
+        oura_strategy: BaseProviderStrategy,
         user_id: UUID,
         start_time: datetime,
         end_time: datetime,
@@ -253,7 +255,7 @@ class OuraWebhookService:
 
         return results
 
-    async def list_subscriptions(self) -> Any:
+    async def list_subscriptions(self) -> list[dict[str, Any]] | dict[str, Any]:
         """List active Oura webhook subscriptions."""
         headers = self._get_client_headers()
 

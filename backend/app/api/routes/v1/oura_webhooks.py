@@ -67,7 +67,6 @@ async def oura_webhook_health() -> dict:
 
 @router.post("/subscriptions")
 async def create_webhook_subscriptions(
-    db: DbSession,
     current_developer: Annotated[Developer, Depends(get_current_developer)],
     callback_url: str | None = None,
 ) -> dict:
@@ -85,7 +84,6 @@ async def create_webhook_subscriptions(
 
 @router.get("/subscriptions")
 async def list_webhook_subscriptions(
-    db: DbSession,
     current_developer: Annotated[Developer, Depends(get_current_developer)],
 ) -> dict:
     """List active Oura webhook subscriptions."""
@@ -100,7 +98,6 @@ async def list_webhook_subscriptions(
 
 @router.post("/subscriptions/renew")
 async def renew_webhook_subscriptions(
-    db: DbSession,
     current_developer: Annotated[Developer, Depends(get_current_developer)],
 ) -> dict:
     """Renew all active Oura webhook subscriptions."""

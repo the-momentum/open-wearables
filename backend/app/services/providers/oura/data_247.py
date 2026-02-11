@@ -7,9 +7,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.models import DataSource, EventRecord
+from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.repositories.data_source_repository import DataSourceRepository  # noqa: F401
 from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
 from app.schemas.event_record_detail import EventRecordDetailCreate
 from app.schemas.oura.imports import (
@@ -23,6 +22,7 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
+from app.utils.structured_logging import log_structured
 
 
 class Oura247Data(Base247DataTemplate):
@@ -36,7 +36,6 @@ class Oura247Data(Base247DataTemplate):
     ):
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
-        self.data_source_repo = DataSourceRepository(DataSource)
         self.connection_repo = UserConnectionRepository()
 
     def _make_api_request(
@@ -88,9 +87,23 @@ class Oura247Data(Base247DataTemplate):
                     break
 
             except Exception as e:
-                self.logger.error(f"Error fetching {endpoint}: {e}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    "Error fetching endpoint",
+                    action="oura_api_fetch_error",
+                    endpoint=endpoint,
+                    error=str(e),
+                )
                 if all_data:
-                    self.logger.warning(f"Returning partial data from {endpoint} due to error: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Returning partial data due to error",
+                        action="oura_api_partial_data",
+                        endpoint=endpoint,
+                        error=str(e),
+                    )
                     break
                 raise
 
@@ -194,7 +207,13 @@ class Oura247Data(Base247DataTemplate):
                 end_dt = end_time
 
         if not start_dt or not end_dt:
-            self.logger.warning(f"Skipping sleep record {sleep_id}: missing start/end time")
+            log_structured(
+                self.logger,
+                "warning",
+                "Skipping sleep record: missing start/end time",
+                action="oura_sleep_skip",
+                sleep_id=str(sleep_id),
+            )
             return
 
         record = EventRecordCreate(
@@ -237,7 +256,14 @@ class Oura247Data(Base247DataTemplate):
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
         except Exception as e:
-            self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Error saving sleep record",
+                action="oura_sleep_save_error",
+                sleep_id=str(sleep_id),
+                error=str(e),
+            )
 
     def load_and_save_sleep(
         self,
@@ -255,7 +281,13 @@ class Oura247Data(Base247DataTemplate):
                 self.save_sleep_data(db, user_id, normalized)
                 count += 1
             except Exception as e:
-                self.logger.warning(f"Failed to save sleep data: {e}")
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save sleep data",
+                    action="oura_sleep_save_error",
+                    error=str(e),
+                )
         return count
 
     # -------------------------------------------------------------------------
@@ -342,7 +374,14 @@ class Oura247Data(Base247DataTemplate):
                     timeseries_service.crud.create(db, sample)
                     count += 1
                 except Exception as e:
-                    self.logger.warning(f"Failed to save readiness {field_name}: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save readiness metric",
+                        action="oura_readiness_save_error",
+                        field=field_name,
+                        error=str(e),
+                    )
 
         return count
 
@@ -363,7 +402,13 @@ class Oura247Data(Base247DataTemplate):
                 if normalized:
                     total_count += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
-                self.logger.warning(f"Failed to save readiness data: {e}")
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save readiness data",
+                    action="oura_readiness_save_error",
+                    error=str(e),
+                )
 
         return total_count
 
@@ -412,7 +457,13 @@ class Oura247Data(Base247DataTemplate):
                 timeseries_service.crud.create(db, sample)
                 count += 1
             except Exception as e:
-                self.logger.warning(f"Failed to save HR sample: {e}")
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save HR sample",
+                    action="oura_hr_save_error",
+                    error=str(e),
+                )
 
         return count
 
@@ -495,7 +546,14 @@ class Oura247Data(Base247DataTemplate):
                     timeseries_service.crud.create(db, sample)
                     count += 1
                 except Exception as e:
-                    self.logger.warning(f"Failed to save activity {key}: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save activity metric",
+                        action="oura_activity_save_error",
+                        metric=key,
+                        error=str(e),
+                    )
 
         return count
 
@@ -549,7 +607,13 @@ class Oura247Data(Base247DataTemplate):
                 timeseries_service.crud.create(db, sample)
                 count += 1
             except Exception as e:
-                self.logger.warning(f"Failed to save SpO2: {e}")
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save SpO2 data",
+                    action="oura_spo2_save_error",
+                    error=str(e),
+                )
 
         return count
 
@@ -624,30 +688,70 @@ class Oura247Data(Base247DataTemplate):
         try:
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
-            self.logger.error(f"Failed to sync sleep data: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Failed to sync sleep data",
+                action="oura_sync_error",
+                data_type="sleep",
+                user_id=str(user_id),
+                error=str(e),
+            )
 
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
         except Exception as e:
-            self.logger.error(f"Failed to sync readiness data: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Failed to sync readiness data",
+                action="oura_sync_error",
+                data_type="readiness",
+                user_id=str(user_id),
+                error=str(e),
+            )
 
         try:
             raw_activity = self.get_activity_samples(db, user_id, start_time, end_time)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
             results["activity_samples_synced"] = self.save_activity_data(db, user_id, normalized_activity)
         except Exception as e:
-            self.logger.error(f"Failed to sync activity data: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Failed to sync activity data",
+                action="oura_sync_error",
+                data_type="activity",
+                user_id=str(user_id),
+                error=str(e),
+            )
 
         try:
             raw_hr = self.get_heart_rate_data(db, user_id, start_time, end_time)
             results["heart_rate_samples_synced"] = self.save_heart_rate_data(db, user_id, raw_hr)
         except Exception as e:
-            self.logger.error(f"Failed to sync heart rate data: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Failed to sync heart rate data",
+                action="oura_sync_error",
+                data_type="heart_rate",
+                user_id=str(user_id),
+                error=str(e),
+            )
 
         try:
             raw_spo2 = self.get_spo2_data(db, user_id, start_time, end_time)
             results["spo2_samples_synced"] = self.save_spo2_data(db, user_id, raw_spo2)
         except Exception as e:
-            self.logger.error(f"Failed to sync SpO2 data: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                "Failed to sync SpO2 data",
+                action="oura_sync_error",
+                data_type="spo2",
+                user_id=str(user_id),
+                error=str(e),
+            )
 
         return results
