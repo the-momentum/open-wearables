@@ -189,22 +189,19 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         if workout_type is WorkoutType.OTHER:
             workout_type = get_unified_strava_workout_type(raw_workout.type)
 
-        # Prefer moving_time (excludes pauses) over elapsed_time
-        duration_seconds = raw_workout.moving_time or raw_workout.elapsed_time
+        duration_seconds = raw_workout.elapsed_time
         start_date, end_date = self._extract_dates_from_iso(raw_workout.start_date, duration_seconds)
 
         metrics = self._build_metrics(raw_workout)
 
-        device_name = raw_workout.device_name or "Strava"
-        gear = raw_workout.gear
-        if gear:
-            device_name = gear.name or None
+        source_name = raw_workout.device_name or "Strava"
+        device_model = raw_workout.device_name or ""
 
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
-            source_name="Strava",  # needs update
-            device_model=device_name,  # needs update as well
+            source_name=source_name,
+            device_model=device_model,
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
