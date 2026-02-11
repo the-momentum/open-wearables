@@ -300,6 +300,7 @@ class SummariesService:
         end_date: datetime,
         cursor: str | None,
         limit: int,
+        sort_order: str = "asc",
     ) -> PaginatedResponse[ActivitySummary]:
         """Get daily activity summaries aggregated by date, provider, and device.
 
@@ -365,6 +366,10 @@ class SummariesService:
             key = (im["activity_date"], im["source"], im.get("device_model"))
             intensity_lookup[key] = im
 
+        # Sort results based on sort_order (default ascending from DB)
+        if sort_order == "desc":
+            results = list(reversed(results))
+
         # Apply cursor-based pagination using compound key (date, provider, device)
         # This ensures we don't skip records when multiple providers exist for the same date
         if cursor:
@@ -372,21 +377,37 @@ class SummariesService:
             cursor_key = (cursor_date, cursor_provider, cursor_device or "")
 
             if direction == "prev":
-                # Backward pagination: get items BEFORE cursor key
-                results = [
-                    r
-                    for r in results
-                    if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
-                ]
+                # Backward pagination: get items BEFORE cursor key (in current sort order)
+                if sort_order == "desc":
+                    # In desc order, "before" means items with GREATER keys
+                    results = [
+                        r
+                        for r in results
+                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
+                    ]
+                else:
+                    results = [
+                        r
+                        for r in results
+                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
+                    ]
                 # Reverse to get correct order for backward pagination
                 results = list(reversed(results))
             else:
-                # Forward pagination: get items AFTER cursor key
-                results = [
-                    r
-                    for r in results
-                    if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
-                ]
+                # Forward pagination: get items AFTER cursor key (in current sort order)
+                if sort_order == "desc":
+                    # In desc order, "after" means items with SMALLER keys
+                    results = [
+                        r
+                        for r in results
+                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") < cursor_key
+                    ]
+                else:
+                    results = [
+                        r
+                        for r in results
+                        if (r["activity_date"], r["source"] or "", r.get("device_model") or "") > cursor_key
+                    ]
 
         # Check for more data
         has_more = len(results) > limit

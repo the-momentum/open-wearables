@@ -94,6 +94,15 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # STRAVA OAUTH SETTINGS
+    strava_client_id: str | None = None
+    strava_client_secret: SecretStr | None = None
+    strava_redirect_uri: str = "http://localhost:8000/api/v1/oauth/strava/callback"
+    strava_default_scope: str = "activity:read_all,profile:read_all"
+    strava_webhook_verify_token: str = "open-wearables-strava-verify"
+    # Strava API max is 200 activities per page
+    strava_events_per_page: int = 200
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None
@@ -108,7 +117,7 @@ class Settings(BaseSettings):
     # AWS SETTINGS
     aws_bucket_name: str | None = None
     aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
+    aws_secret_access_key: SecretStr | None = None
     aws_region: str = "eu-north-1"
     sqs_queue_url: str | None = None
 

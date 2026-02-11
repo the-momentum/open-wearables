@@ -15,6 +15,7 @@ from .oauth import router as oauth_router
 from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
+from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
@@ -33,6 +34,8 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"]
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
+# Strava webhooks for event notifications
+v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])

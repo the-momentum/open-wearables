@@ -42,6 +42,7 @@ export interface SummaryParams {
   end_date: string; // ISO date string
   cursor?: string;
   limit?: number; // 1-100, default 50
+  sort_order?: 'asc' | 'desc';
   [key: string]: string | number | undefined;
 }
 
