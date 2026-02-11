@@ -1,9 +1,12 @@
-"""Tests for Oura webhook schemas."""
+"""Tests for Oura webhook schemas and service."""
+
+from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
 
 from app.schemas.oura.imports import OuraWebhookNotification
+from app.services.providers.oura.webhook_service import OuraWebhookService
 
 
 class TestOuraWebhookNotification:
@@ -73,3 +76,60 @@ class TestOuraWebhookNotification:
                 user_id="test-user",
             )
             assert notification.data_type == dt
+
+
+class TestOuraWebhookServiceTimestampParsing:
+    """Test the service's timestamp parsing logic."""
+
+    def test_parse_data_timestamp_with_date(self) -> None:
+        notification = OuraWebhookNotification(
+            event_type="create",
+            data_type="daily_sleep",
+            user_id="test",
+            data_timestamp="2024-01-15",
+        )
+        start, end = OuraWebhookService._parse_data_timestamp(notification)
+
+        assert start.year == 2024
+        assert start.month == 1
+        assert start.day == 15
+        assert start.hour == 0
+        assert start.minute == 0
+        assert end.day == 16
+
+    def test_parse_data_timestamp_with_iso_datetime(self) -> None:
+        notification = OuraWebhookNotification(
+            event_type="create",
+            data_type="workout",
+            user_id="test",
+            data_timestamp="2024-03-20T14:30:00+00:00",
+        )
+        start, end = OuraWebhookService._parse_data_timestamp(notification)
+
+        assert start.day == 20
+        assert start.month == 3
+        assert end.day == 21
+
+    def test_parse_data_timestamp_missing_falls_back_to_utc_now(self) -> None:
+        notification = OuraWebhookNotification(
+            event_type="create",
+            data_type="daily_activity",
+            user_id="test",
+        )
+        start, end = OuraWebhookService._parse_data_timestamp(notification)
+
+        now = datetime.now(timezone.utc)
+        assert start.day == now.day
+        assert start.hour == 0
+
+    def test_parse_data_timestamp_invalid_falls_back_to_utc_now(self) -> None:
+        notification = OuraWebhookNotification(
+            event_type="create",
+            data_type="daily_readiness",
+            user_id="test",
+            data_timestamp="not-a-date",
+        )
+        start, end = OuraWebhookService._parse_data_timestamp(notification)
+
+        now = datetime.now(timezone.utc)
+        assert start.day == now.day
