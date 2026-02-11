@@ -29,6 +29,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - OTEL_EXPORTER_ENDPOINT=otel-collector:4317
     ports:
       - "8000:8000"
     depends_on:
@@ -67,6 +68,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - OTEL_EXPORTER_ENDPOINT=otel-collector:4317
     depends_on:
       - redis
       - db
@@ -90,6 +92,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - OTEL_EXPORTER_ENDPOINT=otel-collector:4317
     depends_on:
       - redis
       - db
@@ -161,6 +164,9 @@ services:
         - action: rebuild
           path: ./frontend/vite.config.ts
     restart: on-failure
+
+  # Observability stack defined in docker-compose.observability.yml
+  # Run with: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 
 volumes:
   postgres_data:

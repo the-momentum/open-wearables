@@ -1,41 +1,55 @@
-import logging
-import sys
-from logging import Formatter, StreamHandler, getLogger
+import time
+from logging import getLogger
+from typing import Any
 
 from app.config import settings
+from app.integrations.observability import (
+    configure_logging,
+    record_task_completed,
+    record_task_failed,
+    record_task_started,
+)
+from app.integrations.observability.tracing import init_celery_tracing
 from celery import Celery, signals
 from celery import current_app as current_celery_app
 
+logger = getLogger(__name__)
+
+_task_start_times: dict[str, float] = {}
+
 
 @signals.setup_logging.connect
-def setup_celery_logging(**kwargs) -> None:
-    """
-    Configure Celery logging to use stdout instead of stderr.
+def setup_celery_logging(**kwargs: Any) -> None:
+    """Configure Celery to use the application's structured logging."""
+    configure_logging()
 
-    Some platforms convert stderr logs to level.error automatically, so we must use stdout
-    to ensure platforms correctly identify log levels from JSON structured logs.
 
-    This signal is called when Celery sets up its logging configuration.
-    """
-    # Get Celery's logger
-    celery_logger = getLogger("celery")
+@signals.celeryd_after_setup.connect
+def init_worker_tracing(sender: Any, instance: Any, **kwargs: Any) -> None:
+    """Initialize OpenTelemetry tracing in Celery workers."""
+    init_celery_tracing()
 
-    # Remove existing handlers that might use stderr
-    celery_logger.handlers.clear()
 
-    # Create a handler that uses stdout
-    stdout_handler = StreamHandler(sys.stdout)
-    stdout_handler.setFormatter(
-        Formatter(
-            "[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
+@signals.task_prerun.connect
+def task_prerun_handler(task_id: str, task: Any, **kwargs: Any) -> None:
+    """Record task start time for duration metrics."""
+    _task_start_times[task_id] = time.time()
+    record_task_started(getattr(task, "name", "unknown"))
 
-    # Add stdout handler to Celery logger
-    celery_logger.addHandler(stdout_handler)
-    celery_logger.setLevel(logging.INFO)
-    celery_logger.propagate = False
+
+@signals.task_postrun.connect
+def task_postrun_handler(task_id: str, task: Any, retval: Any, state: str, **kwargs: Any) -> None:
+    """Record task completion and duration metrics."""
+    if task_id in _task_start_times:
+        duration = time.time() - _task_start_times.pop(task_id)
+        record_task_completed(getattr(task, "name", "unknown"), state, duration)
+
+
+@signals.task_failure.connect
+def task_failure_handler(task_id: str, task: Any, exception: Exception, **kwargs: Any) -> None:
+    """Record task failures in metrics."""
+    _task_start_times.pop(task_id, None)
+    record_task_failed(getattr(task, "name", "unknown"), type(exception).__name__)
 
 
 def create_celery() -> Celery:

@@ -27,9 +27,15 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
 
     def create(self, db_session: DbSession, creator: UserCreate) -> User:
         """Create a user with server-generated id and created_at."""
+        from app.integrations.observability import record_metric
+
         creation_data = creator.model_dump()
         internal_creator = UserCreateInternal(**creation_data)
-        return super().create(db_session, internal_creator)
+        user = super().create(db_session, internal_creator)
+
+        record_metric("users_created")
+
+        return user
 
     def update(
         self,

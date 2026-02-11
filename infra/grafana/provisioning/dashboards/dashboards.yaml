@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning
+# Auto-imports dashboards from the specified folder
+
+apiVersion: 1
+
+providers:
+  - name: 'Open Wearables'
+    orgId: 1
+    folder: 'Open Wearables'
+    folderUid: 'open-wearables'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

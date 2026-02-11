@@ -1,5 +1,3 @@
-import sys
-from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -8,24 +6,23 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import head_router
 from app.config import settings
+from app.database import engine
 from app.integrations.celery import create_celery
+from app.integrations.observability import (
+    add_observability_middleware,
+    create_observed_lifespan,
+    ensure_providers_initialized,
+)
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
-# Configure logging to use stdout instead of stderr
-# Some platforms convert stderr logs to level.error automatically, so we must use stdout
-# This ensures platforms correctly identify log levels from JSON structured logs
-basicConfig(
-    level=INFO,
-    format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
-    handlers=[StreamHandler(sys.stdout)],
-)
+ensure_providers_initialized()
 
-api = FastAPI(title=settings.api_name)
+api = FastAPI(title=settings.api_name, lifespan=create_observed_lifespan(engine, init_sentry))
 celery_app = create_celery()
-init_sentry()
 
+add_observability_middleware(api)
 add_cors_middleware(api)
 
 # Mount static files for provider icons
