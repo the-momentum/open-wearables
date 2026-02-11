@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # AWS SETTINGS
     aws_bucket_name: str | None = None
     aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
+    aws_secret_access_key: SecretStr | None = None
     aws_region: str = "eu-north-1"
     sqs_queue_url: str | None = None
 

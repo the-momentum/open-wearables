@@ -10,7 +10,6 @@ from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas import StravaActivityJSON
-from app.services.providers.factory import ProviderFactory
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.utils.structured_logging import log_structured
 
@@ -120,7 +119,9 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             user_id=str(internal_user_id),
         )
 
-        # Get Strava workouts service via factory
+        # Get Strava workouts service via factory (deferred import to avoid circular dependency)
+        from app.services.providers.factory import ProviderFactory
+
         factory = ProviderFactory()
         strava_strategy = factory.get_provider("strava")
         if not isinstance(strava_strategy.workouts, StravaWorkouts):
