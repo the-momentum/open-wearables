@@ -336,7 +336,7 @@ export function WorkoutSection({
     {
       start_date: dateToTimestamp(startDate),
       end_date: dateToTimestamp(endDate),
-      limit: 1000,
+      limit: 100,
       sort_order: 'desc',
     }
   );
