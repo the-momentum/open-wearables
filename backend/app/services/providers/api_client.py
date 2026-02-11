@@ -1,6 +1,7 @@
 """Simple API client for making authenticated requests to provider APIs."""
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -13,6 +14,10 @@ from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting configuration (Garmin: 100 req / 60s window)
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
 
 
 def _get_valid_token(
@@ -103,62 +108,101 @@ def make_authenticated_request(
     if headers:
         request_headers.update(headers)
 
-    # Make request
+    # Make request with retry logic for rate limiting
     url = f"{api_base_url}{endpoint}"
 
-    try:
-        response = httpx.request(
-            method=method,
-            url=url,
-            headers=request_headers,
-            params=params or {},
-            json=json_data,
-            timeout=30.0,
-        )
-        response.raise_for_status()
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = httpx.request(
+                method=method,
+                url=url,
+                headers=request_headers,
+                params=params or {},
+                json=json_data,
+                timeout=30.0,
+            )
 
-        # Handle non-JSON responses (e.g., 202 Accepted with empty body)
-        if not expect_json:
-            return {
-                "status_code": response.status_code,
-                "accepted": response.status_code == 202,
-            }
-
-        result = response.json()
-
-        # Some APIs (like Suunto) return 200 OK but include error in response body
-        if isinstance(result, dict):
-            # Check for common error patterns
-            # Only treat as error if "error" field has a value (not None/null)
-            has_error = result.get("error") is not None and result.get("error")
-            has_error_code = "code" in result and result.get("code") not in (200, None)
-
-            if has_error or has_error_code:
-                error_msg = result.get("message") or result.get("error") or str(result)
-                logger.error(f"{provider_name.capitalize()} API returned error in body: {error_msg}")
+            # Handle 429 rate limiting with retry
+            if response.status_code == 429:
+                if attempt < MAX_RETRIES:
+                    backoff_delay = RETRY_BASE_DELAY * (2**attempt)  # 1s, 2s, 4s
+                    logger.warning(
+                        f"{provider_name.capitalize()} rate limited (429), "
+                        f"retry {attempt + 1}/{MAX_RETRIES} after {backoff_delay}s"
+                    )
+                    time.sleep(backoff_delay)
+                    continue
+                # Max retries exceeded
+                logger.error(f"{provider_name.capitalize()} rate limited (429), max retries exceeded")
                 raise HTTPException(
-                    status_code=result.get("code", 400),
-                    detail=f"{provider_name.capitalize()} API error: {error_msg}",
+                    status_code=429,
+                    detail=f"{provider_name.capitalize()} API error: {response.text}",
                 )
 
-        return result
+            response.raise_for_status()
 
-    except httpx.HTTPStatusError as e:
-        logger.error(
-            f"{provider_name.capitalize()} API error for user {user_id}: {e.response.status_code} - {e.response.text}",
-        )
-        if e.response.status_code == 401:
-            raise HTTPException(
-                status_code=401,
-                detail=f"{provider_name.capitalize()} authorization expired. Please re-authorize.",
+            # Handle non-JSON responses (e.g., 202 Accepted with empty body)
+            if not expect_json:
+                return {
+                    "status_code": response.status_code,
+                    "accepted": response.status_code == 202,
+                }
+
+            result = response.json()
+
+            # Some APIs (like Suunto) return 200 OK but include error in response body
+            if isinstance(result, dict):
+                # Check for common error patterns
+                # Only treat as error if "error" field has a value (not None/null)
+                has_error = result.get("error") is not None and result.get("error")
+                has_error_code = "code" in result and result.get("code") not in (200, None)
+
+                if has_error or has_error_code:
+                    error_msg = result.get("message") or result.get("error") or str(result)
+                    logger.error(f"{provider_name.capitalize()} API returned error in body: {error_msg}")
+                    raise HTTPException(
+                        status_code=result.get("code", 400),
+                        detail=f"{provider_name.capitalize()} API error: {error_msg}",
+                    )
+
+            return result
+
+        except httpx.HTTPStatusError as e:
+            # Handle 429 from raise_for_status (shouldn't happen due to early check, but just in case)
+            if e.response.status_code == 429 and attempt < MAX_RETRIES:
+                backoff_delay = RETRY_BASE_DELAY * (2**attempt)
+                logger.warning(
+                    f"{provider_name.capitalize()} rate limited (429), "
+                    f"retry {attempt + 1}/{MAX_RETRIES} after {backoff_delay}s"
+                )
+                time.sleep(backoff_delay)
+                continue
+
+            logger.error(
+                f"{provider_name.capitalize()} API error for user {user_id}: "
+                f"{e.response.status_code} - {e.response.text}",
             )
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"{provider_name.capitalize()} API error: {e.response.text}",
-        )
-    except Exception as e:
-        logger.error(f"{provider_name.capitalize()} API request failed for user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
-        )
+            if e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"{provider_name.capitalize()} authorization expired. Please re-authorize.",
+                )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"{provider_name.capitalize()} API error: {e.response.text}",
+            )
+        except HTTPException:
+            # Re-raise HTTPExceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"{provider_name.capitalize()} API request failed for user {user_id}: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
+            )
+
+    # Should not reach here, but just in case
+    raise HTTPException(
+        status_code=500,
+        detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
+    )

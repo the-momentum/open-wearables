@@ -223,29 +223,17 @@ class TestGarminWorkouts:
             assert isinstance(record, EventRecordCreate)
             assert isinstance(detail, EventRecordDetailCreate)
 
-    def test_load_data_triggers_backfill(
+    def test_load_data_is_noop(
         self,
         garmin_workouts: GarminWorkouts,
         db: Session,
-        sample_activity: dict[str, Any],
     ) -> None:
-        """Test load_data triggers backfill for activities."""
+        """Test load_data is a no-op (data arrives via webhooks)."""
         user = UserFactory()
 
-        with patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger:
-            mock_trigger.return_value = {
-                "triggered": ["activities"],
-                "failed": {},
-                "start_time": "2024-01-14T00:00:00+00:00",
-                "end_time": "2024-01-15T00:00:00+00:00",
-            }
+        result = garmin_workouts.load_data(db, user.id)
 
-            result = garmin_workouts.load_data(db, user.id)
-
-            assert result is True
-            mock_trigger.assert_called_once()
-            call_kwargs = mock_trigger.call_args[1]
-            assert call_kwargs["data_types"] == ["activities"]
+        assert result is True
 
     def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting activity detail from API."""

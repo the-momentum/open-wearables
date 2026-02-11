@@ -59,11 +59,26 @@ export const healthService = {
   },
 
   /**
-   * Get Garmin backfill status for a user
+   * Get Garmin backfill status for all 16 data types
+   * Returns status for each type independently (webhook-based, 30-day sync)
    */
   async getGarminBackfillStatus(userId: string): Promise<GarminBackfillStatus> {
     return apiClient.get<GarminBackfillStatus>(
-      `/api/v1/providers/garmin/users/${userId}/backfill-status`
+      `/api/v1/providers/garmin/users/${userId}/backfill/status`
+    );
+  },
+
+  /**
+   * Retry backfill for a specific failed data type
+   * @param userId - User UUID
+   * @param typeName - Data type to retry (e.g., "sleeps", "dailies", "hrv")
+   */
+  async retryGarminBackfill(
+    userId: string,
+    typeName: string
+  ): Promise<{ success: boolean; type: string; status: string }> {
+    return apiClient.post<{ success: boolean; type: string; status: string }>(
+      `/api/v1/providers/garmin/users/${userId}/backfill/${typeName}/retry`
     );
   },
 

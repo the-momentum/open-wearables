@@ -19,6 +19,7 @@ import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
+import { SourceBadge } from '@/components/common/source-badge';
 import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
@@ -203,6 +204,9 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
           <p className="text-xs text-zinc-500">
             {format(new Date(summary.date), 'yyyy')}
           </p>
+          {summary.source?.provider && (
+            <SourceBadge provider={summary.source.provider} className="mt-1" />
+          )}
         </div>
 
         {/* Stats - evenly spaced */}
