@@ -97,8 +97,8 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             return {"status": "error", "message": "Missing required fields"}
 
         # Map Strava athlete ID to internal user
-        repo = UserConnectionRepository()
-        connection = repo.get_by_provider_user_id(db, "strava", str(owner_id))
+        user_repo = UserConnectionRepository()
+        connection = user_repo.get_by_provider_user_id(db, "strava", str(owner_id))
 
         if not connection:
             log_structured(
