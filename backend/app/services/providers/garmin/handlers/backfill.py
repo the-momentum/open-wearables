@@ -15,6 +15,13 @@ from fastapi import HTTPException
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.garmin.backfill_config import (
+    ALL_DATA_TYPES,
+    BACKFILL_CHUNK_DAYS,
+    BACKFILL_ENDPOINTS,
+    DEFAULT_BACKFILL_DAYS,
+    REQUEST_DELAY_SECONDS,
+)
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.structured_logging import log_structured
 
@@ -37,71 +44,6 @@ class GarminBackfillService:
     - Requires HISTORICAL_DATA_EXPORT permission from user
     - 403 returned if user didn't grant historical data access during OAuth
     """
-
-    # Backfill configuration
-    MAX_BACKFILL_DAYS = 365  # Total target: ~1 year of history
-    BACKFILL_WINDOW_COUNT = 12  # Number of 30-day windows to cover ~365 days
-    MAX_HEALTH_API_DAYS = 30
-    MAX_ACTIVITY_API_DAYS = 30
-
-    # Constants for compatibility and clarity
-    BACKFILL_CHUNK_DAYS = 30  # Max days per single request (Garmin limit)
-    MAX_REQUEST_DAYS = 30  # Alias for BACKFILL_CHUNK_DAYS
-    SUMMARY_DAYS = 0  # No summary coverage gap (REST endpoints removed)
-
-    # Data types that use the Activity API (same 30-day limit as all types)
-    ACTIVITY_API_TYPES = {"activities", "activityDetails"}
-
-    # Mapping of data type to backfill endpoint
-    BACKFILL_ENDPOINTS = {
-        "sleeps": "/wellness-api/rest/backfill/sleeps",
-        "dailies": "/wellness-api/rest/backfill/dailies",
-        "epochs": "/wellness-api/rest/backfill/epochs",
-        "bodyComps": "/wellness-api/rest/backfill/bodyComps",
-        "hrv": "/wellness-api/rest/backfill/hrv",
-        "stressDetails": "/wellness-api/rest/backfill/stressDetails",
-        "respiration": "/wellness-api/rest/backfill/respiration",
-        "pulseOx": "/wellness-api/rest/backfill/pulseOx",
-        "activities": "/wellness-api/rest/backfill/activities",
-        "activityDetails": "/wellness-api/rest/backfill/activityDetails",
-        "userMetrics": "/wellness-api/rest/backfill/userMetrics",
-        "bloodPressures": "/wellness-api/rest/backfill/bloodPressures",
-        "skinTemp": "/wellness-api/rest/backfill/skinTemp",
-        "healthSnapshot": "/wellness-api/rest/backfill/healthSnapshot",
-        "moveiq": "/wellness-api/rest/backfill/moveiq",
-        "mct": "/wellness-api/rest/backfill/mct",
-    }
-
-    # All 16 data types to backfill for complete sync
-    DEFAULT_DATA_TYPES = [
-        "sleeps",
-        "dailies",
-        "epochs",
-        "bodyComps",
-        "hrv",
-        "activities",
-        "activityDetails",
-        "moveiq",
-        "healthSnapshot",
-        "stressDetails",
-        "respiration",
-        "pulseOx",
-        "bloodPressures",
-        "userMetrics",
-        "skinTemp",
-        "mct",
-    ]
-
-    DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
-    REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
-
-    @classmethod
-    def get_max_days_for_type(cls, data_type: str) -> int:
-        """Get maximum backfill days allowed for a data type.
-
-        All data types are limited to 30 days per request.
-        """
-        return cls.BACKFILL_CHUNK_DAYS
 
     def __init__(
         self,
@@ -175,13 +117,13 @@ class GarminBackfillService:
             The response only indicates if the backfill request was accepted.
         """
         if data_types is None:
-            data_types = self.DEFAULT_DATA_TYPES
+            data_types = ALL_DATA_TYPES
 
         if end_time is None:
             end_time = datetime.now(timezone.utc)
         if start_time is None:
             # Use 30 days for first sync (per user limit), otherwise 1 day
-            days = self.BACKFILL_CHUNK_DAYS if is_first_sync else self.DEFAULT_BACKFILL_DAYS
+            days = BACKFILL_CHUNK_DAYS if is_first_sync else DEFAULT_BACKFILL_DAYS
             start_time = end_time - timedelta(days=days)
             log_structured(
                 self.logger,
@@ -203,9 +145,9 @@ class GarminBackfillService:
         for i, data_type in enumerate(data_types):
             # Small delay between requests (prod rate limit: 10,000 days/min)
             if i > 0:
-                time.sleep(self.REQUEST_DELAY_SECONDS)
+                time.sleep(REQUEST_DELAY_SECONDS)
 
-            endpoint = self.BACKFILL_ENDPOINTS.get(data_type)
+            endpoint = BACKFILL_ENDPOINTS.get(data_type)
             if not endpoint:
                 results["failed"][data_type] = f"Unknown data type: {data_type}"
                 continue
