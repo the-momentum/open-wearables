@@ -772,21 +772,21 @@ class Garmin247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_activity: dict[str, Any],
-    ) -> bool:
+    ) -> int:
         """Save activity data as EventRecord with WorkoutDetails."""
         result = self._build_activity_record(user_id, raw_activity)
         if not result:
-            return False
+            return 0
 
         record, detail = result
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="workout")
-            return True
+            return 1
         except Exception as e:
             self.logger.debug(f"Activity may already exist: {e}")
-            return False
+            return 0
 
     # -------------------------------------------------------------------------
     # Stress Data - /wellness-api/rest/stressDetails

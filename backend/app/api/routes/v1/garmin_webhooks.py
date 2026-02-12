@@ -63,7 +63,7 @@ async def _process_wellness_notification(
         "new_success_users": [],
     }
 
-    repo = UserConnectionRepository()
+    user_connection_repo = UserConnectionRepository()
 
     for notification in notifications:
         garmin_user_id = notification.get("userId")
@@ -86,7 +86,7 @@ async def _process_wellness_notification(
                 logger, "warn", "No user ID in notification", trace_id=request_trace_id, summary_type=summary_type
             )
             continue
-        connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+        connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connection:
             log_structured(
                 logger,
@@ -247,8 +247,8 @@ async def garmin_ping_notification(
                         continue
 
                     # Find internal user_id based on garmin_user_id
-                    repo = UserConnectionRepository()
-                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    user_connection_repo = UserConnectionRepository()
+                    connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
 
                     if not connection:
                         log_structured(
@@ -346,35 +346,21 @@ async def garmin_ping_notification(
         # Get Garmin 247 data service for processing wellness data
         factory = ProviderFactory()
         garmin_strategy = factory.get_provider("garmin")
+        garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
 
-        if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
-            garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
-
-            for summary_type in wellness_types:
-                if summary_type in payload and payload[summary_type]:
-                    log_structured(
-                        logger,
-                        "info",
-                        "Processing wellness notifications",
-                        trace_id=request_trace_id,
-                        summary_type=summary_type,
-                        count=len(payload[summary_type]),
-                    )
-                    wellness_results[summary_type] = await _process_wellness_notification(
-                        db, summary_type, payload[summary_type], garmin_247, request_trace_id
-                    )
-        else:
-            # Log but don't fail if data_247 is not available
-            for summary_type in wellness_types:
-                if summary_type in payload:
-                    log_structured(
-                        logger,
-                        "warn",
-                        "Garmin 247 data service not available",
-                        trace_id=request_trace_id,
-                        summary_type=summary_type,
-                        notification_count=len(payload[summary_type]),
-                    )
+        for summary_type in wellness_types:
+            if summary_type in payload and payload[summary_type]:
+                log_structured(
+                    logger,
+                    "info",
+                    "Processing wellness notifications",
+                    trace_id=request_trace_id,
+                    summary_type=summary_type,
+                    count=len(payload[summary_type]),
+                )
+                wellness_results[summary_type] = await _process_wellness_notification(
+                    db, summary_type, payload[summary_type], garmin_247, request_trace_id
+                )
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
@@ -486,8 +472,8 @@ async def garmin_push_notification(
 
                 try:
                     # Map garmin_user_id to internal user_id
-                    repo = UserConnectionRepository()
-                    connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    user_connection_repo = UserConnectionRepository()
+                    connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
                     if not connection:
                         log_structured(
                             logger,
@@ -615,94 +601,93 @@ async def garmin_push_notification(
         wellness_results: dict[str, Any] = {}
         users_with_new_success: set[str] = set()  # Track first-time successes only
 
-        if hasattr(garmin_strategy, "data_247") and garmin_strategy.data_247:
-            garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
-            repo = UserConnectionRepository()
+        garmin_247 = cast(Garmin247Data, garmin_strategy.data_247)
+        user_connection_repo = UserConnectionRepository()
 
-            # All wellness data types to process
-            wellness_types = [
-                "sleeps",
-                "dailies",
-                "epochs",
-                "bodyComps",
-                "hrv",
-                "stressDetails",
-                "respiration",
-                "pulseOx",
-                "bloodPressures",
-                "userMetrics",
-                "skinTemp",
-                "healthSnapshot",
-                "moveiq",
-                "mct",
-                "activityDetails",
-            ]
+        # All wellness data types to process
+        wellness_types = [
+            "sleeps",
+            "dailies",
+            "epochs",
+            "bodyComps",
+            "hrv",
+            "stressDetails",
+            "respiration",
+            "pulseOx",
+            "bloodPressures",
+            "userMetrics",
+            "skinTemp",
+            "healthSnapshot",
+            "moveiq",
+            "mct",
+            "activityDetails",
+        ]
 
-            for data_type in wellness_types:
-                if data_type not in payload:
-                    continue
+        for data_type in wellness_types:
+            if data_type not in payload:
+                continue
 
-                # Group items by user for batch processing
-                user_items: dict[UUID, list[dict[str, Any]]] = {}
-                for item_data in payload[data_type]:
-                    try:
-                        garmin_user_id = item_data.get("userId")
-                        connection = repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
-                        if not connection:
-                            log_structured(
-                                logger,
-                                "warn",
-                                "No connection for Garmin user",
-                                trace_id=request_trace_id,
-                                garmin_user_id=garmin_user_id,
-                                data_type=data_type,
-                            )
-                            continue
-                        user_items.setdefault(connection.user_id, []).append(item_data)
-                    except Exception as e:
+            # Group items by user for batch processing
+            user_items: dict[UUID, list[dict[str, Any]]] = {}
+            for item_data in payload[data_type]:
+                try:
+                    garmin_user_id = item_data.get("userId")
+                    connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+                    if not connection:
                         log_structured(
                             logger,
-                            "error",
-                            f"Error resolving user for {data_type}",
+                            "warn",
+                            "No connection for Garmin user",
                             trace_id=request_trace_id,
-                            error=str(e),
+                            garmin_user_id=garmin_user_id,
+                            data_type=data_type,
                         )
-                        errors.append(f"{data_type} error: {str(e)}")
-
-                type_count = 0
-                type_users: set[str] = set()
-                for uid, items in user_items.items():
-                    trace_id = get_trace_id(uid) or request_trace_id
-                    try:
-                        type_count += garmin_247.process_items_batch(db, uid, data_type, items)
-                        type_users.add(str(uid))
-                    except Exception as e:
-                        log_structured(
-                            logger,
-                            "error",
-                            f"Error processing {data_type}",
-                            trace_id=trace_id,
-                            user_id=str(uid),
-                            error=str(e),
-                        )
-                        errors.append(f"{data_type} error: {str(e)}")
-
-                if type_count > 0:
+                        continue
+                    user_items.setdefault(connection.user_id, []).append(item_data)
+                except Exception as e:
                     log_structured(
                         logger,
-                        "info",
-                        f"Saved {data_type} records",
+                        "error",
+                        f"Error resolving user for {data_type}",
                         trace_id=request_trace_id,
-                        data_type=data_type,
-                        count=type_count,
-                        user_count=len(type_users),
+                        error=str(e),
                     )
-                    for uid_str in type_users:
-                        if mark_type_success(uid_str, data_type):
-                            # First success for this type — schedule next backfill
-                            users_with_new_success.add(uid_str)
+                    errors.append(f"{data_type} error: {str(e)}")
 
-                wellness_results[data_type] = {"processed": len(payload[data_type]), "saved": type_count}
+            type_count = 0
+            type_users: set[str] = set()
+            for uid, items in user_items.items():
+                trace_id = get_trace_id(uid) or request_trace_id
+                try:
+                    type_count += garmin_247.process_items_batch(db, uid, data_type, items)
+                    type_users.add(str(uid))
+                except Exception as e:
+                    log_structured(
+                        logger,
+                        "error",
+                        f"Error processing {data_type}",
+                        trace_id=trace_id,
+                        user_id=str(uid),
+                        error=str(e),
+                    )
+                    errors.append(f"{data_type} error: {str(e)}")
+
+            if type_count > 0:
+                log_structured(
+                    logger,
+                    "info",
+                    f"Saved {data_type} records",
+                    trace_id=request_trace_id,
+                    data_type=data_type,
+                    count=type_count,
+                    user_count=len(type_users),
+                )
+                for uid_str in type_users:
+                    if mark_type_success(uid_str, data_type):
+                        # First success for this type — schedule next backfill
+                        users_with_new_success.add(uid_str)
+
+            wellness_results[data_type] = {"processed": len(payload[data_type]), "saved": type_count}
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
