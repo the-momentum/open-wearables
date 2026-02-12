@@ -1,37 +1,34 @@
 """Tests for Garmin Backfill Service."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
 
-import pytest
+from app.services.providers.garmin.backfill_config import (
+    ALL_DATA_TYPES,
+    BACKFILL_CHUNK_DAYS,
+    BACKFILL_ENDPOINTS,
+    BACKFILL_WINDOW_COUNT,
+    DEFAULT_BACKFILL_DAYS,
+    MAX_BACKFILL_DAYS,
+    MAX_REQUEST_DAYS,
+    REQUEST_DELAY_SECONDS,
+    SUMMARY_DAYS,
+)
 
-from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 
+class TestGarminBackfillConfig:
+    """Tests for Garmin backfill configuration constants."""
 
-class TestGarminBackfillServiceUnit:
-    """Unit tests for GarminBackfillService class (no DB required)."""
-
-    @pytest.fixture
-    def backfill_service(self) -> GarminBackfillService:
-        """Create GarminBackfillService instance for testing."""
-        mock_oauth = MagicMock()
-        return GarminBackfillService(
-            provider_name="garmin",
-            api_base_url="https://apis.garmin.com",
-            oauth=mock_oauth,
-        )
-
-    def test_backfill_limits_constants(self, backfill_service: GarminBackfillService) -> None:
+    def test_backfill_limits_constants(self) -> None:
         """Test that backfill limit constants are set correctly."""
         # 30-day max per request, 365 days total via 12 windows
-        assert backfill_service.BACKFILL_CHUNK_DAYS == 30  # Per request (30 days = max allowed)
-        assert backfill_service.MAX_BACKFILL_DAYS == 365  # Target: ~1 year of history
-        assert backfill_service.BACKFILL_WINDOW_COUNT == 12  # 12 x 30-day windows
-        assert backfill_service.MAX_REQUEST_DAYS == 30  # Max days per single backfill request (Garmin limit)
-        assert backfill_service.DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
-        assert backfill_service.SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)
+        assert BACKFILL_CHUNK_DAYS == 30  # Per request (30 days = max allowed)
+        assert MAX_BACKFILL_DAYS == 365  # Target: ~1 year of history
+        assert BACKFILL_WINDOW_COUNT == 12  # 12 x 30-day windows
+        assert MAX_REQUEST_DAYS == 30  # Max days per single backfill request (Garmin limit)
+        assert DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
+        assert SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)
 
-    def test_backfill_endpoints_mapping(self, backfill_service: GarminBackfillService) -> None:
+    def test_backfill_endpoints_mapping(self) -> None:
         """Test that all backfill endpoints are mapped."""
         expected_endpoints = [
             "sleeps",
@@ -53,12 +50,12 @@ class TestGarminBackfillServiceUnit:
         ]
 
         for endpoint in expected_endpoints:
-            assert endpoint in backfill_service.BACKFILL_ENDPOINTS
-            assert backfill_service.BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
+            assert endpoint in BACKFILL_ENDPOINTS
+            assert BACKFILL_ENDPOINTS[endpoint].startswith("/wellness-api/rest/backfill/")
 
-    def test_default_data_types(self, backfill_service: GarminBackfillService) -> None:
+    def test_default_data_types(self) -> None:
         """Test default data types for backfill."""
-        # All 16 data types are included in DEFAULT_DATA_TYPES
+        # All 16 data types are included
         expected_defaults = [
             "sleeps",
             "dailies",
@@ -77,12 +74,11 @@ class TestGarminBackfillServiceUnit:
             "skinTemp",
             "mct",
         ]
-        assert expected_defaults == backfill_service.DEFAULT_DATA_TYPES
+        assert expected_defaults == ALL_DATA_TYPES
 
-    def test_rate_limit_constants(self, backfill_service: GarminBackfillService) -> None:
+    def test_rate_limit_constants(self) -> None:
         """Test rate limit constants."""
-        assert backfill_service.REQUEST_DELAY_SECONDS == 0.5  # Small delay between requests
-        # Note: MAX_RETRIES and RETRY_BASE_DELAY are not defined in current implementation
+        assert REQUEST_DELAY_SECONDS == 0.5  # Small delay between requests
 
 
 class TestGarminBackfillTimeframeLogic:
