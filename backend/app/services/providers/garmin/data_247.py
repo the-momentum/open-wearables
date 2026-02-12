@@ -1575,72 +1575,6 @@ class Garmin247Data(Base247DataTemplate):
     # Main Entry Points
     # -------------------------------------------------------------------------
 
-    def load_and_save_sleep(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load sleep data from API and save to database."""
-        raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
-        count = 0
-        for item in raw_data:
-            try:
-                normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
-            except Exception as e:
-                self.logger.warning(f"Failed to save sleep data: {e}")
-        return count
-
-    def load_and_save_dailies(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load dailies data from API and save to database."""
-        raw_data = self.get_dailies_data(db, user_id, start_time, end_time)
-        count = 0
-        for item in raw_data:
-            try:
-                normalized = self.normalize_dailies(item, user_id)
-                count += self.save_dailies_data(db, user_id, normalized)
-            except Exception as e:
-                self.logger.warning(f"Failed to save daily data: {e}")
-        return count
-
-    def load_and_save_epochs(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load epochs data from API and save to database."""
-        raw_data = self.get_epochs_data(db, user_id, start_time, end_time)
-        normalized = self.normalize_epochs(raw_data, user_id)
-        return self.save_epochs_data(db, user_id, normalized)
-
-    def load_and_save_body_composition(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load body composition and save to database."""
-        raw_data = self.get_body_composition(db, user_id, start_time, end_time)
-        count = 0
-        for item in raw_data:
-            try:
-                count += self.save_body_composition(db, user_id, item)
-            except Exception as e:
-                self.logger.warning(f"Failed to save body composition: {e}")
-        return count
-
     def load_and_save_all(
         self,
         db: DbSession,
@@ -1670,27 +1604,3 @@ class Garmin247Data(Base247DataTemplate):
             "total_saved": 0,
             "message": "Garmin data arrives via webhooks. No REST fetch performed.",
         }
-
-    # -------------------------------------------------------------------------
-    # Raw API Access (for debugging)
-    # -------------------------------------------------------------------------
-
-    def get_raw_dailies(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Get raw dailies data from API without normalization."""
-        return self.get_dailies_data(db, user_id, start_time, end_time)
-
-    def get_raw_epochs(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Get raw epochs data from API without normalization."""
-        return self.get_epochs_data(db, user_id, start_time, end_time)
