@@ -272,15 +272,15 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (222, SeriesType.garmin_fitness_age, "years"),
     (223, SeriesType.garmin_body_battery, "percent"),
     # -------------------------------------------------------------------------
-    # OTHER (IDs 240-)
+    # OTHER (IDs 500-)
     # -------------------------------------------------------------------------
-    (240, SeriesType.electrodermal_activity, "count"),
-    (241, SeriesType.push_count, "count"),
-    (242, SeriesType.atrial_fibrillation_burden, "count"),
-    (243, SeriesType.insulin_delivery, "count"),
-    (244, SeriesType.number_of_times_fallen, "count"),
-    (245, SeriesType.number_of_alcoholic_beverages, "count"),
-    (246, SeriesType.nike_fuel, "count"),
+    (500, SeriesType.electrodermal_activity, "count"),
+    (501, SeriesType.push_count, "count"),
+    (502, SeriesType.atrial_fibrillation_burden, "count"),
+    (503, SeriesType.insulin_delivery, "count"),
+    (504, SeriesType.number_of_times_fallen, "count"),
+    (505, SeriesType.number_of_alcoholic_beverages, "count"),
+    (506, SeriesType.nike_fuel, "count"),
 ]
 
 
