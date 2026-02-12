@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.series_types import (
+from app.constants.series_types.apple import (
     AppleCategoryType,
     AppleMetricType,
     WorkoutStatisticType,

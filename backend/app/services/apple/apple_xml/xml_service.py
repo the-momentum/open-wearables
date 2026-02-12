@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.constants.series_types import get_series_type_from_apple_metric_type
+from app.constants.series_types.apple import get_series_type_from_apple_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
 from app.schemas import (
     EventRecordCreate,
