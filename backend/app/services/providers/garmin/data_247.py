@@ -772,21 +772,21 @@ class Garmin247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         raw_activity: dict[str, Any],
-    ) -> int:
+    ) -> bool:
         """Save activity data as EventRecord with WorkoutDetails."""
         result = self._build_activity_record(user_id, raw_activity)
         if not result:
-            return 0
+            return False
 
         record, detail = result
         try:
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="workout")
-            return 1
+            return True
         except Exception as e:
             self.logger.debug(f"Activity may already exist: {e}")
-            return 0
+            return False
 
     # -------------------------------------------------------------------------
     # Stress Data - /wellness-api/rest/stressDetails
@@ -1430,53 +1430,54 @@ class Garmin247Data(Base247DataTemplate):
         for item in items:
             try:
                 # DataPointSeries types - accumulate samples
-                if summary_type == "dailies":
-                    normalized = self.normalize_dailies(item, user_id)
-                    all_samples.extend(self._build_dailies_samples(user_id, normalized))
-                elif summary_type == "epochs":
-                    normalized = self.normalize_epochs([item], user_id)
-                    all_samples.extend(self._build_epochs_samples(user_id, normalized))
-                elif summary_type == "bodyComps":
-                    all_samples.extend(self._build_body_comp_samples(user_id, item))
-                elif summary_type == "hrv":
-                    all_samples.extend(self._build_hrv_samples(user_id, item))
-                elif summary_type == "stressDetails":
-                    all_samples.extend(self._build_stress_samples(user_id, item))
-                elif summary_type == "respiration":
-                    all_samples.extend(self._build_respiration_samples(user_id, item))
-                elif summary_type == "pulseOx":
-                    all_samples.extend(self._build_pulse_ox_samples(user_id, item))
-                elif summary_type == "bloodPressures":
-                    all_samples.extend(self._build_blood_pressure_samples(user_id, item))
-                elif summary_type == "userMetrics":
-                    all_samples.extend(self._build_user_metrics_samples(user_id, item))
-                elif summary_type == "skinTemp":
-                    all_samples.extend(self._build_skin_temp_samples(user_id, item))
-                elif summary_type == "healthSnapshot":
-                    all_samples.extend(self._build_health_snapshot_samples(user_id, item))
+                match summary_type:
+                    case "dailies":
+                        normalized = self.normalize_dailies(item, user_id)
+                        all_samples.extend(self._build_dailies_samples(user_id, normalized))
+                    case "epochs":
+                        normalized = self.normalize_epochs([item], user_id)
+                        all_samples.extend(self._build_epochs_samples(user_id, normalized))
+                    case "bodyComps":
+                        all_samples.extend(self._build_body_comp_samples(user_id, item))
+                    case "hrv":
+                        all_samples.extend(self._build_hrv_samples(user_id, item))
+                    case "stressDetails":
+                        all_samples.extend(self._build_stress_samples(user_id, item))
+                    case "respiration":
+                        all_samples.extend(self._build_respiration_samples(user_id, item))
+                    case "pulseOx":
+                        all_samples.extend(self._build_pulse_ox_samples(user_id, item))
+                    case "bloodPressures":
+                        all_samples.extend(self._build_blood_pressure_samples(user_id, item))
+                    case "userMetrics":
+                        all_samples.extend(self._build_user_metrics_samples(user_id, item))
+                    case "skinTemp":
+                        all_samples.extend(self._build_skin_temp_samples(user_id, item))
+                    case "healthSnapshot":
+                        all_samples.extend(self._build_health_snapshot_samples(user_id, item))
 
-                # EventRecord types - accumulate records + details
-                elif summary_type == "sleeps":
-                    normalized = self.normalize_sleep(item, user_id)
-                    result = self._build_sleep_record(user_id, normalized)
-                    if result:
-                        record, detail = result
-                        all_records.append(record)
-                        all_sleep_details.append(detail)
-                elif summary_type in ("activities", "activityDetails"):
-                    result = self._build_activity_record(user_id, item)
-                    if result:
-                        record, detail = result
-                        all_records.append(record)
-                        all_workout_details.append(detail)
-                elif summary_type == "moveiq":
-                    record = self._build_moveiq_record(user_id, item)
-                    if record:
-                        all_records.append(record)
+                    # EventRecord types - accumulate records + details
+                    case "sleeps":
+                        normalized = self.normalize_sleep(item, user_id)
+                        result = self._build_sleep_record(user_id, normalized)
+                        if result:
+                            record, detail = result
+                            all_records.append(record)
+                            all_sleep_details.append(detail)
+                    case "activities" | "activityDetails":
+                        result = self._build_activity_record(user_id, item)
+                        if result:
+                            record, detail = result
+                            all_records.append(record)
+                            all_workout_details.append(detail)
+                    case "moveiq":
+                        record = self._build_moveiq_record(user_id, item)
+                        if record:
+                            all_records.append(record)
 
-                # No-op types
-                elif summary_type == "mct":
-                    self.save_mct_data(db, user_id, item)
+                    # No-op types
+                    case "mct":
+                        self.save_mct_data(db, user_id, item)
 
             except Exception as e:
                 self.logger.warning(f"Error building batch item for {summary_type}: {e}")

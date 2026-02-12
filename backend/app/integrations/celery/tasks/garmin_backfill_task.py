@@ -143,7 +143,6 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         if skip_cnt:
             type_info["skip_count"] = int(skip_cnt)
 
-
         match status:
             case "triggered":
                 triggered_at = redis_client.get(_get_key(user_id_str, "types", data_type, "triggered_at"))
@@ -164,7 +163,6 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
                 skipped_count += 1
             case _:
                 pending_count += 1
-
 
         types_status[data_type] = type_info
 
