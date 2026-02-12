@@ -138,29 +138,33 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         type_tid = redis_client.get(_get_key(user_id_str, "types", data_type, "trace_id"))
         if type_tid:
             type_info["trace_id"] = type_tid
+
         skip_cnt = redis_client.get(_get_key(user_id_str, "types", data_type, "skip_count"))
         if skip_cnt:
             type_info["skip_count"] = int(skip_cnt)
 
-        if status == "triggered":
-            triggered_at = redis_client.get(_get_key(user_id_str, "types", data_type, "triggered_at"))
-            if triggered_at:
-                type_info["triggered_at"] = triggered_at
-            triggered_count += 1
-        elif status == "success":
-            completed_at = redis_client.get(_get_key(user_id_str, "types", data_type, "completed_at"))
-            if completed_at:
-                type_info["completed_at"] = completed_at
-            success_count += 1
-        elif status == "failed":
-            error = redis_client.get(_get_key(user_id_str, "types", data_type, "error"))
-            if error:
-                type_info["error"] = error
-            failed_count += 1
-        elif status == "skipped":
-            skipped_count += 1
-        else:
-            pending_count += 1
+
+        match status:
+            case "triggered":
+                triggered_at = redis_client.get(_get_key(user_id_str, "types", data_type, "triggered_at"))
+                if triggered_at:
+                    type_info["triggered_at"] = triggered_at
+                triggered_count += 1
+            case "success":
+                completed_at = redis_client.get(_get_key(user_id_str, "types", data_type, "completed_at"))
+                if completed_at:
+                    type_info["completed_at"] = completed_at
+                success_count += 1
+            case "failed":
+                error = redis_client.get(_get_key(user_id_str, "types", data_type, "error"))
+                if error:
+                    type_info["error"] = error
+                failed_count += 1
+            case "skipped":
+                skipped_count += 1
+            case _:
+                pending_count += 1
+
 
         types_status[data_type] = type_info
 
@@ -297,7 +301,13 @@ def reset_type_status(user_id: str | UUID, data_type: str) -> None:
     for key_suffix in ["status", "triggered_at", "completed_at", "error", "trace_id"]:
         redis_client.delete(_get_key(user_id_str, "types", data_type, key_suffix))
 
-    logger.info(f"Reset {data_type} status for user {user_id_str}")
+    log_structured(
+        logger,
+        "info",
+        "Reset type status",
+        data_type=data_type,
+        user_id=user_id_str,
+    )
 
 
 def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
@@ -452,7 +462,7 @@ def complete_backfill(user_id: str | UUID) -> None:
     user_id_str = str(user_id)
 
     # Set overall complete marker with shorter TTL (1 day)
-    redis_client.setex(_get_key(user_id_str, "overall_complete"), 86400, "1")
+    redis_client.setex(_get_key(user_id_str, "overall_complete"), 24 * 60 * 60, "1")
 
     trace_id = get_trace_id(user_id_str)
     completed_windows = get_completed_window_count(user_id_str)
@@ -482,7 +492,13 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
     try:
         UUID(user_id)  # Validate UUID format
     except ValueError as e:
-        logger.error(f"Invalid user_id: {user_id}")
+        log_structured(
+            logger,
+            "error",
+            "Invalid user_id",
+            user_id=user_id,
+            error=str(e),
+        )
         return {"error": f"Invalid user_id: {e}"}
 
     # Generate trace ID for this backfill session
@@ -633,7 +649,13 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     try:
         user_uuid = UUID(user_id)
     except ValueError as e:
-        logger.error(f"Invalid user_id: {user_id}")
+        log_structured(
+            logger,
+            "error",
+            "Invalid user_id",
+            user_id=user_id,
+            error=str(e),
+        )
         return {"error": f"Invalid user_id: {e}"}
 
     trace_id = get_trace_id(user_id)
