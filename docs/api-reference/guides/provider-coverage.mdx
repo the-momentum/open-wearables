@@ -37,8 +37,9 @@ This guide provides a comprehensive overview of data type support across all int
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
 | `heart_rate` | bpm | ✅ | ◐/🔜 | ◐ | ✅ | ❌ | ❌ |
-| `resting_heart_rate` | bpm | ✅ | 🔜 | ❌ | ❌ | 🔜 | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | 🔜 | ◐ | ✅ | 🔜 | ❌ |
+| `resting_heart_rate` | bpm | ✅ | 🔜 | ❌ | ❌ | ✅ | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | 🔜 | ◐ | ✅ | ❌ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -54,7 +55,7 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
-| `oxygen_saturation` | % | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ |
+| `oxygen_saturation` | % | ✅ | 🔜 | ❌ | ✅ | ✅ | ❌ |
 | `blood_glucose` | mg/dL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `blood_pressure_systolic` | mmHg | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `blood_pressure_diastolic` | mmHg | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
@@ -65,12 +66,12 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
-| `height` | cm | ✅ | 🔜 | 🔜 | ❌ | 🔜 | ❌ |
-| `weight` | kg | ✅ | 🔜 | 🔜 | ❌ | 🔜 | ❌ |
+| `height` | cm | ✅ | 🔜 | 🔜 | ❌ | ✅ | ❌ |
+| `weight` | kg | ✅ | 🔜 | 🔜 | ❌ | ✅ | ❌ |
 | `body_fat_percentage` | % | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `body_mass_index` | kg/m² | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `lean_body_mass` | kg | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
-| `body_temperature` | °C | ✅ | ❌ | ❌ | ❌ | 🔜 | ❌ |
+| `body_temperature` | °C | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 
 ### Fitness Metrics
 
@@ -78,6 +79,7 @@ This guide provides a comprehensive overview of data type support across all int
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
 | `vo2_max` | mL/kg/min | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `recovery_score` | score | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 
 ### Activity - Basic
 
@@ -257,14 +259,16 @@ Key differences and limitations to be aware of when working with each provider:
 </Accordion>
 
 <Accordion title="Whoop">
-  **Integration Method:** OAuth 2.0
-  
-  - Full workout support with 80+ workout type mappings to unified taxonomy
+  **Integration Method:** OAuth 2.0 (pull-based polling)
+
+  - Data synced via periodic polling (default: every hour); Whoop supports webhooks but handler not yet implemented
+  - Full workout support with 145+ workout type mappings to unified taxonomy
   - Workout metrics include: avg/max heart rate, calories, distance, elevation gain, moving time
   - Continuous heart rate data is **not available** via API (only during workouts)
   - Does not track steps (device limitation)
   - Sleep data fully implemented with all stages and efficiency
-  - Recovery data (HRV, resting HR, recovery score) available but not yet implemented
+  - Recovery data fully implemented: recovery score, resting heart rate, HRV (RMSSD), SpO2, skin temperature
+  - Body measurements (height, weight) synced from user profile
   - Strain scores available but not yet implemented
 </Accordion>
 
