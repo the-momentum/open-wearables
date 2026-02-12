@@ -10,8 +10,9 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.database import DbSession
-from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories import UserConnectionRepository
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -126,14 +127,26 @@ def make_authenticated_request(
             if response.status_code == 429:
                 if attempt < MAX_RETRIES:
                     backoff_delay = RETRY_BASE_DELAY * (2**attempt)  # 1s, 2s, 4s
-                    logger.warning(
-                        f"{provider_name.capitalize()} rate limited (429), "
-                        f"retry {attempt + 1}/{MAX_RETRIES} after {backoff_delay}s"
+                    log_structured(
+                        logger,
+                        "warning",
+                        "Rate limited (429), retrying",
+                        provider_name=provider_name,
+                        attempt=attempt + 1,
+                        max_retries=MAX_RETRIES,
+                        backoff_delay=backoff_delay,
                     )
                     time.sleep(backoff_delay)
                     continue
                 # Max retries exceeded
-                logger.error(f"{provider_name.capitalize()} rate limited (429), max retries exceeded")
+                log_structured(
+                    logger,
+                    "error",
+                    "Rate limited (429), max retries exceeded",
+                    provider_name=provider_name,
+                    attempt=attempt + 1,
+                    max_retries=MAX_RETRIES,
+                )
                 raise HTTPException(
                     status_code=429,
                     detail=f"{provider_name.capitalize()} API error: {response.text}",
@@ -159,7 +172,13 @@ def make_authenticated_request(
 
                 if has_error or has_error_code:
                     error_msg = result.get("message") or result.get("error") or str(result)
-                    logger.error(f"{provider_name.capitalize()} API returned error in body: {error_msg}")
+                    log_structured(
+                        logger,
+                        "error",
+                        "API returned error in body",
+                        provider_name=provider_name,
+                        error_msg=error_msg,
+                    )
                     raise HTTPException(
                         status_code=result.get("code", 400),
                         detail=f"{provider_name.capitalize()} API error: {error_msg}",
@@ -171,16 +190,25 @@ def make_authenticated_request(
             # Handle 429 from raise_for_status (shouldn't happen due to early check, but just in case)
             if e.response.status_code == 429 and attempt < MAX_RETRIES:
                 backoff_delay = RETRY_BASE_DELAY * (2**attempt)
-                logger.warning(
-                    f"{provider_name.capitalize()} rate limited (429), "
-                    f"retry {attempt + 1}/{MAX_RETRIES} after {backoff_delay}s"
+                log_structured(
+                    logger,
+                    "warning",
+                    "Rate limited (429), retrying",
+                    provider_name=provider_name,
+                    attempt=attempt + 1,
+                    max_retries=MAX_RETRIES,
+                    backoff_delay=backoff_delay,
                 )
                 time.sleep(backoff_delay)
                 continue
 
-            logger.error(
-                f"{provider_name.capitalize()} API error for user {user_id}: "
-                f"{e.response.status_code} - {e.response.text}",
+            log_structured(
+                logger,
+                "error",
+                "API error",
+                provider_name=provider_name,
+                user_id=user_id,
+                error=e.response.text,
             )
             if e.response.status_code == 401:
                 raise HTTPException(
@@ -195,7 +223,14 @@ def make_authenticated_request(
             # Re-raise HTTPExceptions as-is
             raise
         except Exception as e:
-            logger.error(f"{provider_name.capitalize()} API request failed for user {user_id}: {str(e)}")
+            log_structured(
+                logger,
+                "error",
+                "API request failed",
+                provider_name=provider_name,
+                user_id=user_id,
+                error=str(e),
+            )
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
