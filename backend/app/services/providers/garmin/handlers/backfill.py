@@ -23,7 +23,6 @@ from app.services.providers.garmin.backfill_config import (
     REQUEST_DELAY_SECONDS,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -198,17 +197,6 @@ class GarminBackfillService:
                     )
                     results["triggered"].append(data_type)
                 else:
-                    log_and_capture_error(
-                        e,
-                        self.logger,
-                        f"Backfill API request failed for data type {data_type}: {e.detail}",
-                        extra={
-                            "user_id": user_id,
-                            "trace_id": trace_id,
-                            "data_type": data_type,
-                            "status_code": e.status_code,
-                        },
-                    )
                     log_structured(
                         self.logger,
                         "error",
@@ -223,12 +211,6 @@ class GarminBackfillService:
                     results["failed"][data_type] = str(e.detail)
 
             except Exception as e:
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    "Backfill request error",
-                    extra={"user_id": user_id, "trace_id": trace_id, "data_type": data_type},
-                )
                 log_structured(
                     self.logger,
                     "error",

@@ -6,7 +6,6 @@ import resend
 from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.config import settings
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -129,11 +128,5 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
     except Exception as e:
         log_structured(
             logger, "error", f"Failed to send invitation email: {e}", provider="email", task="send_invitation_email"
-        )
-        log_and_capture_error(
-            e,
-            logger,
-            f"Failed to send invitation email: {e}",
-            extra={"task": "send_invitation_email", "provider": "email"},
         )
         return False

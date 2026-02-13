@@ -24,7 +24,6 @@ from app.schemas import (
 from app.schemas.apple.healthkit.sync_request import SyncRequest, WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_info
@@ -334,12 +333,6 @@ class ImportService:
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,
-            )
-            log_and_capture_error(
-                e,
-                self.log,
-                f"Import failed for user {user_id}: {e}",
-                extra={"user_id": user_id, "batch_id": batch_id},
             )
             return UploadDataResponse(
                 status_code=400,

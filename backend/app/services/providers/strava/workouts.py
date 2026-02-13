@@ -15,7 +15,6 @@ from app.schemas import (
 from app.schemas.workout_types import WorkoutType
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -83,12 +82,6 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                     page=page,
                     user_id=str(user_id),
                     error=str(e),
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    "Error fetching Strava activities page",
-                    extra={"user_id": user_id, "page": page},
                 )
                 if all_activities:
                     log_structured(

@@ -14,7 +14,6 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -72,12 +71,6 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     f"Error fetching Whoop workout data: {e}",
                     provider="whoop",
                     task="get_workouts",
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Error fetching Whoop workout data: {e}",
-                    extra={"task": "get_workouts", "provider": "whoop"},
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
@@ -302,12 +295,6 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 log_structured(
                     self.logger, "error", f"Error fetching Whoop workout data: {e}", provider="whoop", task="load_data"
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Error fetching Whoop workout data: {e}",
-                    extra={"task": "load_data", "provider": "whoop"},
                 )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:

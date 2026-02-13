@@ -18,7 +18,6 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -110,12 +109,6 @@ class Whoop247Data(Base247DataTemplate):
                     f"Error fetching Whoop sleep data: {e}",
                     provider="whoop",
                     task="get_sleep_data",
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Error fetching Whoop sleep data: {e}",
-                    extra={"task": "get_sleep_data", "provider": "whoop"},
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_sleep_data:
@@ -296,12 +289,6 @@ class Whoop247Data(Base247DataTemplate):
                 provider="whoop",
                 task="save_sleep_data",
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Error saving sleep record {sleep_id}: {e}",
-                extra={"sleep_id": sleep_id, "task": "save_sleep_data", "provider": "whoop"},
-            )
             # Rollback is handled by the service/repository or session manager
             # But we should ensure we don't break the entire sync loop
             pass
@@ -372,24 +359,12 @@ class Whoop247Data(Base247DataTemplate):
             log_structured(
                 self.logger, "error", f"Failed to sync sleep data: {e}", provider="whoop", task="load_and_save_all"
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to sync sleep data: {e}",
-                extra={"task": "load_and_save_all", "provider": "whoop"},
-            )
 
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
         except Exception as e:
             log_structured(
                 self.logger, "error", f"Failed to sync recovery data: {e}", provider="whoop", task="load_and_save_all"
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to sync recovery data: {e}",
-                extra={"task": "load_and_save_all", "provider": "whoop"},
             )
 
         try:
@@ -401,12 +376,6 @@ class Whoop247Data(Base247DataTemplate):
                 f"Failed to sync body measurement data: {e}",
                 provider="whoop",
                 task="load_and_save_all",
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to sync body measurement data: {e}",
-                extra={"task": "load_and_save_all", "provider": "whoop"},
             )
 
         return results
@@ -435,12 +404,6 @@ class Whoop247Data(Base247DataTemplate):
                 f"Error fetching Whoop body measurement: {e}",
                 provider="whoop",
                 task="get_body_measurement",
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Error fetching Whoop body measurement: {e}",
-                extra={"task": "get_body_measurement", "provider": "whoop"},
             )
             return {}
 
@@ -593,12 +556,6 @@ class Whoop247Data(Base247DataTemplate):
                     f"Error fetching Whoop recovery data: {e}",
                     provider="whoop",
                     task="get_recovery_data",
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Error fetching Whoop recovery data: {e}",
-                    extra={"task": "get_recovery_data", "provider": "whoop"},
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_recovery_data:

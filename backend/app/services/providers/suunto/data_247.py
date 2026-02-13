@@ -17,7 +17,6 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -243,12 +242,6 @@ class Suunto247Data(Base247DataTemplate):
                 f"Error saving sleep record {sleep_id}: {e}",
                 provider="suunto",
                 task="save_sleep_data",
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Error saving sleep record {sleep_id}: {e}",
-                extra={"sleep_id": sleep_id, "task": "save_sleep_data", "provider": "suunto"},
             )
             # Rollback is handled by the service/repository or session manager
             # But we should ensure we don't break the entire sync loop
@@ -653,12 +646,6 @@ class Suunto247Data(Base247DataTemplate):
             log_structured(
                 self.logger, "error", f"Failed to load sleep data: {e}", provider="suunto", task="load_and_save_all"
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to load sleep data: {e}",
-                extra={"task": "load_and_save_all", "provider": "suunto"},
-            )
 
         # Activity Samples
         try:
@@ -673,12 +660,6 @@ class Suunto247Data(Base247DataTemplate):
                 provider="suunto",
                 task="load_and_save_all",
             )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to load activity samples: {e}",
-                extra={"task": "load_and_save_all", "provider": "suunto"},
-            )
 
         # Daily Activity Statistics
         try:
@@ -692,12 +673,6 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to load daily activity statistics: {e}",
                 provider="suunto",
                 task="load_and_save_all",
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Failed to load daily activity statistics: {e}",
-                extra={"task": "load_and_save_all", "provider": "suunto"},
             )
 
         # Recovery and activity samples would need their own save methods

@@ -30,7 +30,6 @@ from app.schemas import GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.workouts import GarminWorkouts
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
@@ -631,12 +630,6 @@ async def garmin_push_notification(
                         activity_id=activity_id,
                         error=str(e),
                     )
-                    log_and_capture_error(
-                        e,
-                        logger,
-                        "Error processing activity notification",
-                        extra={"activity_id": activity_id, "request_trace_id": request_trace_id},
-                    )
                     errors.append(f"Error processing activity {activity_id}: {str(e)}")
 
         # Process all wellness data types (batch processing)
@@ -696,12 +689,6 @@ async def garmin_push_notification(
                         trace_id=request_trace_id,
                         error=str(e),
                     )
-                    log_and_capture_error(
-                        e,
-                        logger,
-                        f"Error resolving user for {data_type}",
-                        extra={"data_type": data_type, "request_trace_id": request_trace_id},
-                    )
                     errors.append(f"{data_type} error: {str(e)}")
 
             type_count = 0
@@ -720,12 +707,6 @@ async def garmin_push_notification(
                         trace_id=trace_id,
                         user_id=str(uid),
                         error=str(e),
-                    )
-                    log_and_capture_error(
-                        e,
-                        logger,
-                        f"Error processing {data_type}",
-                        extra={"data_type": data_type, "request_trace_id": request_trace_id},
                     )
                     errors.append(f"{data_type} error: {str(e)}")
 
@@ -790,12 +771,6 @@ async def garmin_push_notification(
     except Exception as e:
         db.rollback()
         log_structured(logger, "error", "Error processing Garmin push webhook", provider="garmin", error=str(e))
-        log_and_capture_error(
-            e,
-            logger,
-            "Error processing Garmin push webhook",
-            extra={"request_trace_id": request_trace_id},
-        )
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
 

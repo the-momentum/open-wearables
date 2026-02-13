@@ -17,7 +17,6 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -125,18 +124,6 @@ class Garmin247Data(Base247DataTemplate):
                     f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="fetch_in_chunks",
-                )
-                log_and_capture_error(
-                    e,
-                    self.logger,
-                    f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
-                    extra={
-                        "endpoint": endpoint,
-                        "start_time": current_start.isoformat(),
-                        "end_time": current_end.isoformat(),
-                        "task": "fetch_in_chunks",
-                        "provider": "garmin",
-                    },
                 )
 
             current_start = current_end
@@ -288,12 +275,6 @@ class Garmin247Data(Base247DataTemplate):
                 f"Error saving sleep record {normalized_sleep['id']}: {e}",
                 provider="garmin",
                 task="save_sleep_data",
-            )
-            log_and_capture_error(
-                e,
-                self.logger,
-                f"Error saving sleep record {normalized_sleep['id']}: {e}",
-                extra={"sleep_id": normalized_sleep["id"], "task": "save_sleep_data", "provider": "garmin"},
             )
 
     # -------------------------------------------------------------------------
