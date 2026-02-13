@@ -202,7 +202,12 @@ class GarminBackfillService:
                         e,
                         self.logger,
                         f"Backfill API request failed for data type {data_type}: {e.detail}",
-                        extra={"user_id": user_id, "trace_id": trace_id, "data_type": data_type, "status_code": e.status_code},
+                        extra={
+                            "user_id": user_id,
+                            "trace_id": trace_id,
+                            "data_type": data_type,
+                            "status_code": e.status_code,
+                        },
                     )
                     log_structured(
                         self.logger,

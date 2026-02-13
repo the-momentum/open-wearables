@@ -12,6 +12,7 @@ from app.services.apple.apple_xml.aws_service import s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
@@ -42,10 +43,12 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
             else:
                 raise ValueError(f"Cannot determine user_id from object key: {object_key}")
             if user_id and user_id_str != user_id:
-                logger.warning(
-                    "[process_aws_upload] Provided user_id does not match object key user_id: %s vs %s",
-                    user_id,
-                    user_id_str,
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Provided user_id does not match object key user_id: {user_id} vs {user_id_str}",
+                    provider="apple_xml",
+                    task="process_aws_upload",
                 )
             try:
                 user_uuid = UUID(user_id_str)

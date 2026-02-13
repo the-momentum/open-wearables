@@ -85,7 +85,12 @@ async def _process_wellness_notification(
         # Find internal user
         if not garmin_user_id:
             log_structured(
-                logger, "warn", "No user ID in notification", provider="garmin", trace_id=request_trace_id, summary_type=summary_type
+                logger,
+                "warn",
+                "No user ID in notification",
+                provider="garmin",
+                trace_id=request_trace_id,
+                summary_type=summary_type,
             )
             continue
         connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
@@ -229,7 +234,12 @@ async def garmin_ping_notification(
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
-            logger, "info", "Received Garmin ping notification", provider="garmin", trace_id=request_trace_id, item_counts=item_counts
+            logger,
+            "info",
+            "Received Garmin ping notification",
+            provider="garmin",
+            trace_id=request_trace_id,
+            item_counts=item_counts,
         )
 
         # Process different summary types
@@ -462,7 +472,12 @@ async def garmin_push_notification(
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
-            logger, "info", "Received Garmin push notification", provider="garmin", trace_id=request_trace_id, item_counts=item_counts
+            logger,
+            "info",
+            "Received Garmin push notification",
+            provider="garmin",
+            trace_id=request_trace_id,
+            item_counts=item_counts,
         )
 
         processed_count = 0

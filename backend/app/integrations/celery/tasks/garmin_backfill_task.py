@@ -851,7 +851,12 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 e,
                 logger,
                 f"Error triggering backfill for type {data_type}: {e}",
-                extra={"user_id": user_id, "trace_id": trace_id, "type_trace_id": type_trace_id, "data_type": data_type},
+                extra={
+                    "user_id": user_id,
+                    "trace_id": trace_id,
+                    "type_trace_id": type_trace_id,
+                    "data_type": data_type,
+                },
             )
             mark_type_failed(user_id, data_type, error)
             # Try to continue with next type (with small delay)
