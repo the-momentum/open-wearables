@@ -30,6 +30,7 @@ async def handle_webhook_verification(
             logger,
             "warn",
             "Invalid verify token received",
+            provider="strava",
             action="webhook_verification_failed",
             verify_token=hub_verify_token,
         )
@@ -39,6 +40,7 @@ async def handle_webhook_verification(
         logger,
         "info",
         "Strava webhook subscription verified successfully",
+        provider="strava",
         action="webhook_verified",
     )
     return {"hub.challenge": hub_challenge}
@@ -52,6 +54,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             logger,
             "info",
             "Received Strava webhook event",
+            provider="strava",
             action="webhook_received",
             payload=payload,
         )
@@ -67,6 +70,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "info",
                 "Ignoring non-activity event",
+                provider="strava",
                 action="webhook_ignored",
                 object_type=object_type,
             )
@@ -78,6 +82,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "info",
                 "Ignoring aspect type event for activity",
+                provider="strava",
                 action="webhook_ignored",
                 aspect_type=aspect_type,
                 object_id=object_id,
@@ -89,6 +94,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "warn",
                 "Missing owner_id or object_id in webhook payload",
+                provider="strava",
                 action="webhook_invalid",
                 owner_id=owner_id,
                 object_id=object_id,
@@ -104,6 +110,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "warn",
                 "No connection found for Strava athlete",
+                provider="strava",
                 action="webhook_no_connection",
                 strava_athlete_id=owner_id,
             )
@@ -114,6 +121,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             logger,
             "info",
             "Mapped Strava athlete to internal user",
+            provider="strava",
             action="webhook_user_mapped",
             strava_athlete_id=owner_id,
             user_id=str(internal_user_id),
@@ -129,6 +137,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "error",
                 "Strava workouts service not available",
+                provider="strava",
                 action="webhook_service_unavailable",
             )
             return {"status": "error", "message": "Service unavailable"}
@@ -144,6 +153,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                     logger,
                     "warn",
                     "No data returned for Strava activity",
+                    provider="strava",
                     action="webhook_no_activity_data",
                     activity_id=object_id,
                     user_id=str(internal_user_id),
@@ -164,6 +174,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "info",
                 "Saved Strava activity with record IDs",
+                provider="strava",
                 action="webhook_activity_saved",
                 activity_id=object_id,
                 user_id=str(internal_user_id),
@@ -182,6 +193,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "info",
                 "Strava activity already exists, skipping",
+                provider="strava",
                 action="webhook_duplicate_activity",
                 activity_id=object_id,
                 user_id=str(internal_user_id),
@@ -193,6 +205,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "error",
                 "Failed to parse Strava activity",
+                provider="strava",
                 action="webhook_validation_error",
                 activity_id=object_id,
                 user_id=str(internal_user_id),
@@ -205,6 +218,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
                 logger,
                 "error",
                 "Error processing Strava activity",
+                provider="strava",
                 action="webhook_processing_error",
                 activity_id=object_id,
                 user_id=str(internal_user_id),
@@ -217,6 +231,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             logger,
             "error",
             "Error processing Strava webhook",
+            provider="strava",
             action="webhook_error",
             error=str(e),
         )
