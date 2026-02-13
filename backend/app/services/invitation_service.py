@@ -19,6 +19,8 @@ from app.schemas.invitation import (
 )
 from app.services.developer_service import developer_service
 from app.utils.security import get_password_hash
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 
 class InvitationService:
@@ -150,7 +152,19 @@ class InvitationService:
         try:
             developer = self.crud.accept_with_developer(db_session, invitation, developer)
         except Exception as e:
-            self.logger.error(f"Failed to accept invitation: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to accept invitation: {e}",
+                provider="invitation",
+                task="accept_invitation",
+            )
+            log_and_capture_error(
+                e,
+                self.logger,
+                f"Failed to accept invitation: {e}",
+                extra={"invitation_id": invitation.id, "task": "accept_invitation", "provider": "invitation"},
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create developer account",

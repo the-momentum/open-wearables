@@ -17,6 +17,8 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 
 class Garmin247Data(Base247DataTemplate):
@@ -117,8 +119,24 @@ class Garmin247Data(Base247DataTemplate):
                 elif response:
                     all_data.append(response)
             except Exception as e:
-                self.logger.warning(
-                    f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}"
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                    provider="garmin",
+                    task="fetch_in_chunks",
+                )
+                log_and_capture_error(
+                    e,
+                    self.logger,
+                    f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                    extra={
+                        "endpoint": endpoint,
+                        "start_time": current_start.isoformat(),
+                        "end_time": current_end.isoformat(),
+                        "task": "fetch_in_chunks",
+                        "provider": "garmin",
+                    },
                 )
 
             current_start = current_end
@@ -204,7 +222,13 @@ class Garmin247Data(Base247DataTemplate):
             end_dt = datetime.fromisoformat(normalized_sleep["end_time"].replace("Z", "+00:00"))
 
         if not start_dt or not end_dt:
-            self.logger.warning(f"Missing start/end time for sleep {sleep_id}")
+            log_structured(
+                self.logger,
+                "warning",
+                f"Missing start/end time for sleep {sleep_id}",
+                provider="garmin",
+                task="build_sleep_record",
+            )
             return None
 
         record = EventRecordCreate(
@@ -258,7 +282,19 @@ class Garmin247Data(Base247DataTemplate):
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
         except Exception as e:
-            self.logger.error(f"Error saving sleep record {normalized_sleep['id']}: {e}")
+            log_structured(
+                self.logger,
+                "error",
+                f"Error saving sleep record {normalized_sleep['id']}: {e}",
+                provider="garmin",
+                task="save_sleep_data",
+            )
+            log_and_capture_error(
+                e,
+                self.logger,
+                f"Error saving sleep record {normalized_sleep['id']}: {e}",
+                extra={"sleep_id": normalized_sleep["id"], "task": "save_sleep_data", "provider": "garmin"},
+            )
 
     # -------------------------------------------------------------------------
     # Dailies Data - /wellness-api/rest/dailies
@@ -651,7 +687,13 @@ class Garmin247Data(Base247DataTemplate):
         calendar_date = raw_hrv.get("calendarDate")
 
         if not start_ts:
-            self.logger.warning("HRV data missing startTimeInSeconds")
+            log_structured(
+                self.logger,
+                "warning",
+                "HRV data missing startTimeInSeconds",
+                provider="garmin",
+                task="build_hrv_samples",
+            )
             return samples
 
         # Collect lastNightAvg as the main HRV value for the night
@@ -1480,7 +1522,13 @@ class Garmin247Data(Base247DataTemplate):
                         self.save_mct_data(db, user_id, item)
 
             except Exception as e:
-                self.logger.warning(f"Error building batch item for {summary_type}: {e}")
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Error building batch item for {summary_type}: {e}",
+                    provider="garmin",
+                    task="process_items_batch",
+                )
 
         count = 0
 
