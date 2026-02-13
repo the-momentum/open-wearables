@@ -12,6 +12,20 @@ MCP (Model Context Protocol) is a standard for connecting AI assistants to exter
   The MCP server is **decoupled** from the backend - it communicates via REST API using your API key. This means it can be deployed independently and uses existing, tested API endpoints.
 </Note>
 
+## Demo
+
+This demo uses generated sample data to show the capabilities of Claude's MCP integration with Open Wearables. User 1 has short, irregular sleep patterns while User 2 shows longer, more consistent sleep quality. Claude analyzes both datasets to identify key differences and health implications.
+
+<iframe
+  width="100%"
+  height="400"
+  src="https://www.youtube.com/embed/Jb8N2jNbs1Y"
+  title="Open Wearables MCP Server Demo"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+/>
+
 ## Available Tools
 
 The MCP server provides the following tools for AI assistants:
@@ -88,11 +102,28 @@ OPEN_WEARABLES_API_URL=http://localhost:8000
 OPEN_WEARABLES_API_KEY=ow_your_api_key_here
 ```
 
+<Tip>
+  To generate your API key, go to the **Open Wearables Dashboard -> Settings -> Credentials -> Create API Key**.
+</Tip>
+
 ### 3. Test the server
 
 ```bash
 uv run start
 ```
+
+If the server starts successfully, you should see output similar to:
+
+```bash
+2026-02-10 07:48:22,016 - app.main - INFO - Open Wearables MCP server initialized. API URL: http://localhost:8000
+[02/10/26 07:48:22] INFO     Starting MCP server 'open-wearables' with transport 'stdio'
+2026-02-10 07:48:22,048 - docket.worker - INFO - Starting worker 'MacBook-Pro-26.local#19901' with the following tasks:
+2026-02-10 07:48:22,049 - docket.worker - INFO - * trace(message: str, ...)
+2026-02-10 07:48:22,049 - docket.worker - INFO - * fail(message: str, ...)
+2026-02-10 07:48:22,049 - docket.worker - INFO - * sleep(seconds: float, ...)
+```
+
+You can stop the server now - the LLM client you configure in the next steps will start it automatically on launch.
 
 ## Next Steps
 

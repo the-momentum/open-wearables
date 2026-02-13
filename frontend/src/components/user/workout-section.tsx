@@ -25,6 +25,7 @@ import {
   ChartTooltipContent,
 } from '@/components/ui/chart';
 import { getWorkoutStyle } from '@/lib/utils/workout-styles';
+import { SourceBadge } from '@/components/common/source-badge';
 import { formatDuration, formatCalories } from '@/lib/utils/format';
 import { prepareHrChartData } from '@/lib/utils/timeseries';
 import { HR_CHART_CONFIG } from '@/lib/utils/chart-config';
@@ -100,6 +101,12 @@ function WorkoutRow({
             <p className="text-xs text-zinc-500">
               {workoutDate ? format(new Date(workoutDate), 'MMM d, yyyy') : '-'}
             </p>
+            {workout.source?.provider && (
+              <SourceBadge
+                provider={workout.source.provider}
+                className="mt-1"
+              />
+            )}
           </div>
 
           {/* Stats - evenly spaced */}

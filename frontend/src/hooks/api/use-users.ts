@@ -132,17 +132,17 @@ export function useDeleteUser() {
   });
 }
 
-export function useGenerateUserToken() {
+export function useGenerateInvitationCode() {
   return useMutation({
-    mutationFn: (userId: string) => usersService.generateToken(userId),
+    mutationFn: (userId: string) => usersService.generateInvitationCode(userId),
     onSuccess: () => {
-      toast.success('User token generated successfully');
+      toast.success('Invitation code generated successfully');
     },
     onError: (error: unknown) => {
       const message =
         error instanceof Error
           ? error.message
-          : 'Failed to generate user token';
+          : 'Failed to generate invitation code';
       toast.error(message);
     },
   });

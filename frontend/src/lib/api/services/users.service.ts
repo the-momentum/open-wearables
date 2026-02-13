@@ -9,7 +9,7 @@ import type {
   PaginatedUsersResponse,
   PresignedURLRequest,
   PresignedURLResponse,
-  Token,
+  InvitationCode,
 } from '../types';
 
 export const usersService = {
@@ -97,9 +97,8 @@ export const usersService = {
     }
   },
 
-  async generateToken(userId: string): Promise<Token> {
-    // Send no body - admin authentication via Bearer token will be used
-    const endpoint = API_ENDPOINTS.userToken(userId);
-    return apiClient.post<Token>(endpoint, null);
+  async generateInvitationCode(userId: string): Promise<InvitationCode> {
+    const endpoint = API_ENDPOINTS.userInvitationCode(userId);
+    return apiClient.post<InvitationCode>(endpoint, null);
   },
 };

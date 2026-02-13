@@ -4,6 +4,7 @@ from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.samsung.strategy import SamsungStrategy
+from app.services.providers.strava.strategy import StravaStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.whoop.strategy import WhoopStrategy
 
@@ -25,5 +26,7 @@ class ProviderFactory:
                 return PolarStrategy()
             case ProviderName.WHOOP.value:
                 return WhoopStrategy()
+            case ProviderName.STRAVA.value:
+                return StravaStrategy()
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")

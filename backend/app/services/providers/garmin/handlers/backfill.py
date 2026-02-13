@@ -15,7 +15,15 @@ from fastapi import HTTPException
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.garmin.backfill_config import (
+    ALL_DATA_TYPES,
+    BACKFILL_CHUNK_DAYS,
+    BACKFILL_ENDPOINTS,
+    DEFAULT_BACKFILL_DAYS,
+    REQUEST_DELAY_SECONDS,
+)
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.structured_logging import log_structured
 
 
 class GarminBackfillService:
@@ -25,52 +33,17 @@ class GarminBackfillService:
     - Don't require pull tokens (unlike regular summary endpoints)
     - Use summaryStartTimeInSeconds/summaryEndTimeInSeconds params
     - Return 202 Accepted (async processing)
-    - Data is sent to configured webhook endpoints
+    - Data is sent to configured webhook endpoints (PING/PUSH)
 
-    Official Garmin backfill limits (from documentation):
-    - Max per request: 90 days
-    - Per user limit: 1 month since first connection
-    - Total history available: 2 years (Health) / 5 years (Activity)
-    - Rate limit (prod): 10,000 days/minute
+    Official Garmin backfill limits (confirmed by Garmin support):
+    - Max per request: 30 days for ALL data types
+    - Time limit: Only available within 1 month of user's first connection
+    - One-time per timeframe: 1 request per user per timeframe per summary type
     - Duplicate requests: HTTP 409
+    - Rate limit (prod): 10,000 days/minute
+    - Requires HISTORICAL_DATA_EXPORT permission from user
+    - 403 returned if user didn't grant historical data access during OAuth
     """
-
-    # Backfill configuration
-    BACKFILL_CHUNK_DAYS = 1  # Per request (1 day at a time)
-    MAX_BACKFILL_DAYS = 30  # Target: 1 month of history
-    MAX_REQUEST_DAYS = 90  # Max days per single backfill request (Garmin limit)
-
-    # Mapping of data type to backfill endpoint
-    BACKFILL_ENDPOINTS = {
-        "sleeps": "/wellness-api/rest/backfill/sleeps",
-        "dailies": "/wellness-api/rest/backfill/dailies",
-        "epochs": "/wellness-api/rest/backfill/epochs",
-        "bodyComps": "/wellness-api/rest/backfill/bodyComps",
-        "hrv": "/wellness-api/rest/backfill/hrv",
-        "stressDetails": "/wellness-api/rest/backfill/stressDetails",
-        "respiration": "/wellness-api/rest/backfill/respiration",
-        "pulseOx": "/wellness-api/rest/backfill/pulseOx",
-        "activities": "/wellness-api/rest/backfill/activities",
-        "activityDetails": "/wellness-api/rest/backfill/activityDetails",
-        "userMetrics": "/wellness-api/rest/backfill/userMetrics",
-        "bloodPressures": "/wellness-api/rest/backfill/bloodPressures",
-        "skinTemp": "/wellness-api/rest/backfill/skinTemp",
-        "healthSnapshot": "/wellness-api/rest/backfill/healthSnapshot",
-        "moveiq": "/wellness-api/rest/backfill/moveiq",
-        "mct": "/wellness-api/rest/backfill/mct",
-    }
-
-    # Default data types to backfill for wellness sync
-    DEFAULT_DATA_TYPES = [
-        "sleeps",
-        "dailies",
-        "epochs",
-        "bodyComps",
-        "hrv",
-    ]
-
-    DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
-    REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
 
     def __init__(
         self,
@@ -117,6 +90,7 @@ class GarminBackfillService:
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         is_first_sync: bool = False,
+        trace_id: str | None = None,
     ) -> dict[str, Any]:
         """Trigger backfill for specified data types.
 
@@ -127,6 +101,7 @@ class GarminBackfillService:
             start_time: Start of date range (defaults based on is_first_sync)
             end_time: End of date range (defaults to now)
             is_first_sync: If True, use max timeframe (2 years). If False, use DEFAULT_BACKFILL_DAYS.
+            trace_id: Trace ID for correlating backfill requests with webhook responses
 
         Returns:
             Dict with backfill results for each data type:
@@ -142,16 +117,22 @@ class GarminBackfillService:
             The response only indicates if the backfill request was accepted.
         """
         if data_types is None:
-            data_types = self.DEFAULT_DATA_TYPES
+            data_types = ALL_DATA_TYPES
 
         if end_time is None:
             end_time = datetime.now(timezone.utc)
         if start_time is None:
             # Use 30 days for first sync (per user limit), otherwise 1 day
-            days = self.BACKFILL_CHUNK_DAYS if is_first_sync else self.DEFAULT_BACKFILL_DAYS
+            days = BACKFILL_CHUNK_DAYS if is_first_sync else DEFAULT_BACKFILL_DAYS
             start_time = end_time - timedelta(days=days)
-            self.logger.info(
-                f"Backfill timeframe: {days} days ({'first sync' if is_first_sync else 'subsequent sync'})"
+            log_structured(
+                self.logger,
+                "info",
+                "Backfill timeframe calculated",
+                trace_id=trace_id,
+                days=days,
+                sync_type="first" if is_first_sync else "subsequent",
+                user_id=str(user_id),
             )
 
         results: dict[str, Any] = {
@@ -164,9 +145,9 @@ class GarminBackfillService:
         for i, data_type in enumerate(data_types):
             # Small delay between requests (prod rate limit: 10,000 days/min)
             if i > 0:
-                time.sleep(self.REQUEST_DELAY_SECONDS)
+                time.sleep(REQUEST_DELAY_SECONDS)
 
-            endpoint = self.BACKFILL_ENDPOINTS.get(data_type)
+            endpoint = BACKFILL_ENDPOINTS.get(data_type)
             if not endpoint:
                 results["failed"][data_type] = f"Unknown data type: {data_type}"
                 continue
@@ -177,27 +158,63 @@ class GarminBackfillService:
             }
 
             try:
-                self.logger.info(
-                    f"Triggering backfill for {data_type} "
-                    f"({start_time.isoformat()} to {end_time.isoformat()}) "
-                    f"for user {user_id}"
+                log_structured(
+                    self.logger,
+                    "info",
+                    "Sending backfill API request",
+                    trace_id=trace_id,
+                    data_type=data_type,
+                    start_time=start_time.isoformat(),
+                    end_time=end_time.isoformat(),
+                    user_id=str(user_id),
                 )
                 # Backfill endpoints return 202 Accepted on success
                 self._make_api_request(db, user_id, endpoint, params)
                 results["triggered"].append(data_type)
-                self.logger.info(f"Backfill triggered for {data_type}")
+                log_structured(
+                    self.logger,
+                    "info",
+                    "Backfill API request accepted",
+                    trace_id=trace_id,
+                    data_type=data_type,
+                    user_id=str(user_id),
+                )
 
             except HTTPException as e:
                 # 409 = duplicate backfill already processed - treat as success
                 if e.status_code == 409:
-                    self.logger.info(f"Backfill for {data_type} already requested (409 duplicate)")
+                    log_structured(
+                        self.logger,
+                        "info",
+                        "Backfill already requested (409 duplicate)",
+                        trace_id=trace_id,
+                        data_type=data_type,
+                        user_id=str(user_id),
+                    )
                     results["triggered"].append(data_type)
                 else:
-                    self.logger.error(f"Backfill failed for {data_type}: {e.detail}")
+                    log_structured(
+                        self.logger,
+                        "error",
+                        "Backfill API request failed",
+                        trace_id=trace_id,
+                        data_type=data_type,
+                        status_code=e.status_code,
+                        error=str(e.detail),
+                        user_id=str(user_id),
+                    )
                     results["failed"][data_type] = str(e.detail)
 
             except Exception as e:
-                self.logger.error(f"Backfill failed for {data_type}: {e}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    "Backfill request error",
+                    trace_id=trace_id,
+                    data_type=data_type,
+                    error=str(e),
+                    user_id=str(user_id),
+                )
                 results["failed"][data_type] = str(e)
 
         return results

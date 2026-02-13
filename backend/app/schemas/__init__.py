@@ -141,6 +141,9 @@ from .provider_setting import (
 from .response import UploadDataResponse
 from .sdk import SDKAuthContext, SDKTokenRequest
 from .series_types import SeriesType
+from .strava.activity_import import (
+    ActivityJSON as StravaActivityJSON,
+)
 from .summaries import (
     ActivitySummary,
     BloodPressure,
@@ -297,6 +300,8 @@ __all__ = [
     "GarminRespirationJSON",
     # Polar schemas
     "PolarExerciseJSON",
+    # Strava schemas
+    "StravaActivityJSON",
     # Whoop schemas
     "WhoopWorkoutJSON",
     "WhoopWorkoutCollectionJSON",

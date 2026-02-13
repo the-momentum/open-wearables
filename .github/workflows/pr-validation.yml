@@ -33,6 +33,7 @@ jobs:
           scopes: |
             backend
             frontend
+            docs
             api
             mcp
             auth

@@ -15,6 +15,7 @@ from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
 from .user import User
 from .user_connection import UserConnection
+from .user_invitation_code import UserInvitationCode
 from .workout_details import WorkoutDetails
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "RefreshToken",
     "User",
     "UserConnection",
+    "UserInvitationCode",
     "EventRecord",
     "EventRecordDetail",
     "SleepDetails",

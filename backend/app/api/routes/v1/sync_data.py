@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any, cast
@@ -6,16 +7,19 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
-from app.integrations.celery.tasks import sync_vendor_data
-from app.integrations.celery.tasks.garmin_backfill_task import (
-    get_backfill_status,
-    start_backfill,
+from app.integrations.celery.tasks import (
+    GARMIN_BACKFILL_DATA_TYPES,
+    get_garmin_backfill_status,
+    reset_garmin_type_status,
+    sync_vendor_data,
+    trigger_garmin_backfill_for_type,
 )
-from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_247_data import Base247DataTemplate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()
@@ -87,7 +91,7 @@ async def sync_user_data(
     **Provider-specific:**
     - **Suunto**: Supports workouts and 247 data with pagination
     - **Polar**: Supports workouts (exercises) only
-    - **Garmin**: Workouts sync directly; 247 data (sleep, dailies, epochs) arrives via webhooks only
+    - **Garmin**: Data arrives via webhooks (backfill for 30-day history)
     - **Whoop**: Supports workouts and 247 data (sleep/recovery)
 
     **Execution Mode:**
@@ -98,24 +102,6 @@ async def sync_user_data(
     """
     # Async mode: dispatch to Celery and return immediately
     if run_async:
-        # For Garmin: Check if backfill is already in progress
-        if provider.value == "garmin":
-            backfill_status = get_backfill_status(str(user_id))
-            if backfill_status["in_progress"]:
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail={
-                        "message": "Garmin backfill already in progress. Please wait for completion.",
-                        "backfill_status": backfill_status,
-                    },
-                )
-
-            # Start backfill tracking for 1 year of history
-            connection_repo = UserConnectionRepository()
-            connection = connection_repo.get_by_user_and_provider(db, user_id, "garmin")
-            if connection:
-                start_backfill(str(user_id))
-
         # Convert since timestamp to ISO date if provided
         start_date_iso = None
         if since > 0:
@@ -132,15 +118,12 @@ async def sync_user_data(
             providers=[provider.value],
         )
 
-        # Include backfill status in response for Garmin
         response: dict[str, Any] = {
             "success": True,
             "async": True,
             "task_id": task.id,
             "message": f"Sync task queued for {provider.value}. Check task status for results.",
         }
-        if provider.value == "garmin":
-            response["backfill_status"] = get_backfill_status(str(user_id))
 
         return response
 
@@ -213,25 +196,78 @@ async def sync_user_data(
     return {"success": all(results.values()), "details": results}
 
 
-@router.get("/garmin/users/{user_id}/backfill-status")
-async def get_garmin_backfill_status(
+# =============================================================================
+# Garmin Backfill Endpoints (webhook-based, 30-day sync)
+# =============================================================================
+
+
+@router.get("/garmin/users/{user_id}/backfill/status")
+async def get_garmin_backfill_status_endpoint(
     user_id: UUID,
     _api_key: ApiKeyDep,
 ) -> dict[str, Any]:
     """
-    Get Garmin backfill status for a user.
+    Get Garmin backfill status for all 16 data types.
 
-    Returns backfill progress including:
-    - `in_progress`: Whether backfill is currently running
-    - `months_completed`: Number of 30-day periods fetched (0-12)
-    - `target_months`: Total months to fetch (12 = 1 year)
-    - `current_end_date`: End date of last backfill period
+    The backfill is webhook-based and auto-triggered after OAuth connection.
+    Returns status for each data type independently. Max 30 days of history.
 
-    Use this to display progress in the UI during initial sync.
+    **Response Fields:**
+    - `overall_status`: pending | in_progress | complete | partial
+    - `types`: Object with status for each of 16 data types
+    - `success_count`: Number of successfully synced types
+    - `failed_count`: Number of failed types (can be retried)
+    - `pending_count`: Number of types not yet triggered
+    - `triggered_count`: Number of types currently in progress
+
+    **Type Status:**
+    - `pending`: Not yet triggered
+    - `triggered`: Backfill request sent, waiting for webhook
+    - `success`: Data received via webhook
+    - `failed`: Error occurred (can retry)
     """
-    status = get_backfill_status(str(user_id))
+    backfill_status = get_garmin_backfill_status(str(user_id))
     return {
         "user_id": str(user_id),
         "provider": "garmin",
-        **status,
+        **backfill_status,
+    }
+
+
+@router.post("/garmin/users/{user_id}/backfill/{type_name}/retry")
+async def retry_garmin_backfill_type(
+    user_id: UUID,
+    type_name: str,
+    _api_key: ApiKeyDep,
+) -> dict[str, Any]:
+    """
+    Retry backfill for a specific failed data type.
+
+    Use this endpoint to retry fetching historical data (up to 30 days)
+    for a type that failed.
+
+    **Valid Type Names:**
+    sleeps, dailies, epochs, bodyComps, hrv, activities, activityDetails,
+    moveiq, healthSnapshot, stressDetails, respiration, pulseOx,
+    bloodPressures, userMetrics, skinTemp, mct
+
+    Returns:
+        Dict with retry status
+    """
+    if type_name not in GARMIN_BACKFILL_DATA_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid type: {type_name}. Valid types: {', '.join(GARMIN_BACKFILL_DATA_TYPES)}",
+        )
+
+    # Reset the type status to pending and trigger backfill
+    reset_garmin_type_status(str(user_id), type_name)
+    trigger_garmin_backfill_for_type.delay(str(user_id), type_name)
+
+    return {
+        "success": True,
+        "user_id": str(user_id),
+        "type": type_name,
+        "status": "triggered",
+        "message": f"Retry triggered for {type_name}. Data will arrive via webhook.",
     }

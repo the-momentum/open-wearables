@@ -15,6 +15,7 @@ from .services import AppService
 from .summaries_service import summaries_service
 from .system_info_service import system_info_service
 from .timeseries_service import timeseries_service
+from .user_invitation_code_service import user_invitation_code_service
 from .user_service import user_service
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "developer_service",
     "invitation_service",
     "refresh_token_service",
+    "user_invitation_code_service",
     "DeveloperDep",
     "ApiKeyDep",
     "SDKAuthDep",
