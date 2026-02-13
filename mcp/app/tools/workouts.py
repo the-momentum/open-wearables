@@ -6,6 +6,8 @@ from fastmcp import FastMCP
 
 from app.services.api_client import client
 from app.utils import normalize_datetime
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +174,28 @@ async def get_workout_events(
         }
 
     except ValueError as e:
-        logger.error(f"API error in get_workout_events: {e}")
+        log_structured(
+            logger, "error", f"API error in get_workout_events: {e}", provider="workouts", task="get_workout_events"
+        )
+        log_and_capture_error(
+            e,
+            logger,
+            f"API error in get_workout_events: {e}",
+            extra={"task": "get_workout_events", "provider": "workouts"},
+        )
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in get_workout_events: {e}")
+        log_structured(
+            logger,
+            "error",
+            f"Unexpected error in get_workout_events: {e}",
+            provider="workouts",
+            task="get_workout_events",
+        )
+        log_and_capture_error(
+            e,
+            logger,
+            f"Unexpected error in get_workout_events: {e}",
+            extra={"task": "get_workout_events", "provider": "workouts"},
+        )
         return {"error": f"Failed to fetch workout events: {e}"}

@@ -36,6 +36,7 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
+from app.utils.structured_logging import log_structured
 
 # Series types needed for sleep physiological metrics
 # TODO: Add HRV, respiratory rate, and SpO2 when ready
@@ -256,7 +257,12 @@ class SummariesService:
                     hr_avg = physio_averages.get(SeriesType.heart_rate)
                     avg_hr = int(round(hr_avg)) if hr_avg is not None else None
                 except Exception as e:
-                    self.logger.warning(f"Failed to fetch heart rate metrics for sleep: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        f"Failed to fetch heart rate metrics for sleep: {e}",
+                        extra={"sleep_start": sleep_start, "sleep_end": sleep_end},
+                    )
 
             summary = SleepSummary(
                 date=result["sleep_date"],

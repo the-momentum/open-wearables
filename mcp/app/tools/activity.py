@@ -5,6 +5,8 @@ import logging
 from fastmcp import FastMCP
 
 from app.services.api_client import client
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -203,8 +205,28 @@ async def get_activity_summary(
         }
 
     except ValueError as e:
-        logger.error(f"API error in get_activity_summary: {e}")
+        log_structured(
+            logger, "error", f"API error in get_activity_summary: {e}", provider="activity", task="get_activity_summary"
+        )
+        log_and_capture_error(
+            e,
+            logger,
+            f"API error in get_activity_summary: {e}",
+            extra={"task": "get_activity_summary", "provider": "activity"},
+        )
         return {"error": str(e)}
     except Exception as e:
-        logger.exception(f"Unexpected error in get_activity_summary: {e}")
+        log_structured(
+            logger,
+            "error",
+            f"Unexpected error in get_activity_summary: {e}",
+            provider="activity",
+            task="get_activity_summary",
+        )
+        log_and_capture_error(
+            e,
+            logger,
+            f"Unexpected error in get_activity_summary: {e}",
+            extra={"task": "get_activity_summary", "provider": "activity"},
+        )
         return {"error": f"Failed to fetch activity summary: {e}"}

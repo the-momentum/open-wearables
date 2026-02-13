@@ -109,16 +109,7 @@ async def _process_wellness_notification(
         # Use backfill trace_id if active, otherwise the request-level trace_id
         trace_id = get_trace_id(user_id) or request_trace_id
 
-        log_structured(
-            logger,
-            "info",
-            "Processing wellness data",
-            provider="garmin",
-            trace_id=trace_id,
-            summary_type=summary_type,
-            user_id=str(user_id),
-            garmin_user_id=garmin_user_id,
-        )
+        logger.info(f"Processing wellness data for user {user_id} with trace ID {trace_id}")
 
         try:
             # Fetch data from callback URL
@@ -130,16 +121,7 @@ async def _process_wellness_notification(
             if not isinstance(data, list):
                 data = [data]
 
-            log_structured(
-                logger,
-                "info",
-                "Fetched wellness items",
-                provider="garmin",
-                trace_id=trace_id,
-                summary_type=summary_type,
-                item_count=len(data),
-                user_id=str(user_id),
-            )
+            logger.info(f"Fetched {len(data)} wellness items for user {user_id} with trace ID {trace_id}")
 
             # Batch process all items with minimal DB round-trips
             count = garmin_247.process_items_batch(db, user_id, summary_type, data)
@@ -156,16 +138,7 @@ async def _process_wellness_notification(
                 }
             )
 
-            log_structured(
-                logger,
-                "info",
-                "Saved wellness data",
-                provider="garmin",
-                trace_id=trace_id,
-                summary_type=summary_type,
-                saved=count,
-                user_id=str(user_id),
-            )
+            logger.info(f"Saved {count} wellness items for user {user_id} with trace ID {trace_id}")
 
             # Mark type as success for backfill tracking
             if count > 0 and mark_type_success(str(user_id), summary_type):
@@ -232,14 +205,7 @@ async def garmin_ping_notification(
         payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
-        log_structured(
-            logger,
-            "info",
-            "Received Garmin ping notification",
-            provider="garmin",
-            trace_id=request_trace_id,
-            item_counts=item_counts,
-        )
+        logger.info(f"Received Garmin ping notification with trace ID {request_trace_id} and item counts {item_counts}")
 
         # Process different summary types
         processed_count = 0
@@ -284,15 +250,7 @@ async def garmin_ping_notification(
                     # Use backfill trace_id if active, otherwise request-level
                     trace_id = get_trace_id(internal_user_id) or request_trace_id
 
-                    log_structured(
-                        logger,
-                        "info",
-                        "Activity callback URL received",
-                        provider="garmin",
-                        trace_id=trace_id,
-                        garmin_user_id=garmin_user_id,
-                        internal_user_id=str(internal_user_id),
-                    )
+                    logger.info(f"Activity callback URL received for user {internal_user_id} with trace ID {trace_id}")
 
                     # Fetch activity data from callback URL
                     try:
@@ -302,15 +260,7 @@ async def garmin_ping_notification(
                             activities_data = response.json()
 
                         activities_count = len(activities_data) if isinstance(activities_data, list) else 1
-                        log_structured(
-                            logger,
-                            "info",
-                            "Fetched activities from callback",
-                            provider="garmin",
-                            trace_id=trace_id,
-                            internal_user_id=str(internal_user_id),
-                            activities_count=activities_count,
-                        )
+                        logger.info(f"Fetched {activities_count} activities for user {internal_user_id} with trace ID {trace_id}")
 
                         processed_count += 1
                         processed_activities.append(
@@ -373,15 +323,7 @@ async def garmin_ping_notification(
 
         for summary_type in wellness_types:
             if summary_type in payload and payload[summary_type]:
-                log_structured(
-                    logger,
-                    "info",
-                    "Processing wellness notifications",
-                    provider="garmin",
-                    trace_id=request_trace_id,
-                    summary_type=summary_type,
-                    count=len(payload[summary_type]),
-                )
+                logger.info(f"Processing wellness notifications for type {summary_type} with trace ID {request_trace_id}")
                 wellness_results[summary_type] = await _process_wellness_notification(
                     db, summary_type, payload[summary_type], garmin_247, request_trace_id
                 )
@@ -470,14 +412,7 @@ async def garmin_push_notification(
         payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
-        log_structured(
-            logger,
-            "info",
-            "Received Garmin push notification",
-            provider="garmin",
-            trace_id=request_trace_id,
-            item_counts=item_counts,
-        )
+        logger.info(f"Received Garmin push notification with trace ID {request_trace_id} and item counts {item_counts}")
 
         processed_count = 0
         saved_count = 0
@@ -528,18 +463,7 @@ async def garmin_push_notification(
                     # Use backfill trace_id if active, otherwise request-level
                     trace_id = get_trace_id(internal_user_id) or request_trace_id
 
-                    log_structured(
-                        logger,
-                        "info",
-                        "New Garmin activity received",
-                        provider="garmin",
-                        trace_id=trace_id,
-                        activity_name=activity_name,
-                        activity_type=activity_type,
-                        activity_id=activity_id,
-                        garmin_user_id=garmin_user_id,
-                        user_id=str(internal_user_id),
-                    )
+                    logger.info(f"New Garmin activity received for user {internal_user_id} with trace ID {trace_id}")
 
                     # Parse activity data using schema
                     try:
@@ -586,29 +510,14 @@ async def garmin_push_notification(
                         },
                     )
                     processed_count += 1
-                    log_structured(
-                        logger,
-                        "info",
-                        "Saved activity",
-                        provider="garmin",
-                        trace_id=trace_id,
-                        activity_id=activity_id,
-                        record_ids=[str(rid) for rid in created_ids],
-                    )
+                    logger.info(f"Saved activity {activity_id} for user {internal_user_id} with trace ID {trace_id}")
                     # Activities backfill tracking is handled in the
                     # backfill chaining section below (with dedup protection)
 
                 except IntegrityError:
                     # Duplicate activity - already exists in database
                     db.rollback()
-                    log_structured(
-                        logger,
-                        "info",
-                        "Activity already exists, skipping",
-                        provider="garmin",
-                        trace_id=request_trace_id,
-                        activity_id=activity_id,
-                    )
+                    logger.info(f"Activity {activity_id} already exists, skipping")
                     processed_activities.append(
                         {
                             "activity_id": activity_id,
@@ -711,16 +620,7 @@ async def garmin_push_notification(
                     errors.append(f"{data_type} error: {str(e)}")
 
             if type_count > 0:
-                log_structured(
-                    logger,
-                    "info",
-                    f"Saved {data_type} records",
-                    provider="garmin",
-                    trace_id=request_trace_id,
-                    data_type=data_type,
-                    count=type_count,
-                    user_count=len(type_users),
-                )
+                logger.info(f"Saved {data_type} records with trace ID {request_trace_id} and type count {type_count}")
                 for uid_str in type_users:
                     if mark_type_success(uid_str, data_type):
                         # First success for this type — schedule next backfill
@@ -745,17 +645,7 @@ async def garmin_push_notification(
             backfill_status = get_backfill_status(user_id_str)
             if backfill_status["overall_status"] == "in_progress":
                 trace_id = get_trace_id(user_id_str) or request_trace_id
-                log_structured(
-                    logger,
-                    "info",
-                    "Triggering next backfill",
-                    provider="garmin",
-                    trace_id=trace_id,
-                    user_id=user_id_str,
-                    success_count=backfill_status["success_count"],
-                    total_types=backfill_status["total_types"],
-                    pending_count=backfill_status["pending_count"],
-                )
+                logger.info(f"Triggering next backfill for user {user_id_str} with trace ID {trace_id}")
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
