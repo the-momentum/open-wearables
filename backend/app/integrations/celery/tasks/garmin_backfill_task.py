@@ -35,6 +35,7 @@ from app.services.providers.garmin.backfill_config import (
     TRIGGERED_TIMEOUT_SECONDS,
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 from celery import shared_task
 
@@ -846,16 +847,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
         except Exception as e:
             error = str(e)
-            log_structured(
+            log_and_capture_error(
+                e,
                 logger,
-                "error",
-                "Error triggering backfill",
-                provider="garmin",
-                trace_id=trace_id,
-                type_trace_id=type_trace_id,
-                data_type=data_type,
-                error=error,
-                user_id=user_id,
+                f"Error triggering backfill for type {data_type}: {e}",
+                extra={"user_id": user_id, "trace_id": trace_id, "type_trace_id": type_trace_id, "data_type": data_type},
             )
             mark_type_failed(user_id, data_type, error)
             # Try to continue with next type (with small delay)

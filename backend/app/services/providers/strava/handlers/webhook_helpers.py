@@ -11,6 +11,7 @@ from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas import StravaActivityJSON
 from app.services.providers.strava.workouts import StravaWorkouts
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -201,6 +202,12 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             return {"status": "warning", "message": "Duplicate activity"}
 
         except ValidationError as e:
+            log_and_capture_error(
+                e,
+                logger,
+                "Failed to parse Strava activity",
+                extra={"activity_id": object_id, "user_id": str(internal_user_id)},
+            )
             log_structured(
                 logger,
                 "error",
@@ -214,6 +221,12 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             return {"status": "error", "message": "Validation error"}
 
         except Exception as e:
+            log_and_capture_error(
+                e,
+                logger,
+                "Error processing Strava activity",
+                extra={"activity_id": object_id, "user_id": str(internal_user_id)},
+            )
             log_structured(
                 logger,
                 "error",
@@ -227,6 +240,12 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             return {"status": "error", "message": "Processing error"}
 
     except Exception as e:
+        log_and_capture_error(
+            e,
+            logger,
+            "Error processing Strava webhook",
+            extra={"activity_id": object_id, "user_id": str(internal_user_id)},
+        )
         log_structured(
             logger,
             "error",
