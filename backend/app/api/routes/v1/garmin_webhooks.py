@@ -368,6 +368,7 @@ async def garmin_ping_notification(
                     logger,
                     "info",
                     "Processing wellness notifications",
+                    provider="garmin",
                     trace_id=request_trace_id,
                     summary_type=summary_type,
                     count=len(payload[summary_type]),
@@ -409,7 +410,7 @@ async def garmin_ping_notification(
 
     except Exception as e:
         db.rollback()
-        log_structured(logger, "error", "Error processing Garmin ping webhook", error=str(e))
+        log_structured(logger, "error", "Error processing Garmin ping webhook", provider="garmin", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
 
@@ -700,9 +701,16 @@ async def garmin_push_notification(
                         logger,
                         "error",
                         f"Error processing {data_type}",
+                        provider="garmin",
                         trace_id=trace_id,
                         user_id=str(uid),
                         error=str(e),
+                    )
+                    log_and_capture_error(
+                        e,
+                        logger,
+                        f"Error processing {data_type}",
+                        extra={"data_type": data_type, "request_trace_id": request_trace_id},
                     )
                     errors.append(f"{data_type} error: {str(e)}")
 
@@ -711,6 +719,7 @@ async def garmin_push_notification(
                     logger,
                     "info",
                     f"Saved {data_type} records",
+                    provider="garmin",
                     trace_id=request_trace_id,
                     data_type=data_type,
                     count=type_count,
@@ -766,6 +775,12 @@ async def garmin_push_notification(
     except Exception as e:
         db.rollback()
         log_structured(logger, "error", "Error processing Garmin push webhook", provider="garmin", error=str(e))
+        log_and_capture_error(
+            e,
+            logger,
+            "Error processing Garmin push webhook",
+            extra={"request_trace_id": request_trace_id},
+        )
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
 
