@@ -71,9 +71,9 @@ make stop
 
 ### Code Quality
 
-**Backend & MCP** (run from repo root):
+**Backend:**
 ```bash
-uv run pre-commit run --all-files
+cd backend && uv run pre-commit run --all-files
 ```
 
 **Frontend:**

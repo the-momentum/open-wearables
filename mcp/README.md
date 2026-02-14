@@ -229,8 +229,6 @@ Then configure the connection:
 
 ### Code quality
 
-Run from the repository root:
-
 ```bash
 uv run pre-commit run --all-files
 ```

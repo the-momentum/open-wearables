@@ -11,19 +11,19 @@ repos:
   - repo: local
     hooks:
       - id: ty
-        name: ty check (backend & mcp)
-        entry: sh -c 'set -e; (cd backend && uv run --group code-quality ty check .); (cd mcp && uv run --group code-quality ty check .)'
+        name: ty check
+        entry: sh -c 'cd backend && uv run ty check .'
         language: system
-        files: ^(backend|mcp)/.*\.py$
+        files: ^backend/.*\.py$
         pass_filenames: false
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: ^(backend|mcp)/
+        files: ^backend/
       - id: end-of-file-fixer
-        files: ^(backend|mcp)/
+        files: ^backend/
       - id: check-merge-conflict
         args: [--assume-in-merge]
-        files: ^(backend|mcp)/
+        files: ^backend/
