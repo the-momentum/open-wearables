@@ -657,7 +657,9 @@ class SummariesService:
         temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.body_temperature, latest_window_start, now
         )
-
+        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
+            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
+        )
         # Get blood pressure readings within the window
         bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
@@ -690,6 +692,7 @@ class SummariesService:
 
         body_latest = BodyLatest(
             body_temperature_celsius=temp_reading[0] if temp_reading else None,
+            skin_temperature_celsius=skin_temp_reading[0] if skin_temp_reading else None,
             temperature_measured_at=temp_reading[1] if temp_reading else None,
             blood_pressure=blood_pressure,
             blood_pressure_measured_at=bp_measured_at,
