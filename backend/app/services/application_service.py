@@ -76,7 +76,8 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
                 self.logger,
                 "warning",
                 f"Invalid secret for application: {app_id}",
-                extra={"app_id": app_id},
+                action="validate_credentials",
+                app_id=app_id,
             )
             raise HTTPException(status_code=401, detail="Invalid app credentials")
 

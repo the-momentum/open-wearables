@@ -116,6 +116,12 @@ def sync_vendor_data(
                                 provider="sync_vendor_data",
                                 task="sync_vendor_data",
                             )
+                            log_and_capture_error(
+                                e,
+                                logger,
+                                f"Workouts sync failed for {provider_name}: {e}",
+                                extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
+                            )
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
@@ -169,6 +175,12 @@ def sync_vendor_data(
                                 f"247 data sync failed for {provider_name}: {e}",
                                 provider="sync_vendor_data",
                                 task="sync_vendor_data",
+                            )
+                            log_and_capture_error(
+                                e,
+                                logger,
+                                f"247 data sync failed for {provider_name}: {e}",
+                                extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
                             )
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
 

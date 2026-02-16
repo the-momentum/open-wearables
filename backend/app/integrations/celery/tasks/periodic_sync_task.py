@@ -32,7 +32,7 @@ def sync_all_users(
         active_user_ids = user_connection_repo.get_all_active_users(db)
 
         log_structured(
-            logger, "info", f"Found {len(active_user_ids)} users with active connections", task="sync_all_users"
+            logger, "info", f"Found {len(active_user_ids)} users with active connections", provider="sync_all_users", task="sync_all_users", active_user_ids=active_user_ids,
         )
 
         for active_user_id in active_user_ids:

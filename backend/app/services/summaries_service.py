@@ -261,7 +261,8 @@ class SummariesService:
                         self.logger,
                         "warning",
                         f"Failed to fetch heart rate metrics for sleep: {e}",
-                        extra={"sleep_start": sleep_start, "sleep_end": sleep_end},
+                        sleep_start=sleep_start,
+                        sleep_end=sleep_end,
                     )
 
             summary = SleepSummary(
