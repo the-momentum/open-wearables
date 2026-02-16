@@ -37,7 +37,7 @@ def sync_all_users(
             f"Found {len(active_user_ids)} users with active connections",
             provider="sync_all_users",
             task="sync_all_users",
-            active_user_ids=active_user_ids,
+            active_user_ids=[str(uid) for uid in active_user_ids],
         )
 
         for active_user_id in active_user_ids:
