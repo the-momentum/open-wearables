@@ -120,7 +120,7 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
 
 try:
     SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
-except FileNotFoundError as e:
+except FileNotFoundError:
     log_structured(
         logger,
         "error",

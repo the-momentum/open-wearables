@@ -211,6 +211,7 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
         user_id=user_id_str,
     )
 
+
 def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
     """Mark a data type as successfully completed (webhook received data).
 
