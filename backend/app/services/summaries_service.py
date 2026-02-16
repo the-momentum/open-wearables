@@ -704,7 +704,7 @@ class SummariesService:
 
         body_latest = BodyLatest(
             body_temperature_celsius=body_temp_celsius,
-            temperature_measured_at=body_temp_measured_at,
+            body_temperature_measured_at=body_temp_measured_at,
             skin_temperature_celsius=skin_temp_celsius,
             skin_temperature_measured_at=skin_temp_measured_at,
             blood_pressure=blood_pressure,
