@@ -200,8 +200,16 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
 
     trace_id = get_trace_id(user_id_str)
     type_trace_id = get_trace_id(user_id_str, data_type)
-    logger.info(f"Marked type {data_type} as triggered for user {user_id_str} with trace ID {trace_id} and type trace ID {type_trace_id}")
-
+    log_structured(
+        logger,
+        "info",
+        "Marked type as triggered",
+        provider="garmin",
+        trace_id=trace_id,
+        type_trace_id=type_trace_id,
+        data_type=data_type,
+        user_id=user_id_str,
+    )
 
 def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
     """Mark a data type as successfully completed (webhook received data).
@@ -292,7 +300,7 @@ def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
     type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
         logger,
-        "info",
+        "warn",
         "Marked type as skipped (timeout)",
         provider="garmin",
         trace_id=trace_id,
