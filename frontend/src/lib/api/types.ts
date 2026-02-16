@@ -289,7 +289,9 @@ export interface BodyAveraged {
  */
 export interface BodyLatest {
   body_temperature_celsius: number | null;
-  temperature_measured_at: string | null;
+  body_temperature_measured_at: string | null;
+  skin_temperature_celsius: number | null;
+  skin_temperature_measured_at: string | null;
   blood_pressure: BloodPressure | null;
   blood_pressure_measured_at: string | null;
 }
