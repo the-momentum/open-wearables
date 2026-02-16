@@ -119,11 +119,14 @@ class BodyLatest(BaseModel):
     body_temperature_celsius: float | None = Field(
         None, description="Body temperature if measured within time window", example=36.6
     )
+    temperature_measured_at: datetime | None = Field(
+        None, description="When temperature was measured (null if no recent reading)"
+    )
     skin_temperature_celsius: float | None = Field(
         None, description="Skin temperature if measured within time window", example=36.6
     )
-    temperature_measured_at: datetime | None = Field(
-        None, description="When temperature was measured (null if no recent reading)"
+    skin_temperature_measured_at: datetime | None = Field(
+        None, description="When skin temperature was measured (null if no recent reading)"
     )
     blood_pressure: BloodPressure | None = Field(None, description="Blood pressure if measured within time window")
     blood_pressure_measured_at: datetime | None = Field(
