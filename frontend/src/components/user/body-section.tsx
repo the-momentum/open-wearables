@@ -271,7 +271,9 @@ export function BodySection({ userId }: BodySectionProps) {
                   label="Body Temp"
                   sublabel={
                     latestData?.body_temperature_measured_at
-                      ? formatLastUpdated(latestData.body_temperature_measured_at)
+                      ? formatLastUpdated(
+                          latestData.body_temperature_measured_at
+                        )
                       : undefined
                   }
                 />
