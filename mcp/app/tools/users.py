@@ -5,8 +5,6 @@ import logging
 from fastmcp import FastMCP
 
 from app.services.api_client import client
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +70,8 @@ async def get_users(search: str | None = None, limit: int = 10) -> dict:
         }
 
     except ValueError as e:
-        log_structured(logger, "error", f"API error in get_users: {e}", provider="users", task="get_users")
-        log_and_capture_error(
-            e, logger, f"API error in get_users: {e}", extra={"task": "get_users", "provider": "users"}
-        )
+        logger.error(f"API error in get_users: {e}")
         return {"error": str(e), "users": [], "total": 0}
     except Exception as e:
-        log_structured(logger, "error", f"Unexpected error in get_users: {e}", provider="users", task="get_users")
-        log_and_capture_error(
-            e, logger, f"Unexpected error in get_users: {e}", extra={"task": "get_users", "provider": "users"}
-        )
+        logger.exception(f"Unexpected error in get_users: {e}")
         return {"error": f"Failed to fetch users: {e}", "users": [], "total": 0}
