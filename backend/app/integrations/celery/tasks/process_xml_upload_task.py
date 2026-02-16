@@ -11,6 +11,8 @@ from app.schemas.apple.apple_xml.stats import XMLParseStats
 from app.services import event_record_service
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 log = getLogger(__name__)
@@ -56,7 +58,21 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
 
         except Exception as e:
             db.rollback()
-            log.exception("Failed to import XML file %s for user %s", filename, user_id)
+            log_structured(
+                log,
+                "error",
+                "Failed to import XML file %s for user %s",
+                filename,
+                user_id,
+            )
+            log_and_capture_error(
+                e,
+                log,
+                "Failed to import XML file %s for user %s",
+                filename,
+                user_id,
+                extra={"filename": filename, "user_id": user_id},
+            )
             raise e
 
         finally:
@@ -85,10 +101,18 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
                 event_record_service.create_detail(db, detail_for_record)
             except Exception as e:
-                log.warning(
+                log_structured(
+                    log,
+                    "warning",
                     "Failed to save workout record %s: %s - skipping",
                     record.type if hasattr(record, "type") else "unknown",
                     str(e),
+                )
+                log_and_capture_error(
+                    e,
+                    log,
+                    f"Failed to save workout record %s: %s - skipping",
+                    extra={"record_type": record.type if hasattr(record, "type") else "unknown", "user_id": user_id},
                 )
                 xml_service.stats.workout_skip(f"db_error:{type(e).__name__}")
 

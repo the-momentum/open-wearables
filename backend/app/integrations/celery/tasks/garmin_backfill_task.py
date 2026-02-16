@@ -308,7 +308,7 @@ def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
     type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
         logger,
-        "warn",
+        "warning",
         "Marked type as skipped (timeout)",
         provider="garmin",
         trace_id=trace_id,
@@ -593,7 +593,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
         )
         log_structured(
             logger,
-            "warn",
+            "warning",
             "Type failed after max timeout attempts",
             provider="garmin",
             trace_id=trace_id,
@@ -742,7 +742,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                     log_structured(
                         logger,
-                        "warn",
+                        "warning",
                         "Endpoint not enabled: stopping backfill for all types",
                         provider="garmin",
                         trace_id=trace_id,
@@ -761,7 +761,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 if is_rate_limit:
                     log_structured(
                         logger,
-                        "warn",
+                        "warning",
                         "Rate limit hit, delaying next type",
                         provider="garmin",
                         trace_id=trace_id,
@@ -813,7 +813,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     log_msg = "403: marking all remaining types as failed"
                 log_structured(
                     logger,
-                    "warn",
+                    "warning",
                     log_msg,
                     provider="garmin",
                     trace_id=trace_id,
@@ -833,7 +833,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             if is_rate_limit:
                 log_structured(
                     logger,
-                    "warn",
+                    "warning",
                     "Rate limit hit, delaying next type",
                     provider="garmin",
                     trace_id=trace_id,

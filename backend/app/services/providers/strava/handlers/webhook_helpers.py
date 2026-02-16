@@ -28,7 +28,7 @@ async def handle_webhook_verification(
     if hub_verify_token != settings.strava_webhook_verify_token:
         log_structured(
             logger,
-            "warn",
+            "warning",
             "Invalid verify token received",
             provider="strava",
             action="webhook_verification_failed",
@@ -92,7 +92,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
         if not owner_id or not object_id:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "Missing owner_id or object_id in webhook payload",
                 provider="strava",
                 action="webhook_invalid",
@@ -108,7 +108,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
         if not connection:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No connection found for Strava athlete",
                 provider="strava",
                 action="webhook_no_connection",
@@ -151,7 +151,7 @@ async def handle_webhook_event(request: Request, db: DbSession) -> dict:
             if not activity_data:
                 log_structured(
                     logger,
-                    "warn",
+                    "warning",
                     "No data returned for Strava activity",
                     provider="strava",
                     action="webhook_no_activity_data",

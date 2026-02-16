@@ -72,7 +72,7 @@ async def _process_wellness_notification(
         if not callback_url:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No callback URL in notification",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -85,7 +85,7 @@ async def _process_wellness_notification(
         if not garmin_user_id:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No user ID in notification",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -96,7 +96,7 @@ async def _process_wellness_notification(
         if not connection:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No connection found for Garmin user",
                 provider="garmin",
                 trace_id=request_trace_id,
@@ -256,7 +256,7 @@ async def garmin_ping_notification(
                     if not callback_url:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No callback URL in activity notification",
                             provider="garmin",
                             trace_id=request_trace_id,
@@ -271,7 +271,7 @@ async def garmin_ping_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection found for Garmin user",
                             provider="garmin",
                             trace_id=request_trace_id,
@@ -506,7 +506,7 @@ async def garmin_push_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection found for Garmin user",
                             provider="garmin",
                             trace_id=request_trace_id,
@@ -671,7 +671,7 @@ async def garmin_push_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection for Garmin user",
                             provider="garmin",
                             trace_id=request_trace_id,

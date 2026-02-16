@@ -86,7 +86,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 if all_activities:
                     log_structured(
                         self.logger,
-                        "warn",
+                        "warning",
                         "Returning partial activity data due to error",
                         provider="strava",
                         action="strava_partial_data",
@@ -274,7 +274,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 log_structured(
                     self.logger,
-                    "warn",
+                    "warning",
                     "Failed to parse Strava activity",
                     provider="strava",
                     action="strava_parse_error",
