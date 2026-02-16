@@ -561,7 +561,7 @@ class Whoop247Data(Base247DataTemplate):
         - resting_heart_rate
         - heart_rate_variability_rmssd (from hrv_rmssd_milli)
         - oxygen_saturation (from spo2_percentage)
-        - body_temperature (from skin_temp_celsius)
+        - skin_temperature (from skin_temp_celsius)
 
         Returns the number of samples saved.
         """
@@ -580,7 +580,7 @@ class Whoop247Data(Base247DataTemplate):
             ("resting_heart_rate", SeriesType.resting_heart_rate),
             ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
             ("spo2_percentage", SeriesType.oxygen_saturation),
-            ("skin_temp_celsius", SeriesType.body_temperature),
+            ("skin_temp_celsius", SeriesType.skin_temperature),
         ]
 
         for field_name, series_type in metrics:

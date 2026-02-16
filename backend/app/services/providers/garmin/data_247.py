@@ -1176,7 +1176,7 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(skin_temp)),
-                    series_type=SeriesType.garmin_skin_temperature,
+                    series_type=SeriesType.skin_temperature,
                     external_id=summary_id,
                 )
             )
