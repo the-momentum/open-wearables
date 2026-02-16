@@ -654,7 +654,7 @@ class SummariesService:
         # --- LATEST: Get recent point-in-time readings ---
         latest_window_start = now - timedelta(hours=latest_window_hours)
 
-        temp_reading = self.data_point_repo.get_latest_reading_within_window(
+        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.body_temperature, latest_window_start, now
         )
         skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
@@ -669,7 +669,7 @@ class SummariesService:
         )
 
         # ignore provider and device id
-        body_temp_celsius, body_temp_measured_at, _, _ = temp_reading or (None, None, None, None)
+        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
         skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
