@@ -277,7 +277,14 @@ def reset_type_status(user_id: str | UUID, data_type: str) -> None:
     for key_suffix in ["status", "triggered_at", "completed_at", "error", "trace_id"]:
         redis_client.delete(_get_key(user_id_str, "types", data_type, key_suffix))
 
-    logger.info(f"Reset type status for {data_type} for user {user_id_str}")
+    log_structured(
+        logger,
+        "info",
+        "Reset type status",
+        provider="garmin",
+        data_type=data_type,
+        user_id=user_id_str,
+    )
 
 
 def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
@@ -537,7 +544,17 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
 
     # 2. If not "triggered" → already resolved by webhook
     if status != "triggered":
-        logger.info(f"Timeout check: type {data_type} already resolved for user {user_id_str} with trace ID {trace_id}")
+        log_structured(
+            logger,
+            "info",
+            "Timeout check: type already resolved",
+            provider="garmin",
+            trace_id=trace_id,
+            type_trace_id=type_trace_id,
+            data_type=data_type,
+            current_status=status,
+            user_id=user_id_str,
+        )
         return {"status": "already_resolved", "current_status": status}
 
     # 3. Verify triggered_at is actually older than TRIGGERED_TIMEOUT_SECONDS

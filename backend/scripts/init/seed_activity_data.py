@@ -24,7 +24,6 @@ from app.schemas.timeseries import TimeSeriesSampleCreate
 from app.schemas.user import UserCreate
 from app.schemas.workout_types import WorkoutType
 from app.services import event_record_service, timeseries_service, user_service
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -128,12 +127,6 @@ except FileNotFoundError as e:
         "series_type_config.yaml file not found. Using default configuration.",
         provider="seed_activity_data",
         task="load_series_type_config",
-    )
-    log_and_capture_error(
-        e,
-        logger,
-        "series_type_config.yaml file not found. Using default configuration.",
-        extra={"task": "load_series_type_config", "provider": "seed_activity_data"},
     )
     SERIES_VALUES_RANGES = {}
     SERIES_TYPE_PERCENTAGES = {}
