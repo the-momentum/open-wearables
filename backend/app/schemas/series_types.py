@@ -218,7 +218,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # -------------------------------------------------------------------------
     (220, SeriesType.garmin_stress_level, "score"),
-    (221, SeriesType.garmin_skin_temperature, "celsius"), # kept for backwards compatibility
+    (221, SeriesType.garmin_skin_temperature, "celsius"),  # kept for backwards compatibility
     (222, SeriesType.garmin_fitness_age, "years"),
     (223, SeriesType.garmin_body_battery, "percent"),
 ]

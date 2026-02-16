@@ -709,7 +709,7 @@ class SummariesService:
             skin_temperature_measured_at=skin_temp_measured_at,
             blood_pressure=blood_pressure,
             blood_pressure_measured_at=bp_measured_at,
-        )    
+        )
 
         return BodySummary(
             source=SourceMetadata(provider=provider, device=device_id),
