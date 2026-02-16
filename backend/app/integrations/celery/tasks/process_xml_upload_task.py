@@ -62,15 +62,15 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 log,
                 "error",
                 "Failed to import XML file %s for user %s",
-                filename,
-                user_id,
+                provider="apple_xml",
+                task="process_xml_upload",
+                filename=filename,
+                user_id=user_id,
             )
             log_and_capture_error(
                 e,
                 log,
                 "Failed to import XML file %s for user %s",
-                filename,
-                user_id,
                 extra={"filename": filename, "user_id": user_id},
             )
             raise e
@@ -105,13 +105,15 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                     log,
                     "warning",
                     "Failed to save workout record %s: %s - skipping",
-                    record.type if hasattr(record, "type") else "unknown",
-                    str(e),
+                    provider="apple_xml",
+                    task="process_xml_upload",
+                    record_type=record.type if hasattr(record, "type") else "unknown",
+                    error=str(e),
                 )
                 log_and_capture_error(
                     e,
                     log,
-                    f"Failed to save workout record %s: %s - skipping",
+                    "Failed to save workout record %s: %s - skipping",
                     extra={"record_type": record.type if hasattr(record, "type") else "unknown", "user_id": user_id},
                 )
                 xml_service.stats.workout_skip(f"db_error:{type(e).__name__}")
