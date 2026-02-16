@@ -606,7 +606,7 @@ async def garmin_push_notification(
                         "info",
                         "Activity already exists, skipping",
                         provider="garmin",
-                        trace_id=trace_id,
+                        trace_id=request_trace_id,
                         activity_id=activity_id,
                     )
                     processed_activities.append(
