@@ -26,4 +26,4 @@ def seed_admin(email: str, password: str) -> None:
 
 
 if __name__ == "__main__":
-    seed_admin(settings.admin_email, settings.admin_password)
+    seed_admin(settings.admin_email, settings.admin_password.get_secret_value())
