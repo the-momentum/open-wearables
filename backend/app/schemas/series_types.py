@@ -142,7 +142,6 @@ class SeriesType(str, Enum):
     garmin_fitness_age = "garmin_fitness_age"  # Garmin fitness age estimate
     garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
 
-
     # =========================================================================
     # OTHER (IDs 500-)
     # =========================================================================
