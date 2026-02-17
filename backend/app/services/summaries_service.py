@@ -36,6 +36,7 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
+from app.utils.structured_logging import log_structured
 
 # Series types needed for sleep physiological metrics
 # TODO: Add HRV, respiratory rate, and SpO2 when ready
@@ -256,7 +257,13 @@ class SummariesService:
                     hr_avg = physio_averages.get(SeriesType.heart_rate)
                     avg_hr = int(round(hr_avg)) if hr_avg is not None else None
                 except Exception as e:
-                    self.logger.warning(f"Failed to fetch heart rate metrics for sleep: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        f"Failed to fetch heart rate metrics for sleep: {e}",
+                        sleep_start=sleep_start,
+                        sleep_end=sleep_end,
+                    )
 
             summary = SleepSummary(
                 date=result["sleep_date"],
@@ -654,10 +661,12 @@ class SummariesService:
         # --- LATEST: Get recent point-in-time readings ---
         latest_window_start = now - timedelta(hours=latest_window_hours)
 
-        temp_reading = self.data_point_repo.get_latest_reading_within_window(
+        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.body_temperature, latest_window_start, now
         )
-
+        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
+            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
+        )
         # Get blood pressure readings within the window
         bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
@@ -665,6 +674,10 @@ class SummariesService:
         bp_diastolic_reading = self.data_point_repo.get_latest_reading_within_window(
             db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
         )
+
+        # ignore provider and device id
+        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
+        skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
         # Validate that both readings exist and their timestamps match within tolerance.
@@ -688,20 +701,22 @@ class SummariesService:
                 )
                 bp_measured_at = max(bp_systolic_reading[1], bp_diastolic_reading[1])
 
-        body_latest = BodyLatest(
-            body_temperature_celsius=temp_reading[0] if temp_reading else None,
-            temperature_measured_at=temp_reading[1] if temp_reading else None,
-            blood_pressure=blood_pressure,
-            blood_pressure_measured_at=bp_measured_at,
-        )
-
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])
         has_averaged = any([resting_hr, avg_hrv])
-        has_latest = temp_reading is not None or blood_pressure is not None
+        has_latest = any([body_temp_celsius, skin_temp_celsius, blood_pressure])
 
         if not has_slow_changing and not has_averaged and not has_latest:
             return None
+
+        body_latest = BodyLatest(
+            body_temperature_celsius=body_temp_celsius,
+            body_temperature_measured_at=body_temp_measured_at,
+            skin_temperature_celsius=skin_temp_celsius,
+            skin_temperature_measured_at=skin_temp_measured_at,
+            blood_pressure=blood_pressure,
+            blood_pressure_measured_at=bp_measured_at,
+        )
 
         return BodySummary(
             source=SourceMetadata(provider=provider, device=device_id),

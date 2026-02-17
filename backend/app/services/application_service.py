@@ -11,6 +11,7 @@ from app.repositories.application_repository import ApplicationRepository
 from app.schemas.application import ApplicationCreateInternal, ApplicationUpdate
 from app.services.services import AppService
 from app.utils.security import get_password_hash, verify_password
+from app.utils.structured_logging import log_structured
 
 
 class ApplicationService(AppService[ApplicationRepository, Application, ApplicationCreateInternal, ApplicationUpdate]):
@@ -62,11 +63,22 @@ class ApplicationService(AppService[ApplicationRepository, Application, Applicat
         """
         application = self.crud.get_by_app_id(db, app_id)
         if not application:
-            self.logger.warning(f"Application not found: {app_id}")
+            log_structured(
+                self.logger,
+                "warning",
+                f"Application not found: {app_id}",
+                extra={"app_id": app_id},
+            )
             raise HTTPException(status_code=401, detail="Invalid app credentials")
 
         if not verify_password(app_secret, application.app_secret_hash):
-            self.logger.warning(f"Invalid secret for application: {app_id}")
+            log_structured(
+                self.logger,
+                "warning",
+                f"Invalid secret for application: {app_id}",
+                action="validate_credentials",
+                app_id=app_id,
+            )
             raise HTTPException(status_code=401, detail="Invalid app credentials")
 
         return application

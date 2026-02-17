@@ -72,8 +72,9 @@ async def _process_wellness_notification(
         if not callback_url:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No callback URL in notification",
+                provider="garmin",
                 trace_id=request_trace_id,
                 summary_type=summary_type,
                 garmin_user_id=garmin_user_id,
@@ -83,15 +84,21 @@ async def _process_wellness_notification(
         # Find internal user
         if not garmin_user_id:
             log_structured(
-                logger, "warn", "No user ID in notification", trace_id=request_trace_id, summary_type=summary_type
+                logger,
+                "warning",
+                "No user ID in notification",
+                provider="garmin",
+                trace_id=request_trace_id,
+                summary_type=summary_type,
             )
             continue
         connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
         if not connection:
             log_structured(
                 logger,
-                "warn",
+                "warning",
                 "No connection found for Garmin user",
+                provider="garmin",
                 trace_id=request_trace_id,
                 garmin_user_id=garmin_user_id,
             )
@@ -106,6 +113,7 @@ async def _process_wellness_notification(
             logger,
             "info",
             "Processing wellness data",
+            provider="garmin",
             trace_id=trace_id,
             summary_type=summary_type,
             user_id=str(user_id),
@@ -126,6 +134,7 @@ async def _process_wellness_notification(
                 logger,
                 "info",
                 "Fetched wellness items",
+                provider="garmin",
                 trace_id=trace_id,
                 summary_type=summary_type,
                 item_count=len(data),
@@ -151,6 +160,7 @@ async def _process_wellness_notification(
                 logger,
                 "info",
                 "Saved wellness data",
+                provider="garmin",
                 trace_id=trace_id,
                 summary_type=summary_type,
                 saved=count,
@@ -166,6 +176,7 @@ async def _process_wellness_notification(
                 logger,
                 "error",
                 "HTTP error fetching wellness data",
+                provider="garmin",
                 trace_id=trace_id,
                 summary_type=summary_type,
                 error=str(e),
@@ -176,6 +187,7 @@ async def _process_wellness_notification(
                 logger,
                 "error",
                 "Error processing wellness notification",
+                provider="garmin",
                 trace_id=trace_id,
                 summary_type=summary_type,
                 error=str(e),
@@ -213,7 +225,7 @@ async def garmin_ping_notification(
     """
     # Verify request is from Garmin
     if not garmin_client_id:
-        log_structured(logger, "warn", "Received webhook without garmin-client-id header")
+        log_structured(logger, "warn", "Received webhook without garmin-client-id header", provider="garmin")
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
@@ -221,7 +233,12 @@ async def garmin_ping_notification(
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
-            logger, "info", "Received Garmin ping notification", trace_id=request_trace_id, item_counts=item_counts
+            logger,
+            "info",
+            "Received Garmin ping notification",
+            provider="garmin",
+            trace_id=request_trace_id,
+            item_counts=item_counts,
         )
 
         # Process different summary types
@@ -239,8 +256,9 @@ async def garmin_ping_notification(
                     if not callback_url:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No callback URL in activity notification",
+                            provider="garmin",
                             trace_id=request_trace_id,
                             garmin_user_id=garmin_user_id,
                         )
@@ -253,8 +271,9 @@ async def garmin_ping_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection found for Garmin user",
+                            provider="garmin",
                             trace_id=request_trace_id,
                             garmin_user_id=garmin_user_id,
                         )
@@ -269,6 +288,7 @@ async def garmin_ping_notification(
                         logger,
                         "info",
                         "Activity callback URL received",
+                        provider="garmin",
                         trace_id=trace_id,
                         garmin_user_id=garmin_user_id,
                         internal_user_id=str(internal_user_id),
@@ -286,6 +306,7 @@ async def garmin_ping_notification(
                             logger,
                             "info",
                             "Fetched activities from callback",
+                            provider="garmin",
                             trace_id=trace_id,
                             internal_user_id=str(internal_user_id),
                             activities_count=activities_count,
@@ -306,6 +327,7 @@ async def garmin_ping_notification(
                             logger,
                             "error",
                             "Failed to fetch activity data from callback URL",
+                            provider="garmin",
                             trace_id=trace_id,
                             error=str(e),
                         )
@@ -316,6 +338,7 @@ async def garmin_ping_notification(
                         logger,
                         "error",
                         "Error processing activity notification",
+                        provider="garmin",
                         trace_id=request_trace_id,
                         error=str(e),
                     )
@@ -354,6 +377,7 @@ async def garmin_ping_notification(
                     logger,
                     "info",
                     "Processing wellness notifications",
+                    provider="garmin",
                     trace_id=request_trace_id,
                     summary_type=summary_type,
                     count=len(payload[summary_type]),
@@ -395,7 +419,7 @@ async def garmin_ping_notification(
 
     except Exception as e:
         db.rollback()
-        log_structured(logger, "error", "Error processing Garmin ping webhook", error=str(e))
+        log_structured(logger, "error", "Error processing Garmin ping webhook", provider="garmin", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
 
@@ -439,7 +463,7 @@ async def garmin_push_notification(
     """
     # Verify request is from Garmin
     if not garmin_client_id:
-        log_structured(logger, "warn", "Received webhook without garmin-client-id header")
+        log_structured(logger, "warn", "Received webhook without garmin-client-id header", provider="garmin")
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
@@ -447,7 +471,12 @@ async def garmin_push_notification(
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
-            logger, "info", "Received Garmin push notification", trace_id=request_trace_id, item_counts=item_counts
+            logger,
+            "info",
+            "Received Garmin push notification",
+            provider="garmin",
+            trace_id=request_trace_id,
+            item_counts=item_counts,
         )
 
         processed_count = 0
@@ -477,8 +506,9 @@ async def garmin_push_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection found for Garmin user",
+                            provider="garmin",
                             trace_id=request_trace_id,
                             garmin_user_id=garmin_user_id,
                         )
@@ -502,6 +532,7 @@ async def garmin_push_notification(
                         logger,
                         "info",
                         "New Garmin activity received",
+                        provider="garmin",
                         trace_id=trace_id,
                         activity_name=activity_name,
                         activity_type=activity_type,
@@ -518,6 +549,7 @@ async def garmin_push_notification(
                             logger,
                             "error",
                             "Failed to parse activity data",
+                            provider="garmin",
                             trace_id=trace_id,
                             activity_id=activity_id,
                             error=str(e),
@@ -558,6 +590,7 @@ async def garmin_push_notification(
                         logger,
                         "info",
                         "Saved activity",
+                        provider="garmin",
                         trace_id=trace_id,
                         activity_id=activity_id,
                         record_ids=[str(rid) for rid in created_ids],
@@ -572,6 +605,7 @@ async def garmin_push_notification(
                         logger,
                         "info",
                         "Activity already exists, skipping",
+                        provider="garmin",
                         trace_id=request_trace_id,
                         activity_id=activity_id,
                     )
@@ -591,6 +625,7 @@ async def garmin_push_notification(
                         logger,
                         "error",
                         "Error processing activity notification",
+                        provider="garmin",
                         trace_id=request_trace_id,
                         activity_id=activity_id,
                         error=str(e),
@@ -636,8 +671,9 @@ async def garmin_push_notification(
                     if not connection:
                         log_structured(
                             logger,
-                            "warn",
+                            "warning",
                             "No connection for Garmin user",
+                            provider="garmin",
                             trace_id=request_trace_id,
                             garmin_user_id=garmin_user_id,
                             data_type=data_type,
@@ -649,6 +685,7 @@ async def garmin_push_notification(
                         logger,
                         "error",
                         f"Error resolving user for {data_type}",
+                        provider="garmin",
                         trace_id=request_trace_id,
                         error=str(e),
                     )
@@ -666,6 +703,7 @@ async def garmin_push_notification(
                         logger,
                         "error",
                         f"Error processing {data_type}",
+                        provider="garmin",
                         trace_id=trace_id,
                         user_id=str(uid),
                         error=str(e),
@@ -677,6 +715,7 @@ async def garmin_push_notification(
                     logger,
                     "info",
                     f"Saved {data_type} records",
+                    provider="garmin",
                     trace_id=request_trace_id,
                     data_type=data_type,
                     count=type_count,
@@ -710,6 +749,7 @@ async def garmin_push_notification(
                     logger,
                     "info",
                     "Triggering next backfill",
+                    provider="garmin",
                     trace_id=trace_id,
                     user_id=user_id_str,
                     success_count=backfill_status["success_count"],
@@ -730,7 +770,7 @@ async def garmin_push_notification(
 
     except Exception as e:
         db.rollback()
-        log_structured(logger, "error", "Error processing Garmin push webhook", error=str(e))
+        log_structured(logger, "error", "Error processing Garmin push webhook", provider="garmin", error=str(e))
         raise HTTPException(status_code=500, detail="Failed to process webhook")
 
 

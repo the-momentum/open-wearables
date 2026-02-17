@@ -35,6 +35,7 @@ from app.services.providers.garmin.backfill_config import (
     TRIGGERED_TIMEOUT_SECONDS,
 )
 from app.services.providers.garmin.handlers.backfill import GarminBackfillService
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 from celery import shared_task
 
@@ -203,6 +204,7 @@ def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
         logger,
         "info",
         "Marked type as triggered",
+        provider="garmin",
         trace_id=trace_id,
         type_trace_id=type_trace_id,
         data_type=data_type,
@@ -235,6 +237,7 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
         logger,
         "info",
         "Marked type as success",
+        provider="garmin",
         trace_id=trace_id,
         type_trace_id=type_trace_id,
         data_type=data_type,
@@ -257,6 +260,7 @@ def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
         logger,
         "error",
         "Marked type as failed",
+        provider="garmin",
         trace_id=trace_id,
         type_trace_id=type_trace_id,
         data_type=data_type,
@@ -278,6 +282,7 @@ def reset_type_status(user_id: str | UUID, data_type: str) -> None:
         logger,
         "info",
         "Reset type status",
+        provider="garmin",
         data_type=data_type,
         user_id=user_id_str,
     )
@@ -303,8 +308,9 @@ def mark_type_skipped(user_id: str | UUID, data_type: str) -> int:
     type_trace_id = get_trace_id(user_id_str, data_type)
     log_structured(
         logger,
-        "info",
+        "warning",
         "Marked type as skipped (timeout)",
+        provider="garmin",
         trace_id=trace_id,
         type_trace_id=type_trace_id,
         data_type=data_type,
@@ -421,6 +427,7 @@ def advance_window(user_id: str | UUID) -> bool:
         logger,
         "info",
         "Advanced to next backfill window",
+        provider="garmin",
         trace_id=trace_id,
         user_id=uid,
         window=new_window,
@@ -443,6 +450,7 @@ def complete_backfill(user_id: str | UUID) -> None:
         logger,
         "info",
         "Completed full backfill",
+        provider="garmin",
         trace_id=trace_id,
         user_id=user_id_str,
         completed_windows=completed_windows,
@@ -484,6 +492,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         logger,
         "info",
         "Starting full backfill",
+        provider="garmin",
         trace_id=trace_id,
         user_id=user_id,
         total_types=len(ALL_DATA_TYPES),
@@ -540,6 +549,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
             logger,
             "info",
             "Timeout check: type already resolved",
+            provider="garmin",
             trace_id=trace_id,
             type_trace_id=type_trace_id,
             data_type=data_type,
@@ -560,6 +570,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
                 logger,
                 "info",
                 "Timeout check: not yet expired, rescheduling",
+                provider="garmin",
                 trace_id=trace_id,
                 type_trace_id=type_trace_id,
                 data_type=data_type,
@@ -582,8 +593,9 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
         )
         log_structured(
             logger,
-            "warn",
+            "warning",
             "Type failed after max timeout attempts",
+            provider="garmin",
             trace_id=trace_id,
             type_trace_id=type_trace_id,
             data_type=data_type,
@@ -642,6 +654,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
         logger,
         "info",
         "Triggering backfill for type",
+        provider="garmin",
         trace_id=trace_id,
         type_trace_id=type_trace_id,
         data_type=data_type,
@@ -700,6 +713,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                         logger,
                         "info",
                         "Retrying with shorter range",
+                        provider="garmin",
                         trace_id=trace_id,
                         type_trace_id=type_trace_id,
                         data_type=data_type,
@@ -728,8 +742,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                     log_structured(
                         logger,
-                        "warn",
+                        "warning",
                         "Endpoint not enabled: stopping backfill for all types",
+                        provider="garmin",
                         trace_id=trace_id,
                         type_trace_id=type_trace_id,
                         data_type=data_type,
@@ -746,8 +761,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 if is_rate_limit:
                     log_structured(
                         logger,
-                        "warn",
+                        "warning",
                         "Rate limit hit, delaying next type",
+                        provider="garmin",
                         trace_id=trace_id,
                         type_trace_id=type_trace_id,
                         data_type=data_type,
@@ -774,6 +790,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 logger,
                 "error",
                 "HTTP error triggering backfill",
+                provider="garmin",
                 trace_id=trace_id,
                 type_trace_id=type_trace_id,
                 data_type=data_type,
@@ -796,8 +813,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     log_msg = "403: marking all remaining types as failed"
                 log_structured(
                     logger,
-                    "warn",
+                    "warning",
                     log_msg,
+                    provider="garmin",
                     trace_id=trace_id,
                     type_trace_id=type_trace_id,
                     data_type=data_type,
@@ -815,8 +833,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             if is_rate_limit:
                 log_structured(
                     logger,
-                    "warn",
+                    "warning",
                     "Rate limit hit, delaying next type",
+                    provider="garmin",
                     trace_id=trace_id,
                     type_trace_id=type_trace_id,
                     data_type=data_type,
@@ -829,15 +848,16 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
         except Exception as e:
             error = str(e)
-            log_structured(
+            log_and_capture_error(
+                e,
                 logger,
-                "error",
-                "Error triggering backfill",
-                trace_id=trace_id,
-                type_trace_id=type_trace_id,
-                data_type=data_type,
-                error=error,
-                user_id=user_id,
+                f"Error triggering backfill for type {data_type}: {e}",
+                extra={
+                    "user_id": user_id,
+                    "trace_id": trace_id,
+                    "type_trace_id": type_trace_id,
+                    "data_type": data_type,
+                },
             )
             mark_type_failed(user_id, data_type, error)
             # Try to continue with next type (with small delay)
@@ -868,6 +888,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 logger,
                 "info",
                 "Retrying skipped types",
+                provider="garmin",
                 trace_id=trace_id,
                 user_id=user_id,
                 skipped_types=skipped_types,
@@ -887,6 +908,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 logger,
                 "info",
                 "Window complete, advancing to next",
+                provider="garmin",
                 trace_id=trace_id,
                 user_id=user_id,
                 window=current_window,
@@ -904,6 +926,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 logger,
                 "info",
                 "Backfill complete",
+                provider="garmin",
                 trace_id=trace_id,
                 user_id=user_id,
                 success_count=status["success_count"],
@@ -914,6 +937,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             logger,
             "info",
             "Backfill finished with failures",
+            provider="garmin",
             trace_id=trace_id,
             user_id=user_id,
             success_count=status["success_count"],
@@ -931,6 +955,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         logger,
         "info",
         "Triggering next backfill type",
+        provider="garmin",
         trace_id=trace_id,
         user_id=user_id,
         next_type=next_type,

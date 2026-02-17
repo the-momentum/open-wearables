@@ -75,6 +75,7 @@ async def sync_sdk_data(
         logger,
         "info",
         f"{provider.capitalize()} sync batch received",
+        provider=f"{provider}",
         action=f"{provider}_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,

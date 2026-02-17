@@ -18,7 +18,7 @@ from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepSta
 from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
-from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 redis_client = get_redis_client()
 
@@ -223,9 +223,13 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
         event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
     except Exception as e:
-        log_and_capture_error(
-            e,
+        log_structured(
             logger,
+            "error",
             f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
-            extra={"user_id": user_id},
+            provider="apple",
+            action="sleep_record_save_error",
+            user_id=user_id,
+            sleep_record_id=sleep_record.id,
+            error=str(e),
         )

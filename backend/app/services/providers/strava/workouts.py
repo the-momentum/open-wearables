@@ -77,6 +77,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                     self.logger,
                     "error",
                     "Error fetching Strava activities page",
+                    provider="strava",
                     action="strava_fetch_page_error",
                     page=page,
                     user_id=str(user_id),
@@ -85,8 +86,9 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 if all_activities:
                     log_structured(
                         self.logger,
-                        "warn",
+                        "warning",
                         "Returning partial activity data due to error",
+                        provider="strava",
                         action="strava_partial_data",
                         activities_count=len(all_activities),
                         user_id=str(user_id),
@@ -272,8 +274,9 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             except Exception as e:
                 log_structured(
                     self.logger,
-                    "warn",
+                    "warning",
                     "Failed to parse Strava activity",
+                    provider="strava",
                     action="strava_parse_error",
                     user_id=str(user_id),
                     error=str(e),
