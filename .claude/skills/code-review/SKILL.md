@@ -104,7 +104,7 @@ class UserService(AppService[UserRepository, User, UserCreate, UserUpdate]):
 
 ### Modern Python Syntax
 
-Use modern Python 3.10+ and 3.12+ syntax:
+Use modern Python 3.10+ syntax:
 
 | Deprecated | Modern |
 |------------|--------|
@@ -117,7 +117,7 @@ Use modern Python 3.10+ and 3.12+ syntax:
 
 **Generics (Python 3.12+):**
 ```python
-# Deprecated - using TypeVar
+# Redundant in most cases that accept type aliases - using TypeVar
 from typing import TypeVar, Generic
 
 T = TypeVar("T")
