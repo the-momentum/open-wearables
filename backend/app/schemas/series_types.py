@@ -135,7 +135,16 @@ class SeriesType(str, Enum):
     weather_humidity = "weather_humidity"
 
     # =========================================================================
-    # OTHER (IDs 220-)
+    # GARMIN-SPECIFIC METRICS (IDs 220-239)
+    # =========================================================================
+    garmin_stress_level = "garmin_stress_level"  # Garmin stress score (1-100)
+    garmin_skin_temperature = "garmin_skin_temperature"  # Skin temp deviation from baseline
+    garmin_fitness_age = "garmin_fitness_age"  # Garmin fitness age estimate
+    garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
+
+
+    # =========================================================================
+    # OTHER (IDs 500-)
     # =========================================================================
 
     electrodermal_activity = "electrodermal_activity"
@@ -145,14 +154,6 @@ class SeriesType(str, Enum):
     number_of_times_fallen = "number_of_times_fallen"
     number_of_alcoholic_beverages = "number_of_alcoholic_beverages"
     nike_fuel = "nike_fuel"
-
-    # =========================================================================
-    # GARMIN-SPECIFIC METRICS (IDs 220-239)
-    # =========================================================================
-    garmin_stress_level = "garmin_stress_level"  # Garmin stress score (1-100)
-    garmin_skin_temperature = "garmin_skin_temperature"  # Skin temp deviation from baseline
-    garmin_fitness_age = "garmin_fitness_age"  # Garmin fitness age estimate
-    garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
 
 
 # =============================================================================
