@@ -54,6 +54,13 @@ async def sync_sdk_data(
     # Normalize provider name
     provider = provider.lower()
 
+    # ALPHA: Block Samsung Health until ready for production
+    if provider == "samsung":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Samsung Health integration is in alpha and not yet available",
+        )
+
     # Validate provider
     if provider not in {"apple", "samsung"}:
         raise HTTPException(
@@ -75,7 +82,6 @@ async def sync_sdk_data(
         logger,
         "info",
         f"{provider.capitalize()} sync batch received",
-        provider=f"{provider}",
         action=f"{provider}_sdk_batch_received",
         batch_id=batch_id,
         user_id=user_id,
