@@ -38,8 +38,8 @@ This guide provides a comprehensive overview of data type support across all int
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
 | `heart_rate` | bpm | ✅ | ◐/🔜 | ◐ | ✅ | ❌ | ❌ |
 | `resting_heart_rate` | bpm | ✅ | 🔜 | ❌ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | 🔜 | ◐ | ✅ | ❌ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | 🔜 | ◐ | ❌ | ❌ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -79,7 +79,7 @@ This guide provides a comprehensive overview of data type support across all int
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
 | `vo2_max` | mL/kg/min | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `recovery_score` | score | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `recovery_score` | score | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 
 ### Activity - Basic
 
@@ -254,8 +254,10 @@ Key differences and limitations to be aware of when working with each provider:
   - Most complete cloud-based provider (workouts + sleep + continuous data)
   - Full sleep analysis with stages and biometrics (HR, HRV, SpO2)
   - Activity samples include heart rate, steps, SpO2, energy, and HRV
+  - HRV measured as RMSSD, available during activity and sleep
+  - Daily activity statistics for aggregated steps and energy
   - 121+ workout type mappings to unified taxonomy
-  - Recovery scores and readiness data available
+  - Recovery data: Balance score (0-100) mapped to recovery_score
 </Accordion>
 
 <Accordion title="Whoop">
