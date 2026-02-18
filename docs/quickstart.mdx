@@ -126,32 +126,25 @@ Get Open Wearables running locally and start integrating wearable device data.
 <Accordion icon="rocket" title="Test the API">
   Once the application is running, you can test it:
 
-  1. **Seed sample data** (optional but recommended):
-     If you're using Docker, seed the database with sample data including an admin account:
-     ```bash
-     make init
-     ```
-     
-     This will create:
-     - An admin user account (`admin@admin.com` / `secret123`)
-     - 10 test users
-     - Sample activity data for test users
-     
-     <Tip>For local development, run the seed scripts manually from the backend directory.</Tip>
-
-  2. **Check server status**:
+  1. **Check server status**:
      ```bash
      curl http://localhost:8000/
      ```
      Should return: `{"message": "Server is running!"}`
 
-  3. **View API documentation**:
+  2. **Create an API key**:
+     An admin account is automatically created on first startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `secret123`).
+
+     Use the admin panel at http://localhost:3000/ to log in and generate API keys.
+
+  3. **Seed sample data** (optional):
+     If you want test users and sample activity data:
+     ```bash
+     make seed
+     ```
+
+  4. **View API documentation**:
      Open http://localhost:8000/docs in your browser to explore the interactive Swagger UI.
-
-  4. **Create an API key**:
-     Use the admin panel at http://localhost:3000/ to generate API keys. If you ran the seed script, you can log in with the previously created admin account (`admin@admin.com` / `secret123`). 
-
-     If you didn't run the seed script, run `backend/scripts/init/seed_admin.py` manually to create an admin account.
 
   5. **Make requests**:
      ```bash     
