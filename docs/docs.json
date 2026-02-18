@@ -41,6 +41,14 @@
             "pages": [
               "sdk/index",
               {
+                "group": "iOS (Swift)",
+                "pages": [
+                  "sdk/ios/index",
+                  "sdk/ios/integration",
+                  "sdk/ios/troubleshooting"
+                ]
+              },
+              {
                 "group": "Flutter",
                 "pages": [
                   "sdk/flutter/index",

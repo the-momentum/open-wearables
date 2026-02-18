@@ -8,9 +8,16 @@ description: "Background health data sync for Flutter apps using Apple HealthKit
 
 The Open Wearables Flutter SDK (`health_bg_sync`) enables secure background synchronization of health data from Apple HealthKit (iOS) to the Open Wearables platform.
 
-<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
-  View source code, report issues, and contribute to the Flutter SDK.
-</Card>
+On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). This means all the core sync logic — background execution, streaming uploads, Keychain storage, and retry mechanisms — is handled by the native Swift implementation under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
+
+<CardGroup cols={2}>
+  <Card title="Flutter SDK Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
+    View source code, report issues, and contribute to the Flutter SDK.
+  </Card>
+  <Card title="Native iOS SDK" icon="apple" href="/sdk/ios">
+    See the native iOS SDK documentation for details on the underlying implementation.
+  </Card>
+</CardGroup>
 
 ## Features
 

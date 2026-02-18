@@ -1,0 +1,288 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Common issues and solutions for the native iOS SDK"
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="HealthKit permissions not showing">
+    **Symptoms:** The health permissions dialog doesn't appear when calling `requestAuthorization()`.
+
+    **Solutions:**
+
+    1. **Verify Info.plist configuration:**
+       ```xml
+       <key>NSHealthShareUsageDescription</key>
+       <string>This app syncs your health data to your account.</string>
+       ```
+
+    2. **Check HealthKit capability in Xcode:**
+       - Open your `.xcodeproj` or `.xcworkspace`
+       - Select target → Signing & Capabilities
+       - Ensure HealthKit is listed
+
+    3. **Run on physical device:**
+       HealthKit doesn't work in the iOS Simulator. Always test on a real device.
+
+    4. **Check provisioning profile:**
+       Your Apple Developer account must have HealthKit capability enabled for the App ID.
+  </Accordion>
+
+  <Accordion title="Background sync not working">
+    **Symptoms:** Data only syncs when the app is in the foreground.
+
+    **Solutions:**
+
+    1. **Verify background modes in Info.plist:**
+       ```xml
+       <key>UIBackgroundModes</key>
+       <array>
+           <string>fetch</string>
+           <string>processing</string>
+       </array>
+
+       <key>BGTaskSchedulerPermittedIdentifiers</key>
+       <array>
+           <string>com.openwearables.healthsdk.task.refresh</string>
+           <string>com.openwearables.healthsdk.task.process</string>
+       </array>
+       ```
+
+    2. **Add AppDelegate handler:**
+       Make sure you've added the background URL session handler:
+       ```swift
+       func application(
+           _ application: UIApplication,
+           handleEventsForBackgroundURLSession identifier: String,
+           completionHandler: @escaping () -> Void
+       ) {
+           OpenWearablesHealthSDK.setBackgroundCompletionHandler(completionHandler)
+       }
+       ```
+
+    3. **Check Background App Refresh setting:**
+       - Go to iOS Settings → Your App → Background App Refresh
+       - Ensure it's enabled
+
+    4. **Check Low Power Mode:**
+       Background tasks are suspended when Low Power Mode is active.
+
+    5. **Wait for system scheduling:**
+       iOS controls when background tasks run. Initial syncs may take 15+ minutes to trigger.
+  </Accordion>
+
+  <Accordion title="Sign-in fails or token errors">
+    **Symptoms:** Auth errors or failed sync after sign-in.
+
+    **Solutions:**
+
+    1. **Check token expiration:**
+       Access tokens expire. Ensure your backend generates fresh tokens.
+
+    2. **Verify API Key:**
+       Double-check your API Key on the backend is correct and active.
+
+    3. **Check network connectivity:**
+       Ensure the device can reach your Open Wearables host.
+
+    4. **Enable token refresh:**
+       Provide a `refreshToken` during sign-in to enable automatic token refresh:
+       ```swift
+       sdk.signIn(
+           userId: userId,
+           accessToken: accessToken,
+           refreshToken: refreshToken,
+           apiKey: nil
+       )
+       ```
+
+    5. **Listen for auth errors:**
+       ```swift
+       sdk.onAuthError = { statusCode, message in
+           print("Auth error \(statusCode): \(message)")
+           // Handle re-authentication in your app
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="Data not appearing in Open Wearables">
+    **Symptoms:** Sync seems to complete but data doesn't show up in the API.
+
+    **Solutions:**
+
+    1. **Check logs for errors:**
+       ```swift
+       sdk.onLog = { message in
+           print("[HealthSDK] \(message)")
+       }
+       ```
+
+    2. **Verify health data exists:**
+       Open Apple Health and confirm data exists for the requested types.
+
+    3. **Check date range:**
+       The SDK syncs data incrementally. New data may not exist yet.
+
+    4. **Reset anchors for full sync:**
+       ```swift
+       sdk.resetAnchors()
+       sdk.syncNow { }
+       ```
+
+    5. **Check permissions:**
+       Users may have denied specific data types even if they approved the overall request.
+
+    6. **Check the outbox:**
+       Failed uploads are queued in the persistent outbox. Enable logging to see retry attempts.
+  </Accordion>
+
+  <Accordion title="Sync doesn't resume after app restart">
+    **Symptoms:** Sync session lost after app is killed or device restarts.
+
+    **Solutions:**
+
+    1. **Ensure configure() is called on launch:**
+       The SDK automatically restores sync state when `configure()` is called:
+       ```swift
+       // In AppDelegate or app init
+       sdk.configure(host: "https://api.openwearables.io")
+       ```
+       The SDK checks for tracked types and active sync state during configuration and auto-resumes if needed.
+
+    2. **Check Keychain access:**
+       Credentials use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. The device must be unlocked at least once after boot for the SDK to access stored credentials.
+
+    3. **Verify user hasn't changed:**
+       The SDK isolates state per user. If a different user signs in, previous sync state is cleared.
+  </Accordion>
+
+  <Accordion title="High memory usage during sync">
+    **Symptoms:** App uses excessive memory during large syncs.
+
+    **Solutions:**
+
+    The SDK uses streaming sync by default, processing data in chunks to minimize memory usage. If you're still seeing high memory:
+
+    1. **Check data volume:**
+       Initial full syncs can process large amounts of historical data. This is normal and memory should stabilize after the first sync.
+
+    2. **Check for memory leaks in your code:**
+       Ensure you're not holding strong references to SDK callbacks that prevent deallocation.
+  </Accordion>
+</AccordionGroup>
+
+## HealthKit Entitlement Issues
+
+If you see "Missing HealthKit entitlement" errors:
+
+1. **In Xcode:**
+   - Target → Signing & Capabilities → Add HealthKit
+   - Check "Background Delivery" for background updates
+
+2. **In Apple Developer Portal:**
+   - App IDs → Your App → Capabilities
+   - Enable HealthKit
+
+3. **Regenerate provisioning profiles** after making changes
+
+### Background Delivery Limitations
+
+iOS has strict limits on background execution:
+
+| Factor | Impact |
+|--------|--------|
+| Battery Level | Background tasks paused below 20% |
+| Low Power Mode | All background tasks suspended |
+| User Behavior | iOS learns when you use the app and schedules accordingly |
+| Network | Background tasks require network connectivity |
+| Device Locked | SDK monitors protected data availability and resumes after unlock |
+
+<Tip>
+  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+</Tip>
+
+## Testing Background Sync
+
+To test background sync during development:
+
+1. Run app on device
+2. Navigate to home screen
+3. Wait 15+ minutes (or use Xcode's debug menu)
+4. Check logs for sync activity
+
+In Xcode, you can simulate background fetch:
+- Debug → Simulate Background Fetch
+
+You can also trigger background task processing from Xcode's debugger:
+
+```
+e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.openwearables.healthsdk.task.refresh"]
+```
+
+## Debugging Tips
+
+### Enable Debug Logging
+
+```swift
+let sdk = OpenWearablesHealthSDK.shared
+
+sdk.onLog = { message in
+    print("[HealthSDK] \(message)")
+}
+
+sdk.onAuthError = { statusCode, message in
+    print("[HealthSDK] Auth error \(statusCode): \(message)")
+}
+```
+
+### Check Stored Session
+
+```swift
+// Verify session can be restored
+let restored = sdk.restoreSession()
+print("Session restored: \(restored)")
+```
+
+### Force Fresh Start
+
+If things are in a bad state:
+
+```swift
+// Clear everything and start fresh
+sdk.stopBackgroundSync()
+sdk.signOut()
+sdk.resetAnchors()
+
+// Re-initialize
+sdk.configure(host: "https://api.openwearables.io")
+```
+
+## Network Monitoring
+
+The SDK includes built-in network monitoring via `NWPathMonitor`. When the device loses connectivity:
+
+1. Active uploads are queued in the persistent outbox
+2. When connectivity returns, the outbox is automatically retried
+3. Failed uploads older than 30 seconds are retried on the next sync cycle
+
+## Getting Help
+
+If you're still experiencing issues:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open_wearables_ios_sdk/issues">
+    Report bugs or request features on the SDK repository.
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">
+    Ask questions and get help from the community.
+  </Card>
+</CardGroup>
+
+When reporting issues, please include:
+- Xcode version
+- SDK version
+- iOS version and device model
+- Relevant logs from `onLog` callback
+- Steps to reproduce

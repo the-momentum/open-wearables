@@ -20,8 +20,8 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
   <Step title="Apple Health (HealthKit)" icon="heart-pulse">
     Health data is stored locally on the user's iOS device in Apple Health.
   </Step>
-  <Step title="Your Flutter App + Sync SDK" icon="mobile">
-    The SDK reads data from HealthKit and handles background synchronization automatically.
+  <Step title="Your App + Sync SDK" icon="mobile">
+    The SDK reads data from HealthKit and handles background synchronization automatically. Available as a native iOS (Swift) SDK or as a Flutter wrapper.
   </Step>
   <Step title="Open Wearables Platform" icon="cloud-arrow-up">
     Data is pushed to `POST /sdk/users/{user_id}/sync/apple` and normalized to the unified data model.
@@ -48,11 +48,11 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 ## Available SDKs
 
 <CardGroup cols={2}>
-  <Card title="Flutter" icon="mobile" href="/sdk/flutter">
-    Flutter SDK for iOS with Apple HealthKit support.
+  <Card title="iOS (Swift)" icon="apple" href="/sdk/ios">
+    Native iOS SDK — the core implementation for Apple HealthKit sync.
   </Card>
-  <Card title="More Coming Soon" icon="clock">
-    Android Health Connect, native iOS (Swift), and Android (Kotlin) SDKs are on our roadmap.
+  <Card title="Flutter" icon="mobile" href="/sdk/flutter">
+    Flutter SDK for iOS — a wrapper around the native iOS SDK for cross-platform apps.
   </Card>
 </CardGroup>
 
@@ -82,6 +82,11 @@ The SDK uses a secure token-based authentication flow that keeps your API keys s
 
 ## Next Steps
 
-<Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
-  Get started with the Flutter SDK
-</Card>
+<CardGroup cols={2}>
+  <Card title="iOS SDK" icon="arrow-right" href="/sdk/ios">
+    Get started with the native iOS SDK (Swift)
+  </Card>
+  <Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
+    Get started with the Flutter SDK
+  </Card>
+</CardGroup>
