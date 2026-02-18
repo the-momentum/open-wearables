@@ -7,6 +7,12 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
+class RootJSON(BaseModel):
+    """Root JSON schema for record imports."""
+
+    data: dict[str, Any]
+
+
 class QuantityJSON(BaseModel):
     qty: float | int | None = None
     units: str | None = None
