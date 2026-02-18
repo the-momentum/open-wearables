@@ -125,6 +125,9 @@ uv run alembic downgrade -1
 
 ### Running Tests
 
+Tests use **testcontainers** — a disposable PostgreSQL container is created
+automatically. Just make sure Docker is running.
+
 ```bash
 # Run all tests
 uv run pytest
@@ -133,7 +136,7 @@ uv run pytest
 uv run pytest --cov=app --cov-report=html
 
 # Run specific test file
-uv run pytest tests/path/to/test_file.py
+uv run pytest tests/api/v1/test_users.py
 ```
 
 ### Code Quality
