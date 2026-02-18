@@ -179,7 +179,7 @@ async def get_activity_summary(
             "total_days": len(records),
             "days_with_data": len(steps_list),
             "total_steps": total_steps,
-            "avg_steps": round(total_steps / len(steps_list)) if steps_list else None,
+            "avg_steps": round(total_steps / len(steps_list)) if steps_list and total_steps is not None else None,
             "total_distance_meters": total_distance,
             "total_active_calories_kcal": round(sum(active_calories), 1) if active_calories else None,
             "total_calories_kcal": round(sum(total_calories), 1) if total_calories else None,
