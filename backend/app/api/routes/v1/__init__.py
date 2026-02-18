@@ -10,9 +10,9 @@ from .events import router as events_router
 from .external_connectors import router as external_connectors_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .import_xml import router as import_xml_router
-from .oura_webhooks import router as oura_webhooks_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
+from .oura_webhooks import router as oura_webhooks_router
 from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router

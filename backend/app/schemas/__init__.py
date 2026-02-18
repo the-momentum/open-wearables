@@ -118,6 +118,16 @@ from .oauth import (
     UserConnectionRead,
     UserConnectionUpdate,
 )
+from .oura.imports import (
+    OuraDailyActivityJSON,
+    OuraDailyReadinessJSON,
+    OuraDailySpo2JSON,
+    OuraHeartRateJSON,
+    OuraSleepJSON,
+    OuraWebhookNotification,
+    OuraWorkoutCollectionJSON,
+    OuraWorkoutJSON,
+)
 from .personal_record import (
     PersonalRecordCreate,
     PersonalRecordResponse,
@@ -195,16 +205,6 @@ from .user import (
     UserRead,
     UserUpdate,
     UserUpdateInternal,
-)
-from .oura.imports import (
-    OuraDailyActivityJSON,
-    OuraDailyReadinessJSON,
-    OuraDailySpo2JSON,
-    OuraHeartRateJSON,
-    OuraSleepJSON,
-    OuraWebhookNotification,
-    OuraWorkoutCollectionJSON,
-    OuraWorkoutJSON,
 )
 from .whoop.workout_import import (
     WhoopWorkoutCollectionJSON,
