@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+
 class SourceMetadata(BaseModel):
     provider: str = Field(..., example="apple_health")
     device: str | None = Field(None, example="Apple Watch Series 9")
@@ -29,12 +30,6 @@ class Pagination(BaseModel):
         description="Total number of records matching the query",
         example=150,
     )
-
-
-class ErrorDetails(BaseModel):
-    code: str
-    message: str
-    details: dict | None = None
 
 
 class PaginatedResponse[DataT](BaseModel):

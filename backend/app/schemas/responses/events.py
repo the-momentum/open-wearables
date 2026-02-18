@@ -8,13 +8,6 @@ from app.schemas.common_types import SourceMetadata
 from app.schemas.summaries import SleepStagesSummary
 from app.schemas.timeseries import TimeSeriesSample
 
-
-class WorkoutType(RootModel[str]):
-    # Using str for now as enum might be extensive, but RFC lists specific values
-    # running, walking, cycling, swimming, strength_training, hiit, yoga, pilates, rowing, elliptical, hiking, other
-    pass
-
-
 class Workout(BaseModel):
     id: UUID
     type: str  # Should be WorkoutType enum ideally
