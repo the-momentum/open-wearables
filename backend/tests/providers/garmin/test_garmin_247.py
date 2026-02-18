@@ -1,6 +1,7 @@
 """Tests for Garmin 247 data implementation."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -303,21 +304,22 @@ class TestGarmin247Data:
     # Body Composition Tests
     # -------------------------------------------------------------------------
 
-    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.create")
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
     def test_save_body_composition(
         self,
-        mock_create: MagicMock,
+        mock_bulk_create: MagicMock,
         garmin_247: Garmin247Data,
         db: Session,
         sample_body_comp: dict[str, Any],
     ) -> None:
         """Test saving body composition data."""
-        user_id = uuid4()
+        user = UserFactory()
 
-        count = garmin_247.save_body_composition(db, user_id, sample_body_comp)
+        count = garmin_247.save_body_composition(db, user.id, sample_body_comp)
 
         # Should create 3 data points: weight, body_fat, BMI
-        assert mock_create.call_count == 3
+        mock_bulk_create.assert_called_once()
+        assert len(mock_bulk_create.call_args[0][1]) == 3
         assert count == 3
 
     def test_save_body_composition_missing_timestamp(self, garmin_247: Garmin247Data, db: Session) -> None:
@@ -353,100 +355,40 @@ class TestGarmin247Data:
     # Integration Tests (with mocks)
     # -------------------------------------------------------------------------
 
-    def test_load_and_save_all_default_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all triggers backfill with default date range."""
+    def test_load_and_save_all_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
+        """Test load_and_save_all is a no-op (data arrives via webhooks)."""
         user = UserFactory()
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill") as mock_start_backfill,
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": "2024-01-14T00:00:00+00:00",
-                "end_time": "2024-01-15T00:00:00+00:00",
-            }
+        results = garmin_247.load_and_save_all(db, user.id)
 
-            results = garmin_247.load_and_save_all(db, user.id)
+        assert results["sync_complete"] is True
+        assert results["total_saved"] == 0
+        assert "webhooks" in results["message"].lower()
 
-            assert results["backfill_triggered"] is True
-            assert "sleeps" in results["triggered_types"]
-            mock_start_backfill.assert_called_once()
-
-    def test_load_and_save_all_custom_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all with custom date range."""
+    def test_load_and_save_all_with_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
+        """Test load_and_save_all with custom dates is still a no-op."""
         user = UserFactory()
 
         start = datetime(2024, 1, 1, tzinfo=timezone.utc)
         end = datetime(2024, 1, 7, tzinfo=timezone.utc)
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": start.isoformat(),
-                "end_time": end.isoformat(),
-            }
+        results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
 
-            results = garmin_247.load_and_save_all(db, user.id, start_time=start, end_time=end)
+        assert results["sync_complete"] is True
+        assert results["total_saved"] == 0
 
-            # Verify custom dates were used
-            mock_trigger.assert_called_once()
-            call_kwargs = mock_trigger.call_args[1]
-            assert call_kwargs["start_time"] == start
-            assert call_kwargs["end_time"] == end
-
-            assert results["backfill_triggered"] is True
-
-    def test_load_and_save_all_string_dates(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all with ISO string dates."""
+    def test_load_and_save_all_string_dates_is_noop(self, garmin_247: Garmin247Data, db: Session) -> None:
+        """Test load_and_save_all with ISO string dates is still a no-op."""
         user = UserFactory()
 
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": ["sleeps"],
-                "failed": {},
-                "start_time": "2024-01-01T00:00:00+00:00",
-                "end_time": "2024-01-07T00:00:00+00:00",
-            }
+        results = garmin_247.load_and_save_all(
+            db,
+            user.id,
+            start_time="2024-01-01T00:00:00Z",
+            end_time="2024-01-07T00:00:00Z",
+        )
 
-            results = garmin_247.load_and_save_all(
-                db,
-                user.id,
-                start_time="2024-01-01T00:00:00Z",
-                end_time="2024-01-07T00:00:00Z",
-            )
-
-            assert results["backfill_triggered"] is True
-
-    def test_load_and_save_all_handles_errors(self, garmin_247: Garmin247Data, db: Session) -> None:
-        """Test load_and_save_all handles errors from backfill service."""
-        user = UserFactory()
-
-        with (
-            patch("app.integrations.celery.tasks.garmin_backfill_task.start_backfill"),
-            patch("app.services.providers.garmin.backfill.GarminBackfillService.trigger_backfill") as mock_trigger,
-        ):
-            mock_trigger.return_value = {
-                "triggered": [],
-                "failed": {"sleeps": "API Error"},
-                "start_time": "2024-01-14T00:00:00+00:00",
-                "end_time": "2024-01-15T00:00:00+00:00",
-            }
-
-            results = garmin_247.load_and_save_all(db, user.id)
-
-            # Should still return with backfill_triggered
-            assert results["backfill_triggered"] is True
-            assert results["triggered_types"] == []
-            assert "sleeps" in results["failed_types"]
+        assert results["sync_complete"] is True
 
     # -------------------------------------------------------------------------
     # HRV Data Tests
@@ -510,4 +452,216 @@ class TestGarmin247Data:
         count = garmin_247.save_hrv_data(db, user.id, hrv_data)
 
         # Should save just the lastNightAvg
+        assert count == 1
+
+    # -------------------------------------------------------------------------
+    # Build Method Tests (no DB interaction)
+    # -------------------------------------------------------------------------
+
+    def test_build_dailies_samples(self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]) -> None:
+        """Test _build_dailies_samples returns samples without DB call."""
+        user_id = uuid4()
+        normalized = garmin_247.normalize_dailies(sample_daily, user_id)
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+
+        # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
+        assert len(samples) == 8
+        assert len({s.series_type for s in samples}) > 1
+
+    def test_build_dailies_samples_empty_on_missing_date(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_dailies_samples returns empty for missing date/timestamp."""
+        user_id = uuid4()
+        normalized = {"user_id": user_id}
+        samples = garmin_247._build_dailies_samples(user_id, normalized)
+        assert samples == []
+
+    def test_build_epochs_samples(self, garmin_247: Garmin247Data, sample_epoch: dict[str, Any]) -> None:
+        """Test _build_epochs_samples returns samples without DB call."""
+        user_id = uuid4()
+        normalized = garmin_247.normalize_epochs([sample_epoch], user_id)
+        samples = garmin_247._build_epochs_samples(user_id, normalized)
+
+        # 1 heart_rate + 1 steps + 1 energy = 3
+        assert len(samples) == 3
+
+    def test_build_body_comp_samples(self, garmin_247: Garmin247Data, sample_body_comp: dict[str, Any]) -> None:
+        """Test _build_body_comp_samples returns samples without DB call."""
+        user_id = uuid4()
+        samples = garmin_247._build_body_comp_samples(user_id, sample_body_comp)
+        assert len(samples) == 3  # weight, body_fat, BMI
+
+    def test_build_body_comp_samples_missing_timestamp(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_body_comp_samples returns empty for missing timestamp."""
+        user_id = uuid4()
+        samples = garmin_247._build_body_comp_samples(user_id, {"weightInGrams": 75000})
+        assert samples == []
+
+    def test_build_hrv_samples(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_hrv_samples returns samples without DB call."""
+        user_id = uuid4()
+        hrv_data = {
+            "summaryId": "hrv-123",
+            "startTimeInSeconds": 1768340715,
+            "lastNightAvg": 84,
+            "hrvValues": {"265": 70, "565": 73},
+        }
+        samples = garmin_247._build_hrv_samples(user_id, hrv_data)
+        assert len(samples) == 3  # 1 avg + 2 values
+
+    def test_build_stress_samples(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_stress_samples returns samples without DB call."""
+        user_id = uuid4()
+        stress_data = {
+            "startTimeInSeconds": 1705276800,
+            "stressLevelValues": {"0": 25, "300": 30, "600": -1},  # -1 is skipped
+            "bodyBatteryValues": {"0": 80, "300": 78},
+        }
+        samples = garmin_247._build_stress_samples(user_id, stress_data)
+        assert len(samples) == 4  # 2 stress + 2 battery
+
+    def test_build_sleep_record(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
+        """Test _build_sleep_record returns record + detail without DB call."""
+        user_id = uuid4()
+        normalized = garmin_247.normalize_sleep(sample_sleep, user_id)
+        result = garmin_247._build_sleep_record(user_id, normalized)
+
+        assert result is not None
+        record, detail = result
+        assert record.category == "sleep"
+        assert record.type == "sleep_session"
+        assert detail.sleep_deep_minutes == 120  # 7200 / 60
+
+    def test_build_activity_record(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_activity_record returns record + detail without DB call."""
+        user_id = uuid4()
+        activity = {
+            "activityId": 123456,
+            "startTimeInSeconds": 1705309200,
+            "durationInSeconds": 3600,
+            "activityType": "RUNNING",
+            "distanceInMeters": 5000,
+            "activeKilocalories": 350,
+        }
+        result = garmin_247._build_activity_record(user_id, activity)
+
+        assert result is not None
+        record, detail = result
+        assert record.category == "workout"
+        assert record.type == "running"
+        assert detail.distance == Decimal("5000")
+
+    def test_build_activity_record_missing_id(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_activity_record returns None for missing activityId."""
+        user_id = uuid4()
+        result = garmin_247._build_activity_record(user_id, {"startTimeInSeconds": 1705309200})
+        assert result is None
+
+    def test_build_moveiq_record(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_moveiq_record returns record without DB call."""
+        user_id = uuid4()
+        moveiq = {
+            "startTimeInSeconds": 1705309200,
+            "durationInSeconds": 600,
+            "activityType": "WALKING",
+            "summaryId": "moveiq_123",
+        }
+        record = garmin_247._build_moveiq_record(user_id, moveiq)
+        assert record is not None
+        assert record.type == "moveiq_walking"
+        assert record.category == "activity"
+
+    def test_build_moveiq_record_missing_start(self, garmin_247: Garmin247Data) -> None:
+        """Test _build_moveiq_record returns None for missing startTime."""
+        user_id = uuid4()
+        record = garmin_247._build_moveiq_record(user_id, {"activityType": "WALKING"})
+        assert record is None
+
+    # -------------------------------------------------------------------------
+    # Batch Processing Tests
+    # -------------------------------------------------------------------------
+
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
+    def test_process_items_batch_dailies(
+        self,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_daily: dict[str, Any],
+    ) -> None:
+        """Test batch processing multiple daily items in a single bulk_create."""
+        user = UserFactory()
+        daily2 = {**sample_daily, "summaryId": "daily_456", "calendarDate": "2024-01-16"}
+
+        count = garmin_247.process_items_batch(db, user.id, "dailies", [sample_daily, daily2])
+
+        # Should call bulk_create exactly once for all samples
+        mock_bulk_create.assert_called_once()
+        assert count > 0
+
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
+    def test_process_items_batch_stress(
+        self,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+    ) -> None:
+        """Test batch processing multiple stress items."""
+        user = UserFactory()
+        items = [
+            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 25, "300": 30}},
+            {"startTimeInSeconds": 1705363200, "stressLevelValues": {"0": 40}},
+        ]
+
+        count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
+
+        mock_bulk_create.assert_called_once()
+        assert count == 3  # 2 + 1
+
+    @patch("app.services.event_record_service.event_record_service.bulk_create")
+    @patch("app.services.event_record_service.event_record_service.bulk_create_details")
+    def test_process_items_batch_sleeps(
+        self,
+        mock_bulk_details: MagicMock,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """Test batch processing sleep items uses bulk_create for records."""
+        user = UserFactory()
+        sleep2 = {**sample_sleep, "summaryId": "sleep_456"}
+
+        # Make bulk_create return the actual record IDs that were passed in
+        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+
+        count = garmin_247.process_items_batch(db, user.id, "sleeps", [sample_sleep, sleep2])
+
+        mock_bulk_create.assert_called_once()
+        # Should create sleep details for inserted records
+        mock_bulk_details.assert_called_once()
+        assert count == 2
+
+    def test_process_items_batch_empty(self, garmin_247: Garmin247Data, db: Session) -> None:
+        """Test batch processing empty items returns 0."""
+        user = UserFactory()
+        count = garmin_247.process_items_batch(db, user.id, "dailies", [])
+        assert count == 0
+
+    @patch("app.repositories.data_point_series_repository.DataPointSeriesRepository.bulk_create")
+    def test_process_items_batch_skips_bad_items(
+        self,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+    ) -> None:
+        """Test batch processing skips invalid items and continues."""
+        user = UserFactory()
+        items = [
+            {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
+            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 50}},  # Valid
+        ]
+
+        count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
+
+        mock_bulk_create.assert_called_once()
         assert count == 1

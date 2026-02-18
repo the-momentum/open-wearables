@@ -1,6 +1,7 @@
-"""Apple device model mapping from productType codes to human-readable names."""
+"""
+Data source: https://gist.github.com/adamawolf/3048717
+"""
 
-# Mapping from Apple productType codes to real device names
 APPLE_DEVICE_NAMES = {
     # iPhones
     "iPhone1,1": "iPhone",

@@ -7,6 +7,7 @@ import boto3
 from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
 from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
@@ -30,7 +31,13 @@ def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
         processed_count = 0
         failed_count = 0
 
-        logger.info(f"[poll_sqs_messages] Received {len(messages)} messages from SQS")
+        log_structured(
+            logger,
+            "info",
+            f"Received {len(messages)} messages from SQS",
+            provider="apple_xml",
+            task="poll_sqs_messages",
+        )
 
         for message in messages:
             receipt_handle = message["ReceiptHandle"]
@@ -38,16 +45,21 @@ def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
 
             try:
                 message_body = message["Body"]
-                logger.info(f"[poll_sqs_messages] Processing message {message_id}")
+                log_structured(
+                    logger, "info", f"Processing message {message_id}", provider="apple_xml", task="poll_sqs_messages"
+                )
 
                 # Parse JSON string if necessary
                 if isinstance(message_body, str):
                     try:
                         message_body = json.loads(message_body)
                     except json.JSONDecodeError:
-                        logger.info(
-                            f"[poll_sqs_messages] Message {message_id} is not valid JSON, "
-                            f"skipping: {message_body[:100]}",
+                        log_structured(
+                            logger,
+                            "info",
+                            f"Message {message_id} is not valid JSON, skipping: {message_body[:100]}",
+                            provider="apple_xml",
+                            task="poll_sqs_messages",
                         )
                         sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
                         failed_count += 1
@@ -79,11 +91,19 @@ def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
                 sqs.delete_message(QueueUrl=QUEUE_URL, ReceiptHandle=receipt_handle)
 
             except Exception as e:
+                log_structured(
+                    logger,
+                    "error",
+                    f"Error processing message {message_id}: {e}",
+                    provider="apple_xml",
+                    task="poll_sqs_messages",
+                    message_id=message_id,
+                )
                 log_and_capture_error(
                     e,
                     logger,
-                    f"[poll_sqs_messages] Error processing message {message_id}: {e}",
-                    extra={"message_id": message_id},
+                    f"Error processing message {message_id}: {e}",
+                    extra={"message_id": message_id, "task": "poll_sqs_messages", "provider": "apple_xml"},
                 )
                 failed_count += 1
                 continue
@@ -95,7 +115,19 @@ def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
         }
 
     except Exception as e:
-        log_and_capture_error(e, logger, f"[poll_sqs_messages] Error polling SQS: {e}")
+        log_structured(
+            logger,
+            "error",
+            f"Error polling SQS: {e}",
+            provider="apple_xml",
+            task="poll_sqs_messages",
+        )
+        log_and_capture_error(
+            e,
+            logger,
+            f"Error polling SQS: {e}",
+            extra={"task": "poll_sqs_messages", "provider": "apple_xml"},
+        )
         return {"status": "error", "error": str(e)}
 
 

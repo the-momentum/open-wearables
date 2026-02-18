@@ -54,9 +54,13 @@ def create_celery() -> Celery:
         task_queues={
             "default": {},
             "apple_sync": {},
+            "samsung_sync": {},
         },
         task_routes={
             "app.integrations.celery.tasks.process_apple_upload_task.process_apple_upload": {"queue": "apple_sync"},
+            "app.integrations.celery.tasks.process_samsung_upload_task.process_samsung_upload": {
+                "queue": "samsung_sync"
+            },
         },
     )
 

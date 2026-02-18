@@ -20,7 +20,7 @@ import {
   useUser,
   useDeleteUser,
   useAppleXmlUpload,
-  useGenerateUserToken,
+  useGenerateInvitationCode,
 } from '@/hooks/api/use-users';
 import { ROUTES } from '@/lib/constants/routes';
 import { copyToClipboard } from '@/lib/utils/clipboard';
@@ -81,13 +81,13 @@ function UserDetailPage() {
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
   const {
-    mutate: generateToken,
-    data: tokenData,
-    isPending: isGeneratingToken,
-  } = useGenerateUserToken();
+    mutate: generateInvitationCode,
+    data: invitationCodeData,
+    isPending: isGeneratingCode,
+  } = useGenerateInvitationCode();
   const [copied, setCopied] = useState(false);
-  const [tokenCopied, setTokenCopied] = useState(false);
-  const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = isUploadingFile(userId);
@@ -171,22 +171,22 @@ function UserDetailPage() {
     });
   };
 
-  const handleGenerateToken = () => {
-    generateToken(userId, {
+  const handleGenerateInvitationCode = () => {
+    generateInvitationCode(userId, {
       onSuccess: () => {
-        setIsTokenDialogOpen(true);
+        setIsCodeDialogOpen(true);
       },
     });
   };
 
-  const handleCopyToken = async () => {
+  const handleCopyCode = async () => {
     const success = await copyToClipboard(
-      tokenData?.access_token || '',
-      'Token copied to clipboard'
+      invitationCodeData?.code || '',
+      'Invitation code copied to clipboard'
     );
     if (success) {
-      setTokenCopied(true);
-      setTimeout(() => setTokenCopied(false), 2000);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
     }
   };
   if (!userLoading && !user) {
@@ -274,10 +274,10 @@ function UserDetailPage() {
           </Button>
           <Button
             variant="secondary"
-            onClick={handleGenerateToken}
-            disabled={isGeneratingToken}
+            onClick={handleGenerateInvitationCode}
+            disabled={isGeneratingCode}
           >
-            {isGeneratingToken ? (
+            {isGeneratingCode ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Generating...
@@ -285,7 +285,7 @@ function UserDetailPage() {
             ) : (
               <>
                 <Key className="h-4 w-4" />
-                Generate SDK Token
+                Generate Invitation Code
               </>
             )}
           </Button>
@@ -332,44 +332,48 @@ function UserDetailPage() {
         ))}
       </Tabs>
 
-      {/* Token Dialog */}
-      <Dialog open={isTokenDialogOpen} onOpenChange={setIsTokenDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+      {/* Invitation Code Dialog */}
+      <Dialog open={isCodeDialogOpen} onOpenChange={setIsCodeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>User Token Generated</DialogTitle>
+            <DialogTitle>Invitation Code Generated</DialogTitle>
             <DialogDescription>
-              This token has infinite expiration time and can be used to access
-              SDK endpoints for this user. Store it securely.
+              Share this code with the mobile app user. They can enter it to
+              receive SDK access without manually configuring tokens. The code
+              is single-use and will expire.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="token" className="text-zinc-300">
-                Access Token
+              <Label htmlFor="invitation-code" className="text-zinc-300">
+                Invitation Code
               </Label>
               <div className="flex items-center gap-2">
                 <Input
-                  id="token"
+                  id="invitation-code"
                   readOnly
-                  value={tokenData?.access_token || ''}
-                  className="bg-zinc-800 border-zinc-700 font-mono text-sm focus-visible:ring-0"
+                  value={invitationCodeData?.code || ''}
+                  className="bg-zinc-800 border-zinc-700 font-mono text-lg tracking-widest text-center focus-visible:ring-0"
                 />
                 <Button
-                  onClick={handleCopyToken}
+                  onClick={handleCopyCode}
                   variant="outline"
                   size="icon"
                   className="shrink-0"
                 >
-                  {tokenCopied ? (
+                  {codeCopied ? (
                     <Check className="h-4 w-4 text-emerald-500" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
                 </Button>
               </div>
-              <p className="text-xs text-zinc-500">
-                Token type: {tokenData?.token_type || 'bearer'}
-              </p>
+              {invitationCodeData?.expires_at && (
+                <p className="text-xs text-zinc-500">
+                  Expires:{' '}
+                  {new Date(invitationCodeData.expires_at).toLocaleString()}
+                </p>
+              )}
             </div>
           </div>
         </DialogContent>

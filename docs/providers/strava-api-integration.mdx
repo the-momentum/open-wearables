@@ -1,0 +1,181 @@
+---
+title: "Strava API Integration"
+description: "Setup guide for Strava integration"
+---
+
+<Warning>
+**Before you start:** The Strava integration is intended solely for the Open Wearables single-user usage scenario (i.e., personal use, not as an aggregator of multiple users’ data). Keep in mind:
+- **No analytics** are calculated from Strava data — it is only aggregated and displayed as-is.
+- **Only one athlete** (single user) can be connected to the integration at a time.
+- This integration should be used as a **data tracker**, not as a data source for business analytics or reporting.
+</Warning>
+
+<Note>
+**Need help with your Strava integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Strava provides access to activity/workout data through their API. The integration supports real-time webhook notifications for new activities as well as historical activity data via polling.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts / Activities | Yes |
+| Sleep | No |
+| Daily summaries (247 data) | No |
+| Body composition | No |
+
+Strava is an activity-focused platform — it does not provide continuous health monitoring data like sleep, HRV, or daily summaries.
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Webhooks (push)** | Strava sends real-time notifications when activities are created or updated |
+| **Polling (pull)** | Historical activity data can be fetched via the API |
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret
+- **OAuth scopes** configured
+- **Webhook verify token** set (a secret string you choose)
+- **Webhook subscription** created (so Strava sends activity events to your server)
+
+## Prerequisites
+
+- A Strava account
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Create a Strava API Application">
+    Log in to your Strava account and go to:
+
+    - [https://www.strava.com/settings/api](https://www.strava.com/settings/api)
+
+    Fill in the application form:
+    - **Application Name**: Your app name
+    - **Category**: Choose the category that best describes your app
+    - **Website**: Your app's website URL
+    - **Authorization Callback Domain**: `localhost` for local development, or your production domain (e.g. `yourdomain.com`)
+
+    <Warning>
+    The **Authorization Callback Domain** is just the domain, not the full URL. For local development, use `localhost`. Do not include the port or path.
+    </Warning>
+
+    After creating the app, you'll receive:
+    - **Client ID**
+    - **Client Secret**
+
+    <Warning>
+    Treat the Client Secret like a password. Store it in your secrets manager and rotate if compromised.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+#--- Strava ---#
+STRAVA_CLIENT_ID=your-strava-client-id
+STRAVA_CLIENT_SECRET=your-strava-client-secret
+STRAVA_REDIRECT_URI=http://localhost:8000/api/v1/oauth/strava/callback
+STRAVA_DEFAULT_SCOPE=activity:read_all,profile:read_all
+STRAVA_WEBHOOK_VERIFY_TOKEN=your-secret-verify-token
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|-------------|
+    | `STRAVA_CLIENT_ID` | Client ID from the Strava API settings page |
+    | `STRAVA_CLIENT_SECRET` | Client Secret from the Strava API settings page |
+    | `STRAVA_REDIRECT_URI` | Must match the callback domain you set in Strava. For local dev: `http://localhost:8000/api/v1/oauth/strava/callback` |
+    | `STRAVA_DEFAULT_SCOPE` | OAuth scopes requested during authorization. Default `activity:read_all,profile:read_all` covers all activity data and athlete profile |
+    | `STRAVA_WEBHOOK_VERIFY_TOKEN` | A secret string you choose. Strava will send this back during webhook subscription verification to confirm ownership. Pick something unique and hard to guess |
+
+  </Step>
+
+  <Step title="Create a webhook subscription">
+    To receive real-time activity notifications, you need to create a webhook subscription with the Strava API. Your server must be publicly accessible for Strava to reach the webhook endpoint.
+
+    Create the subscription using the Strava API:
+
+```bash
+curl -X POST https://www.strava.com/api/v3/push_subscriptions \
+  -F client_id=YOUR_CLIENT_ID \
+  -F client_secret=YOUR_CLIENT_SECRET \
+  -F callback_url=https://yourdomain.com/api/v1/strava/webhook \
+  -F verify_token=YOUR_WEBHOOK_VERIFY_TOKEN
+```
+
+    When Strava receives this request, it will send a GET request to your `callback_url` with a `hub.verify_token` parameter. Open Wearables will validate the token against your `STRAVA_WEBHOOK_VERIFY_TOKEN` and echo back the challenge to confirm the subscription.
+
+    <Warning>
+    The `callback_url` must be publicly accessible over HTTPS. For local development, use a tunneling tool like [ngrok](https://ngrok.com/) to expose your local server.
+    </Warning>
+
+    <Note>
+    Strava allows only **one webhook subscription per application**. If you need to change the callback URL, delete the existing subscription first:
+
+```bash
+# List existing subscriptions
+curl -G https://www.strava.com/api/v3/push_subscriptions \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_CLIENT_SECRET
+
+# Delete a subscription
+curl -X DELETE "https://www.strava.com/api/v3/push_subscriptions/SUBSCRIPTION_ID" \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_CLIENT_SECRET
+```
+    </Note>
+  </Step>
+
+  <Step title="Verify the integration">
+    Once everything is configured:
+
+    1. Start your Open Wearables instance
+    2. Connect a Strava account through the OAuth flow
+    3. Create or record an activity on Strava
+    4. The webhook should deliver the event and Open Wearables will fetch and store the full activity data
+
+    You can check the webhook health endpoint at:
+    ```
+    GET /api/v1/strava/health
+    ```
+  </Step>
+</Steps>
+
+## OAuth Scopes Reference
+
+| Scope | Description |
+|-------|-------------|
+| `activity:read` | Read public activities |
+| `activity:read_all` | Read all activities (including private) |
+| `profile:read_all` | Read athlete profile |
+
+The default scope `activity:read_all,profile:read_all` is recommended for full activity data access.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Architecture" icon="diagram" href="/architecture/system-overview">
+    Understand the overall system architecture.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Strava API Documentation](https://developers.strava.com/docs/reference/).
+- Check the [Strava Webhook Documentation](https://developers.strava.com/docs/webhooks/).
+</Note>

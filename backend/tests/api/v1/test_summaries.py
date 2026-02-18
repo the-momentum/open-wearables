@@ -1170,7 +1170,7 @@ class TestBodySummaryEndpoint:
         assert data["latest"]["blood_pressure"] is None
         assert data["latest"]["blood_pressure_measured_at"] is None
 
-    def test_get_body_summary_latest_temperature_recent(self, client: TestClient, db: Session) -> None:
+    def test_get_body_summary_latest_body_temperature_recent(self, client: TestClient, db: Session) -> None:
         """Test latest section returns temperature if measured within window."""
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="apple")
@@ -1206,9 +1206,9 @@ class TestBodySummaryEndpoint:
         data = response.json()
 
         assert data["latest"]["body_temperature_celsius"] == 36.6
-        assert data["latest"]["temperature_measured_at"] is not None
+        assert data["latest"]["body_temperature_measured_at"] is not None
 
-    def test_get_body_summary_latest_temperature_stale(self, client: TestClient, db: Session) -> None:
+    def test_get_body_summary_latest_body_temperature_stale(self, client: TestClient, db: Session) -> None:
         """Test latest section returns null for temperature outside window."""
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="apple")
@@ -1245,7 +1245,7 @@ class TestBodySummaryEndpoint:
 
         # Temperature is stale, should be null
         assert data["latest"]["body_temperature_celsius"] is None
-        assert data["latest"]["temperature_measured_at"] is None
+        assert data["latest"]["body_temperature_measured_at"] is None
 
     def test_get_body_summary_null_when_no_data(self, client: TestClient, db: Session) -> None:
         """Test body summary returns null when no body data exists."""

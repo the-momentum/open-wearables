@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link as LinkIcon, Check, Pencil } from 'lucide-react';
+import { Link as LinkIcon, Check, Copy, Pencil } from 'lucide-react';
 import { useUserConnections } from '@/hooks/api/use-health';
 import { useUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
 
   const [copied, setCopied] = useState(false);
+  const [copiedUserId, setCopiedUserId] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     first_name: '',
@@ -46,6 +47,17 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
       });
     }
   }, [user]);
+
+  const handleCopyUserId = async () => {
+    const success = await copyToClipboard(
+      userId,
+      'User ID copied to clipboard'
+    );
+    if (success) {
+      setCopiedUserId(true);
+      setTimeout(() => setCopiedUserId(false), 2000);
+    }
+  };
 
   const handleCopyPairLink = async () => {
     const pairLink = `${window.location.origin}/users/${userId}/pair`;
@@ -111,9 +123,22 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
                   <p className="text-xs text-zinc-500 mb-1">User ID</p>
-                  <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
-                    {truncateId(user?.id ?? '')}
-                  </code>
+                  <div className="flex items-center gap-1.5">
+                    <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
+                      {truncateId(user?.id ?? '')}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={handleCopyUserId}
+                    >
+                      {copiedUserId ? (
+                        <Check className="h-3 w-3 text-emerald-500" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 <div>
                   <p className="text-xs text-zinc-500 mb-1">External User ID</p>

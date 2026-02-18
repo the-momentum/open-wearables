@@ -152,10 +152,7 @@ class PriorityService:
         if ds.provider:
             parts.append(ds.provider.value.capitalize())
         if ds.device_model:
-            from app.constants.devices import APPLE_DEVICE_NAMES
-
-            readable_model = APPLE_DEVICE_NAMES.get(ds.device_model, ds.device_model)
-            parts.append(readable_model)
+            parts.append(ds.device_model)
         elif ds.original_source_name:
             parts.append(ds.original_source_name)
         return " - ".join(parts) if parts else "Unknown Source"

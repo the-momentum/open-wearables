@@ -7,6 +7,7 @@ Open Wearables is a health/wearable data aggregation platform with a Python/Fast
 - **This file** - Project overview, development workflow, general guidelines
 - **[backend/AGENTS.md](backend/AGENTS.md)** - Backend-specific patterns and code examples
 - **[frontend/AGENTS.md](frontend/AGENTS.md)** - Frontend-specific patterns and code examples
+- **[mcp/README.md](mcp/README.md)** - MCP server setup and available tools
 - **[docs/dev-guides/how-to-add-new-provider.mdx](docs/dev-guides/how-to-add-new-provider.mdx)** - Adding wearable providers
 
 ## Project Structure
@@ -15,19 +16,20 @@ Open Wearables is a health/wearable data aggregation platform with a Python/Fast
 open-wearables/
 ├── backend/           # Python/FastAPI backend
 ├── frontend/          # React/TypeScript frontend
+├── mcp/               # MCP server for AI assistants
 └── docs/              # Documentation (Mintlify)
 ```
 
 ## Tech Stack
 
-| Backend | Frontend |
-|---------|----------|
-| Python 3.13+ | React 19 + TypeScript |
-| FastAPI | TanStack Router/Query |
-| SQLAlchemy 2.0 | React Hook Form + Zod |
-| PostgreSQL | Tailwind + shadcn/ui |
-| Celery + Redis | Vitest |
-| Ruff + ty| oxlint + Prettier |
+| Backend | Frontend | MCP |
+|---------|----------|-----|
+| Python 3.13+ | React 19 + TypeScript | Python 3.13+ |
+| FastAPI | TanStack Router/Query | FastMCP |
+| SQLAlchemy 2.0 | React Hook Form + Zod | httpx |
+| PostgreSQL | Tailwind + shadcn/ui | |
+| Celery + Redis | Vitest | |
+| Ruff + ty | oxlint + Prettier | Ruff + ty |
 
 ## Development Workflow
 

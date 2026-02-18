@@ -1,0 +1,253 @@
+---
+title: "iOS SDK"
+sidebarTitle: "Overview"
+description: "Native iOS SDK for background health data sync from Apple HealthKit"
+---
+
+## Introduction
+
+The Open Wearables iOS SDK (`OpenWearablesHealthSDK`) is a native Swift SDK for secure background synchronization of health data from Apple HealthKit to the Open Wearables platform.
+
+This is the **core native implementation** that powers health data sync on iOS. The [Flutter SDK](/sdk/flutter) uses this SDK under the hood as a wrapper.
+
+<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open_wearables_ios_sdk">
+  View source code, report issues, and contribute to the iOS SDK.
+</Card>
+
+## Features
+
+- **Background Sync** - Health data syncs even when your app is in the background via HealthKit observer queries and `BGTaskScheduler`
+- **Streaming Sync** - Memory-efficient streaming processing for large datasets
+- **Resumable Sessions** - Sync sessions survive app restarts and device reboots
+- **Dual Authentication** - Token-based auth with auto-refresh or API key authentication
+- **Secure Storage** - Credentials stored in iOS Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`
+- **Automatic Retry** - Persistent outbox with retry logic for failed uploads
+- **Per-User Isolation** - State isolation between different user sessions
+- **Network Monitoring** - Connectivity-aware sync with automatic resume
+- **Wide Data Support** - Steps, heart rate, workouts, sleep, and 40+ data types
+
+## Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| iOS Version | iOS 14.0+ |
+| Swift | Swift 5.0+ |
+| Xcode | Xcode 14+ |
+| Apple Developer Account | Required for HealthKit entitlement |
+| HealthKit Capability | Must be enabled in Xcode |
+| Physical Device | HealthKit doesn't work in iOS Simulator |
+
+## Installation
+
+<Tabs>
+  <Tab title="Swift Package Manager">
+    Add the package to your `Package.swift`:
+
+    ```swift
+    dependencies: [
+        .package(url: "https://github.com/the-momentum/open_wearables_ios_sdk.git", from: "0.1.0")
+    ]
+    ```
+
+    Or in Xcode: **File** → **Add Package Dependencies** → paste the repository URL.
+  </Tab>
+
+  <Tab title="CocoaPods">
+    Add to your `Podfile`:
+
+    ```ruby
+    pod 'OpenWearablesHealthSDK', '~> 0.1.0'
+    ```
+
+    Then run:
+
+    ```bash
+    pod install
+    ```
+  </Tab>
+</Tabs>
+
+### iOS Configuration
+
+Add the following to your `Info.plist`:
+
+```xml
+<!-- Health data permission -->
+<key>NSHealthShareUsageDescription</key>
+<string>This app syncs your health data to your account.</string>
+
+<!-- Background modes for sync -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>fetch</string>
+    <string>processing</string>
+</array>
+
+<!-- Background task identifiers -->
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+    <string>com.openwearables.healthsdk.task.refresh</string>
+    <string>com.openwearables.healthsdk.task.process</string>
+</array>
+```
+
+Then enable HealthKit capability in Xcode:
+
+1. Open your `.xcodeproj` or `.xcworkspace` in Xcode
+2. Select your target → **Signing & Capabilities**
+3. Click **+ Capability** → Add **HealthKit**
+4. Check **Background Delivery** if you want updates while app is closed
+
+## Quick Start
+
+Here's the minimal code to get health sync working:
+
+```swift
+import OpenWearablesHealthSDK
+
+class HealthService {
+    let sdk = OpenWearablesHealthSDK.shared
+
+    func initialize() {
+        // 1. Set up logging (optional)
+        sdk.onLog = { message in
+            print("[Health] \(message)")
+        }
+
+        // 2. Handle auth errors (optional)
+        sdk.onAuthError = { statusCode, message in
+            print("Auth error: \(statusCode) - \(message)")
+        }
+
+        // 3. Configure the SDK with your host
+        sdk.configure(host: "https://api.openwearables.io")
+
+        // 4. Check if already signed in (session restored from Keychain)
+        if sdk.restoreSession() {
+            print("Session restored")
+            return
+        }
+
+        // 5. Get credentials from YOUR backend, then sign in
+        let credentials = yourBackend.getHealthCredentials()
+
+        sdk.signIn(
+            userId: credentials.userId,
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken,
+            apiKey: nil
+        )
+
+        // 6. Request health permissions
+        sdk.requestAuthorization(types: ["steps", "heartRate", "sleep", "workout"]) { granted in
+            if granted {
+                // 7. Start background sync
+                sdk.startBackgroundSync { started in
+                    print("Sync started: \(started)")
+                }
+            }
+        }
+    }
+}
+```
+
+## AppDelegate Setup
+
+For background URL session support, add to your `AppDelegate`:
+
+```swift
+func application(
+    _ application: UIApplication,
+    handleEventsForBackgroundURLSession identifier: String,
+    completionHandler: @escaping () -> Void
+) {
+    OpenWearablesHealthSDK.setBackgroundCompletionHandler(completionHandler)
+}
+```
+
+## Documentation
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="book" href="/sdk/ios/integration">
+    Complete guide to integrating the SDK including authentication flow, backend setup, and best practices.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/ios/troubleshooting">
+    Common issues and their solutions for native iOS.
+  </Card>
+</CardGroup>
+
+## Supported Health Data Types
+
+The SDK supports 40+ health data types across multiple categories:
+
+<AccordionGroup>
+  <Accordion title="Activity & Fitness">
+    | Type | Description |
+    |------|-------------|
+    | `steps` | Step count |
+    | `distanceWalkingRunning` | Walking/running distance |
+    | `distanceCycling` | Cycling distance |
+    | `flightsClimbed` | Floors climbed |
+    | `walkingSpeed` | Average walking speed |
+    | `walkingStepLength` | Step length |
+    | `sixMinuteWalkTestDistance` | 6-minute walk test |
+  </Accordion>
+
+  <Accordion title="Heart & Vitals">
+    | Type | Description |
+    |------|-------------|
+    | `heartRate` | Heart rate measurements |
+    | `restingHeartRate` | Resting heart rate |
+    | `heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `vo2Max` | VO2 max |
+    | `oxygenSaturation` | Blood oxygen |
+    | `respiratoryRate` | Breathing rate |
+    | `bloodPressure` | Blood pressure readings |
+  </Accordion>
+
+  <Accordion title="Body Measurements">
+    | Type | Description |
+    |------|-------------|
+    | `bodyMass` | Weight |
+    | `height` | Height |
+    | `bmi` | Body Mass Index |
+    | `bodyFatPercentage` | Body fat % |
+    | `leanBodyMass` | Lean body mass |
+    | `waistCircumference` | Waist circumference (iOS 16+) |
+    | `bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Sleep & Mindfulness">
+    | Type | Description |
+    |------|-------------|
+    | `sleep` | Sleep sessions and stages |
+    | `mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Nutrition">
+    | Type | Description |
+    |------|-------------|
+    | `dietaryEnergyConsumed` | Calories consumed |
+    | `dietaryCarbohydrates` | Carbs |
+    | `dietaryProtein` | Protein |
+    | `dietaryFatTotal` | Total fat |
+    | `dietaryWater` | Water intake |
+  </Accordion>
+
+  <Accordion title="Workouts">
+    | Type | Description |
+    |------|-------------|
+    | `workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="arrow-right" href="/sdk/ios/integration">
+    Complete step-by-step integration guide.
+  </Card>
+  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open_wearables_ios_sdk">
+    Full API documentation on GitHub.
+  </Card>
+</CardGroup>

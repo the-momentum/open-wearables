@@ -10,6 +10,7 @@ def log_structured(
     logger: Logger,
     level: str,
     message: str,
+    provider: str | None = None,
     **attributes: Any,
 ) -> None:
     """
@@ -27,8 +28,9 @@ def log_structured(
 
     Args:
         logger: Logger instance (used for compatibility, but output goes directly to stdout)
-        level: Log level (debug, info, warn, error)
+        level: Log level (debug, info, warning, error)
         message: Log message (required)
+        provider: Provider name (optional)
         **attributes: Custom attributes to include (queryable via @name:value in log explorers)
 
     Example:
@@ -52,6 +54,7 @@ def log_structured(
     log_entry = {
         "level": level.lower(),
         "message": message,
+        "provider": provider,
         **attributes,
     }
 

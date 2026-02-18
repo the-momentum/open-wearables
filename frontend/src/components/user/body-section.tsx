@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useBodySummary } from '@/hooks/api/use-health';
+import { SourceBadge } from '@/components/common/source-badge';
 import {
   formatWeight,
   formatHeight,
@@ -159,7 +160,12 @@ export function BodySection({ userId }: BodySectionProps) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
       <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-white">Body Metrics</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-white">Body Metrics</h3>
+          {bodySummary?.source?.provider && (
+            <SourceBadge provider={bodySummary.source.provider} />
+          )}
+        </div>
         <Scale className="h-4 w-4 text-zinc-500" />
       </div>
 
@@ -264,8 +270,10 @@ export function BodySection({ userId }: BodySectionProps) {
                   )}
                   label="Body Temp"
                   sublabel={
-                    latestData?.temperature_measured_at
-                      ? formatLastUpdated(latestData.temperature_measured_at)
+                    latestData?.body_temperature_measured_at
+                      ? formatLastUpdated(
+                          latestData.body_temperature_measured_at
+                        )
                       : undefined
                   }
                 />

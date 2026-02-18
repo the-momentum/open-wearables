@@ -16,11 +16,13 @@ from .oauth import router as oauth_router
 from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
+from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
 from .token import router as token_router
+from .user_invitation_code import router as user_invitation_code_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
 
@@ -35,6 +37,8 @@ v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"]
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
 # Oura webhooks for data notifications
 v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
+# Strava webhooks for event notifications
+v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])
@@ -46,6 +50,7 @@ v1_router.include_router(import_xml_router, tags=["Apple Health XML import"])
 v1_router.include_router(external_connectors_router, tags=["External connectors"])
 v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])
+v1_router.include_router(user_invitation_code_router, tags=["Mobile SDK"])
 v1_router.include_router(applications_router, tags=["applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
 v1_router.include_router(priorities_router, tags=["priorities"])

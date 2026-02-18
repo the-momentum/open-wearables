@@ -19,6 +19,7 @@ import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import { CursorPagination } from '@/components/common/cursor-pagination';
 import { MetricCard } from '@/components/common/metric-card';
+import { SourceBadge } from '@/components/common/source-badge';
 import { SectionHeader } from '@/components/common/section-header';
 import {
   ChartContainer,
@@ -203,6 +204,9 @@ function ActivityDayRow({ summary }: { summary: ActivitySummary }) {
           <p className="text-xs text-zinc-500">
             {format(new Date(summary.date), 'yyyy')}
           </p>
+          {summary.source?.provider && (
+            <SourceBadge provider={summary.source.provider} className="mt-1" />
+          )}
         </div>
 
         {/* Stats - evenly spaced */}
@@ -335,7 +339,7 @@ export function ActivitySection({
     }
   );
 
-  // Fetch activity days with cursor-based pagination
+  // Fetch activity days with cursor-based pagination (newest first)
   const {
     data: daysData,
     isLoading: daysLoading,
@@ -344,6 +348,7 @@ export function ActivitySection({
     ...allTimeRange,
     limit: DAYS_PER_PAGE,
     cursor: pagination.currentCursor ?? undefined,
+    sort_order: 'desc',
   });
 
   // Derive pagination state from response
@@ -359,8 +364,8 @@ export function ActivitySection({
     [summaryData]
   );
 
-  // Get displayed days from current page data
-  const displayedDays = daysData?.data || [];
+  // Get displayed days from current page data (sorted by backend via sort_order=desc)
+  const displayedDays = useMemo(() => daysData?.data || [], [daysData]);
   const hasData = displayedDays.length > 0;
 
   // Selected metric for the chart

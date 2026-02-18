@@ -82,6 +82,11 @@ series_types:
     max_value: 37.5
     percentage: 1
 
+  skin_temperature:
+    min_value: 33.5
+    max_value: 36.9
+    percentage: 1
+
   weight:
     min_value: 50.0
     max_value: 120.0

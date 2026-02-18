@@ -24,7 +24,6 @@ from app.schemas import (
 from app.schemas.apple.healthkit.sync_request import SyncRequest, WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 from .device_resolution import extract_device_info
@@ -32,8 +31,15 @@ from .sleep_service import handle_sleep_data
 
 
 class ImportService:
-    def __init__(self, log: Logger):
+    def __init__(
+        self,
+        log: Logger,
+        provider: str = "apple",
+        source: str = "apple_health_sdk",
+    ):
         self.log = log
+        self.provider = provider
+        self.source = source
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
@@ -65,16 +71,16 @@ class ImportService:
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name="apple_health_sdk",
+                source_name=self.source,
                 device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                source="apple_health_sdk",
+                source=self.source,
                 software_version=software_version,
-                provider="apple",
+                provider=self.provider,
                 user_id=user_uuid,
             )
 
@@ -112,10 +118,10 @@ class ImportService:
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
-                source="apple_health_sdk",
+                source=self.source,
                 device_model=device_model,
                 software_version=software_version,
-                provider="apple",
+                provider=self.provider,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -287,7 +293,8 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
-                    action="apple_sdk_validate_data",
+                    provider=f"{self.provider}",
+                    action=f"{self.provider}_sdk_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
@@ -302,7 +309,7 @@ class ImportService:
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
 
-            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), "apple")
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), self.provider)
             if connection:
                 self.user_connection_repo.update_last_synced_at(db_session, connection)
 
@@ -310,8 +317,9 @@ class ImportService:
             log_structured(
                 self.log,
                 "info",
-                "Apple data import completed",
-                action="apple_sdk_import_complete",
+                f"{self.provider.capitalize()} data import completed",
+                provider=f"{self.provider}",
+                action=f"{self.provider}_sdk_import_complete",
                 batch_id=batch_id,
                 user_id=user_id,
                 incoming_records=incoming_records,
@@ -327,16 +335,11 @@ class ImportService:
                 self.log,
                 "error",
                 f"Import failed for user {user_id}: {e}",
-                action="apple_sdk_import_failed",
+                provider=f"{self.provider}",
+                action=f"{self.provider}_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,
-            )
-            log_and_capture_error(
-                e,
-                self.log,
-                f"Import failed for user {user_id}: {e}",
-                extra={"user_id": user_id, "batch_id": batch_id},
             )
             return UploadDataResponse(
                 status_code=400,

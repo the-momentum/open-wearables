@@ -138,9 +138,16 @@ class EventRecordRepository(
         if not values_list:
             return []
 
-        stmt = insert(self.model).values(values_list).on_conflict_do_nothing(constraint="uq_event_record_datetime")
-        result = db_session.execute(stmt.returning(self.model.id))
-        inserted_ids = {row[0] for row in result.fetchall()}
+        # 3. Batch insert with ON CONFLICT DO NOTHING
+        # Chunk to stay under PostgreSQL's 65535 parameter limit (9 params/row → max ~7281 rows)
+        chunk_size = 7_000
+        inserted_ids: set[UUID] = set()
+        for i in range(0, len(values_list), chunk_size):
+            chunk = values_list[i : i + chunk_size]
+            stmt = insert(self.model).values(chunk).on_conflict_do_nothing(constraint="uq_event_record_datetime")
+            result = db_session.execute(stmt.returning(self.model.id))
+            inserted_ids.update(row[0] for row in result.fetchall())
+        # NOTE: Caller should commit - allows batching multiple operations
 
         return list(inserted_ids)
 

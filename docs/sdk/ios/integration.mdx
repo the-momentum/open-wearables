@@ -1,0 +1,584 @@
+---
+title: "Integration Guide"
+sidebarTitle: "Integration Guide"
+description: "Complete guide to integrating the native iOS SDK with your Swift application"
+---
+
+## Overview
+
+This guide walks you through the complete integration of the Open Wearables iOS SDK into a native Swift application, from backend setup to production deployment.
+
+<Steps>
+  <Step title="Set up backend authentication endpoint" />
+  <Step title="Configure the SDK in your iOS app" />
+  <Step title="Implement sign-in flow" />
+  <Step title="Request health permissions" />
+  <Step title="Start background sync" />
+</Steps>
+
+## Authentication Architecture
+
+The SDK supports two authentication modes: **token-based** (recommended) and **API key**. The token-based flow keeps your API keys safe on your backend:
+
+<Steps>
+  <Step title="Mobile App requests credentials" icon="mobile">
+    User initiates health connection in your iOS app. App calls your backend.
+  </Step>
+  <Step title="Your Backend generates token" icon="server">
+    Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
+    ```
+    POST https://api.openwearables.io/v1/tokens
+    X-API-Key: sk_live_your_secret_key
+    ```
+  </Step>
+  <Step title="Backend returns credentials" icon="key">
+    Open Wearables returns `userId` + `accessToken` (+ optional `refreshToken`). Your backend passes these to the mobile app (**not the API Key!**).
+  </Step>
+  <Step title="SDK stores & syncs" icon="lock">
+    iOS SDK stores credentials in Keychain and uses `accessToken` to sync health data directly to Open Wearables.
+  </Step>
+</Steps>
+
+<Warning>
+  **Never embed your API Key in the mobile app.** The API Key should only exist on your backend server. Only the `accessToken` is passed to the mobile app.
+</Warning>
+
+## Step 1: Backend Setup
+
+Your backend needs a single endpoint that generates access tokens for your users.
+
+### Generate Access Token
+
+When a user wants to connect their health data, your backend should:
+
+1. Authenticate the user (your own auth system)
+2. Call Open Wearables API to generate an access token
+3. Return the token to the mobile app
+
+<Tabs>
+  <Tab title="Node.js">
+```javascript
+// Express.js example
+const express = require('express');
+const app = express();
+
+app.post('/api/health/connect', authenticateUser, async (req, res) => {
+  try {
+    // 1. Get your authenticated user
+    const userId = req.user.id;
+    
+    // 2. Call Open Wearables API to generate token
+    const response = await fetch('https://api.openwearables.io/v1/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.OPENWEARABLES_API_KEY, // Secret! Never expose!
+      },
+      body: JSON.stringify({
+        externalId: userId.toString(), // Your user's ID
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to generate token');
+    }
+    
+    const { userId: owUserId, accessToken } = await response.json();
+    
+    // 3. Return credentials to mobile app (NOT the API Key!)
+    res.json({ 
+      userId: owUserId, 
+      accessToken 
+    });
+  } catch (error) {
+    console.error('Health connect error:', error);
+    res.status(500).json({ error: 'Failed to connect health' });
+  }
+});
+```
+  </Tab>
+
+  <Tab title="Python">
+```python
+# FastAPI example
+from fastapi import FastAPI, Depends, HTTPException
+import httpx
+import os
+
+app = FastAPI()
+
+@app.post("/api/health/connect")
+async def connect_health(current_user = Depends(get_current_user)):
+    # 1. Call Open Wearables API to generate token
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.openwearables.io/v1/tokens",
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": os.environ["OPENWEARABLES_API_KEY"],
+            },
+            json={
+                "externalId": str(current_user.id),
+            },
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(500, "Failed to generate token")
+        
+        data = response.json()
+    
+    # 2. Return credentials to mobile app
+    return {
+        "userId": data["userId"],
+        "accessToken": data["accessToken"],
+    }
+```
+  </Tab>
+
+  <Tab title="Ruby">
+```ruby
+# Rails controller example
+class HealthController < ApplicationController
+  before_action :authenticate_user!
+
+  def connect
+    # 1. Call Open Wearables API to generate token
+    response = HTTParty.post(
+      'https://api.openwearables.io/v1/tokens',
+      headers: {
+        'Content-Type' => 'application/json',
+        'X-API-Key' => ENV['OPENWEARABLES_API_KEY']
+      },
+      body: {
+        externalId: current_user.id.to_s
+      }.to_json
+    )
+
+    if response.success?
+      # 2. Return credentials to mobile app
+      render json: {
+        userId: response['userId'],
+        accessToken: response['accessToken']
+      }
+    else
+      render json: { error: 'Failed to connect' }, status: 500
+    end
+  end
+end
+```
+  </Tab>
+</Tabs>
+
+<Note>
+  The `externalId` parameter links the Open Wearables user to your user. Use your internal user ID to easily correlate data later.
+</Note>
+
+## Step 2: SDK Configuration
+
+Configure the SDK once at app startup, typically in your `AppDelegate` or app initialization code.
+
+```swift
+import OpenWearablesHealthSDK
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+
+        let sdk = OpenWearablesHealthSDK.shared
+
+        // Optional: Set up logging
+        sdk.onLog = { message in
+            print("[HealthSDK] \(message)")
+        }
+
+        // Optional: Handle auth errors
+        sdk.onAuthError = { statusCode, message in
+            print("Auth error \(statusCode): \(message)")
+        }
+
+        // Configure with your host
+        sdk.configure(host: "https://api.openwearables.io")
+
+        return true
+    }
+
+    // Required for background URL session support
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        OpenWearablesHealthSDK.setBackgroundCompletionHandler(completionHandler)
+    }
+}
+```
+
+### Configuration Options
+
+| Parameter | Description |
+|-----------|-------------|
+| `host` | The Open Wearables API URL (e.g. `https://api.openwearables.io`) |
+
+```swift
+// For self-hosted Open Wearables
+sdk.configure(host: "https://your-domain.com")
+```
+
+### Session Restoration
+
+The SDK automatically persists credentials in the iOS Keychain. On app launch, call `configure()` to restore any existing session:
+
+```swift
+sdk.configure(host: "https://api.openwearables.io")
+
+// Check if user was previously signed in
+if sdk.restoreSession() {
+    print("Welcome back!")
+    // User is already signed in, can resume sync
+} else {
+    // Need to sign in first
+}
+```
+
+## Step 3: Sign In
+
+After getting credentials from your backend, sign in with the SDK. The SDK supports two authentication modes:
+
+### Token-Based Authentication (Recommended)
+
+```swift
+func connectHealth() {
+    // 1. Get credentials from YOUR backend
+    yourAPI.post("/api/health/connect") { result in
+        switch result {
+        case .success(let credentials):
+            // 2. Sign in with the SDK
+            OpenWearablesHealthSDK.shared.signIn(
+                userId: credentials.userId,
+                accessToken: credentials.accessToken,
+                refreshToken: credentials.refreshToken, // Optional: enables auto-refresh
+                apiKey: nil
+            )
+            print("Connected: \(credentials.userId)")
+
+        case .failure(let error):
+            print("Failed to connect: \(error)")
+        }
+    }
+}
+```
+
+### API Key Authentication
+
+For simpler setups (e.g. internal tools), you can use API key authentication directly:
+
+```swift
+OpenWearablesHealthSDK.shared.signIn(
+    userId: "user123",
+    accessToken: nil,
+    refreshToken: nil,
+    apiKey: "your_api_key"
+)
+```
+
+<Warning>
+  API key authentication embeds the key in the app. Only use this for internal or trusted applications. For production apps, always use token-based authentication.
+</Warning>
+
+### Automatic Token Refresh
+
+When you provide a `refreshToken`, the SDK automatically handles 401 responses by refreshing the access token and retrying the request. No additional configuration is needed.
+
+You can also update tokens manually if needed:
+
+```swift
+OpenWearablesHealthSDK.shared.updateTokens(
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken
+)
+```
+
+## Step 4: Request Permissions
+
+Request access to specific health data types:
+
+```swift
+func requestHealthPermissions() {
+    OpenWearablesHealthSDK.shared.requestAuthorization(
+        types: [
+            "steps",
+            "heartRate",
+            "restingHeartRate",
+            "sleep",
+            "workout",
+            "activeEnergy",
+            "bodyMass",
+        ]
+    ) { granted in
+        if granted {
+            print("Health permissions granted")
+        } else {
+            print("Some permissions were denied")
+        }
+    }
+}
+```
+
+<Note>
+  On iOS, users can grant partial permissions. The SDK will sync whatever data the user allows. Apple's privacy model means your app cannot determine which specific types were denied.
+</Note>
+
+### iOS Permission UI
+
+When requesting permissions, iOS shows a system dialog listing all requested data types. Users can toggle each type individually.
+
+<Tip>
+  Request only the data types you actually need. Requesting too many types can overwhelm users and reduce acceptance rates.
+</Tip>
+
+## Step 5: Start Background Sync
+
+Enable background sync to keep data flowing even when your app is in the background:
+
+```swift
+OpenWearablesHealthSDK.shared.startBackgroundSync { started in
+    print("Background sync started: \(started)")
+}
+```
+
+### Background Sync Behavior
+
+| Mechanism | Description |
+|-----------|-------------|
+| HealthKit Observer Queries | Immediate delivery when new health data is written |
+| BGAppRefreshTask | Scheduled every ~15 minutes (system-managed) |
+| BGProcessingTask | Network-required background processing |
+
+<Warning>
+  Background sync frequency is controlled by iOS and may vary based on battery level, network conditions, and user behavior. The 15-minute interval is a minimum - actual syncs may be less frequent.
+</Warning>
+
+### Manual Sync
+
+Trigger an immediate sync when needed:
+
+```swift
+OpenWearablesHealthSDK.shared.syncNow {
+    print("Sync completed")
+}
+```
+
+### Stop Sync
+
+```swift
+OpenWearablesHealthSDK.shared.stopBackgroundSync()
+```
+
+## Complete Integration Example
+
+Here's a complete service class showing the full integration:
+
+```swift
+import OpenWearablesHealthSDK
+import Foundation
+
+class HealthSyncService {
+    static let shared = HealthSyncService()
+
+    private let sdk = OpenWearablesHealthSDK.shared
+    private let backendURL: String
+    private var authToken: String?
+
+    var isConnected: Bool {
+        // Check if SDK has an active session
+        return sdk.restoreSession()
+    }
+
+    private init() {
+        self.backendURL = "https://your-backend.com"
+    }
+
+    /// Initialize the health sync service
+    func initialize() {
+        sdk.onLog = { message in
+            print("[HealthSync] \(message)")
+        }
+
+        sdk.onAuthError = { statusCode, message in
+            print("[HealthSync] Auth error \(statusCode): \(message)")
+            if statusCode == 401 {
+                // Handle token expiration in your app
+                NotificationCenter.default.post(name: .healthAuthExpired, object: nil)
+            }
+        }
+
+        sdk.configure(host: "https://api.openwearables.io")
+    }
+
+    /// Connect health data for the current user
+    func connect(authToken: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        self.authToken = authToken
+
+        // 1. Get credentials from your backend
+        var request = URLRequest(url: URL(string: "\(backendURL)/api/health/connect")!)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let userId = json["userId"] as? String,
+                  let accessToken = json["accessToken"] as? String else {
+                completion(.failure(NSError(domain: "", code: -1, userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to parse credentials"
+                ])))
+                return
+            }
+
+            // 2. Sign in with SDK
+            self.sdk.signIn(
+                userId: userId,
+                accessToken: accessToken,
+                refreshToken: json["refreshToken"] as? String,
+                apiKey: nil
+            )
+
+            // 3. Request permissions and start sync
+            self.sdk.requestAuthorization(types: [
+                "steps", "heartRate", "sleep", "workout", "activeEnergy"
+            ]) { granted in
+                if granted {
+                    self.sdk.startBackgroundSync { started in
+                        if started {
+                            completion(.success(()))
+                        } else {
+                            completion(.failure(NSError(domain: "", code: -1, userInfo: [
+                                NSLocalizedDescriptionKey: "Failed to start sync"
+                            ])))
+                        }
+                    }
+                } else {
+                    completion(.failure(NSError(domain: "", code: -1, userInfo: [
+                        NSLocalizedDescriptionKey: "Health permissions not granted"
+                    ])))
+                }
+            }
+        }.resume()
+    }
+
+    /// Disconnect health data
+    func disconnect() {
+        sdk.stopBackgroundSync()
+        sdk.signOut()
+    }
+
+    /// Trigger an immediate sync
+    func syncNow(completion: @escaping () -> Void) {
+        sdk.syncNow {
+            completion()
+        }
+    }
+
+    /// Force a full re-sync of all data
+    func resyncAllData() {
+        sdk.resetAnchors()
+        sdk.syncNow { }
+    }
+}
+
+extension Notification.Name {
+    static let healthAuthExpired = Notification.Name("healthAuthExpired")
+}
+```
+
+### Using the Service
+
+```swift
+class HealthViewController: UIViewController {
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        HealthSyncService.shared.initialize()
+    }
+
+    @IBAction func connectHealthTapped(_ sender: Any) {
+        guard let authToken = getAuthToken() else { return }
+
+        HealthSyncService.shared.connect(authToken: authToken) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self.showAlert(title: "Success", message: "Health data connected!")
+                case .failure(let error):
+                    self.showAlert(title: "Error", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @IBAction func disconnectTapped(_ sender: Any) {
+        HealthSyncService.shared.disconnect()
+        showAlert(title: "Disconnected", message: "Health sync stopped.")
+    }
+
+    @IBAction func syncNowTapped(_ sender: Any) {
+        HealthSyncService.shared.syncNow {
+            DispatchQueue.main.async {
+                self.showAlert(title: "Sync", message: "Sync completed!")
+            }
+        }
+    }
+
+    private func showAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+}
+```
+
+## Data Sync Endpoint
+
+The SDK sends health data to:
+
+```
+POST /sdk/users/{user_id}/sync/apple/healthkit
+```
+
+Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
+
+## Internal Architecture
+
+The SDK uses a modular architecture with several internal components:
+
+| Component | Purpose |
+|-----------|---------|
+| **Anchors** | Per-user `HKQueryAnchor` persistence for incremental sync |
+| **Background** | HealthKit observer queries + `BGTaskScheduler` management |
+| **Keychain** | Secure credential storage using iOS Security framework |
+| **Outbox** | Persistent upload queue with retry logic for failed uploads |
+| **Session** | Resumable sync state tracking (survives app restarts) |
+| **Types** | HealthKit type mapping and data serialization |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/ios/troubleshooting">
+    Common issues and solutions for native iOS.
+  </Card>
+  <Card title="Data Types" icon="database" href="/architecture/data-types">
+    Available health metrics and data formats.
+  </Card>
+</CardGroup>

@@ -8,7 +8,7 @@ description: 'Provider-specific configuration, requirements, and sync parameters
 Each wearable provider has different requirements and parameters for syncing data. This guide covers the specifics for each supported provider.
 
 <Warning>
-  Provider names in API paths must be **lowercase**: `garmin`, `polar`, `suunto`, `apple`
+  Provider names in API paths must be **lowercase**: `garmin`, `polar`, `suunto`, `whoop`, `apple`
 </Warning>
 
 ## Garmin
@@ -101,6 +101,65 @@ curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync
 
 # Sync only workouts
 curl -X POST "http://localhost:8000/api/v1/providers/suunto/users/{user_id}/sync?data_type=workouts" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+---
+
+## Whoop
+
+Whoop uses OAuth 2.0 and supports both workouts and 24/7 data (sleep, recovery, body measurements).
+
+### Setup
+
+1. Create an application at [developer.whoop.com](https://developer.whoop.com)
+2. Set your redirect URI to `http://localhost:8000/api/v1/oauth/whoop/callback`
+3. Configure environment variables:
+
+```bash
+WHOOP_CLIENT_ID=your-client-id
+WHOOP_CLIENT_SECRET=your-client-secret
+WHOOP_REDIRECT_URI=http://localhost:8000/api/v1/oauth/whoop/callback
+WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout
+```
+
+### Sync Parameters
+
+Whoop does not require provider-specific query parameters. Use the standard `data_type` parameter to control what gets synced.
+
+| `data_type` Value | Description |
+|-------------------|-------------|
+| `workouts` | Workout/exercise sessions |
+| `247` | Sleep sessions, recovery metrics, body measurements |
+| `all` | Both workouts and 24/7 data |
+
+<Note>
+  When no date range is specified, Whoop defaults to syncing the last 30 days of data.
+</Note>
+
+### Data Collected
+
+**Workouts:** heart rate (avg/max), energy burned, distance, elevation gain, duration.
+
+**Sleep (247):** total duration, time in bed, efficiency score, sleep stages (deep, light, REM, awake), nap detection.
+
+**Recovery (247):** recovery score, resting heart rate, HRV (RMSSD), SpO2 percentage, skin temperature.
+
+**Body measurements (247):** height, weight.
+
+### Example
+
+```bash
+# Sync all Whoop data
+curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=all" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# Sync only workouts
+curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=workouts" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+# Sync only sleep & recovery data
+curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=247" \
   -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 

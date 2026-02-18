@@ -94,9 +94,12 @@ export interface AuthResponse {
   developer_id: string;
 }
 
-export interface Token {
-  access_token: string;
-  token_type: string;
+export interface InvitationCode {
+  id: string;
+  code: string;
+  user_id: string;
+  expires_at: string;
+  created_at: string;
 }
 
 export interface RegisterRequest {
@@ -286,7 +289,9 @@ export interface BodyAveraged {
  */
 export interface BodyLatest {
   body_temperature_celsius: number | null;
-  temperature_measured_at: string | null;
+  body_temperature_measured_at: string | null;
+  skin_temperature_celsius: number | null;
+  skin_temperature_measured_at: string | null;
   blood_pressure: BloodPressure | null;
   blood_pressure_measured_at: string | null;
 }
@@ -557,21 +562,33 @@ export interface InvitationAccept {
   password: string;
 }
 
-// Garmin Backfill Status (sequential: 5 data types × 30 days)
-export interface GarminBackfillStatus {
-  in_progress: boolean;
-  days_completed: number;
-  current_data_type_index: number;
-  current_data_type: string; // "sleeps" | "dailies" | "epochs" | "bodyComps" | "hrv"
-  current_end_date: string | null;
-  target_days: number;
-}
-
 // Sync Response (returned by provider sync endpoint)
 export interface SyncResponse {
   success: boolean;
   async: boolean;
   task_id: string;
   message: string;
-  backfill_status?: GarminBackfillStatus;
+}
+
+// Garmin Backfill Types (webhook-based, 30-day sync)
+export interface BackfillTypeStatus {
+  status: 'pending' | 'triggered' | 'success' | 'failed';
+  triggered_at?: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface GarminBackfillStatus {
+  overall_status: 'pending' | 'in_progress' | 'complete' | 'partial';
+  types: Record<string, BackfillTypeStatus>;
+  success_count: number;
+  failed_count: number;
+  pending_count: number;
+  triggered_count: number;
+  total_types: number;
+  current_window?: number;
+  total_windows?: number;
+  completed_windows?: number;
+  days_completed?: number;
+  target_days?: number;
 }

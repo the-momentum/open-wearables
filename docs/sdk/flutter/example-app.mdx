@@ -1,16 +1,20 @@
 ---
-title: "Example App"
-sidebarTitle: "Example App"
+title: "Open Wearables App"
+sidebarTitle: "Open Wearables App"
 description: "Try the SDK with our demo app and see health data sync in action"
 ---
 
 ## Overview
 
-The SDK repository includes a fully functional example app that demonstrates how to integrate health data synchronization with Open Wearables. Use it to test the SDK, explore the code, and see how everything works together.
+The SDK repository includes a fully functional example app that demonstrates how to use SDK to sync Apple Health data with Open Wearables. It's also a great way for individuals to sync their personal health data and get it into Open Wearables in minutes! Use it to test the SDK, explore the code, and see how everything works together.
 
 <Card title="Example App Source" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk/tree/main/example">
   View the example app source code on GitHub.
 </Card>
+
+<Info>
+  Don't want to build the app yourself? Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask for a **TestFlight** beta invitation. The app will also be available in the App Store soon!
+</Info>
 
 ## What You'll See
 
@@ -27,26 +31,31 @@ The example app demonstrates the complete integration flow:
 ### 1. Open Wearables Dashboard - Creating User Token
 
 First, you need to create a user and generate an access token in the Open Wearables dashboard. This video shows:
+- Login to the dashboard
 - Creating a new user in the dashboard
-- Generating an `accessToken` for SDK authentication
-- Copying credentials to use in the mobile app
+- Generating an `invitation code` for SDK authentication
 
 <video
   controls
   className="w-full rounded-lg"
-  src="/images/sdk/open_wearables_dashboard.mp4"
+  src="/images/sdk/invitation-code.mp4"
 />
 
 ### 2. Mobile App - Connecting and Syncing
 
-After getting credentials from the dashboard, the mobile app connects to HealthKit and syncs data:
+After setting the invitation code and host URL from the dashboard, the mobile app connects to HealthKit and syncs data:
 
 <video
   controls
   className="rounded-lg mx-auto"
   style={{ maxWidth: '300px' }}
-  src="/images/sdk/example_app.mp4"
+  src="/images/sdk/app-ow.mp4"
 />
+
+<Tip>
+  - Make sure to enter the **API URL** (e.g. `https://api.openwearables.ai`), not the dashboard URL (e.g. `https://app.openwearables.ai`).
+  - If you're running Open Wearables locally, you need to expose it publicly so the mobile app can communicate with it. See the [ngrok setup guide](/dev-guides/ngrok-setup) for instructions.
+</Tip>
 
 ## Running the Example App
 

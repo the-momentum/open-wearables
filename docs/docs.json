@@ -25,19 +25,29 @@
             "group": "Architecture",
             "pages": [
               "architecture/system-overview",
-              "architecture/unified-data-model"
+              "architecture/unified-data-model",
+              "architecture/data-types"
             ]
           },
           {
             "group": "Providers",
             "pages": [
-              "provider-setup/index"
+              "providers/supported",
+              "providers/coverage"
             ]
           },
           {
             "group": "Sync SDK",
             "pages": [
               "sdk/index",
+              {
+                "group": "iOS (Swift)",
+                "pages": [
+                  "sdk/ios/index",
+                  "sdk/ios/integration",
+                  "sdk/ios/troubleshooting"
+                ]
+              },
               {
                 "group": "Flutter",
                 "pages": [
@@ -67,6 +77,12 @@
             ]
           },
           {
+            "group": "Deployment",
+            "pages": [
+              "deployment/railway"
+            ]
+          },
+          {
             "group": "Support",
             "pages": [
               "support",
@@ -91,8 +107,6 @@
               "api-reference/guides/quick-integration",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
-              "api-reference/guides/data-types",
-              "api-reference/guides/provider-coverage",
               "api-reference/guides/error-handling"
             ]
           }

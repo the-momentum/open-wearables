@@ -6,6 +6,7 @@ import resend
 from pydantic import EmailStr, TypeAdapter, ValidationError
 
 from app.config import settings
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 _email_validator = TypeAdapter(EmailStr)
@@ -28,13 +29,31 @@ def _get_from_address() -> str:
 def _is_email_configured() -> bool:
     """Check if email sending is properly configured."""
     if not settings.resend_api_key:
-        logger.warning("RESEND_API_KEY not configured, skipping email send")
+        log_structured(
+            logger,
+            "warning",
+            "RESEND_API_KEY not configured, skipping email send",
+            provider="email",
+            task="is_email_configured",
+        )
         return False
     if not settings.email_from_address:
-        logger.warning("EMAIL_FROM_ADDRESS not configured, skipping email send")
+        log_structured(
+            logger,
+            "warning",
+            "EMAIL_FROM_ADDRESS not configured, skipping email send",
+            provider="email",
+            task="is_email_configured",
+        )
         return False
     if not settings.email_from_name:
-        logger.warning("EMAIL_FROM_NAME not configured, skipping email send")
+        log_structured(
+            logger,
+            "warning",
+            "EMAIL_FROM_NAME not configured, skipping email send",
+            provider="email",
+            task="is_email_configured",
+        )
         return False
     return True
 
@@ -62,7 +81,9 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         True if email was sent successfully, False otherwise
     """
     if not is_valid_email(to_email):
-        logger.warning("Invalid email address provided")
+        log_structured(
+            logger, "warning", "Invalid email address provided", provider="email", task="send_invitation_email"
+        )
         return False
     if not _is_email_configured():
         return False
@@ -105,5 +126,7 @@ def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str 
         logger.info(f"Invitation email sent successfully, result: {result}")
         return True
     except Exception as e:
-        logger.exception(f"Failed to send invitation email: {e}")
+        log_structured(
+            logger, "error", f"Failed to send invitation email: {e}", provider="email", task="send_invitation_email"
+        )
         return False
