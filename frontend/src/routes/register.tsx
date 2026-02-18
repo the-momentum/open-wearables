@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '@/hooks/use-auth';
+import { getCopyrightText } from '@/lib/constants/app';
 import { isAuthenticated } from '@/lib/auth/session';
 import {
   registerSchema,
@@ -203,7 +204,7 @@ function RegisterPage() {
 
           {/* Footer */}
           <div className="flex items-center justify-between text-xs text-zinc-600">
-            <p>© 2025 Open Wearables</p>
+            <p>{getCopyrightText()}</p>
             <div className="flex gap-3">
               <a href="#" className="hover:text-zinc-400 transition-colors">
                 Privacy

@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { isAuthenticated } from '@/lib/auth/session';
 import logotype from '@/logotype.svg';
+import { getCopyrightText } from '@/lib/constants/app';
 import {
   acceptInvitationSchema,
   type AcceptInvitationFormData,
@@ -342,7 +343,7 @@ function AcceptInvitePage() {
             </div>
 
             <div className="flex items-center justify-between text-xs text-zinc-600">
-              <p>© 2025 Open Wearables</p>
+              <p>{getCopyrightText()}</p>
             </div>
           </div>
 
