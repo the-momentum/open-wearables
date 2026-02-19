@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import secrets
 from abc import ABC, abstractmethod
 from base64 import b64encode, urlsafe_b64encode
@@ -23,6 +24,9 @@ from app.schemas.oauth import (
     ProviderEndpoints,
     UserConnectionCreate,
 )
+from app.utils.structured_logging import log_structured
+
+logger = logging.getLogger(__name__)
 
 
 class BaseOAuthTemplate(ABC):
@@ -79,6 +83,15 @@ class BaseOAuthTemplate(ABC):
             state_data.update(pkce_data)
         self.redis_client.setex(redis_key, self.state_ttl, json.dumps(state_data))
 
+        log_structured(
+            logger,
+            "info",
+            "OAuth authorization URL generated",
+            provider=self.provider_name,
+            task="get_authorization_url",
+            user_id=str(user_id),
+        )
+
         return auth_url, state
 
     def handle_callback(self, db: DbSession, code: str, state: str) -> OAuthState:
@@ -86,6 +99,15 @@ class BaseOAuthTemplate(ABC):
         oauth_state, code_verifier = self._validate_state(state)
 
         if oauth_state.provider != self.provider_name:
+            log_structured(
+                logger,
+                "error",
+                "Provider mismatch in OAuth state",
+                provider=self.provider_name,
+                task="handle_callback",
+                user_id=str(oauth_state.user_id),
+                state_provider=oauth_state.provider,
+            )
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Provider mismatch in state")
 
         token_response = self._exchange_token(code, code_verifier)
@@ -93,6 +115,15 @@ class BaseOAuthTemplate(ABC):
         user_info = self._get_provider_user_info(token_response, str(oauth_state.user_id))
 
         self._save_connection(db, oauth_state.user_id, token_response, user_info, oauth_state)
+
+        log_structured(
+            logger,
+            "info",
+            "OAuth callback handled successfully",
+            provider=self.provider_name,
+            task="handle_callback",
+            user_id=str(oauth_state.user_id),
+        )
 
         return oauth_state
 
@@ -120,11 +151,37 @@ class BaseOAuthTemplate(ABC):
                     token_response.expires_in,
                 )
 
+            log_structured(
+                logger,
+                "info",
+                "OAuth token refreshed successfully",
+                provider=self.provider_name,
+                task="refresh_access_token",
+                user_id=str(user_id),
+            )
+
             return token_response
 
         except httpx.HTTPStatusError as e:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to refresh OAuth token: {e.response.text}",
+                provider=self.provider_name,
+                task="refresh_access_token",
+                user_id=str(user_id),
+                status_code=e.response.status_code,
+            )
             raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=f"Failed to refresh token: {e.response.text}")
         except Exception as e:
+            log_structured(
+                logger,
+                "error",
+                f"OAuth token refresh failed: {e}",
+                provider=self.provider_name,
+                task="refresh_access_token",
+                user_id=str(user_id),
+            )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token refresh failed: {str(e)}")
 
     def _build_auth_url(self, state: str) -> tuple[str, dict[str, Any] | None]:
@@ -201,11 +258,26 @@ class BaseOAuthTemplate(ABC):
             response.raise_for_status()
             return OAuthTokenResponse.model_validate(response.json())
         except httpx.HTTPStatusError as e:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to exchange authorization code: {e.response.text}",
+                provider=self.provider_name,
+                task="exchange_token",
+                status_code=e.response.status_code,
+            )
             raise HTTPException(
                 status_code=HTTP_400_BAD_REQUEST,
                 detail=f"Failed to exchange authorization code: {e.response.text}",
             )
         except Exception as e:
+            log_structured(
+                logger,
+                "error",
+                f"Token exchange failed: {e}",
+                provider=self.provider_name,
+                task="exchange_token",
+            )
             raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Token exchange failed: {str(e)}")
 
     def _prepare_token_request(self, code: str, code_verifier: str | None) -> tuple[dict, dict]:
