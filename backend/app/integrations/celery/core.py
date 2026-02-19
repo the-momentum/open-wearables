@@ -79,6 +79,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "gc-stuck-garmin-backfills": {
+            "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
+            "schedule": 180.0,  # Every 3 minutes
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app

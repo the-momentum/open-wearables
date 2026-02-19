@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
+    BACKFILL_DATA_TYPES,
     BACKFILL_ENDPOINTS,
     BACKFILL_WINDOW_COUNT,
     DEFAULT_BACKFILL_DAYS,
@@ -75,6 +76,17 @@ class TestGarminBackfillConfig:
             "mct",
         ]
         assert expected_defaults == ALL_DATA_TYPES
+
+    def test_backfill_data_types(self) -> None:
+        """Test that backfill uses exactly 5 essential data types."""
+        expected = ["sleeps", "dailies", "activities", "activityDetails", "hrv"]
+        assert expected == BACKFILL_DATA_TYPES
+        assert len(BACKFILL_DATA_TYPES) == 5
+
+    def test_backfill_types_are_subset_of_all_types(self) -> None:
+        """Test that all backfill types exist in ALL_DATA_TYPES."""
+        for data_type in BACKFILL_DATA_TYPES:
+            assert data_type in ALL_DATA_TYPES
 
     def test_rate_limit_constants(self) -> None:
         """Test rate limit constants."""
