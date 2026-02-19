@@ -223,9 +223,44 @@ class SummariesService:
                 first_date_midnight = datetime.combine(first_date, datetime.min.time()).replace(tzinfo=timezone.utc)
                 previous_cursor = encode_cursor(first_date_midnight, first_id, "prev")
 
+        # Pre-fetch physiological averages for all sleep records in a single batch query
+        # This eliminates the N+1 query problem where we used to query per sleep record
+        time_ranges: list[tuple[datetime, datetime]] = []
+        result_indices: list[int] = []
+        for idx, result in enumerate(results):
+            sleep_start = result.get("min_start_time")
+            sleep_end = result.get("max_end_time")
+            if sleep_start and sleep_end:
+                time_ranges.append((sleep_start, sleep_end))
+                result_indices.append(idx)
+
+        # Batch fetch all averages in one query (fixes N+1 issue #493)
+        physio_averages_list: list[dict] = []
+        if time_ranges:
+            try:
+                physio_averages_list = self.data_point_repo.get_averages_for_time_ranges(
+                    db_session,
+                    user_id,
+                    time_ranges,
+                    SLEEP_PHYSIO_SERIES_TYPES,
+                )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to fetch heart rate metrics batch for sleep summaries: {e}",
+                )
+                # Fallback: all None values
+                physio_averages_list = [{SeriesType.heart_rate: None} for _ in time_ranges]
+
+        # Create a map from result index to averages
+        averages_by_result: dict[int, dict] = {}
+        for list_idx, result_idx in enumerate(result_indices):
+            averages_by_result[result_idx] = physio_averages_list[list_idx]
+
         # Transform to schema
         data = []
-        for result in results:
+        for idx, result in enumerate(results):
             # Build sleep stages if any stage data is available
             stages = None
             has_stage_data = any(
@@ -239,31 +274,13 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            # Fetch average heart rate during the sleep period
+            # Get pre-fetched average heart rate for this sleep period
             # TODO: Add HRV, respiratory rate, and SpO2 when ready
             avg_hr: int | None = None
-
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        sleep_start,
-                        sleep_end,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch heart rate metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
-                    )
+            physio_averages = averages_by_result.get(idx, {})
+            hr_avg = physio_averages.get(SeriesType.heart_rate)
+            if hr_avg is not None:
+                avg_hr = int(round(hr_avg))
 
             summary = SleepSummary(
                 date=result["sleep_date"],
