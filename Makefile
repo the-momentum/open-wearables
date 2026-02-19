@@ -26,8 +26,7 @@ stop:	## Stops running instance
 down:	## Kills running instance
 	$(DOCKER_COMMAND) down
 
-test:	## Run the tests.
-	export ENV=backend/config/.env.test && \
+test:	## Run the tests
 	cd backend && uv run pytest -v --cov=app
 
 migrate:  ## Apply all migrations

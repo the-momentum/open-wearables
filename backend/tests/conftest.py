@@ -1,11 +1,22 @@
 """
-Main pytest configuration for Open Wearables backend tests.
+Root conftest for Open Wearables backend tests.
 
-Following patterns from know-how-tests.md:
-- PostgreSQL test database with transaction rollback
-- Auto-use fixtures for global mocking
-- Factory pattern for test data
+Uses testcontainers-postgres so every test run gets a fresh, disposable
+database — no manual ``CREATE DATABASE open_wearables_test`` step required.
+
+Key design decisions
+────────────────────
+* **session-scoped** Postgres container + engine  →  container starts once per
+  ``pytest`` invocation.
+* **function-scoped** DB session wrapped in a SAVEPOINT  →  every test is
+  automatically rolled back, giving full isolation with near-zero cost.
+* ``polyfactory`` factories receive the session through a single autouse
+  fixture, so they always flush into the correct transaction.
+* Redis, Celery and all external HTTP calls are globally mocked via autouse
+  fixtures — tests never touch real infra besides Postgres.
 """
+
+from __future__ import annotations
 
 import os
 from collections.abc import Generator
@@ -14,144 +25,152 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from testcontainers.postgres import PostgresContainer
 
-# Set test environment before importing app modules
+# ── Set test environment BEFORE any app import ──────────────────────────────
 os.environ["ENV"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
+os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64
 
 from app.database import BaseDbModel, _get_db_dependency
 from app.main import api
 
-# Test database URL - uses test PostgreSQL database
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test",
-)
+# ════════════════════════════════════════════════════════════════════════════
+#  Database infrastructure  (session scope — started once)
+# ════════════════════════════════════════════════════════════════════════════
+
+POSTGRES_IMAGE = "postgres:16-alpine"
 
 
 @pytest.fixture(scope="session")
-def engine() -> Any:
-    """Create test database engine and tables."""
+def postgres_container() -> Generator[PostgresContainer, None, None]:
+    """Spin up a throwaway Postgres container for the whole test session."""
+    with PostgresContainer(POSTGRES_IMAGE, driver="psycopg") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def database_url(postgres_container: PostgresContainer) -> str:
+    """Return the SQLAlchemy connection URL for the test container."""
+    return postgres_container.get_connection_url()
+
+
+@pytest.fixture(scope="session")
+def engine(database_url: str) -> Generator[Engine, None, None]:
+    """Create the engine, run DDL and seed reference data."""
     test_engine = create_engine(
-        TEST_DATABASE_URL,
+        database_url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
     )
+
+    # Create all tables
     BaseDbModel.metadata.create_all(bind=test_engine)
 
-    # Seed series type definitions (these need to exist for foreign key constraints)
-    from sqlalchemy.orm import Session as SessionClass
-
-    from app.models import SeriesTypeDefinition
-    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
-
-    with SessionClass(bind=test_engine) as session:
-        for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:
-            # Skip series types with codes exceeding VARCHAR(32) limit
-            if len(enum.value) > 32:
-                continue
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == type_id).first()
-            if not existing:
-                series_type = SeriesTypeDefinition(id=type_id, code=enum.value, unit=unit)
-                session.add(series_type)
-        session.commit()
+    # Seed series-type definitions (required for FK constraints)
+    _seed_series_types(test_engine)
 
     yield test_engine
+
     BaseDbModel.metadata.drop_all(bind=test_engine)
+    test_engine.dispose()
 
 
 @pytest.fixture(scope="session")
-def session_factory(engine: Any) -> Any:
-    """Create session factory bound to test engine."""
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Session factory bound to the test engine."""
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture
-def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
-    """
-    Create a test database session with transaction rollback.
-    Each test runs in its own transaction that gets rolled back.
-    """
-    connection = engine.connect()
-    transaction = connection.begin()
-    session = session_factory(bind=connection)
+# ════════════════════════════════════════════════════════════════════════════
+#  Per-test database session  (function scope — rolled back after each test)
+# ════════════════════════════════════════════════════════════════════════════
 
-    # Begin a nested transaction (savepoint)
+
+@pytest.fixture
+def db(engine: Engine, session_factory: sessionmaker[Session]) -> Generator[Session, None, None]:
+    """
+    Provide a transactional DB session that is rolled back after each test.
+
+    Wraps the session inside ``BEGIN`` → ``SAVEPOINT``.  If application code
+    calls ``session.commit()``, only the savepoint is released and a new one
+    is created, so the outer transaction stays open and can be rolled back
+    cleanly at the end.
+    """
+    connection: Connection = engine.connect()
+    transaction = connection.begin()
+    session: Session = session_factory(bind=connection)
+
     nested = connection.begin_nested()
 
-    # If the application code calls commit, restart the savepoint
     @event.listens_for(session, "after_transaction_end")
-    def restart_savepoint(session: Session, transaction: Any) -> None:
+    def _restart_savepoint(sess: Session, trans: Any) -> None:
         nonlocal nested
         if not nested.is_active:
             nested = connection.begin_nested()
 
     yield session
 
-    # Rollback everything
     session.close()
     transaction.rollback()
     connection.close()
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  Factory wiring (polyfactory)
+# ════════════════════════════════════════════════════════════════════════════
+
+
 @pytest.fixture(autouse=True)
-def set_factory_session(db: Session) -> Generator[None, None, None]:
-    """Set database session for all factory-boy factories."""
+def _wire_factories(db: Session) -> Generator[None, None, None]:
+    """Inject the current test session into every polyfactory factory."""
     from tests import factories
 
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = db
+    factories.set_session(db)
     yield
-    # Clear session after test
-    for name, obj in vars(factories).items():
-        if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
-            obj._meta.sqlalchemy_session = None
+    factories.clear_session()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  FastAPI test client
+# ════════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
-    """
-    Create a test client with database dependency override.
-    """
+    """TestClient wired to the per-test DB session."""
 
-    def override_get_db() -> Generator[Session, None, None]:
+    def _override_db() -> Generator[Session, None, None]:
         yield db
 
-    api.dependency_overrides[_get_db_dependency] = override_get_db
+    api.dependency_overrides[_get_db_dependency] = _override_db
 
-    with TestClient(api) as test_client:
-        yield test_client
+    with TestClient(api) as c:
+        yield c
 
     api.dependency_overrides.clear()
 
 
-# ============================================================================
-# Auto-use fixtures for global mocking
-# ============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+#  Global mocks  (autouse — applied to every test)
+# ════════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture(autouse=True)
-def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Globally mock Redis to prevent connection errors in tests."""
+def _mock_redis() -> Generator[MagicMock, None, None]:
+    """Prevent any real Redis connection."""
     mock = MagicMock()
     mock.lock.return_value.__enter__ = MagicMock(return_value=None)
     mock.lock.return_value.__exit__ = MagicMock(return_value=None)
-    mock.get.return_value = None
-    mock.set.return_value = True
-    mock.setex.return_value = True
-    mock.expire.return_value = True
-    mock.delete.return_value = True
+    for attr in ("get", "set", "setex", "expire", "delete"):
+        setattr(mock, attr, MagicMock(return_value=None if attr == "get" else True))
     mock.sadd.return_value = 1
     mock.srem.return_value = 1
     mock.smembers.return_value = set()
 
-    # Return mock for redis.from_url (used by get_redis_client)
-    # We also need to clear lru_cache of get_redis_client to ensure it picks up the mock
     from app.integrations.redis_client import get_redis_client
 
     get_redis_client.cache_clear()
@@ -161,22 +180,24 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, No
 
 
 @pytest.fixture(autouse=True)
-def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Mock Celery tasks to run synchronously."""
-    # Mock the poll_sqs_task specifically
+def _mock_celery() -> Generator[MagicMock, None, None]:
+    """Run Celery tasks synchronously via mocks."""
     mock_task = MagicMock()
     mock_task.delay.return_value = MagicMock()
     mock_task.apply_async.return_value = MagicMock()
 
     with (
         patch("celery.current_app") as mock_celery,
-        patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
+        patch(
+            "app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task",
+            mock_task,
+        ),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
-        # Patch the new finalize_stale_sleeps task that was added in this PR
-        patch("app.integrations.celery.tasks.process_apple_upload_task.finalize_stale_sleeps", mock_task),
+        patch(
+            "app.integrations.celery.tasks.process_apple_upload_task.finalize_stale_sleeps",
+            mock_task,
+        ),
     ):
-        # Configure Celery to use in-memory broker and result backend
-        # We Mock the conf object to return our test settings
         mock_conf = MagicMock()
         mock_conf.__getitem__ = lambda s, k: {
             "task_always_eager": True,
@@ -184,20 +205,14 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
             "broker_url": "memory://",
             "result_backend": "cache+memory://",
         }.get(k)
-
-        # When update is called, we don't want to actually connect to Redis
         mock_conf.update = MagicMock()
         mock_celery.conf = mock_conf
-
         yield mock_task
 
 
 @pytest.fixture(autouse=True)
-def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
-    """Mock external API calls (Garmin, Polar, Suunto, AWS)."""
-    mocks: dict[str, MagicMock] = {}
-
-    # Configure boto3 S3 mock
+def _mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
+    """Prevent any real HTTP call to Garmin / Polar / Suunto / AWS."""
     mock_s3 = MagicMock()
     mock_s3.generate_presigned_url.return_value = "https://test-bucket.s3.amazonaws.com/test-key"
     mock_s3.generate_presigned_post.return_value = {
@@ -205,59 +220,88 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         "fields": {
             "key": "test-user/raw/test.xml",
             "Content-Type": "application/xml",
-            "policy": "test-policy",
-            "x-amz-algorithm": "AWS4-HMAC-SHA256",
-            "x-amz-credential": "test-credential",
-            "x-amz-date": "20251217T000000Z",
-            "x-amz-signature": "test-signature",
         },
     }
     mock_s3.head_bucket.return_value = {}
     mock_s3.put_object.return_value = {"ETag": "test-etag"}
 
+    mocks: dict[str, MagicMock] = {}
     with (
         patch("httpx.AsyncClient") as mock_httpx,
         patch("boto3.client", return_value=mock_s3) as mock_boto3,
         patch("requests.Session") as mock_requests,
-        patch("app.services.apple.apple_xml.aws_service.AWS_BUCKET_NAME", "test-bucket"),
-        patch("app.services.apple.apple_xml.presigned_url_service.AWS_BUCKET_NAME", "test-bucket"),
-        patch("app.services.apple.apple_xml.aws_service.s3_client", mock_s3),
-        patch("app.services.apple.apple_xml.presigned_url_service.s3_client", mock_s3),
+        patch(
+            "app.services.apple.apple_xml.aws_service.AWS_BUCKET_NAME",
+            "test-bucket",
+        ),
+        patch(
+            "app.services.apple.apple_xml.presigned_url_service.AWS_BUCKET_NAME",
+            "test-bucket",
+        ),
+        patch(
+            "app.services.apple.apple_xml.aws_service.s3_client",
+            mock_s3,
+        ),
+        patch(
+            "app.services.apple.apple_xml.presigned_url_service.s3_client",
+            mock_s3,
+        ),
     ):
         mocks["httpx"] = mock_httpx
         mocks["boto3"] = mock_boto3
         mocks["requests"] = mock_requests
         mocks["s3"] = mock_s3
-
         yield mocks
 
 
 @pytest.fixture(autouse=True)
-def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Speed up tests by using simple password hashing."""
+def _fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace bcrypt with trivial hash / verify for speed."""
     import sys
 
-    def simple_hash(password: str) -> str:
+    def _hash(password: str) -> str:
         return f"hashed_{password}"
 
-    def simple_verify(plain: str, hashed: str) -> bool:
+    def _verify(plain: str, hashed: str) -> bool:
         return hashed == f"hashed_{plain}"
 
-    # Patch in the source module
-    monkeypatch.setattr("app.utils.security.get_password_hash", simple_hash)
-    monkeypatch.setattr("app.utils.security.verify_password", simple_verify)
-    # Also patch in modules that import these functions directly (use sys.modules to avoid name shadowing)
+    monkeypatch.setattr("app.utils.security.get_password_hash", _hash)
+    monkeypatch.setattr("app.utils.security.verify_password", _verify)
     if "app.services.developer_service" in sys.modules:
-        monkeypatch.setattr(sys.modules["app.services.developer_service"], "get_password_hash", simple_hash)
-    monkeypatch.setattr("app.api.routes.v1.auth.verify_password", simple_verify)
+        monkeypatch.setattr(
+            sys.modules["app.services.developer_service"],
+            "get_password_hash",
+            _hash,
+        )
+    monkeypatch.setattr("app.api.routes.v1.auth.verify_password", _verify)
 
 
-# ============================================================================
-# Shared test utilities
-# ============================================================================
+# ════════════════════════════════════════════════════════════════════════════
+#  Shared convenience fixtures
+# ════════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
 def api_v1_prefix() -> str:
-    """Return the API v1 prefix."""
     return "/api/v1"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Internal helpers
+# ════════════════════════════════════════════════════════════════════════════
+
+
+def _seed_series_types(test_engine: Engine) -> None:
+    """Insert canonical series-type definitions once per session."""
+    from app.models import SeriesTypeDefinition
+    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
+
+    with Session(bind=test_engine) as session:
+        for type_id, enum_member, unit in SERIES_TYPE_DEFINITIONS:
+            if len(enum_member.value) > 32:
+                continue
+            if not session.get(SeriesTypeDefinition, type_id):
+                session.add(
+                    SeriesTypeDefinition(id=type_id, code=enum_member.value, unit=unit),
+                )
+        session.commit()

@@ -4,35 +4,9 @@ This guide covers how to run tests and write new tests for Open Wearables.
 
 ## Prerequisites
 
-Before running tests, you need a PostgreSQL database running:
-
-### Option 1: Use Docker (Recommended)
-
-```bash
-# Start only the PostgreSQL container
-docker compose up db -d
-
-# Wait for it to be ready
-docker compose logs -f db  # Look for "database system is ready"
-
-# Create the test database
-docker compose exec db psql -U open-wearables -c "CREATE DATABASE open_wearables_test;"
-```
-
-### Option 2: Local PostgreSQL
-
-If you have PostgreSQL installed locally:
-
-```bash
-createdb -U open-wearables open_wearables_test
-```
-
-**Test Database Configuration:**
-- Host: `localhost`
-- Port: `5432`
-- Database: `open_wearables_test`
-- User: `open-wearables`
-- Password: `open-wearables`
+- **Docker daemon** must be running (testcontainers spins up a disposable Postgres automatically).
+- `uv` installed.
+- Backend dev dependencies: `cd backend && uv sync --dev`
 
 ## Running Tests
 
