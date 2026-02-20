@@ -304,19 +304,19 @@ OpenWearablesHealthSDK.shared.updateTokens(
 
 ## Step 4: Request Permissions
 
-Request access to specific health data types:
+Request access to specific health data types using the `HealthDataType` enum:
 
 ```swift
 func requestHealthPermissions() {
     OpenWearablesHealthSDK.shared.requestAuthorization(
         types: [
-            "steps",
-            "heartRate",
-            "restingHeartRate",
-            "sleep",
-            "workout",
-            "activeEnergy",
-            "bodyMass",
+            .steps,
+            .heartRate,
+            .restingHeartRate,
+            .sleep,
+            .workout,
+            .activeEnergy,
+            .bodyMass,
         ]
     ) { granted in
         if granted {
@@ -327,6 +327,10 @@ func requestHealthPermissions() {
     }
 }
 ```
+
+<Note>
+  The `HealthDataType` enum provides type-safe access to all supported health data types. The string-based `requestAuthorization(types: [String], completion:)` overload is deprecated — use the enum variant instead.
+</Note>
 
 <Note>
   On iOS, users can grant partial permissions. The SDK will sync whatever data the user allows. Apple's privacy model means your app cannot determine which specific types were denied.
@@ -457,7 +461,7 @@ class HealthSyncService {
 
             // 3. Request permissions and start sync
             self.sdk.requestAuthorization(types: [
-                "steps", "heartRate", "sleep", "workout", "activeEnergy"
+                .steps, .heartRate, .sleep, .workout, .activeEnergy
             ]) { granted in
                 if granted {
                     self.sdk.startBackgroundSync { started in
