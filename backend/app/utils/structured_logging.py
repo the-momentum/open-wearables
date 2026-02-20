@@ -5,6 +5,7 @@ import sys
 import uuid
 from logging import Logger
 from typing import Any
+from uuid import UUID
 
 
 def json_serial(obj: Any) -> str:

@@ -16,8 +16,8 @@ from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.garmin.backfill_config import (
-    ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
+    BACKFILL_DATA_TYPES,
     BACKFILL_ENDPOINTS,
     DEFAULT_BACKFILL_DAYS,
     REQUEST_DELAY_SECONDS,
@@ -97,7 +97,7 @@ class GarminBackfillService:
         Args:
             db: Database session
             user_id: User ID
-            data_types: List of data types to backfill (defaults to DEFAULT_DATA_TYPES)
+            data_types: List of data types to backfill (defaults to BACKFILL_DATA_TYPES)
             start_time: Start of date range (defaults based on is_first_sync)
             end_time: End of date range (defaults to now)
             is_first_sync: If True, use max timeframe (2 years). If False, use DEFAULT_BACKFILL_DAYS.
@@ -117,7 +117,7 @@ class GarminBackfillService:
             The response only indicates if the backfill request was accepted.
         """
         if data_types is None:
-            data_types = ALL_DATA_TYPES
+            data_types = BACKFILL_DATA_TYPES
 
         if end_time is None:
             end_time = datetime.now(timezone.utc)

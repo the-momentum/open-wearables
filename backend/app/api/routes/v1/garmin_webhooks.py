@@ -752,9 +752,8 @@ async def garmin_push_notification(
                     provider="garmin",
                     trace_id=trace_id,
                     user_id=user_id_str,
-                    success_count=backfill_status["success_count"],
-                    total_types=backfill_status["total_types"],
-                    pending_count=backfill_status["pending_count"],
+                    current_window=backfill_status["current_window"],
+                    total_windows=backfill_status["total_windows"],
                 )
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)

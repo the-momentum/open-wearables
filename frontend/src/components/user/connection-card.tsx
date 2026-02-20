@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import {
   useSynchronizeDataFromProvider,
   useGarminBackfillStatus,
+  useGarminCancelBackfill,
   useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
 
@@ -51,19 +52,45 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
     connection.provider === 'garmin'
   );
 
+  const { mutate: cancelBackfill, isPending: isCancelling } =
+    useGarminCancelBackfill(connection.user_id);
+
   const { mutate: retryBackfill, isPending: isRetrying } =
     useRetryGarminBackfill(connection.user_id);
 
-  // Check if backfill is in progress
+  // Check if backfill is in progress (includes retry phase)
   const isBackfillInProgress =
     connection.provider === 'garmin' &&
-    backfillStatus?.overall_status === 'in_progress';
+    (backfillStatus?.overall_status === 'in_progress' ||
+      backfillStatus?.overall_status === 'retry_in_progress');
 
-  // Get failed types from backfill status
-  const failedTypes = backfillStatus?.types
-    ? Object.entries(backfillStatus.types)
-        .filter(([, v]) => v.status === 'failed')
-        .map(([type, v]) => ({ type, error: v.error }))
+  // Check if currently in retry phase
+  const isRetryPhase =
+    connection.provider === 'garmin' &&
+    backfillStatus?.overall_status === 'retry_in_progress';
+
+  // Check if backfill was cancelled
+  const isBackfillCancelled =
+    connection.provider === 'garmin' &&
+    backfillStatus?.overall_status === 'cancelled';
+
+  // Check if permanently failed
+  const isPermanentlyFailed =
+    connection.provider === 'garmin' &&
+    backfillStatus?.permanently_failed === true;
+
+  // Get timed-out types from summary
+  const timedOutTypes = backfillStatus?.summary
+    ? Object.entries(backfillStatus.summary)
+        .filter(([, v]) => v.timed_out > 0)
+        .map(([type, v]) => ({ type, timedOutCount: v.timed_out }))
+    : [];
+
+  // Get failed types from summary
+  const failedTypes = backfillStatus?.summary
+    ? Object.entries(backfillStatus.summary)
+        .filter(([, v]) => v.failed > 0)
+        .map(([type, v]) => ({ type, failedCount: v.failed }))
     : [];
 
   const renderStatusBadge = (status: string) => {
@@ -145,63 +172,138 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                Fetching historical data...{' '}
-                <span className="font-medium">
-                  {backfillStatus.success_count}/{backfillStatus.total_types}{' '}
-                  complete
-                </span>
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                {isRetryPhase && backfillStatus.retry_type ? (
+                  <span className="text-sm text-muted-foreground">
+                    Retrying {formatTypeName(backfillStatus.retry_type)}{' '}
+                    {backfillStatus.retry_window !== null && (
+                      <span>(window {backfillStatus.retry_window + 1})...</span>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    Fetching historical data...{' '}
+                    <span className="font-medium">
+                      {backfillStatus.current_window} of{' '}
+                      {backfillStatus.total_windows} windows complete
+                    </span>
+                  </span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => cancelBackfill()}
+                disabled={isCancelling}
+              >
+                <XCircle className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
             </div>
             {/* Progress bar */}
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary transition-all duration-300"
                 style={{
-                  width: `${(backfillStatus.success_count / backfillStatus.total_types) * 100}%`,
+                  width: `${backfillStatus.total_windows > 0 ? (backfillStatus.current_window / backfillStatus.total_windows) * 100 : 0}%`,
                 }}
               />
             </div>
+            {/* Attempt counter */}
+            {backfillStatus.attempt_count > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Attempt {backfillStatus.attempt_count} of{' '}
+                {backfillStatus.max_attempts}
+              </span>
+            )}
           </div>
         )}
 
-        {/* Show failed backfill types with retry buttons */}
-        {failedTypes.length > 0 && (
-          <div className="space-y-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
-            <p className="text-sm font-medium text-destructive">
-              Some data failed to sync:
-            </p>
-            <div className="space-y-1.5">
-              {failedTypes.map(({ type, error }) => (
-                <div
-                  key={type}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium">{formatTypeName(type)}</span>
-                    {error && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {error}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs ml-2"
-                    onClick={() => retryBackfill(type)}
-                    disabled={isRetrying}
-                  >
-                    <RotateCcw className="h-3 w-3 mr-1" />
-                    Retry
-                  </Button>
-                </div>
-              ))}
-            </div>
+        {/* Show cancelled backfill status */}
+        {isBackfillCancelled && (
+          <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border">
+            <XCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              Backfill cancelled
+            </span>
           </div>
         )}
+
+        {/* Show permanently failed state */}
+        {isPermanentlyFailed && (
+          <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+            <XCircle className="h-4 w-4 text-destructive" />
+            <span className="text-sm text-destructive">
+              Backfill failed after {backfillStatus?.max_attempts} attempts.
+              Please disconnect and reconnect your Garmin.
+            </span>
+          </div>
+        )}
+
+        {/* Show timed-out backfill types with retry buttons (warning/amber styling) */}
+        {timedOutTypes.length > 0 &&
+          !isBackfillInProgress &&
+          !isPermanentlyFailed && (
+            <div className="space-y-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <p className="text-sm font-medium text-amber-600 dark:text-amber-500">
+                Some data types timed out:
+              </p>
+              <div className="space-y-1.5">
+                {timedOutTypes.map(({ type, timedOutCount }) => (
+                  <div
+                    key={type}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium">
+                        {formatTypeName(type)}
+                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        Timed out in {timedOutCount} window
+                        {timedOutCount > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs ml-2"
+                      onClick={() => retryBackfill(type)}
+                      disabled={isRetrying}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Retry
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        {/* Show failed types (error/destructive styling, no retry) */}
+        {failedTypes.length > 0 &&
+          !isBackfillInProgress &&
+          !isPermanentlyFailed && (
+            <div className="space-y-2 p-3 bg-destructive/10 rounded-lg border border-destructive/20">
+              <p className="text-sm font-medium text-destructive">
+                Some data types failed:
+              </p>
+              <div className="space-y-1.5">
+                {failedTypes.map(({ type, failedCount }) => (
+                  <div key={type} className="flex items-center text-sm">
+                    <XCircle className="h-3 w-3 text-destructive mr-2" />
+                    <span className="font-medium">{formatTypeName(type)}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      Failed in {failedCount} window
+                      {failedCount > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
         {/* Sync button - only for non-Garmin providers */}
         {connection.provider !== 'garmin' && (

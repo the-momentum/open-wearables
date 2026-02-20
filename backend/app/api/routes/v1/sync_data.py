@@ -11,6 +11,7 @@ from app.integrations.celery.tasks import (
     GARMIN_BACKFILL_DATA_TYPES,
     get_garmin_backfill_status,
     reset_garmin_type_status,
+    set_garmin_cancel_flag,
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
@@ -207,30 +208,65 @@ async def get_garmin_backfill_status_endpoint(
     _api_key: ApiKeyDep,
 ) -> dict[str, Any]:
     """
-    Get Garmin backfill status for all 16 data types.
+    Get Garmin backfill status for backfill data types.
 
     The backfill is webhook-based and auto-triggered after OAuth connection.
     Returns status for each data type independently. Max 30 days of history.
 
     **Response Fields:**
-    - `overall_status`: pending | in_progress | complete | partial
-    - `types`: Object with status for each of 16 data types
-    - `success_count`: Number of successfully synced types
-    - `failed_count`: Number of failed types (can be retried)
-    - `pending_count`: Number of types not yet triggered
-    - `triggered_count`: Number of types currently in progress
+    - `overall_status`: pending | in_progress | complete | cancelled | retry_in_progress | permanently_failed
+    - `current_window`: Current window index (0-based)
+    - `total_windows`: Total number of 30-day windows (12)
+    - `windows`: Per-window-per-type matrix with done/pending/timed_out/failed states
+    - `summary`: Per-type aggregated counts (done, timed_out, failed)
+    - `in_progress`: Whether backfill is currently running (true for in_progress or retry_in_progress)
+    - `retry_phase`: Whether the retry phase is currently active
+    - `retry_type`: Data type currently being retried (null if not retrying)
+    - `retry_window`: Window index being retried (null if not retrying)
+    - `attempt_count`: Number of GC-and-retry cycles completed
+    - `max_attempts`: Maximum GC-and-retry cycles before permanently failed (3)
+    - `permanently_failed`: Whether backfill has exhausted all retry attempts
 
-    **Type Status:**
-    - `pending`: Not yet triggered
-    - `triggered`: Backfill request sent, waiting for webhook
-    - `success`: Data received via webhook
-    - `failed`: Error occurred (can retry)
+    **Window Cell States:**
+    - `done`: Data received via webhook or Garmin API error (treated as done)
+    - `pending`: Not yet processed
+    - `timed_out`: No webhook received within timeout (warning)
+    - `failed`: Permanently failed after retry attempt (error)
     """
     backfill_status = get_garmin_backfill_status(str(user_id))
     return {
         "user_id": str(user_id),
         "provider": "garmin",
         **backfill_status,
+    }
+
+
+@router.post("/garmin/users/{user_id}/backfill/cancel")
+async def cancel_garmin_backfill(
+    user_id: UUID,
+    _api_key: ApiKeyDep,
+) -> dict[str, Any]:
+    """
+    Cancel an in-progress Garmin backfill for a user.
+
+    Sets a cancellation flag in Redis. The backfill will stop after the
+    current data type completes processing.
+
+    Returns 409 if no backfill is currently in progress.
+    """
+    backfill_status = get_garmin_backfill_status(str(user_id))
+    if backfill_status["overall_status"] not in ("in_progress", "retry_in_progress"):
+        raise HTTPException(
+            status_code=409,
+            detail="No backfill in progress for this user",
+        )
+
+    set_garmin_cancel_flag(str(user_id))
+
+    return {
+        "success": True,
+        "user_id": str(user_id),
+        "message": "Cancel requested. Backfill will stop after current type completes.",
     }
 
 
@@ -241,15 +277,14 @@ async def retry_garmin_backfill_type(
     _api_key: ApiKeyDep,
 ) -> dict[str, Any]:
     """
-    Retry backfill for a specific failed data type.
+    Retry backfill for a specific data type in the current window.
 
-    Use this endpoint to retry fetching historical data (up to 30 days)
-    for a type that failed.
+    Resets the type status to pending and triggers a new backfill attempt
+    for the current window context. Use when a type has timed out or
+    needs re-processing.
 
     **Valid Type Names:**
-    sleeps, dailies, epochs, bodyComps, hrv, activities, activityDetails,
-    moveiq, healthSnapshot, stressDetails, respiration, pulseOx,
-    bloodPressures, userMetrics, skinTemp, mct
+    sleeps, dailies, activities, activityDetails, hrv
 
     Returns:
         Dict with retry status
