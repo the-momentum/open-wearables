@@ -98,12 +98,82 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout
 
   </Step>
 
-  <Step title="Verify the integration">
-    Once everything is configured:
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow to connect a user's Whoop account.
 
-    1. Start your Open Wearables instance
-    2. Connect a Whoop account through the OAuth flow
-    3. Trigger a sync — Open Wearables will fetch workouts, sleep, recovery, and body measurement data
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/whoop/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://api.prod.whoop.com/oauth/oauth2/auth?client_id=...&redirect_uri=...&response_type=code&scope=offline+read%3Acycles+read%3Asleep+read%3Arecovery+read%3Aworkout&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Whoop and authorize your app.
+
+    **3. Whoop redirects back** to the callback URI configured in your `.env` (`WHOOP_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+
+    **4. Verify the connection** was created:
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "whoop"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `WHOOP_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Whoop sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually sync or fetch historical data:
+
+    ```bash
+    # Sync all data types
+    curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=all" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You can also sync specific data types:
+
+    ```bash
+    # Sync only workouts
+    curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=workouts" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Sync only sleep & recovery
+    curl -X POST "http://localhost:8000/api/v1/providers/whoop/users/{user_id}/sync?data_type=247" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    <Note>
+      When no date range is specified, Whoop defaults to syncing the last 30 days of data.
+    </Note>
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch workouts
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch sleep sessions
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Whoop integration is working end-to-end.
   </Step>
 
   <Step title="Submit your app for production (when ready)">

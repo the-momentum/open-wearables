@@ -21,9 +21,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: ^backend/
+        files: ^(backend|mcp)/
       - id: end-of-file-fixer
-        files: ^backend/
+        files: ^(backend|mcp)/
       - id: check-merge-conflict
         args: [--assume-in-merge]
-        files: ^backend/
+        files: ^(backend|mcp)/

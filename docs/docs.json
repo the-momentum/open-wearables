@@ -77,6 +77,12 @@
             ]
           },
           {
+            "group": "Deployment",
+            "pages": [
+              "deployment/railway"
+            ]
+          },
+          {
             "group": "Support",
             "pages": [
               "support",
