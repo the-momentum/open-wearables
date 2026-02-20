@@ -1,81 +1,60 @@
-# Garmin Data Integration
-
-Complete technical documentation for the Garmin wearable data integration in Open Wearables. Covers OAuth connection, webhook-based data ingestion, historical backfill orchestration, retry/recovery mechanisms, and frontend status rendering.
-
-## Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Data Flow](#data-flow)
-- [OAuth Connection](#oauth-connection)
-- [Webhook Handlers (PING/PUSH)](#webhook-handlers-pingpush)
-- [Backfill Orchestration](#backfill-orchestration)
-  - [Configuration](#configuration)
-  - [State Machine](#state-machine)
-  - [Window Progression](#window-progression)
-  - [Retry Phase](#retry-phase)
-  - [Garbage Collection](#garbage-collection)
-  - [Redis Key Schema](#redis-key-schema)
-- [API Endpoints](#api-endpoints)
-- [Frontend Integration](#frontend-integration)
-- [Data Types](#data-types)
-- [File Reference](#file-reference)
-
+---
+title: "Garmin Data Pipeline"
+description: "Technical deep-dive into Garmin webhook ingestion, backfill orchestration, retry/recovery, and frontend status rendering"
 ---
 
 ## Architecture Overview
 
-```
-┌──────────────┐     OAuth 2.0 + PKCE     ┌──────────────┐
-│   Frontend   │◄────────────────────────►│  Garmin API   │
-│  (React/TS)  │                           │               │
-└──────┬───────┘                           └──────┬────────┘
-       │ polling                                  │ webhooks
-       │                                          │
-┌──────▼───────┐    backfill trigger       ┌──────▼────────┐
-│   FastAPI    │─────────────────────────►│    Celery      │
-│   Routes     │◄─────────────────────────│    Workers     │
-└──────┬───────┘    status/cancel          └──────┬────────┘
-       │                                          │
-┌──────▼───────┐                           ┌──────▼────────┐
-│  PostgreSQL  │                           │     Redis      │
-│  (data)      │                           │  (state/locks) │
-└──────────────┘                           └───────────────┘
+```mermaid
+graph TB
+    Frontend["Frontend<br/>(React/TS)"] <-->|"OAuth 2.0 + PKCE"| Garmin["Garmin API"]
+    Frontend -->|"polling"| FastAPI["FastAPI Routes"]
+    Garmin -->|"webhooks"| Celery["Celery Workers"]
+    FastAPI -->|"backfill trigger"| Celery
+    Celery -->|"status / cancel"| FastAPI
+    FastAPI --> PostgreSQL["PostgreSQL<br/>(data)"]
+    Celery --> Redis["Redis<br/>(state / locks)"]
 ```
 
 Garmin data arrives exclusively via webhooks. There are no REST pull endpoints (forbidden by Garmin's API terms). The system requests historical data via backfill endpoints, then Garmin delivers the data asynchronously through webhook callbacks.
-
----
 
 ## Data Flow
 
 ### Real-time (ongoing after connection)
 
-```
-Garmin device syncs → Garmin cloud → Webhook POST to /ping
-  → Fetch data from callback URLs
-  → Parse and batch-insert into PostgreSQL
+```mermaid
+graph LR
+    A["Garmin device syncs"] --> B["Garmin cloud"]
+    B -->|"Webhook POST"| C["/ping handler"]
+    C --> D["Fetch callback URLs"]
+    D --> E["Parse & batch-insert"]
+    E --> F[("PostgreSQL")]
 ```
 
 ### Historical backfill (on first connection)
 
+```mermaid
+graph TD
+    A["OAuth callback"] --> B["start_full_backfill"]
+    B --> C{"For each of 12 windows<br/>(30 days each)"}
+    C --> D{"For each of 5 data types<br/>(sequential)"}
+    D --> E["POST backfill request<br/>to Garmin"]
+    E --> F{"Webhook arrives<br/>within 5 min?"}
+    F -->|"Yes"| G["mark_type_success"]
+    F -->|"No"| H["Timeout → skip"]
+    G --> D
+    H --> D
+    D -->|"All types done"| I["Advance to<br/>next window"]
+    I --> C
+    C -->|"All windows done"| J["Retry timed-out types"]
+    J --> K["Release lock,<br/>mark complete"]
 ```
-OAuth callback → start_full_backfill Celery task
-  → For each of 12 windows (30 days each):
-    → For each of 5 data types (sequential):
-      → POST /wellness-api/rest/backfill/{type} to Garmin
-      → Garmin queues data delivery
-      → Webhook arrives with data → mark_type_success
-      → Next type (or 5-min timeout → skip)
-    → Advance to next window
-  → Retry any timed-out types
-  → Release lock, mark complete
-```
-
----
 
 ## OAuth Connection
 
+<Info>
 **File:** `backend/app/api/routes/v1/oauth.py`
+</Info>
 
 Garmin uses OAuth 2.0 with PKCE. The flow:
 
@@ -89,13 +68,15 @@ Garmin uses OAuth 2.0 with PKCE. The flow:
 
 The backfill starts automatically on connection. There is no manual "Sync Now" button for Garmin in the frontend.
 
-**Important:** If the user didn't grant the `HISTORICAL_DATA_EXPORT` permission, all backfill requests will return 403. All 5 types fail together in this case.
-
----
+<Warning>
+If the user didn't grant the `HISTORICAL_DATA_EXPORT` permission, all backfill requests will return 403. All 5 types fail together in this case.
+</Warning>
 
 ## Webhook Handlers (PING/PUSH)
 
+<Info>
 **File:** `backend/app/api/routes/v1/garmin_webhooks.py`
+</Info>
 
 Garmin sends two types of webhooks:
 
@@ -108,12 +89,13 @@ Garmin sends a notification with callback URLs. The handler fetches the actual d
 ```json
 {
   "sleeps": [{"userId": "garmin-uid", "callbackURL": "https://..."}],
-  "dailies": [...],
-  "activities": [...]
+  "dailies": ["..."],
+  "activities": ["..."]
 }
 ```
 
 **Processing flow per notification:**
+
 1. Extract callback URL from notification
 2. Fetch data via `httpx.get(callback_url)` with OAuth token
 3. Find internal user via Garmin user ID mapping
@@ -130,19 +112,19 @@ For data types where Garmin sends the payload directly in the webhook body rathe
 
 The webhook handlers are the bridge between Garmin's async data delivery and the backfill state machine. When a webhook arrives for a type that was requested via backfill:
 
-- `mark_type_success()` transitions the type from `triggered` → `success`
+- `mark_type_success()` transitions the type from `triggered` to `success`
 - Only on a new transition (returns `True`), `trigger_next_pending_type` is enqueued
-- This chains the sequential processing: request type → await webhook → next type
+- This chains the sequential processing: request type -> await webhook -> next type
 
 All 16 data types are handled by the webhook regardless of whether they're included in backfill orchestration. The 5-type restriction only applies to which types are actively requested during backfill.
-
----
 
 ## Backfill Orchestration
 
 ### Configuration
 
+<Info>
 **File:** `backend/app/services/providers/garmin/backfill_config.py`
+</Info>
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -159,84 +141,82 @@ All 16 data types are handled by the webhook regardless of whether they're inclu
 | `GC_SCAN_INTERVAL_SECONDS` | 180 | GC runs every 3 minutes |
 | `GC_MAX_ATTEMPTS` | 3 | Max GC cycles before permanently failed |
 
+<Note>
 **Rate limiting:** Garmin allows 100 requests/minute. Backfill reserves 30% of the budget (30 req/min), resulting in a 2-second delay between type requests.
+</Note>
 
 ### State Machine
 
+<Info>
 **File:** `backend/app/integrations/celery/tasks/garmin_backfill_task.py`
+</Info>
 
 The backfill operates as a Celery task chain with three phases:
 
 #### Phase 1: Sequential window processing
 
-```
-start_full_backfill(user_id)
-  │
-  ├── Check permanently_failed → reject if set
-  ├── Acquire exclusive Redis lock (SETNX + 6h TTL)
-  ├── Check for resume (existing window state in Redis)
-  │   ├── If window > 0: resume from current position
-  │   └── If fresh: init_window_state(total_windows=12)
-  └── trigger_backfill_for_type(user_id, "sleeps")
-        │
-        ├── Compute date range for current window
-        ├── POST to Garmin backfill endpoint via GarminBackfillService
-        ├── Mark type as "triggered" in Redis
-        ├── Schedule check_triggered_timeout (countdown=300s)
-        │
-        │   [Garmin sends webhook with data]
-        │   └── mark_type_success(user_id, "sleeps")
-        │       └── trigger_next_pending_type(user_id)
-        │           │
-        │           ├── Get next pending type → "dailies"
-        │           └── trigger_backfill_for_type(user_id, "dailies")
-        │               └── [repeat for activities, activityDetails, hrv]
-        │
-        │   [5 minutes pass, no webhook]
-        │   └── check_triggered_timeout fires
-        │       ├── mark_type_timed_out(user_id, "sleeps")
-        │       ├── record_timed_out_entry(user_id, "sleeps", window)
-        │       └── trigger_next_pending_type(user_id)
-        │
-        └── [All 5 types done in this window]
-            ├── persist_window_results() — copy flat keys to matrix
-            ├── advance_window() — increment window counter
-            └── [Repeat for windows 0-11]
+```mermaid
+graph TD
+    A["start_full_backfill(user_id)"] --> B{"permanently_failed?"}
+    B -->|"Yes"| B1["Reject"]
+    B -->|"No"| C["Acquire Redis lock<br/>(SETNX + 6h TTL)"]
+    C --> D{"Existing window<br/>state in Redis?"}
+    D -->|"window > 0"| E["Resume from<br/>current position"]
+    D -->|"Fresh"| F["init_window_state<br/>(total_windows=12)"]
+    E --> G["trigger_backfill_for_type"]
+    F --> G
+
+    G --> G1["Compute date range"]
+    G1 --> G2["POST to Garmin<br/>backfill endpoint"]
+    G2 --> G3["Mark type 'triggered'<br/>in Redis"]
+    G3 --> G4["Schedule timeout check<br/>(countdown=300s)"]
+
+    G4 --> H{"Webhook arrives<br/>within 5 min?"}
+
+    H -->|"Yes"| I["mark_type_success"]
+    I --> J["trigger_next_pending_type"]
+    J --> K{"More pending<br/>types?"}
+    K -->|"Yes"| G
+    K -->|"No"| L["persist_window_results"]
+
+    H -->|"No (timeout)"| M["mark_type_timed_out"]
+    M --> M1["record_timed_out_entry"]
+    M1 --> J
+
+    L --> L1["advance_window"]
+    L1 --> N{"More windows?"}
+    N -->|"Yes"| G
+    N -->|"No"| O["Proceed to<br/>retry phase"]
 ```
 
 #### Phase 2: Retry (after all 12 windows)
 
 When all windows are exhausted, timed-out types get one retry:
 
-```
-trigger_next_pending_type detects: no more windows
-  │
-  ├── get_retry_targets(user_id) — deduplicate, keep latest window per type
-  ├── enter_retry_phase(user_id, targets)
-  │   ├── Set retry_phase flag in Redis
-  │   └── Store retry_targets list
-  │
-  └── For each retry target:
-      ├── setup_retry_window(window_idx)
-      ├── trigger_backfill_for_type (uses retry window's date range)
-      │
-      │   [Webhook arrives] → update_window_cell(done)
-      │   [Timeout again]   → escalate to "failed" state
-      │                       update_window_cell(failed)
-      │
-      └── get_next_retry_target → next target or finalize
-          │
-          └── All retries done:
-              ├── clear_retry_state()
-              ├── release_backfill_lock()
-              └── complete_backfill()
+```mermaid
+graph TD
+    A["No more windows"] --> B["get_retry_targets<br/>(deduplicate per type)"]
+    B --> C["enter_retry_phase<br/>Set flag + store targets"]
+    C --> D["setup_retry_window<br/>(window_idx)"]
+    D --> E["trigger_backfill_for_type<br/>(retry window date range)"]
+    E --> F{"Webhook arrives?"}
+    F -->|"Yes"| G["update_window_cell<br/>(done)"]
+    F -->|"Timeout again"| H["Escalate to 'failed'<br/>update_window_cell(failed)"]
+    G --> I{"More retry<br/>targets?"}
+    H --> I
+    I -->|"Yes"| D
+    I -->|"No"| J["clear_retry_state"]
+    J --> K["release_backfill_lock"]
+    K --> L["complete_backfill"]
 ```
 
-Key: a second timeout during retry escalates the type from `timed_out` to `failed` (permanent). This is distinct from `timed_out` which indicates the type may succeed if retried.
+<Note>
+A second timeout during retry escalates the type from `timed_out` to `failed` (permanent). This is distinct from `timed_out` which indicates the type may succeed if retried.
+</Note>
 
 #### Phase 3: Garbage collection (background)
 
-See [Garbage Collection](#garbage-collection) section.
+See [Garbage Collection](#garbage-collection) below.
 
 ### Window Progression
 
@@ -253,7 +233,8 @@ Window 11: [now - 360d, now - 330d]
 The anchor timestamp is fixed at backfill start so all windows use consistent boundaries regardless of how long the backfill takes.
 
 **Per-window flow:**
-1. For each of the 5 types: trigger → await webhook or timeout → next type
+
+1. For each of the 5 types: trigger -> await webhook or timeout -> next type
 2. `persist_window_results()` copies flat type status keys to per-window matrix keys
 3. `advance_window()` increments the window counter and resets flat keys to "pending"
 4. If more windows remain, trigger the first type for the new window
@@ -271,38 +252,40 @@ After all 12 windows complete, the system checks for timed-out entries:
 - The main window counter is not modified during retry
 
 **Escalation rules:**
-- Webhook arrives during retry → type marked `done` in matrix
-- Timeout during retry → type escalated to `failed` (not `timed_out`)
+
+- Webhook arrives during retry: type marked `done` in matrix
+- Timeout during retry: type escalated to `failed` (not `timed_out`)
 - `failed` is a terminal state with no further retries
 
 ### Garbage Collection
 
+<Info>
 **File:** `backend/app/integrations/celery/tasks/garmin_gc_task.py`
+</Info>
 
 A Celery beat task runs every 3 minutes to detect and clear stuck backfills:
 
-```
-gc_stuck_backfills() — every 180 seconds via Celery beat
-  │
-  ├── SCAN Redis for garmin:backfill:*:lock keys
-  │   (when no backfills are active, SCAN returns nothing → no-op)
-  │
-  └── For each lock found:
-      ├── Skip if is_retry_phase(user_id) — don't interrupt retries
-      ├── is_stuck(user_id, threshold=600)?
-      │   ├── Check triggered_at/completed_at for all 5 types
-      │   ├── Check anchor_ts as fallback
-      │   └── Stuck if most recent activity > 10 minutes ago
-      │
-      └── If stuck: clear_stuck_backfill(user_id)
-          ├── Increment attempt_count (Redis INCR)
-          ├── Find currently-triggered type → mark as timed_out
-          ├── Release backfill lock (preserves all window data)
-          └── If attempt_count >= 3 → set permanently_failed flag
+```mermaid
+graph TD
+    A["gc_stuck_backfills<br/>(every 180s via Celery beat)"] --> B["SCAN Redis for<br/>garmin:backfill:*:lock"]
+    B --> C{"Locks found?"}
+    C -->|"None"| D["No-op"]
+    C -->|"Yes"| E{"is_retry_phase?"}
+    E -->|"Yes"| F["Skip<br/>(don't interrupt retries)"]
+    E -->|"No"| G{"is_stuck?<br/>(no activity > 10 min)"}
+    G -->|"No"| H["Skip"]
+    G -->|"Yes"| I["clear_stuck_backfill"]
+    I --> J["Increment attempt_count"]
+    J --> K["Mark triggered type<br/>as timed_out"]
+    K --> L["Release backfill lock<br/>(preserves window data)"]
+    L --> M{"attempt_count >= 3?"}
+    M -->|"Yes"| N["Set permanently_failed"]
+    M -->|"No"| O["Available for<br/>re-trigger"]
 ```
 
 **Design choices:**
-- GC preserves completed window data — only the lock is cleared
+
+- GC preserves completed window data -- only the lock is cleared
 - The currently-triggered type is recorded for retry via `record_timed_out_entry()`
 - After lock release, the user can re-trigger backfill (via disconnect/reconnect)
 - After 3 GC cycles (`GC_MAX_ATTEMPTS`), the backfill is marked permanently failed
@@ -368,19 +351,20 @@ These are written by `persist_window_results()` when advancing to the next windo
 |-----|------|---------|
 | `:timed_out_types` | JSON list | All timed-out entries `[{type, window}]` for retry |
 
----
-
 ## API Endpoints
 
+<Info>
 **File:** `backend/app/api/routes/v1/sync_data.py`
 
 All endpoints require API key authentication (`ApiKeyDep`).
+</Info>
 
-### GET /api/v1/providers/garmin/users/{user_id}/backfill/status
+### GET /api/v1/providers/garmin/users/\{user_id\}/backfill/status
 
 Returns the full backfill status matrix.
 
 **Response:**
+
 ```json
 {
   "overall_status": "in_progress",
@@ -409,6 +393,7 @@ Returns the full backfill status matrix.
 ```
 
 **`overall_status` values:**
+
 | Value | Meaning |
 |-------|---------|
 | `pending` | No backfill started |
@@ -418,23 +403,23 @@ Returns the full backfill status matrix.
 | `cancelled` | User-initiated cancellation |
 | `permanently_failed` | Failed after 3 GC cycles |
 
-### POST /api/v1/providers/garmin/users/{user_id}/backfill/cancel
+### POST /api/v1/providers/garmin/users/\{user_id\}/backfill/cancel
 
 Requests graceful cancellation. The backfill stops after the current type completes or times out.
 
 Returns 409 Conflict if no backfill is in progress.
 
-### POST /api/v1/providers/garmin/users/{user_id}/backfill/{type_name}/retry
+### POST /api/v1/providers/garmin/users/\{user_id\}/backfill/\{type_name\}/retry
 
 Retries a specific timed-out type. Valid types: `sleeps`, `dailies`, `activities`, `activityDetails`, `hrv`.
-
----
 
 ## Frontend Integration
 
 ### TypeScript Types
 
+<Info>
 **File:** `frontend/src/lib/api/types.ts`
+</Info>
 
 ```typescript
 interface BackfillWindowStatus {
@@ -466,7 +451,9 @@ interface GarminBackfillStatus {
 
 ### React Hooks
 
+<Info>
 **File:** `frontend/src/hooks/api/use-health.ts`
+</Info>
 
 | Hook | Purpose | Polling |
 |------|---------|---------|
@@ -476,7 +463,9 @@ interface GarminBackfillStatus {
 
 ### API Service
 
+<Info>
 **File:** `frontend/src/lib/api/services/health.service.ts`
+</Info>
 
 | Method | Endpoint |
 |--------|----------|
@@ -486,25 +475,26 @@ interface GarminBackfillStatus {
 
 ### Connection Card UI
 
+<Info>
 **File:** `frontend/src/components/user/connection-card.tsx`
+</Info>
 
 The Garmin connection card renders different states:
 
 | State | Display |
 |-------|---------|
 | `in_progress` | Progress bar with "X of 12 windows complete", cancel button |
-| `retry_in_progress` | "Retrying {Type} (window N)..." with spinner |
+| `retry_in_progress` | "Retrying \{Type\} (window N)..." with spinner |
 | `complete` | Completion indicator |
 | `cancelled` | Cancelled state message |
 | `permanently_failed` | Error message: "Backfill failed after 3 attempts. Please disconnect and reconnect your Garmin." |
 
 **Additional elements:**
+
 - **Attempt counter:** "Attempt N of 3" shown when `attempt_count > 0`
 - **Timed-out types:** Listed with amber/warning styling, each with a Retry button
 - **Failed types:** Listed with red/destructive styling, no retry (terminal state)
 - The visual distinction between timed_out (amber) and failed (red) communicates that timed-out types may succeed on retry while failed types are permanent
-
----
 
 ## Data Types
 
@@ -528,16 +518,17 @@ These are not requested during backfill but are accepted when Garmin sends them 
 
 ### Processing
 
+<Info>
 **File:** `backend/app/services/providers/garmin/data_247.py`
+</Info>
 
 All data types are processed by `Garmin247Data` which handles:
+
 - Fetching data from callback URLs
 - Parsing type-specific payload formats
 - Converting timestamps (Unix epoch seconds to UTC datetimes)
 - Batch inserting into PostgreSQL with deduplication
 - Two record types: `DataPointSeries` (continuous metrics) and `EventRecords` (discrete events like sleep sessions, activities)
-
----
 
 ## File Reference
 
@@ -545,14 +536,14 @@ All data types are processed by `Garmin247Data` which handles:
 
 | File | Purpose |
 |------|---------|
-| `backend/app/services/providers/garmin/strategy.py` | `GarminStrategy` — provider entry point composing OAuth, data, and workout services |
-| `backend/app/services/providers/garmin/oauth.py` | `GarminOAuth` — OAuth 2.0 + PKCE implementation |
-| `backend/app/services/providers/garmin/data_247.py` | `Garmin247Data` — webhook data parsing and DB insertion for all 16 types |
-| `backend/app/services/providers/garmin/workouts.py` | `GarminWorkouts` — activity/workout data handling |
-| `backend/app/services/providers/garmin/handlers/backfill.py` | `GarminBackfillService` — triggers backfill requests to Garmin API |
+| `backend/app/services/providers/garmin/strategy.py` | `GarminStrategy` -- provider entry point composing OAuth, data, and workout services |
+| `backend/app/services/providers/garmin/oauth.py` | `GarminOAuth` -- OAuth 2.0 + PKCE implementation |
+| `backend/app/services/providers/garmin/data_247.py` | `Garmin247Data` -- webhook data parsing and DB insertion for all 16 types |
+| `backend/app/services/providers/garmin/workouts.py` | `GarminWorkouts` -- activity/workout data handling |
+| `backend/app/services/providers/garmin/handlers/backfill.py` | `GarminBackfillService` -- triggers backfill requests to Garmin API |
 | `backend/app/services/providers/garmin/backfill_config.py` | All configuration constants (types, timeouts, windows, rate limits) |
-| `backend/app/integrations/celery/tasks/garmin_backfill_task.py` | Backfill state machine — lock, trigger, timeout, window, retry, status (~1370 lines) |
-| `backend/app/integrations/celery/tasks/garmin_gc_task.py` | Garbage collector — stuck detection and cleanup (~230 lines) |
+| `backend/app/integrations/celery/tasks/garmin_backfill_task.py` | Backfill state machine -- lock, trigger, timeout, window, retry, status |
+| `backend/app/integrations/celery/tasks/garmin_gc_task.py` | Garbage collector -- stuck detection and cleanup |
 | `backend/app/integrations/celery/core.py` | Celery app config and beat schedule |
 | `backend/app/integrations/celery/tasks/__init__.py` | Re-exports for all task functions |
 | `backend/app/api/routes/v1/garmin_webhooks.py` | PING/PUSH webhook handlers |
