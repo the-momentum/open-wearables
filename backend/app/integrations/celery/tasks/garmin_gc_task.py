@@ -16,8 +16,6 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any
 
-from celery import shared_task
-
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     BACKFILL_DATA_TYPES,
@@ -27,6 +25,7 @@ from app.services.providers.garmin.backfill_config import (
     REDIS_TTL,
 )
 from app.utils.structured_logging import log_structured
+from celery import shared_task
 
 from .garmin_backfill_task import (
     get_current_window,

@@ -107,9 +107,7 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
     total_windows = get_total_windows(uid)
 
     windows: dict[str, dict[str, str]] = {}
-    summary: dict[str, dict[str, int]] = {
-        dt: {"done": 0, "timed_out": 0, "failed": 0} for dt in BACKFILL_DATA_TYPES
-    }
+    summary: dict[str, dict[str, int]] = {dt: {"done": 0, "timed_out": 0, "failed": 0} for dt in BACKFILL_DATA_TYPES}
 
     # Read completed windows from matrix keys (windows 0..current_window-1)
     for w in range(current_window):
@@ -500,9 +498,7 @@ def setup_retry_window(user_id: str | UUID, window_idx: int) -> None:
     redis_client.setex(_get_key(uid, "retry_current_window"), REDIS_TTL, str(window_idx))
 
 
-def get_window_date_range_for_index(
-    user_id: str | UUID, window_idx: int
-) -> tuple[datetime, datetime]:
+def get_window_date_range_for_index(user_id: str | UUID, window_idx: int) -> tuple[datetime, datetime]:
     """Get (start_time, end_time) for a specific window index.
 
     Same logic as get_window_date_range but takes an explicit window_idx
@@ -517,9 +513,7 @@ def get_window_date_range_for_index(
     return start_time, end_time
 
 
-def update_window_cell(
-    user_id: str | UUID, window_idx: int, data_type: str, status: str
-) -> None:
+def update_window_cell(user_id: str | UUID, window_idx: int, data_type: str, status: str) -> None:
     """Write directly to a matrix cell for a specific window and data type.
 
     Used after retry completes (success or failure) to update the specific matrix cell.
@@ -963,9 +957,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     if is_retry_phase(user_id):
         retry_window_str = get_redis_client().get(_get_key(user_id, "retry_current_window"))
         if retry_window_str:
-            start_time, end_time = get_window_date_range_for_index(
-                user_id, int(retry_window_str)
-            )
+            start_time, end_time = get_window_date_range_for_index(user_id, int(retry_window_str))
             current_window = int(retry_window_str)
         else:
             start_time, end_time = get_window_date_range(user_id)
@@ -1228,27 +1220,21 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             retry_window_str = redis_client.get(_get_key(user_id, "retry_current_window"))
             retry_type_str = redis_client.get(_get_key(user_id, "retry_current_type"))
             if retry_window_str and retry_type_str:
-                current_status = redis_client.get(
-                    _get_key(user_id, "types", retry_type_str, "status")
-                )
+                current_status = redis_client.get(_get_key(user_id, "types", retry_type_str, "status"))
                 if current_status == "success":
                     update_window_cell(user_id, int(retry_window_str), retry_type_str, "done")
                 elif current_status == "timed_out":
                     # Escalate to failed on second timeout (per user decision)
                     update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")
                     # Also mark flat status as failed for status API consistency
-                    mark_type_failed(
-                        user_id, retry_type_str, "Timed out during retry (escalated to failed)"
-                    )
+                    mark_type_failed(user_id, retry_type_str, "Timed out during retry (escalated to failed)")
                 elif current_status == "failed":
                     update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")
 
             next_entry = get_next_retry_target(user_id)
             if next_entry:
                 setup_retry_window(user_id, next_entry["window"])
-                redis_client.setex(
-                    _get_key(user_id, "retry_current_type"), REDIS_TTL, next_entry["type"]
-                )
+                redis_client.setex(_get_key(user_id, "retry_current_type"), REDIS_TTL, next_entry["type"])
                 reset_type_status(user_id, next_entry["type"])
                 trigger_backfill_for_type.apply_async(
                     args=[user_id, next_entry["type"]],

@@ -1,5 +1,4 @@
 from .finalize_stale_sleep_task import finalize_stale_sleeps
-from .garmin_gc_task import gc_stuck_backfills
 from .garmin_backfill_task import (
     BACKFILL_DATA_TYPES as GARMIN_BACKFILL_DATA_TYPES,
 )
@@ -39,6 +38,7 @@ from .garmin_backfill_task import (
 from .garmin_backfill_task import (
     trigger_next_pending_type as trigger_garmin_next_pending_type,
 )
+from .garmin_gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
 from .poll_sqs_task import poll_sqs_task
 from .process_apple_upload_task import process_apple_upload

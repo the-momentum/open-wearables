@@ -179,9 +179,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                   <span className="text-sm text-muted-foreground">
                     Retrying {formatTypeName(backfillStatus.retry_type)}{' '}
                     {backfillStatus.retry_window !== null && (
-                      <span>
-                        (window {backfillStatus.retry_window + 1})...
-                      </span>
+                      <span>(window {backfillStatus.retry_window + 1})...</span>
                     )}
                   </span>
                 ) : (
