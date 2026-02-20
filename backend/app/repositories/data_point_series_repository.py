@@ -395,6 +395,122 @@ class DataPointSeriesRepository(
 
         return averages
 
+    def get_averages_for_time_ranges(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        time_ranges: list[tuple[datetime, datetime]],
+        series_types: list[SeriesType],
+    ) -> list[dict[SeriesType, float | None]]:
+        """Get average values for multiple time ranges in a single query.
+
+        This method batches the N queries required for N time ranges into a single
+        efficient query using a lateral join, eliminating the N+1 query problem.
+
+        Args:
+            db_session: Database session
+            user_id: User ID to filter by
+            time_ranges: List of (start_time, end_time) tuples (half-open interval)
+            series_types: List of series types to get averages for
+
+        Returns:
+            List of dicts mapping SeriesType to average value, in same order as time_ranges
+        """
+        if not time_ranges or not series_types:
+            return [{t: None for t in series_types} for _ in time_ranges]
+
+        type_ids = [get_series_type_id(t) for t in series_types]
+
+        # Build a VALUES clause for time ranges to use with LATERAL join
+        # This allows us to compute averages for all time windows in one query
+        from sqlalchemy import text
+        from sqlalchemy.dialects.postgresql import ARRAY
+
+        # Create arrays of start and end times for the VALUES clause
+        start_times = [tr[0] for tr in time_ranges]
+        end_times = [tr[1] for tr in time_ranges]
+
+        # Use UNNEST to expand arrays into rows, then lateral join to compute averages
+        # This is more efficient than multiple separate queries
+        range_subq = (
+            db_session.query(
+                func.unnest(start_times).label("range_start"),
+                func.unnest(end_times).label("range_end"),
+                func.generate_series(1, len(time_ranges)).label("range_idx"),
+            )
+            .subquery("time_ranges")
+        )
+
+        # Lateral join to compute averages for each time range
+        avg_subq = (
+            db_session.query(
+                range_subq.c.range_idx,
+                self.model.series_type_definition_id,
+                func.avg(self.model.value).label("avg_value"),
+            )
+            .select_from(range_subq)
+            .join(
+                DataSource,
+                DataSource.user_id == user_id,
+            )
+            .join(
+                self.model,
+                (
+                    (self.model.data_source_id == DataSource.id)
+                    & (self.model.recorded_at >= range_subq.c.range_start)
+                    & (self.model.recorded_at < range_subq.c.range_end)
+                    & (self.model.series_type_definition_id.in_(type_ids))
+                ),
+            )
+            .group_by(range_subq.c.range_idx, self.model.series_type_definition_id)
+            .subquery("averages")
+        )
+
+        # Get all results ordered by range_idx
+        results = (
+            db_session.query(
+                range_subq.c.range_idx,
+                avg_subq.c.series_type_definition_id,
+                avg_subq.c.avg_value,
+            )
+            .outerjoin(
+                avg_subq,
+                range_subq.c.range_idx == avg_subq.c.range_idx,
+            )
+            .order_by(range_subq.c.range_idx)
+            .all()
+        )
+
+        # Build result list preserving order of time_ranges
+        result_list: list[dict[SeriesType, float | None]] = []
+        current_range_idx = 1
+        current_averages: dict[SeriesType, float | None] = {t: None for t in series_types}
+
+        for range_idx, type_id, avg_value in results:
+            # When we move to a new range, append the current one and reset
+            if range_idx != current_range_idx:
+                result_list.append(current_averages)
+                current_range_idx = range_idx
+                current_averages = {t: None for t in series_types}
+
+            if type_id is not None:
+                try:
+                    series_type = get_series_type_from_id(type_id)
+                    if series_type in current_averages:
+                        current_averages[series_type] = float(avg_value) if avg_value is not None else None
+                except KeyError:
+                    pass
+
+        # Don't forget the last range
+        if current_averages:
+            result_list.append(current_averages)
+
+        # If we have fewer results than time_ranges (no data at all), fill with Nones
+        while len(result_list) < len(time_ranges):
+            result_list.append({t: None for t in series_types})
+
+        return result_list
+
     def get_daily_activity_aggregates(
         self,
         db_session: DbSession,
