@@ -139,7 +139,7 @@ class HealthService {
         )
 
         // 6. Request health permissions
-        sdk.requestAuthorization(types: ["steps", "heartRate", "sleep", "workout"]) { granted in
+        sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { granted in
             if granted {
                 // 7. Start background sync
                 sdk.startBackgroundSync { started in
@@ -178,66 +178,101 @@ func application(
 
 ## Supported Health Data Types
 
-The SDK supports 40+ health data types across multiple categories:
+The SDK supports 40+ health data types via the `HealthDataType` enum. Pass these as enum values to `requestAuthorization(types:completion:)`:
+
+```swift
+sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { granted in
+    // ...
+}
+```
 
 <AccordionGroup>
   <Accordion title="Activity & Fitness">
-    | Type | Description |
-    |------|-------------|
-    | `steps` | Step count |
-    | `distanceWalkingRunning` | Walking/running distance |
-    | `distanceCycling` | Cycling distance |
-    | `flightsClimbed` | Floors climbed |
-    | `walkingSpeed` | Average walking speed |
-    | `walkingStepLength` | Step length |
-    | `sixMinuteWalkTestDistance` | 6-minute walk test |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.steps` | Step count |
+    | `.distanceWalkingRunning` | Walking/running distance |
+    | `.distanceCycling` | Cycling distance |
+    | `.flightsClimbed` | Floors climbed |
+    | `.walkingSpeed` | Average walking speed |
+    | `.walkingStepLength` | Step length |
+    | `.walkingAsymmetryPercentage` | Walking asymmetry percentage |
+    | `.walkingDoubleSupportPercentage` | Walking double support percentage |
+    | `.sixMinuteWalkTestDistance` | 6-minute walk test |
+    | `.activeEnergy` | Active energy burned |
+    | `.basalEnergy` | Basal (resting) energy burned |
   </Accordion>
 
   <Accordion title="Heart & Vitals">
-    | Type | Description |
-    |------|-------------|
-    | `heartRate` | Heart rate measurements |
-    | `restingHeartRate` | Resting heart rate |
-    | `heartRateVariabilitySDNN` | HRV (SDNN) |
-    | `vo2Max` | VO2 max |
-    | `oxygenSaturation` | Blood oxygen |
-    | `respiratoryRate` | Breathing rate |
-    | `bloodPressure` | Blood pressure readings |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.heartRate` | Heart rate measurements |
+    | `.restingHeartRate` | Resting heart rate |
+    | `.heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `.vo2Max` | VO2 max |
+    | `.oxygenSaturation` | Blood oxygen |
+    | `.respiratoryRate` | Breathing rate |
   </Accordion>
 
   <Accordion title="Body Measurements">
-    | Type | Description |
-    |------|-------------|
-    | `bodyMass` | Weight |
-    | `height` | Height |
-    | `bmi` | Body Mass Index |
-    | `bodyFatPercentage` | Body fat % |
-    | `leanBodyMass` | Lean body mass |
-    | `waistCircumference` | Waist circumference (iOS 16+) |
-    | `bodyTemperature` | Body temperature |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.bodyMass` | Weight |
+    | `.height` | Height |
+    | `.bmi` | Body Mass Index |
+    | `.bodyFatPercentage` | Body fat % |
+    | `.leanBodyMass` | Lean body mass |
+    | `.waistCircumference` | Waist circumference (iOS 16+) |
+    | `.bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Blood & Metabolic">
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.bloodGlucose` | Blood glucose level |
+    | `.insulinDelivery` | Insulin delivery (iOS 16+) |
+    | `.bloodPressureSystolic` | Systolic blood pressure |
+    | `.bloodPressureDiastolic` | Diastolic blood pressure |
+    | `.bloodPressure` | Blood pressure (correlation type) |
   </Accordion>
 
   <Accordion title="Sleep & Mindfulness">
-    | Type | Description |
-    |------|-------------|
-    | `sleep` | Sleep sessions and stages |
-    | `mindfulSession` | Meditation/mindfulness sessions |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.sleep` | Sleep sessions and stages |
+    | `.mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Reproductive Health">
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.menstrualFlow` | Menstrual flow |
+    | `.cervicalMucusQuality` | Cervical mucus quality |
+    | `.ovulationTestResult` | Ovulation test result |
+    | `.sexualActivity` | Sexual activity |
   </Accordion>
 
   <Accordion title="Nutrition">
-    | Type | Description |
-    |------|-------------|
-    | `dietaryEnergyConsumed` | Calories consumed |
-    | `dietaryCarbohydrates` | Carbs |
-    | `dietaryProtein` | Protein |
-    | `dietaryFatTotal` | Total fat |
-    | `dietaryWater` | Water intake |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.dietaryEnergyConsumed` | Calories consumed |
+    | `.dietaryCarbohydrates` | Carbs |
+    | `.dietaryProtein` | Protein |
+    | `.dietaryFatTotal` | Total fat |
+    | `.dietaryWater` | Water intake |
   </Accordion>
 
   <Accordion title="Workouts">
-    | Type | Description |
-    |------|-------------|
-    | `workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+  </Accordion>
+
+  <Accordion title="Aliases">
+    | Enum Case | Alias For |
+    |-----------|-----------|
+    | `.restingEnergy` | `.basalEnergy` |
+    | `.bloodOxygen` | `.oxygenSaturation` |
   </Accordion>
 </AccordionGroup>
 
