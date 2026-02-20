@@ -39,8 +39,9 @@ open-wearables/
 # Start all services
 docker compose up -d
 
-# Seed sample data (admin@admin.com / secret123)
-make init
+# Admin account and series type definitions are auto-created on startup (admin@admin.com / secret123)
+# Seed sample test data (optional)
+make seed
 
 # View logs
 docker compose logs -f app
@@ -67,7 +68,7 @@ make stop
 | `make test` | Run backend tests |
 | `make migrate` | Apply database migrations |
 | `make create_migration m="..."` | Create new migration |
-| `make init` | Seed sample data |
+| `make seed` | Seed sample data |
 
 ### Code Quality
 

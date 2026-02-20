@@ -26,7 +26,9 @@ The example app demonstrates the complete integration flow:
 4. **Background Sync** - Enable automatic health data synchronization
 5. **Sync Status** - Monitor sync progress and handle interruptions
 
-## Demo Videos
+## See it in action
+
+See the full flow from setup to insights — how data flows from your device to Open Wearables and how you can use it.
 
 ### 1. Open Wearables Dashboard - Creating User Token
 
@@ -56,6 +58,34 @@ After setting the invitation code and host URL from the dashboard, the mobile ap
   - Make sure to enter the **API URL** (e.g. `https://api.openwearables.ai`), not the dashboard URL (e.g. `https://app.openwearables.ai`).
   - If you're running Open Wearables locally, you need to expose it publicly so the mobile app can communicate with it. See the [ngrok setup guide](/dev-guides/ngrok-setup) for instructions.
 </Tip>
+
+### 3. Browse data in the dashboard
+
+Once your data is synced, you can explore it in the Open Wearables dashboard:
+
+<video
+  controls
+  className="w-full rounded-lg"
+  src="/images/sdk/dashboard.mp4"
+/>
+
+### 4. Talk to data via MCP
+
+Use the Open Wearables MCP server to chat with health data using AI:
+
+<iframe
+  className="w-full rounded-lg"
+  style={{ aspectRatio: '16/9' }}
+  src="https://www.youtube.com/watch?v=Jb8N2jNbs1Y"
+  title="Talk to health data via MCP"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+/>
+
+### 5. Explore the API to Fetch More Data
+
+Use the Open Wearables REST API to programmatically access synced health data. Check out the [API documentation](/api-reference) to learn how to query, filter, and export your data.
 
 ## Running the Example App
 
@@ -170,7 +200,6 @@ await HealthBgSync.startBackgroundSync();
     git clone https://github.com/the-momentum/open-wearables.git
     cd open-wearables
     docker compose up -d
-    make init
     ```
     
     Then configure the SDK with your local URL:

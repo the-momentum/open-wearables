@@ -91,21 +91,22 @@ Get Open Wearables up and running in minutes.
    
    For local development setup without Docker take a look at [docs](https://docs.openwearables.io/quickstart#local-development-setup)
 
-4. **Seed sample data** (optional but recommended):
-   If you're using Docker, seed the database with sample data including an admin account:
-   ```bash
-   make init
-   ```
-   
-   This will create:
-   - An admin user account (`admin@admin.com` / `secret123`)
-   - 10 test users
-   - Sample activity data for test users
+4. **Log in to the developer portal:**
 
-
-5. **Access the developer portal:**
+   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `secret123`).
 
    Open http://localhost:3000 to access the developer portal and create API keys.
+
+5. **Seed sample data** (optional):
+   If you want test users and sample activity data:
+   ```bash
+   make seed
+   ```
+
+   This will create:
+   - Test users
+   - Sample activity data for test users
+
 
 6. **View API documentation:**
 

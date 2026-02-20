@@ -2,18 +2,17 @@
 
 import json
 import sys
+import uuid
 from logging import Logger
 from typing import Any
 from uuid import UUID
 
 
-class _SafeEncoder(json.JSONEncoder):
-    """JSON encoder that handles UUID and other non-serializable types."""
-
-    def default(self, o: object) -> str:
-        if isinstance(o, UUID):
-            return str(o)
-        return super().default(o)
+def json_serial(obj: Any) -> str:
+    """JSON serializer for objects not serializable by default json code"""
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
 def log_structured(
@@ -71,7 +70,7 @@ def log_structured(
     # Emit as single-line JSON directly to stdout
     # This bypasses logger formatters (like Celery's) that add prefixes
     # Platforms will parse this JSON string correctly
-    json_str = json.dumps(log_entry, cls=_SafeEncoder)
+    json_str = json.dumps(log_entry, default=json_serial)
 
     # Always use stdout to avoid Railway's automatic level conversion
     # Platforms can convert stderr logs to level.error automatically, which creates
