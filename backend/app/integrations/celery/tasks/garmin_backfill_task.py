@@ -134,6 +134,9 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
             current_states[dt] = "pending"
         else:
             current_states[dt] = flat_status
+        # Count current window states in summary too
+        if current_states[dt] in summary[dt]:
+            summary[dt][current_states[dt]] += 1
     windows[str(current_window)] = current_states
 
     # Read retry/GC state

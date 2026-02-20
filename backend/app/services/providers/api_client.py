@@ -207,7 +207,7 @@ def make_authenticated_request(
                 "error",
                 "API error",
                 provider_name=provider_name,
-                user_id=user_id,
+                user_id=str(user_id),
                 error=e.response.text,
             )
             if e.response.status_code == 401:
@@ -228,7 +228,7 @@ def make_authenticated_request(
                 "error",
                 "API request failed",
                 provider_name=provider_name,
-                user_id=user_id,
+                user_id=str(user_id),
                 error=str(e),
             )
             raise HTTPException(
