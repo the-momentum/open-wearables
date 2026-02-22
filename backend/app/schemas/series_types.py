@@ -36,6 +36,13 @@ class SeriesType(str, Enum):
     respiratory_rate = "respiratory_rate"
     sleeping_breathing_disturbances = "sleeping_breathing_disturbances"
 
+    # Blood & Respiratory - Extended
+    blood_alcohol_content = "blood_alcohol_content"
+    peripheral_perfusion_index = "peripheral_perfusion_index"
+    forced_vital_capacity = "forced_vital_capacity"
+    forced_expiratory_volume_1 = "forced_expiratory_volume_1"
+    peak_expiratory_flow_rate = "peak_expiratory_flow_rate"
+
     # =========================================================================
     # BIOMETRICS - Body Composition (IDs 40-59)
     # =========================================================================
@@ -46,6 +53,9 @@ class SeriesType(str, Enum):
     lean_body_mass = "lean_body_mass"
     body_temperature = "body_temperature"
     skin_temperature = "skin_temperature"
+
+    # Body Composition - Extended
+    waist_circumference = "waist_circumference"
 
     # =========================================================================
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
@@ -63,6 +73,7 @@ class SeriesType(str, Enum):
     exercise_time = "exercise_time"
     physical_effort = "physical_effort"
     flights_climbed = "flights_climbed"
+    average_met = "average_met"
 
     # =========================================================================
     # ACTIVITY - Distance (IDs 100-119)
@@ -71,6 +82,7 @@ class SeriesType(str, Enum):
     distance_cycling = "distance_cycling"
     distance_swimming = "distance_swimming"
     distance_downhill_snow_sports = "distance_downhill_snow_sports"
+    distance_other = "distance_other"
 
     # =========================================================================
     # ACTIVITY - Walking Metrics (IDs 120-139)
@@ -96,12 +108,18 @@ class SeriesType(str, Enum):
     # ACTIVITY - Swimming Metrics (IDs 160-179)
     # =========================================================================
     swimming_stroke_count = "swimming_stroke_count"
+    underwater_depth = "underwater_depth"
 
     # =========================================================================
     # ACTIVITY - Generic (IDs 180-199)
     # =========================================================================
     cadence = "cadence"
     power = "power"
+    speed = "speed"
+
+    # Generic Activity Metrics
+    workout_effort_score = "workout_effort_score"
+    estimated_workout_effort_score = "estimated_workout_effort_score"
 
     # =========================================================================
     # ENVIRONMENTAL (IDs 200-219)
@@ -111,6 +129,10 @@ class SeriesType(str, Enum):
     environmental_sound_reduction = "environmental_sound_reduction"
     time_in_daylight = "time_in_daylight"
     water_temperature = "water_temperature"
+    uv_exposure = "uv_exposure"
+    inhaler_usage = "inhaler_usage"
+    weather_temperature = "weather_temperature"
+    weather_humidity = "weather_humidity"
 
     # =========================================================================
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
@@ -119,6 +141,18 @@ class SeriesType(str, Enum):
     garmin_skin_temperature = "garmin_skin_temperature"  # Skin temp deviation from baseline
     garmin_fitness_age = "garmin_fitness_age"  # Garmin fitness age estimate
     garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
+
+    # =========================================================================
+    # OTHER (IDs 500-)
+    # =========================================================================
+
+    electrodermal_activity = "electrodermal_activity"
+    push_count = "push_count"
+    atrial_fibrillation_burden = "atrial_fibrillation_burden"
+    insulin_delivery = "insulin_delivery"
+    number_of_times_fallen = "number_of_times_fallen"
+    number_of_alcoholic_beverages = "number_of_alcoholic_beverages"
+    nike_fuel = "nike_fuel"
 
 
 # =============================================================================
@@ -147,6 +181,11 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (23, SeriesType.blood_pressure_diastolic, "mmHg"),
     (24, SeriesType.respiratory_rate, "brpm"),
     (25, SeriesType.sleeping_breathing_disturbances, "count"),
+    (26, SeriesType.blood_alcohol_content, "mg_dl"),
+    (27, SeriesType.peripheral_perfusion_index, "score"),
+    (28, SeriesType.forced_vital_capacity, "liters"),
+    (29, SeriesType.forced_expiratory_volume_1, "liters"),
+    (30, SeriesType.peak_expiratory_flow_rate, "liters"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Body Composition (IDs 40-59)
     # -------------------------------------------------------------------------
@@ -157,6 +196,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (44, SeriesType.lean_body_mass, "kg"),
     (45, SeriesType.body_temperature, "celsius"),
     (46, SeriesType.skin_temperature, "celsius"),
+    (47, SeriesType.waist_circumference, "cm"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------
@@ -172,6 +212,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (84, SeriesType.exercise_time, "minutes"),
     (85, SeriesType.physical_effort, "score"),
     (86, SeriesType.flights_climbed, "count"),
+    (87, SeriesType.average_met, "met"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Distance (IDs 100-119)
     # -------------------------------------------------------------------------
@@ -179,6 +220,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (101, SeriesType.distance_cycling, "meters"),
     (102, SeriesType.distance_swimming, "meters"),
     (103, SeriesType.distance_downhill_snow_sports, "meters"),
+    (104, SeriesType.distance_other, "meters"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Walking Metrics (IDs 120-139)
     # -------------------------------------------------------------------------
@@ -201,11 +243,15 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # ACTIVITY - Swimming Metrics (IDs 160-179)
     # -------------------------------------------------------------------------
     (160, SeriesType.swimming_stroke_count, "count"),
+    (161, SeriesType.underwater_depth, "meters"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Generic (IDs 180-199)
     # -------------------------------------------------------------------------
     (180, SeriesType.cadence, "rpm"),
     (181, SeriesType.power, "watts"),
+    (182, SeriesType.speed, "m_per_s"),
+    (183, SeriesType.workout_effort_score, "score"),
+    (184, SeriesType.estimated_workout_effort_score, "score"),
     # -------------------------------------------------------------------------
     # ENVIRONMENTAL (IDs 200-219)
     # -------------------------------------------------------------------------
@@ -214,6 +260,10 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (202, SeriesType.environmental_sound_reduction, "dB"),
     (203, SeriesType.time_in_daylight, "minutes"),
     (204, SeriesType.water_temperature, "celsius"),
+    (205, SeriesType.uv_exposure, "count"),
+    (206, SeriesType.inhaler_usage, "count"),
+    (207, SeriesType.weather_temperature, "celsius"),
+    (208, SeriesType.weather_humidity, "percent"),
     # -------------------------------------------------------------------------
     # GARMIN-SPECIFIC METRICS (IDs 220-239)
     # -------------------------------------------------------------------------
@@ -221,6 +271,16 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (221, SeriesType.garmin_skin_temperature, "celsius"),  # kept for backwards compatibility
     (222, SeriesType.garmin_fitness_age, "years"),
     (223, SeriesType.garmin_body_battery, "percent"),
+    # -------------------------------------------------------------------------
+    # OTHER (IDs 500-)
+    # -------------------------------------------------------------------------
+    (500, SeriesType.electrodermal_activity, "count"),
+    (501, SeriesType.push_count, "count"),
+    (502, SeriesType.atrial_fibrillation_burden, "count"),
+    (503, SeriesType.insulin_delivery, "count"),
+    (504, SeriesType.number_of_times_fallen, "count"),
+    (505, SeriesType.number_of_alcoholic_beverages, "count"),
+    (506, SeriesType.nike_fuel, "count"),
 ]
 
 

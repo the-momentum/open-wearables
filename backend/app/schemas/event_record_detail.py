@@ -7,8 +7,8 @@ from pydantic import BaseModel
 class EventRecordDetailBase(BaseModel):
     """Base schema for event record detail."""
 
-    heart_rate_min: int | None = None
-    heart_rate_max: int | None = None
+    heart_rate_min: Decimal | int | None = None
+    heart_rate_max: Decimal | int | None = None
     heart_rate_avg: Decimal | None = None
 
     steps_count: int | None = None

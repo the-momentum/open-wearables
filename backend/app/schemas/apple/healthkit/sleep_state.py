@@ -1,6 +1,6 @@
 from typing import TypedDict
 
-from app.constants.series_types import SleepPhase
+from app.constants.series_types.apple import SleepPhase
 
 
 class SleepState(TypedDict):
