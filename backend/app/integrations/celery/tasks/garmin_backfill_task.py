@@ -124,19 +124,22 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
     current_states: dict[str, str] = {}
     for dt in BACKFILL_DATA_TYPES:
         flat_status = redis_client.get(_get_key(uid, "types", dt, "status"))
-        if flat_status == "success":
-            current_states[dt] = "done"
-        elif flat_status == "timed_out":
-            current_states[dt] = "timed_out"
-        elif flat_status == "failed":
-            current_states[dt] = "failed"
-        elif flat_status in ("pending", "triggered", None):
-            current_states[dt] = "pending"
-        else:
-            current_states[dt] = flat_status
-        # Count current window states in summary too
-        if current_states[dt] in summary[dt]:
-            summary[dt][current_states[dt]] += 1
+
+        match flat_status:
+            case "success":
+                state = "done"
+            case "timed_out" | "failed":
+                state = str(flat_status)
+            case "pending" | "triggered" | None:
+                state = "pending"
+            case _: # default case
+                state = str(flat_status)
+
+        current_states[dt] = state
+        
+        if state in summary[dt]:
+            summary[dt][state] += 1
+
     windows[str(current_window)] = current_states
 
     # Read retry/GC state
