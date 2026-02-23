@@ -257,7 +257,7 @@ async def cancel_garmin_backfill(
     backfill_status = get_garmin_backfill_status(str(user_id))
     if backfill_status["overall_status"] not in ("in_progress", "retry_in_progress"):
         raise HTTPException(
-            status_code=409,
+            status_code=status.HTTP_409_CONFLICT,
             detail="No backfill in progress for this user",
         )
 
