@@ -616,17 +616,12 @@ def persist_window_results(user_id: str | UUID, window_idx: int) -> None:
     uid = str(user_id)
     results: dict[str, str] = {}
 
-    for data_type in BACKFILL_DATA_TYPES:
-        flat_status = redis_client.get(_get_key(uid, "types", data_type, "status"))
+    keys = [_get_key(uid, "types", dt, "status") for dt in BACKFILL_DATA_TYPES]
+    all_flat_statuses = redis_client.mget(keys)
+    status_map = {"success": "done", "failed": "done", "timed_out": "timed_out"}
 
-        if flat_status == "success":
-            matrix_status = "done"
-        elif flat_status == "timed_out":
-            matrix_status = "timed_out"
-        elif flat_status == "failed":
-            matrix_status = "done"
-        else:
-            matrix_status = "pending"
+    for data_type, flat_status in zip(BACKFILL_DATA_TYPES, all_flat_statuses):
+        matrix_status = status_map.get(flat_status, "pending")
 
         window_key = f"{REDIS_PREFIX}:{uid}:w:{window_idx}:{data_type}:status"
         redis_client.setex(window_key, REDIS_TTL, matrix_status)
