@@ -10,6 +10,7 @@ Flow:
 4. trigger_next_pending_type() - Chain to next pending type
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from typing import Any
@@ -143,15 +144,27 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
     windows[str(current_window)] = current_states
 
     # Read retry/GC state
-    lock_exists = redis_client.exists(_get_key(uid, "lock"))
-    cancel_flag = redis_client.get(_get_key(uid, "cancel_flag")) == "1"
-    retry_phase_active = redis_client.get(_get_key(uid, "retry_phase")) == "1"
-    retry_type = redis_client.get(_get_key(uid, "retry_current_type"))
-    retry_window_str = redis_client.get(_get_key(uid, "retry_current_window"))
-    retry_window = int(retry_window_str) if retry_window_str else None
-    attempt_count_str = redis_client.get(_get_key(uid, "attempt_count"))
-    attempt_count = int(attempt_count_str) if attempt_count_str else 0
-    permanently_failed = redis_client.get(_get_key(uid, "permanently_failed")) == "1"
+    status_vals = redis_client.mget(
+        [_get_key(uid, k) for k in [
+            "lock", 
+            "cancel_flag", 
+            "retry_phase", 
+            "retry_current_type", 
+            "retry_current_window", 
+            "attempt_count", 
+            "permanently_failed"
+            ]
+        ]
+    )
+
+    lock_exists = status_vals[0] is not None
+    cancel_flag = status_vals[1] == "1"
+    retry_phase_active = status_vals[2] == "1"
+    retry_type = status_vals[3]
+    retry_window = int(status_vals[4]) if status_vals[4] else None
+    attempt_count = int(status_vals[5]) if status_vals[5] else 0
+    permanently_failed = status_vals[6] == "1"
+
 
     # Determine overall status (priority order)
     if permanently_failed:
@@ -397,7 +410,6 @@ def record_timed_out_entry(user_id: str | UUID, data_type: str, window_idx: int)
 
     Appends {"type": data_type, "window": window_idx} to a JSON list in Redis.
     """
-    import json
 
     redis_client = get_redis_client()
     uid = str(user_id)
@@ -418,7 +430,6 @@ def get_retry_targets(user_id: str | UUID) -> list[dict[str, Any]]:
     Returns:
         List of {"type": str, "window": int} dicts, one per unique data type.
     """
-    import json
 
     redis_client = get_redis_client()
     uid = str(user_id)
@@ -454,7 +465,6 @@ def enter_retry_phase(user_id: str | UUID, retry_entries: list[dict[str, Any]]) 
 
     Sets the retry_phase flag and stores the list of targets to retry.
     """
-    import json
 
     redis_client = get_redis_client()
     uid = str(user_id)
@@ -478,7 +488,6 @@ def get_next_retry_target(user_id: str | UUID) -> dict[str, Any] | None:
     Returns:
         The next {"type": str, "window": int} entry, or None if empty/missing.
     """
-    import json
 
     redis_client = get_redis_client()
     uid = str(user_id)
