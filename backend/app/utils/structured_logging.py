@@ -2,7 +2,6 @@
 
 import json
 import sys
-import uuid
 from logging import Logger
 from typing import Any
 from uuid import UUID
@@ -10,7 +9,7 @@ from uuid import UUID
 
 def json_serial(obj: Any) -> str:
     """JSON serializer for objects not serializable by default json code"""
-    if isinstance(obj, uuid.UUID):
+    if isinstance(obj, UUID):
         return str(obj)
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
