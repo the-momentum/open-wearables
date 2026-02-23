@@ -133,11 +133,11 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
                 state = str(flat_status)
             case "pending" | "triggered" | None:
                 state = "pending"
-            case _: # default case
+            case _:  # default case
                 state = str(flat_status)
 
         current_states[dt] = state
-        
+
         if state in summary[dt]:
             summary[dt][state] += 1
 
@@ -145,14 +145,16 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
 
     # Read retry/GC state
     status_vals = redis_client.mget(
-        [_get_key(uid, k) for k in [
-            "lock", 
-            "cancel_flag", 
-            "retry_phase", 
-            "retry_current_type", 
-            "retry_current_window", 
-            "attempt_count", 
-            "permanently_failed"
+        [
+            _get_key(uid, k)
+            for k in [
+                "lock",
+                "cancel_flag",
+                "retry_phase",
+                "retry_current_type",
+                "retry_current_window",
+                "attempt_count",
+                "permanently_failed",
             ]
         ]
     )
@@ -164,7 +166,6 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
     retry_window = int(status_vals[4]) if status_vals[4] else None
     attempt_count = int(status_vals[5]) if status_vals[5] else 0
     permanently_failed = status_vals[6] == "1"
-
 
     # Determine overall status (priority order)
     if permanently_failed:
