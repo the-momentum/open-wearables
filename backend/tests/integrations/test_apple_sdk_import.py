@@ -415,6 +415,55 @@ class TestAppleSDKImport:
         assert details.steps_count == 4500
         assert details.distance == Decimal("3200")
 
+    def test_import_workout_with_fractional_steps(
+        self,
+        db: Session,
+        import_service: ImportService,
+    ) -> None:
+        """Test workout with fractional step count from Apple SDK is truncated to int."""
+        # Arrange
+        user = UserFactory()
+        payload = {
+            "data": {
+                "workouts": [
+                    {
+                        "uuid": "FFFF1111-2222-3333-4444-555566667777",
+                        "type": "walking",
+                        "startDate": "2025-02-10T10:00:00Z",
+                        "endDate": "2025-02-10T11:00:00Z",
+                        "source": {
+                            "name": "Apple Watch",
+                            "bundleIdentifier": "com.apple.health",
+                            "deviceManufacturer": "Apple Inc.",
+                            "deviceModel": "Watch",
+                            "productType": "Watch7,5",
+                            "deviceSoftwareVersion": "10.0",
+                            "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
+                        },
+                        "workoutStatistics": [
+                            {"type": "duration", "unit": "s", "value": 3600},
+                            {"type": "stepCount", "unit": "count", "value": 2981.57515735105},
+                            {"type": "distance", "unit": "m", "value": 2165.35},
+                        ],
+                    }
+                ]
+            }
+        }
+
+        # Act
+        result = import_service.load_data(db, payload, str(user.id))
+
+        # Assert
+        assert result["workouts_saved"] == 1
+
+        workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
+        assert workout is not None
+
+        details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).first()
+        assert details is not None
+        assert details.steps_count == 2981
+        assert details.distance == Decimal("2165.35")
+
 
 class TestAppleSDKImportEdgeCases:
     """Edge case tests for Apple SDK import."""

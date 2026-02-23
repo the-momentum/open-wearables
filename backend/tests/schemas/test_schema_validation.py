@@ -93,6 +93,18 @@ class TestEventRecordDetailCreateValidation:
         assert detail.heart_rate_avg == Decimal("145.5")
         assert detail.steps_count == 8500
 
+    def test_steps_count_rejects_fractional_decimal(self) -> None:
+        """Should raise ValidationError when steps_count is a fractional Decimal."""
+        record_id = uuid4()
+
+        with pytest.raises(ValidationError) as exc_info:
+            EventRecordDetailCreate(
+                record_id=record_id,
+                steps_count=Decimal("2981.57515735105"),
+            )
+
+        assert "steps_count" in str(exc_info.value)
+
     def test_missing_required_field_record_id(self) -> None:
         """Should raise ValidationError when record_id is missing."""
         # Act & Assert

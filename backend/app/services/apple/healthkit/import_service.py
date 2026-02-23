@@ -209,6 +209,9 @@ class ImportService:
 
             detail_field = get_detail_field_from_workout_statistic_type(stat.type)
             if detail_field:
+                # Apple SDK may send fractional Decimals for integer fields (e.g. stepCount)
+                if detail_field in ("steps_count", "moving_time_seconds"):
+                    value = int(value)
                 stats_dict[detail_field] = value
 
         return EventRecordMetrics(**stats_dict), time_series_samples, duration
