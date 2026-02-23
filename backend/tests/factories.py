@@ -1,10 +1,21 @@
 """
-Factory-boy factories for creating test data.
+Polyfactory-based model factories for Open Wearables.
 
-Usage:
-    from tests.factories import UserFactory, DeveloperFactory
-    user = UserFactory()  # Session set automatically via conftest fixture
-    developer = DeveloperFactory(email="custom@example.com")
+Unlike the old factory-boy factories, polyfactory introspects
+SQLAlchemy ``Mapped[]`` annotations directly, so most columns are
+generated automatically.  We only override fields that need stable
+defaults or cross-model wiring.
+
+Usage
+─────
+Factories are **not** instantiated directly.  Call the class method::
+
+    user = UserFactory.create_sync(session=db)
+
+The ``conftest._wire_factories`` autouse fixture calls ``set_session``
+before every test, so you can also simply do::
+
+    user = UserFactory.create_sync()
 """
 
 from __future__ import annotations
@@ -14,8 +25,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-import factory
-from factory import LazyAttribute, LazyFunction, Sequence
+from polyfactory.factories.sqlalchemy_factory import SQLAlchemyFactory
+from sqlalchemy.orm import Session
 
 from app.models import (
     ApiKey,
@@ -34,525 +45,401 @@ from app.models import (
     WorkoutDetails,
 )
 from app.schemas.oauth import ConnectionStatus, ProviderName
-from app.utils.security import get_password_hash
+
+# ── Session management ──────────────────────────────────────────────────────
+
+_session: Session | None = None
 
 
-class BaseFactory(factory.alchemy.SQLAlchemyModelFactory):
-    """Base factory for all SQLAlchemy models."""
-
-    class Meta:
-        abstract = True
-        sqlalchemy_session = None  # Set per-test via conftest fixture
-        sqlalchemy_session_persistence = "flush"  # Don't commit, let test handle rollback
+def set_session(session: Session) -> None:
+    """Called by conftest before each test."""
+    global _session  # noqa: PLW0603
+    _session = session
 
 
-class SeriesTypeDefinitionFactory(BaseFactory):
-    """Factory for SeriesTypeDefinition model.
+def clear_session() -> None:
+    global _session  # noqa: PLW0603
+    _session = None
 
-    Note: heart_rate and other standard series types are seeded at session scope.
-    Use get_or_create_heart_rate() for tests that need the heart_rate type.
+
+class _Base(SQLAlchemyFactory[Any]):
+    """
+    Shared base for all model factories.
+
+    * ``__is_base_factory__ = True`` prevents polyfactory from trying to
+      instantiate ``_Base`` itself.
+    * ``__set_relationships__`` is off so FK columns are set explicitly
+      rather than via ORM relationship traversal (avoids double-inserts).
     """
 
-    class Meta:
-        model = SeriesTypeDefinition
-
-    code = factory.Sequence(lambda n: f"test_series_type_{n}")
-    unit = "test_unit"
+    __is_base_factory__ = True
+    __set_relationships__ = False
+    __session__ = None  # overridden per-test via set_session()
 
     @classmethod
-    def get_or_create_heart_rate(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded heart_rate series type (ID=1)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 1).first()
-            if existing:
-                return existing
-        # Fallback: create new one (shouldn't happen with proper seeding)
-        return cls(id=1, code="heart_rate", unit="bpm")
+    def _get_session(cls) -> Session:
+        if _session is None:
+            msg = "Factory session not set — is the _wire_factories fixture active?"
+            raise RuntimeError(msg)
+        return _session
 
     @classmethod
-    def get_or_create_steps(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded steps series type (ID=80)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 80).first()
-            if existing:
-                return existing
-        # Fallback: create new one (shouldn't happen with proper seeding)
-        return cls(id=80, code="steps", unit="count")
+    def create_sync(cls, **kwargs: Any) -> Any:
+        """Build an instance and flush it to the test DB."""
+        session = cls._get_session()
+        instance = cls.build(**kwargs)
+        session.add(instance)
+        session.flush()
+        return instance
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Reference data
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class SeriesTypeDefinitionFactory(_Base):
+    __model__ = SeriesTypeDefinition
 
     @classmethod
-    def get_or_create_energy(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded energy (active calories) series type (ID=81)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 81).first()
-            if existing:
-                return existing
-        return cls(id=81, code="energy", unit="kcal")
+    def build(cls, **kwargs: Any) -> SeriesTypeDefinition:
+        kwargs.setdefault("code", f"test_series_{uuid4().hex[:8]}")
+        kwargs.setdefault("unit", "unit")
+        return SeriesTypeDefinition(**kwargs)
 
     @classmethod
-    def get_or_create_basal_energy(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded basal_energy series type (ID=82)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 82).first()
-            if existing:
-                return existing
-        return cls(id=82, code="basal_energy", unit="kcal")
+    def get_or_create(cls, type_id: int, code: str, unit: str) -> SeriesTypeDefinition:
+        """Return the pre-seeded row, or create a new one."""
+        session = cls._get_session()
+        existing = session.get(SeriesTypeDefinition, type_id)
+        if existing:
+            return existing
+        return cls.create_sync(id=type_id, code=code, unit=unit)
+
+    # Convenience accessors for the most-used types
+    @classmethod
+    def heart_rate(cls) -> SeriesTypeDefinition:
+        return cls.get_or_create(1, "heart_rate", "bpm")
 
     @classmethod
-    def get_or_create_distance_walking_running(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded distance_walking_running series type (ID=100)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 100).first()
-            if existing:
-                return existing
-        return cls(id=100, code="distance_walking_running", unit="meters")
+    def steps(cls) -> SeriesTypeDefinition:
+        return cls.get_or_create(80, "steps", "count")
 
     @classmethod
-    def get_or_create_flights_climbed(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded flights_climbed series type (ID=86)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 86).first()
-            if existing:
-                return existing
-        return cls(id=86, code="flights_climbed", unit="count")
+    def energy(cls) -> SeriesTypeDefinition:
+        return cls.get_or_create(81, "energy", "kcal")
 
     @classmethod
-    def get_or_create_weight(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded weight series type (ID=41)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 41).first()
-            if existing:
-                return existing
-        return cls(id=41, code="weight", unit="kg")
+    def resting_heart_rate(cls) -> SeriesTypeDefinition:
+        return cls.get_or_create(2, "resting_heart_rate", "bpm")
 
     @classmethod
-    def get_or_create_height(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded height series type (ID=40)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 40).first()
-            if existing:
-                return existing
-        return cls(id=40, code="height", unit="cm")
+    def weight(cls) -> SeriesTypeDefinition:
+        return cls.get_or_create(41, "weight", "kg")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Core domain
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class UserFactory(_Base):
+    __model__ = User
 
     @classmethod
-    def get_or_create_body_fat_percentage(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded body_fat_percentage series type (ID=42)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 42).first()
-            if existing:
-                return existing
-        return cls(id=42, code="body_fat_percentage", unit="percent")
+    def build(cls, **kwargs: Any) -> User:
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("created_at", datetime.now(timezone.utc))
+        kwargs.setdefault("email", f"user-{uuid4().hex[:8]}@test.local")
+        kwargs.setdefault("first_name", "Test")
+        kwargs.setdefault("last_name", "User")
+        kwargs.setdefault("external_user_id", None)
+        return User(**kwargs)
+
+
+class PersonalRecordFactory(_Base):
+    __model__ = PersonalRecord
 
     @classmethod
-    def get_or_create_lean_body_mass(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded lean_body_mass series type (ID=44)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 44).first()
-            if existing:
-                return existing
-        return cls(id=44, code="lean_body_mass", unit="kg")
+    def build(cls, **kwargs: Any) -> PersonalRecord:
+        if "user" in kwargs:
+            user = kwargs.pop("user")
+            kwargs.setdefault("user_id", user.id)
+        elif "user_id" not in kwargs:
+            # Will be created on create_sync call
+            user = UserFactory.create_sync()
+            kwargs["user_id"] = user.id
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("birth_date", None)
+        kwargs.setdefault("sex", None)
+        kwargs.setdefault("gender", None)
+        return PersonalRecord(**kwargs)
+
+
+class DeveloperFactory(_Base):
+    __model__ = Developer
 
     @classmethod
-    def get_or_create_resting_heart_rate(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded resting_heart_rate series type (ID=2)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 2).first()
-            if existing:
-                return existing
-        return cls(id=2, code="resting_heart_rate", unit="bpm")
+    def build(cls, **kwargs: Any) -> Developer:
+        password = kwargs.pop("password", "test_password")
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("created_at", datetime.now(timezone.utc))
+        kwargs.setdefault("updated_at", datetime.now(timezone.utc))
+        kwargs.setdefault("email", f"dev-{uuid4().hex[:8]}@test.local")
+        kwargs.setdefault("hashed_password", f"hashed_{password}")
+        return Developer(**kwargs)
+
+
+class ApiKeyFactory(_Base):
+    __model__ = ApiKey
 
     @classmethod
-    def get_or_create_heart_rate_variability_sdnn(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded heart_rate_variability_sdnn series type (ID=3)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 3).first()
-            if existing:
-                return existing
-        return cls(id=3, code="heart_rate_variability_sdnn", unit="ms")
+    def build(cls, **kwargs: Any) -> ApiKey:
+        if "developer" in kwargs:
+            dev = kwargs.pop("developer")
+            kwargs.setdefault("created_by", dev.id)
+        elif "created_by" not in kwargs:
+            dev = DeveloperFactory.create_sync()
+            kwargs["created_by"] = dev.id
+        kwargs.setdefault("id", f"sk-{uuid4().hex[:32]}")
+        kwargs.setdefault("name", "Test API Key")
+        kwargs.setdefault("created_at", datetime.now(timezone.utc))
+        return ApiKey(**kwargs)
+
+
+class ApplicationFactory(_Base):
+    __model__ = Application
 
     @classmethod
-    def get_or_create_blood_pressure_systolic(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded blood_pressure_systolic series type (ID=22)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 22).first()
-            if existing:
-                return existing
-        return cls(id=22, code="blood_pressure_systolic", unit="mmHg")
+    def build(cls, **kwargs: Any) -> Application:
+        if "developer" in kwargs:
+            dev = kwargs.pop("developer")
+            kwargs.setdefault("developer_id", dev.id)
+        elif "developer_id" not in kwargs:
+            dev = DeveloperFactory.create_sync()
+            kwargs["developer_id"] = dev.id
 
-    @classmethod
-    def get_or_create_blood_pressure_diastolic(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded blood_pressure_diastolic series type (ID=23)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 23).first()
-            if existing:
-                return existing
-        return cls(id=23, code="blood_pressure_diastolic", unit="mmHg")
-
-    @classmethod
-    def get_or_create_body_temperature(cls) -> SeriesTypeDefinition:
-        """Get the pre-seeded body_temperature series type (ID=45)."""
-        session = cls._meta.sqlalchemy_session
-        if session:
-            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 45).first()
-            if existing:
-                return existing
-        return cls(id=45, code="body_temperature", unit="celsius")
-
-
-class UserFactory(BaseFactory):
-    """Factory for User model."""
-
-    class Meta:
-        model = User
-
-    id = LazyFunction(uuid4)
-    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
-    email = factory.Faker("email")
-    first_name = factory.Faker("first_name")
-    last_name = factory.Faker("last_name")
-    external_user_id = None
-
-
-class PersonalRecordFactory(BaseFactory):
-    """Factory for PersonalRecord model."""
-
-    class Meta:
-        model = PersonalRecord
-
-    id = LazyFunction(uuid4)
-    user = factory.SubFactory(UserFactory)
-    birth_date = None
-    sex = None
-    gender = None
-
-
-class DeveloperFactory(BaseFactory):
-    """Factory for Developer model."""
-
-    class Meta:
-        model = Developer
-
-    id = LazyFunction(uuid4)
-    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
-    updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
-    email = factory.Faker("email")
-    hashed_password = LazyAttribute(
-        lambda o: f"hashed_{o.password}" if hasattr(o, "password") else "hashed_test_password",
-    )
-
-    class Params:
-        password = "test_password"
-
-
-class ApiKeyFactory(BaseFactory):
-    """Factory for ApiKey model."""
-
-    class Meta:
-        model = ApiKey
-
-    id = LazyFunction(lambda: f"sk-{uuid4().hex[:32]}")
-    name = Sequence(lambda n: f"Test API Key {n}")
-    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
-
-    @classmethod
-    def _create(cls, model_class: type[ApiKey], *args: Any, **kwargs: Any) -> ApiKey:
-        """Override create to handle developer relationship."""
-        developer = kwargs.pop("developer", None)
-        # Remove any stale created_by that might have been set
-        kwargs.pop("created_by", None)
-        if developer is None:
-            # Create a developer if not provided
-            developer = DeveloperFactory()
-        kwargs["created_by"] = developer.id
-        return super()._create(model_class, *args, **kwargs)
-
-
-class ApplicationFactory(BaseFactory):
-    """Factory for Application model (SDK apps)."""
-
-    class Meta:
-        model = Application
-
-    id = LazyFunction(uuid4)
-    app_id = LazyFunction(lambda: f"app_{uuid4().hex[:32]}")
-    name = Sequence(lambda n: f"Test Application {n}")
-    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
-    updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
-
-    @classmethod
-    def _create(cls, model_class: type[Application], *args: Any, **kwargs: Any) -> Application:
-        """Override create to handle developer relationship and password hashing."""
-        developer = kwargs.pop("developer", None)
-        # Remove any stale developer_id that might have been set
-        kwargs.pop("developer_id", None)
-        if developer is None:
-            # Create a developer if not provided
-            developer = DeveloperFactory()
-        kwargs["developer_id"] = developer.id
-
-        # Handle app_secret -> app_secret_hash conversion with real bcrypt
-        # Default to "test_app_secret" if not provided
         app_secret = kwargs.pop("app_secret", "test_app_secret")
-        if "app_secret_hash" not in kwargs:
-            kwargs["app_secret_hash"] = get_password_hash(app_secret)
+        kwargs.setdefault("app_secret_hash", f"hashed_{app_secret}")
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("app_id", f"app_{uuid4().hex[:32]}")
+        kwargs.setdefault("name", "Test Application")
+        kwargs.setdefault("created_at", datetime.now(timezone.utc))
+        kwargs.setdefault("updated_at", datetime.now(timezone.utc))
+        return Application(**kwargs)
 
-        return super()._create(model_class, *args, **kwargs)
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Data layer
+# ════════════════════════════════════════════════════════════════════════════
 
 
-class DataSourceFactory(BaseFactory):
-    """Factory for DataSource model."""
-
-    class Meta:
-        model = DataSource
-
-    id = LazyFunction(uuid4)
-    provider = ProviderName.APPLE
-    device_model = LazyFunction(lambda: f"TestDevice-{uuid4().hex[:8]}")
-    software_version = "1.0.0"
-    source = "apple_health_sdk"
-    device_type = "watch"
+class DataSourceFactory(_Base):
+    __model__ = DataSource
 
     @classmethod
-    def _create(
-        cls,
-        model_class: type[DataSource],
-        *args: Any,
-        **kwargs: Any,
-    ) -> DataSource:
-        user = kwargs.pop("user", None)
-        kwargs.pop("user_id", None)
-
-        if user is None:
-            user = UserFactory()
-        kwargs["user_id"] = user.id
-
-        # Handle provider parameter (ProviderName enum -> enum value)
-        provider = kwargs.get("provider")
-        if provider is not None and isinstance(provider, str):
-            try:
-                kwargs["provider"] = ProviderName(provider)
-            except ValueError:
-                kwargs["provider"] = ProviderName.UNKNOWN
-
-        return super()._create(model_class, *args, **kwargs)
+    def build(cls, **kwargs: Any) -> DataSource:
+        if "user" in kwargs:
+            user = kwargs.pop("user")
+            kwargs.setdefault("user_id", user.id)
+        elif "user_id" not in kwargs:
+            user = UserFactory.create_sync()
+            kwargs["user_id"] = user.id
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("provider", ProviderName.APPLE)
+        kwargs.setdefault("device_model", f"TestDevice-{uuid4().hex[:8]}")
+        kwargs.setdefault("software_version", "1.0.0")
+        kwargs.setdefault("source", "apple_health_sdk")
+        kwargs.setdefault("device_type", "watch")
+        kwargs.setdefault("user_connection_id", None)
+        return DataSource(**kwargs)
 
 
-# Backward-compatible alias for tests still using the old name
-DataSourceFactory = DataSourceFactory
-
-
-class UserConnectionFactory(BaseFactory):
-    """Factory for UserConnection model."""
-
-    class Meta:
-        model = UserConnection
-
-    id = LazyFunction(uuid4)
-    provider = "garmin"
-    provider_user_id = LazyFunction(lambda: f"provider_{uuid4().hex[:8]}")
-    provider_username = factory.Faker("user_name")
-    access_token = LazyFunction(lambda: f"access_{uuid4().hex}")  # Optional for SDK providers
-    refresh_token = LazyFunction(lambda: f"refresh_{uuid4().hex}")
-    token_expires_at = LazyFunction(lambda: datetime(2025, 12, 31, tzinfo=timezone.utc))  # Optional for SDK providers
-    scope = "read_all"
-    status = ConnectionStatus.ACTIVE
-    last_synced_at = None
-    created_at = LazyFunction(lambda: datetime.now(timezone.utc))
-    updated_at = LazyFunction(lambda: datetime.now(timezone.utc))
+class UserConnectionFactory(_Base):
+    __model__ = UserConnection
 
     @classmethod
-    def _create(cls, model_class: type[UserConnection], *args: Any, **kwargs: Any) -> UserConnection:
-        """Override create to handle user relationship."""
-        user = kwargs.pop("user", None)
-        # Remove any stale user_id that might have been set
-        kwargs.pop("user_id", None)
-        if user is None:
-            user = UserFactory()
-        kwargs["user_id"] = user.id
-        return super()._create(model_class, *args, **kwargs)
+    def build(cls, **kwargs: Any) -> UserConnection:
+        if "user" in kwargs:
+            user = kwargs.pop("user")
+            kwargs.setdefault("user_id", user.id)
+        elif "user_id" not in kwargs:
+            user = UserFactory.create_sync()
+            kwargs["user_id"] = user.id
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("provider", "garmin")
+        kwargs.setdefault("provider_user_id", f"prov_{uuid4().hex[:8]}")
+        kwargs.setdefault("provider_username", "testuser")
+        kwargs.setdefault("access_token", f"access_{uuid4().hex}")
+        kwargs.setdefault("refresh_token", f"refresh_{uuid4().hex}")
+        kwargs.setdefault("token_expires_at", datetime(2027, 12, 31, tzinfo=timezone.utc))
+        kwargs.setdefault("scope", "read_all")
+        kwargs.setdefault("status", ConnectionStatus.ACTIVE)
+        kwargs.setdefault("last_synced_at", None)
+        kwargs.setdefault("created_at", datetime.now(timezone.utc))
+        kwargs.setdefault("updated_at", datetime.now(timezone.utc))
+        return UserConnection(**kwargs)
 
 
-class EventRecordFactory(BaseFactory):
-    """Factory for EventRecord model."""
+# ════════════════════════════════════════════════════════════════════════════
+#  Events & details
+# ════════════════════════════════════════════════════════════════════════════
 
-    class Meta:
-        model = EventRecord
 
-    id = LazyFunction(uuid4)
-    category = "workout"
-    type = "running"
-    source_name = "Apple Watch"
-    duration_seconds = 3600
-    start_datetime = LazyFunction(lambda: datetime.now(timezone.utc))
-    end_datetime = LazyAttribute(
-        lambda o: datetime.fromtimestamp(o.start_datetime.timestamp() + (o.duration_seconds or 3600), tz=timezone.utc),
-    )
+class EventRecordFactory(_Base):
+    __model__ = EventRecord
 
     @classmethod
-    def _create(cls, model_class: type[EventRecord], *args: Any, **kwargs: Any) -> EventRecord:
-        """Override create to handle data_source relationship and type_ alias."""
-        # Support both "mapping" (legacy) and "data_source" parameter names
-        data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
-        # Remove any stale data_source_id that might have been set
-        kwargs.pop("data_source_id", None)
-        if data_source is None:
-            data_source = DataSourceFactory()
-        kwargs["data_source_id"] = data_source.id
+    def build(cls, **kwargs: Any) -> EventRecord:
+        if "data_source" in kwargs:
+            ds = kwargs.pop("data_source")
+            kwargs.setdefault("data_source_id", ds.id)
+        elif "data_source_id" not in kwargs:
+            ds = DataSourceFactory.create_sync()
+            kwargs["data_source_id"] = ds.id
 
-        # Handle type_ alias
+        # Handle type_ alias (SQLAlchemy reserves `type`)
         if "type_" in kwargs:
             kwargs["type"] = kwargs.pop("type_")
 
-        return super()._create(model_class, *args, **kwargs)
+        now = datetime.now(timezone.utc)
+        duration = kwargs.get("duration_seconds", 3600)
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("category", "workout")
+        kwargs.setdefault("type", "running")
+        kwargs.setdefault("source_name", "Apple Watch")
+        kwargs.setdefault("duration_seconds", duration)
+        kwargs.setdefault("start_datetime", now)
+        kwargs.setdefault(
+            "end_datetime",
+            datetime.fromtimestamp(
+                kwargs["start_datetime"].timestamp() + (duration or 3600),
+                tz=timezone.utc,
+            ),
+        )
+        return EventRecord(**kwargs)
 
 
-class EventRecordDetailFactory(BaseFactory):
-    """Factory for EventRecordDetail model."""
-
-    class Meta:
-        model = EventRecordDetail
-
-    detail_type = "workout"
-
-    @classmethod
-    def _create(
-        cls,
-        model_class: type[EventRecordDetail],
-        *args: Any,
-        **kwargs: Any,
-    ) -> EventRecordDetail:
-        """Override create to handle event_record relationship."""
-        event_record = kwargs.pop("event_record", None)
-        # Remove any stale record_id that might have been set
-        kwargs.pop("record_id", None)
-        if event_record is None:
-            event_record = EventRecordFactory()
-        kwargs["record_id"] = event_record.id
-        return super()._create(model_class, *args, **kwargs)
-
-
-class DataPointSeriesFactory(BaseFactory):
-    """Factory for DataPointSeries model."""
-
-    class Meta:
-        model = DataPointSeries
-
-    id = LazyFunction(uuid4)
-    value = LazyFunction(lambda: Decimal("72.0"))
-    recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
+class EventRecordDetailFactory(_Base):
+    __model__ = EventRecordDetail
 
     @classmethod
-    def _create(cls, model_class: type[DataPointSeries], *args: Any, **kwargs: Any) -> DataPointSeries:
-        """Override create to handle relationships."""
-        # Support both "mapping" (legacy) and "data_source" parameter names
-        data_source = kwargs.pop("data_source", None) or kwargs.pop("mapping", None)
-        series_type = kwargs.pop("series_type", None)
-
-        if data_source is None:
-            data_source = DataSourceFactory()
-        if series_type is None:
-            # Use the pre-seeded heart_rate series type
-            series_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
-
-        kwargs["data_source_id"] = data_source.id
-        kwargs["series_type_definition_id"] = series_type.id
-
-        # Convert value to Decimal if needed
-        if "value" in kwargs and not isinstance(kwargs["value"], Decimal):
-            kwargs["value"] = Decimal(str(kwargs["value"]))
-
-        return super()._create(model_class, *args, **kwargs)
+    def build(cls, **kwargs: Any) -> EventRecordDetail:
+        if "event_record" in kwargs:
+            er = kwargs.pop("event_record")
+            kwargs.setdefault("record_id", er.id)
+        elif "record_id" not in kwargs:
+            er = EventRecordFactory.create_sync()
+            kwargs["record_id"] = er.id
+        kwargs.setdefault("detail_type", "workout")
+        return EventRecordDetail(**kwargs)
 
 
-class ProviderSettingFactory(BaseFactory):
-    """Factory for ProviderSetting model."""
-
-    class Meta:
-        model = ProviderSetting
-
-    provider = "garmin"
-    is_enabled = True
-
-
-class WorkoutDetailsFactory(BaseFactory):
-    """Factory for WorkoutDetails model."""
-
-    class Meta:
-        model = WorkoutDetails
-
-    heart_rate_avg = LazyFunction(lambda: Decimal("145.5"))
-    heart_rate_max = 175
-    heart_rate_min = 95
-    steps_count = 8500
+class WorkoutDetailsFactory(_Base):
+    __model__ = WorkoutDetails
 
     @classmethod
-    def _create(cls, model_class: type[WorkoutDetails], *args: Any, **kwargs: Any) -> WorkoutDetails:
-        """Override create to handle event_record relationship."""
-        event_record = kwargs.pop("event_record", None)
-        # Remove any stale record_id that might have been set
-        kwargs.pop("record_id", None)
-        if event_record is None:
-            event_record = EventRecordFactory(category="workout")
-        kwargs["record_id"] = event_record.id
+    def build(cls, **kwargs: Any) -> WorkoutDetails:
+        if "event_record" in kwargs:
+            er = kwargs.pop("event_record")
+            kwargs.setdefault("record_id", er.id)
+        elif "record_id" not in kwargs:
+            er = EventRecordFactory.create_sync(category="workout")
+            kwargs["record_id"] = er.id
+        kwargs.setdefault("detail_type", "workout")
+        kwargs.setdefault("heart_rate_avg", Decimal("145.5"))
+        kwargs.setdefault("heart_rate_max", 175)
+        kwargs.setdefault("heart_rate_min", 95)
+        kwargs.setdefault("steps_count", 8500)
+        return WorkoutDetails(**kwargs)
 
-        # Convert heart_rate_avg to Decimal if needed
-        if "heart_rate_avg" in kwargs and not isinstance(kwargs["heart_rate_avg"], Decimal):
-            kwargs["heart_rate_avg"] = Decimal(str(kwargs["heart_rate_avg"]))
 
-        return super()._create(model_class, *args, **kwargs)
-
-
-class SleepDetailsFactory(BaseFactory):
-    """Factory for SleepDetails model."""
-
-    class Meta:
-        model = SleepDetails
-
-    sleep_total_duration_minutes = 480  # 8 hours
-    sleep_deep_minutes = 120  # 2 hours
-    sleep_light_minutes = 240  # 4 hours
-    sleep_rem_minutes = 90  # 1.5 hours
-    sleep_awake_minutes = 30  # 30 min
+class SleepDetailsFactory(_Base):
+    __model__ = SleepDetails
 
     @classmethod
-    def _create(cls, model_class: type[SleepDetails], *args: Any, **kwargs: Any) -> SleepDetails:
-        """Override create to handle event_record relationship."""
-        event_record = kwargs.pop("event_record", None)
-        # Remove any stale record_id that might have been set
-        kwargs.pop("record_id", None)
-        if event_record is None:
-            event_record = EventRecordFactory(category="sleep", type="sleep")
-        kwargs["record_id"] = event_record.id
-        return super()._create(model_class, *args, **kwargs)
+    def build(cls, **kwargs: Any) -> SleepDetails:
+        if "event_record" in kwargs:
+            er = kwargs.pop("event_record")
+            kwargs.setdefault("record_id", er.id)
+        elif "record_id" not in kwargs:
+            er = EventRecordFactory.create_sync(category="sleep", type="sleep")
+            kwargs["record_id"] = er.id
+        kwargs.setdefault("detail_type", "sleep")
+        kwargs.setdefault("sleep_total_duration_minutes", 480)
+        kwargs.setdefault("sleep_deep_minutes", 120)
+        kwargs.setdefault("sleep_light_minutes", 240)
+        kwargs.setdefault("sleep_rem_minutes", 90)
+        kwargs.setdefault("sleep_awake_minutes", 30)
+        return SleepDetails(**kwargs)
 
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Time-series
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class DataPointSeriesFactory(_Base):
+    __model__ = DataPointSeries
+
+    @classmethod
+    def build(cls, **kwargs: Any) -> DataPointSeries:
+        if "data_source" in kwargs:
+            ds = kwargs.pop("data_source")
+            kwargs.setdefault("data_source_id", ds.id)
+        elif "data_source_id" not in kwargs:
+            ds = DataSourceFactory.create_sync()
+            kwargs["data_source_id"] = ds.id
+
+        if "series_type" in kwargs:
+            st = kwargs.pop("series_type")
+            kwargs.setdefault("series_type_definition_id", st.id)
+        elif "series_type_definition_id" not in kwargs:
+            st = SeriesTypeDefinitionFactory.heart_rate()
+            kwargs["series_type_definition_id"] = st.id
+
+        value = kwargs.get("value", Decimal("72.0"))
+        if not isinstance(value, Decimal):
+            value = Decimal(str(value))
+        kwargs["value"] = value
+
+        kwargs.setdefault("id", uuid4())
+        kwargs.setdefault("recorded_at", datetime.now(timezone.utc))
+        return DataPointSeries(**kwargs)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Config / settings
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class ProviderSettingFactory(_Base):
+    __model__ = ProviderSetting
+
+    @classmethod
+    def build(cls, **kwargs: Any) -> ProviderSetting:
+        kwargs.setdefault("provider", "garmin")
+        kwargs.setdefault("is_enabled", True)
+        return ProviderSetting(**kwargs)
+
+
+# ── Public API ──────────────────────────────────────────────────────────────
 
 __all__ = [
-    "BaseFactory",
+    "set_session",
+    "clear_session",
     "SeriesTypeDefinitionFactory",
     "UserFactory",
+    "PersonalRecordFactory",
     "DeveloperFactory",
     "ApiKeyFactory",
     "ApplicationFactory",
     "DataSourceFactory",
-    "DataSourceFactory",  # Backward-compatible alias for DataSourceFactory
     "UserConnectionFactory",
     "EventRecordFactory",
     "EventRecordDetailFactory",
-    "DataPointSeriesFactory",
-    "ProviderSettingFactory",
     "WorkoutDetailsFactory",
     "SleepDetailsFactory",
+    "DataPointSeriesFactory",
+    "ProviderSettingFactory",
 ]
