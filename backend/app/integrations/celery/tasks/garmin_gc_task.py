@@ -59,16 +59,28 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
     most_recent: datetime | None = None
 
     # Check triggered_at and completed_at for each data type
-    for data_type in BACKFILL_DATA_TYPES:
-        for suffix in ("triggered_at", "completed_at"):
-            val = redis_client.get(_key(user_id, "types", data_type, suffix))
-            if val:
-                try:
-                    ts = datetime.fromisoformat(val)
-                    if most_recent is None or ts > most_recent:
-                        most_recent = ts
-                except (ValueError, TypeError):
-                    continue
+    keys = [
+        _key(user_id, "types", data_type, suffix)
+        for data_type in BACKFILL_DATA_TYPES
+        for suffix in ("triggered_at", "completed_at")
+    ]
+    for val in redis_client.mget(keys):
+        if val:
+            try:
+                ts = datetime.fromisoformat(val)
+                if most_recent is None or ts > most_recent:
+                    most_recent = ts
+            except (ValueError, TypeError):
+                continue
+
+    anchor_val = redis_client.get(_key(user_id, "window", "anchor_ts"))
+    if anchor_val:
+        try:
+            anchor_ts = datetime.fromisoformat(anchor_val)
+            if most_recent is None or anchor_ts > most_recent:
+                most_recent = anchor_ts
+        except (ValueError, TypeError):
+            pass
 
     # Fallback: check anchor_ts (set when backfill starts, before any type is triggered)
     anchor_val = redis_client.get(_key(user_id, "window", "anchor_ts"))
@@ -107,8 +119,9 @@ def clear_stuck_backfill(user_id: str) -> dict[str, Any]:
 
     # Find the currently-triggered type
     cleared_type: str | None = None
-    for data_type in BACKFILL_DATA_TYPES:
-        status = redis_client.get(_key(user_id, "types", data_type, "status"))
+    keys = [_key(user_id, "types", data_type, "status") for data_type in BACKFILL_DATA_TYPES]
+
+    for data_type, status in zip(BACKFILL_DATA_TYPES, redis_client.mget(keys)):
         if status == "triggered":
             cleared_type = data_type
             break
@@ -130,7 +143,7 @@ def clear_stuck_backfill(user_id: str) -> dict[str, Any]:
 
     log_structured(
         logger,
-        "warning",
+        "warn",
         "GC cleared stuck backfill",
         provider="garmin",
         user_id=user_id,
