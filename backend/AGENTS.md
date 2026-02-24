@@ -210,6 +210,7 @@ make downgrade                             # Rollback
 - Line length: 120 characters
 - Type hints required on all functions
 - Imports sorted by isort
+- All imports at module level — never inside functions or methods
 - PEP 8 naming conventions
 
 ## Commands
