@@ -42,6 +42,7 @@ from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
+redis_client = get_redis_client()
 
 
 def _get_key(user_id: str | UUID, *parts: str) -> str:
@@ -51,7 +52,6 @@ def _get_key(user_id: str | UUID, *parts: str) -> str:
 
 def set_trace_id(user_id: str | UUID) -> str:
     """Generate and store a trace ID for a user's backfill session."""
-    redis_client = get_redis_client()
     trace_id = str(uuid4())[:8]  # Short trace ID for readability
     redis_client.setex(_get_key(user_id, "trace_id"), REDIS_TTL, trace_id)
     return trace_id
@@ -64,7 +64,6 @@ def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | Non
         user_id: UUID string of the user
         data_type: If provided, returns the per-type trace ID instead of session trace ID
     """
-    redis_client = get_redis_client()
     if data_type:
         return redis_client.get(_get_key(user_id, "types", data_type, "trace_id"))
     return redis_client.get(_get_key(user_id, "trace_id"))
@@ -72,7 +71,6 @@ def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | Non
 
 def set_type_trace_id(user_id: str | UUID, data_type: str) -> str:
     """Generate and store a per-type trace ID for a specific backfill data type."""
-    redis_client = get_redis_client()
     trace_id = str(uuid4())[:8]
     redis_client.setex(_get_key(user_id, "types", data_type, "trace_id"), REDIS_TTL, trace_id)
     return trace_id
@@ -101,9 +99,7 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
             "permanently_failed": bool,
         }
     """
-    redis_client = get_redis_client()
     uid = str(user_id)
-
     current_window = get_current_window(uid)
     total_windows = get_total_windows(uid)
 
@@ -200,7 +196,6 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
 
 def get_pending_types(user_id: str | UUID) -> list[str]:
     """Get list of pending data types for a user."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
     pending = []
 
@@ -214,7 +209,6 @@ def get_pending_types(user_id: str | UUID) -> list[str]:
 
 def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
     """Mark a data type as triggered (backfill request sent)."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
     now = datetime.now(timezone.utc).isoformat()
 
@@ -242,7 +236,6 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
         True if this was a new transition (type was not already 'success').
         False if the type was already marked as success (duplicate webhook).
     """
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
 
     # Check if already success to avoid duplicate triggers
@@ -271,9 +264,7 @@ def mark_type_success(user_id: str | UUID, data_type: str) -> bool:
 
 def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
     """Mark a data type as failed."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
-
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "failed")
     redis_client.setex(_get_key(user_id_str, "types", data_type, "error"), REDIS_TTL, error)
 
@@ -294,7 +285,6 @@ def mark_type_failed(user_id: str | UUID, data_type: str, error: str) -> None:
 
 def reset_type_status(user_id: str | UUID, data_type: str) -> None:
     """Reset a data type to pending status (for retry)."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
 
     # Delete all keys for this type
@@ -317,9 +307,7 @@ def mark_type_timed_out(user_id: str | UUID, data_type: str) -> int:
     Returns:
         The new skip_count for this type (kept for diagnostics).
     """
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
-
     redis_client.setex(_get_key(user_id_str, "types", data_type, "status"), REDIS_TTL, "timed_out")
 
     # Increment skip count (persists across retries, used for diagnostics)
@@ -349,7 +337,6 @@ mark_type_skipped = mark_type_timed_out
 
 def get_timed_out_types(user_id: str | UUID) -> list[str]:
     """Get list of timed_out data types for a user."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
     timed_out = []
 
@@ -367,7 +354,6 @@ get_skipped_types = get_timed_out_types
 
 def get_type_skip_count(user_id: str | UUID, data_type: str) -> int:
     """Get the number of times a type has been skipped."""
-    redis_client = get_redis_client()
     count = redis_client.get(_get_key(str(user_id), "types", data_type, "skip_count"))
     return int(count) if count else 0
 
@@ -377,32 +363,27 @@ def acquire_backfill_lock(user_id: str | UUID) -> bool:
 
     Returns True if lock acquired, False if already locked (backfill in progress).
     """
-    redis_client = get_redis_client()
     lock_key = _get_key(str(user_id), "lock")
     return bool(redis_client.set(lock_key, "1", nx=True, ex=BACKFILL_LOCK_TTL))
 
 
 def release_backfill_lock(user_id: str | UUID) -> None:
     """Release backfill lock."""
-    redis_client = get_redis_client()
     redis_client.delete(_get_key(str(user_id), "lock"))
 
 
 def set_cancel_flag(user_id: str | UUID) -> None:
     """Set cancel flag for a user's backfill."""
-    redis_client = get_redis_client()
     redis_client.setex(_get_key(str(user_id), "cancel_flag"), REDIS_TTL, "1")
 
 
 def is_cancelled(user_id: str | UUID) -> bool:
     """Check if backfill is cancelled."""
-    redis_client = get_redis_client()
     return redis_client.get(_get_key(str(user_id), "cancel_flag")) == "1"
 
 
 def clear_cancel_flag(user_id: str | UUID) -> None:
     """Clear cancel flag for a user's backfill."""
-    redis_client = get_redis_client()
     redis_client.delete(_get_key(str(user_id), "cancel_flag"))
 
 
@@ -411,8 +392,6 @@ def record_timed_out_entry(user_id: str | UUID, data_type: str, window_idx: int)
 
     Appends {"type": data_type, "window": window_idx} to a JSON list in Redis.
     """
-
-    redis_client = get_redis_client()
     uid = str(user_id)
     key = _get_key(uid, "timed_out_types")
 
@@ -431,8 +410,6 @@ def get_retry_targets(user_id: str | UUID) -> list[dict[str, Any]]:
     Returns:
         List of {"type": str, "window": int} dicts, one per unique data type.
     """
-
-    redis_client = get_redis_client()
     uid = str(user_id)
     key = _get_key(uid, "timed_out_types")
 
@@ -457,7 +434,6 @@ def get_retry_targets(user_id: str | UUID) -> list[dict[str, Any]]:
 
 def is_retry_phase(user_id: str | UUID) -> bool:
     """Check if the backfill is currently in the retry phase."""
-    redis_client = get_redis_client()
     return redis_client.get(_get_key(str(user_id), "retry_phase")) == "1"
 
 
@@ -466,8 +442,6 @@ def enter_retry_phase(user_id: str | UUID, retry_entries: list[dict[str, Any]]) 
 
     Sets the retry_phase flag and stores the list of targets to retry.
     """
-
-    redis_client = get_redis_client()
     uid = str(user_id)
 
     redis_client.setex(_get_key(uid, "retry_phase"), REDIS_TTL, "1")
@@ -489,8 +463,6 @@ def get_next_retry_target(user_id: str | UUID) -> dict[str, Any] | None:
     Returns:
         The next {"type": str, "window": int} entry, or None if empty/missing.
     """
-
-    redis_client = get_redis_client()
     uid = str(user_id)
     key = _get_key(uid, "retry_targets")
 
@@ -509,7 +481,6 @@ def get_next_retry_target(user_id: str | UUID) -> dict[str, Any] | None:
 
 def setup_retry_window(user_id: str | UUID, window_idx: int) -> None:
     """Set the current retry window index in Redis."""
-    redis_client = get_redis_client()
     uid = str(user_id)
     redis_client.setex(_get_key(uid, "retry_current_window"), REDIS_TTL, str(window_idx))
 
@@ -534,7 +505,6 @@ def update_window_cell(user_id: str | UUID, window_idx: int, data_type: str, sta
 
     Used after retry completes (success or failure) to update the specific matrix cell.
     """
-    redis_client = get_redis_client()
     uid = str(user_id)
     window_key = f"{REDIS_PREFIX}:{uid}:w:{window_idx}:{data_type}:status"
     redis_client.setex(window_key, REDIS_TTL, status)
@@ -542,7 +512,6 @@ def update_window_cell(user_id: str | UUID, window_idx: int, data_type: str, sta
 
 def clear_retry_state(user_id: str | UUID) -> None:
     """Delete all retry-phase Redis keys."""
-    redis_client = get_redis_client()
     uid = str(user_id)
     for suffix in ["retry_phase", "retry_targets", "retry_current_window", "retry_current_type"]:
         redis_client.delete(_get_key(uid, suffix))
@@ -550,7 +519,6 @@ def clear_retry_state(user_id: str | UUID) -> None:
 
 def init_window_state(user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_COUNT) -> None:
     """Initialize multi-window backfill state in Redis."""
-    redis_client = get_redis_client()
     uid = str(user_id)
     anchor = datetime.now(timezone.utc).isoformat()
     redis_client.setex(_get_key(uid, "window", "current"), REDIS_TTL, "0")
@@ -561,21 +529,18 @@ def init_window_state(user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_
 
 def get_current_window(user_id: str | UUID) -> int:
     """Get current window index (0-indexed)."""
-    redis_client = get_redis_client()
     val = redis_client.get(_get_key(str(user_id), "window", "current"))
     return int(val) if val else 0
 
 
 def get_total_windows(user_id: str | UUID) -> int:
     """Get total number of windows for this backfill."""
-    redis_client = get_redis_client()
     val = redis_client.get(_get_key(str(user_id), "window", "total"))
     return int(val) if val else BACKFILL_WINDOW_COUNT
 
 
 def get_anchor_timestamp(user_id: str | UUID) -> datetime:
     """Get the fixed anchor timestamp for window calculation."""
-    redis_client = get_redis_client()
     val = redis_client.get(_get_key(str(user_id), "window", "anchor_ts"))
     if val:
         return datetime.fromisoformat(val)
@@ -599,7 +564,6 @@ def get_window_date_range(user_id: str | UUID) -> tuple[datetime, datetime]:
 
 def get_completed_window_count(user_id: str | UUID) -> int:
     """Get number of completed windows."""
-    redis_client = get_redis_client()
     val = redis_client.get(_get_key(str(user_id), "window", "completed_count"))
     return int(val) if val else 0
 
@@ -613,10 +577,8 @@ def persist_window_results(user_id: str | UUID, window_idx: int) -> None:
     - "failed" -> "done" (Garmin error, treated as done at matrix level)
     - everything else -> "pending"
     """
-    redis_client = get_redis_client()
     uid = str(user_id)
     results: dict[str, str] = {}
-
     keys = [_get_key(uid, "types", dt, "status") for dt in BACKFILL_DATA_TYPES]
     all_flat_statuses = redis_client.mget(keys)
     status_map = {"success": "done", "failed": "done", "timed_out": "timed_out"}
@@ -646,7 +608,6 @@ def advance_window(user_id: str | UUID) -> bool:
 
     Persists per-window matrix keys before resetting flat type keys.
     """
-    redis_client = get_redis_client()
     uid = str(user_id)
 
     # Persist current window results to matrix keys BEFORE resetting
@@ -689,7 +650,6 @@ def advance_window(user_id: str | UUID) -> bool:
 
 def complete_backfill(user_id: str | UUID) -> None:
     """Mark entire backfill as complete (all types processed)."""
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
 
     # Set overall complete marker with shorter TTL (1 day)
@@ -738,7 +698,6 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         return {"error": f"Invalid user_id: {e}"}
 
     # Reject re-trigger if permanently failed
-    redis_client = get_redis_client()
     if redis_client.get(_get_key(user_id, "permanently_failed")) == "1":
         log_structured(
             logger,
@@ -847,9 +806,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
     Returns:
         Dict with timeout check result
     """
-    redis_client = get_redis_client()
     user_id_str = str(user_id)
-
     trace_id = get_trace_id(user_id_str)
     type_trace_id = get_trace_id(user_id_str, data_type)
 
@@ -966,7 +923,7 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
     # During retry phase, use the retry window's date range (not current sequential window)
     if is_retry_phase(user_id):
-        retry_window_str = get_redis_client().get(_get_key(user_id, "retry_current_window"))
+        retry_window_str = redis_client.get(_get_key(user_id, "retry_current_window"))
         if retry_window_str:
             start_time, end_time = get_window_date_range_for_index(user_id, int(retry_window_str))
             current_window = int(retry_window_str)
@@ -1220,7 +1177,6 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
         )
         return {"status": "cancelled"}
 
-    redis_client = get_redis_client()
     pending_types = get_pending_types(user_id)
 
     if not pending_types:
