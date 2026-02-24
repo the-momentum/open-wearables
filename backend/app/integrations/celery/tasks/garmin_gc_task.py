@@ -36,6 +36,7 @@ from .garmin_backfill_task import (
 )
 
 logger = getLogger(__name__)
+redis_client = get_redis_client()
 
 
 def _key(user_id: str, *parts: str) -> str:
@@ -53,7 +54,6 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
     Returns True only if the MOST RECENT timestamp across all types is older than
     the threshold. If no timestamps exist at all, returns True (orphaned lock).
     """
-    redis_client = get_redis_client()
     now = datetime.now(timezone.utc)
 
     most_recent: datetime | None = None
@@ -110,8 +110,6 @@ def clear_stuck_backfill(user_id: str) -> dict[str, Any]:
     Returns:
         Dict with user_id, attempt_count, permanently_failed, cleared_type.
     """
-    redis_client = get_redis_client()
-
     # Increment attempt counter
     attempt_key = _key(user_id, "attempt_count")
     attempt_count = redis_client.incr(attempt_key)
@@ -171,7 +169,6 @@ def gc_stuck_backfills() -> dict[str, Any]:
     Returns:
         Dict with cleared user_ids, scanned flag, and total locks checked.
     """
-    redis_client = get_redis_client()
     match_pattern = f"{REDIS_PREFIX}:*:lock"
 
     log_structured(
