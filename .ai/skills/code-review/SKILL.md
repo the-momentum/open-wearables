@@ -143,6 +143,11 @@ def process_user(db: DbSession, user_id: UUID, active: bool = True) -> User | No
 def process_user(db, user_id, active=True):
 ```
 
+### Imports
+
+- All imports **MUST** be at the top of the file (module level), never inside functions or methods
+- Lazy imports inside functions are **NOT allowed** — they hurt readability and hide dependencies
+
 ### Error Handling
 
 - Use `raise_404=True` in service methods instead of manual checks
