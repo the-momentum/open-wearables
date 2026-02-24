@@ -1,0 +1,223 @@
+name: AGENTS.md Compliance Review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to re-review"
+        required: true
+        type: number
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+env:
+  PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Review PR against AGENTS.md guidelines
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            You are a code review assistant for the Open Wearables project.
+            Evaluate the PR diff against the coding guidelines in AGENTS.md files.
+
+            ## Instructions
+
+            1. Read the PR diff: `gh pr diff ${{ env.PR_NUMBER }}`.
+            2. Read `AGENTS.md` (root) for general project guidelines.
+            3. Determine which areas are affected by the diff:
+               - If `backend/` files changed, read `backend/AGENTS.md` in full.
+               - If `frontend/` files changed, read `frontend/AGENTS.md` in full.
+            4. Use the rules, patterns, and examples from those AGENTS.md files
+               as the sole source of truth for your review. Do NOT invent rules
+               beyond what is documented there.
+            5. Only review changed files and changed lines.
+            6. Skip issues that are already caught by linters (ruff, oxlint, prettier).
+
+            ## Output
+
+            ### Step 1: Inline comments
+            - Post inline comments on specific violations (max 10).
+            - Each comment: cite the rule/pattern from AGENTS.md + suggested fix.
+            - Be concise.
+
+            ### Step 2: Summary comment
+            After all inline comments, post ONE summary comment on the PR using
+            `gh pr comment`. The comment MUST follow this EXACT format:
+
+            ```
+            ## AGENTS.md Review Summary
+
+            | Area | Rule | Violations |
+            |------|------|------------|
+            | <area> | <rule_snake_case> | <count> |
+
+            **Total: <total> violations**
+
+            <!-- AGENTS_REVIEW_SUMMARY {"pr":<pr_number>,"violations":{"<area>/<rule_snake_case>":<n>,...}} -->
+            ```
+
+            - `<area>` is `backend` or `frontend`.
+            - `<rule_snake_case>` is a short snake_case identifier you derive from
+              the AGENTS.md rule (e.g. `layer_separation`, `missing_type_hints`,
+              `hardcoded_routes`). Use consistent names across reviews.
+            - Only include rows with count > 0. If no violations, set Total to 0.
+            - The hidden HTML comment with JSON is REQUIRED for automated tracking.
+
+          claude_args: |
+            --model claude-sonnet-4-20250514
+            --max-turns 8
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read"
+
+      - name: Update compliance tracking issue
+        if: always()
+        id: build_body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ vars.COMPLIANCE_ISSUE_NUMBER }}
+        run: |
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "COMPLIANCE_ISSUE_NUMBER not set, skipping tracking update"
+            exit 0
+          fi
+
+          # Find the summary comment posted by Claude on this PR
+          SUMMARY_JSON=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.body | contains("AGENTS_REVIEW_SUMMARY")) | .body' \
+            | grep -oP '(?<=AGENTS_REVIEW_SUMMARY ).*?(?= -->)' \
+            | tail -1)
+
+          if [ -z "$SUMMARY_JSON" ]; then
+            echo "No summary comment found, skipping tracking update"
+            exit 0
+          fi
+
+          # Write data to temp files to avoid shell quoting issues
+          echo "$SUMMARY_JSON" > /tmp/summary.json
+          gh issue view "$ISSUE_NUMBER" --json body -q '.body' > /tmp/current_body.md
+
+          python3 << 'PYEOF'
+          import json
+          import re
+          import os
+          from datetime import date
+
+          with open("/tmp/summary.json") as f:
+              summary_raw = f.read().strip()
+          with open("/tmp/current_body.md") as f:
+              current_body = f.read()
+
+          pr_number = os.environ.get("PR_NUMBER", "?")
+
+          try:
+              new_data = json.loads(summary_raw)
+          except json.JSONDecodeError:
+              print("Failed to parse summary JSON")
+              exit(0)
+
+          violations = new_data.get("violations", {})
+          if not violations:
+              print("No violations to track")
+              exit(0)
+
+          # Parse existing counts from issue body (section-aware for 3-column tables)
+          existing_counts = {}
+          existing_last_seen = {}
+          current_area = None
+          for line in current_body.split("\n"):
+              if "## Backend violations" in line:
+                  current_area = "backend"
+              elif "## Frontend violations" in line:
+                  current_area = "frontend"
+              elif current_area:
+                  match = re.match(r"\| (\w+) \| (\d+) \| (PR #\d+) \|", line.strip())
+                  if match:
+                      rule, count, last_seen = match.groups()
+                      key = f"{current_area}/{rule}"
+                      existing_counts[key] = int(count)
+                      existing_last_seen[key] = last_seen
+
+          # Parse total PRs reviewed
+          total_match = re.search(r"Total PRs reviewed: (\d+)", current_body)
+          total_prs = int(total_match.group(1)) if total_match else 0
+          total_prs += 1
+
+          # Merge new violations
+          for key, count in violations.items():
+              if count > 0:
+                  existing_counts[key] = existing_counts.get(key, 0) + count
+                  existing_last_seen[key] = f"PR #{pr_number}"
+
+          # Build updated tables
+          backend_rows = []
+          frontend_rows = []
+          for key in sorted(existing_counts.keys()):
+              count = existing_counts[key]
+              area, rule = key.split("/", 1)
+              last_seen = existing_last_seen.get(key, f"PR #{pr_number}")
+              row = f"| {rule} | {count} | {last_seen} |"
+              if area == "backend":
+                  backend_rows.append(row)
+              else:
+                  frontend_rows.append(row)
+
+          today = date.today().isoformat()
+          b_table = "\n".join(backend_rows) if backend_rows else "| - | 0 | - |"
+          f_table = "\n".join(frontend_rows) if frontend_rows else "| - | 0 | - |"
+
+          new_body = f"""# AGENTS.md Compliance Report
+
+          Last updated: {today}
+          Total PRs reviewed: {total_prs}
+
+          ## Backend violations
+          | Rule | Count | Last seen |
+          |------|-------|-----------|
+          {b_table}
+
+          ## Frontend violations
+          | Rule | Count | Last seen |
+          |------|-------|-----------|
+          {f_table}"""
+
+          # Remove leading whitespace from YAML/heredoc indentation
+          new_body = re.sub(r"^ {10}", "", new_body, flags=re.MULTILINE)
+
+          # Write body to file for gh issue edit --body-file
+          with open("/tmp/issue_body.md", "w") as f:
+              f.write(new_body)
+
+          # Signal that we have a body to update
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("has_body=true\n")
+          PYEOF
+
+      - name: Update tracking issue
+        if: steps.build_body.outputs.has_body == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit "${{ vars.COMPLIANCE_ISSUE_NUMBER }}" \
+            --body-file /tmp/issue_body.md
