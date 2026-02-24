@@ -22,17 +22,21 @@ from .token_type import (
 
 
 __all__ = [
+    # DeviceType
     "DeviceType",
     "DEFAULT_DEVICE_TYPE_PRIORITY",
     "infer_device_type_from_model",
     "infer_device_type_from_source_name",
+    # SeriesType
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
     "SERIES_TYPE_ID_BY_ENUM",
     "get_series_type_id",
     "get_series_type_from_id",
     "get_series_type_unit",
+    # WorkoutType
     "WorkoutType",
     "WORKOUTS_WITH_PACE",
+    # TokenType
     "TokenType",
 ]
