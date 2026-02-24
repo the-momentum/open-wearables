@@ -4,14 +4,6 @@ from uuid import UUID
 from app.schemas.oauth import ProviderName
 from pydantic import BaseModel, Field
 
-DEFAULT_PROVIDER_PRIORITY: dict[ProviderName, int] = {
-    ProviderName.APPLE: 1,
-    ProviderName.GARMIN: 2,
-    ProviderName.POLAR: 3,
-    ProviderName.SUUNTO: 4,
-    ProviderName.WHOOP: 5,
-}
-
 
 class ProviderPriorityBase(BaseModel):
     provider: ProviderName
