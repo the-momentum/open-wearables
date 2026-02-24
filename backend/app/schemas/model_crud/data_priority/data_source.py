@@ -1,8 +1,7 @@
 from uuid import UUID
 
-from pydantic import BaseModel
-
 from app.schemas.oauth import ProviderName
+from pydantic import BaseModel
 
 
 class DataSourceBase(BaseModel):

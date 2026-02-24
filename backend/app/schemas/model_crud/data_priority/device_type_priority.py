@@ -1,9 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-
 from app.schemas.device_type import DeviceType
+from pydantic import BaseModel, Field
 
 
 class DeviceTypePriorityBase(BaseModel):

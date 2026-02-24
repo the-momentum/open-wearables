@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Annotated, Any, cast
 from uuid import UUID
 
+from app.schemas.oauth import ProviderName
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
@@ -15,7 +16,6 @@ from app.integrations.celery.tasks import (
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
-from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_247_data import Base247DataTemplate

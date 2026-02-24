@@ -2,11 +2,11 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, RootModel
-
 from app.schemas.common_types import SourceMetadata
 from app.schemas.summaries import SleepStagesSummary
 from app.schemas.timeseries import TimeSeriesSample
+from pydantic import BaseModel, Field
+
 
 class Workout(BaseModel):
     id: UUID

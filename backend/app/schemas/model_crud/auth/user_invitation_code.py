@@ -1,9 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.schemas.token import TokenResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserInvitationCodeCreate(BaseModel):

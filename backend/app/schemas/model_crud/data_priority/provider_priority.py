@@ -1,9 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
-
 from app.schemas.oauth import ProviderName
+from pydantic import BaseModel, Field
 
 DEFAULT_PROVIDER_PRIORITY: dict[ProviderName, int] = {
     ProviderName.APPLE: 1,
