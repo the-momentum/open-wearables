@@ -4,6 +4,8 @@
 from app.config import settings
 from app.database import SessionLocal
 from app.schemas.developer import DeveloperCreate
+
+from app.database import SessionLocal
 from app.services import developer_service
 
 

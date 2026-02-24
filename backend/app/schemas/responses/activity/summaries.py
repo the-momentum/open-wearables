@@ -1,8 +1,7 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
-
 from app.schemas.common_types import SourceMetadata
+from pydantic import BaseModel, Field
 
 
 class IntensityMinutes(BaseModel):

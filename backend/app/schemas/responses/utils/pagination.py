@@ -4,7 +4,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-
 class SourceMetadata(BaseModel):
     provider: str = Field(..., example="apple_health")
     device: str | None = Field(None, example="Apple Watch Series 9")

@@ -1,10 +1,9 @@
 from datetime import date, datetime
 from typing import TypedDict
 
-from pydantic import BaseModel
-
 from app.schemas.common_types import SourceMetadata
 from app.schemas.series_types import SeriesType
+from pydantic import BaseModel
 
 
 class TimeSeriesSample(BaseModel):
