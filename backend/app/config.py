@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
-    admin_password: SecretStr = SecretStr("secret123")
+    admin_password: SecretStr = SecretStr("your-secure-password")
 
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours

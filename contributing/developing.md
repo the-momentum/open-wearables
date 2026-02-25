@@ -23,7 +23,7 @@ cd open-wearables
 # Start all services with hot-reload (recommended for development)
 make watch
 
-# Admin account is auto-created on startup (admin@admin.com / secret123)
+# Admin account is auto-created on startup (admin@admin.com / your-secure-password)
 # Seed sample test data (optional)
 make seed
 ```

@@ -93,7 +93,7 @@ Get Open Wearables up and running in minutes.
 
 4. **Log in to the developer portal:**
 
-   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `secret123`).
+   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`).
 
    Open http://localhost:3000 to access the developer portal and create API keys.
 
