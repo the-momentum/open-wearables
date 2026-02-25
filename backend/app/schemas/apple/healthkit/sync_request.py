@@ -135,45 +135,112 @@ class SyncRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
+                "provider": "samsung_health",
+                "sdkVersion": "0.1.0",
+                "syncTimestamp": "2026-02-24T10:00:00Z",
                 "data": {
                     "records": [
                         {
-                            "uuid": "0F12CD84-80C1-45D2-A0CD-474C144602C4",
-                            "type": "HKQuantityTypeIdentifierHeartRate",
-                            "unit": "bpm",
-                            "value": 72,
-                            "startDate": "2024-01-01T03:54:07Z",
-                            "endDate": "2024-01-01T03:57:20Z",
+                            "id": "abc-xyz-123-sys",
+                            "type": "BLOOD_PRESSURE_SYSTOLIC",
+                            "startDate": "2026-02-24T08:30:00Z",
+                            "endDate": "2026-02-24T08:30:00Z",
+                            "zoneOffset": "+01:00",
                             "source": {
-                                "name": "Apple Watch",
-                                "deviceModel": "Watch",
+                                "appId": "com.sec.android.app.shealth",
+                                "deviceId": "R9ZW30ABC12",
+                                "deviceName": "Galaxy Watch7",
+                                "deviceManufacturer": "Samsung",
+                                "deviceModel": "SM-R960",
+                                "deviceType": "watch",
+                                "recordingMethod": None # null
                             },
+                            "value": 122.0,
+                            "unit": "mmHg",
+                            "parentId": "abc-xyz-123",
+                            "metadata": None # null
                         }
                     ],
                     "sleep": [
                         {
-                            "uuid": "ABC123",
-                            "type": "HKCategoryTypeIdentifierSleepAnalysis",
-                            "value": 3,
-                            "startDate": "2024-01-01T22:00:00Z",
-                            "endDate": "2024-01-01T22:30:00Z",
+                            "id": "slp-001-s0-0",
+                            "parentId": "slp-001",
+                            "stage": "light",
+                            "startDate": "2026-02-23T23:10:00Z",
+                            "endDate": "2026-02-24T00:00:00Z",
+                            "zoneOffset": "+01:00",
                             "source": {
-                                "name": "Apple Watch",
+                            "appId": "com.sec.android.app.shealth",
+                            "deviceId": "R9ZW30ABC12",
+                            "deviceName": "Galaxy Watch7",
+                            "deviceManufacturer": "Samsung",
+                            "deviceModel": "SM-R960",
+                            "deviceType": "watch",
+                            "recordingMethod": None # null
                             },
+                            "values": [
+                                { "type": "sleepScore", "value": 82, "unit": "score" }
+                            ],
+                            "metadata": None # null
                         }
                     ],
                     "workouts": [
                         {
-                            "uuid": "DEF456",
-                            "type": "running",
-                            "startDate": "2024-01-01T06:00:00Z",
-                            "endDate": "2024-01-01T07:00:00Z",
-                            "workoutStatistics": [
-                                {"type": "distance", "unit": "m", "value": 5000},
-                                {"type": "averageHeartRate", "unit": "bpm", "value": 150},
+                            "id": "wrk-001-s0",
+                            "parentId": "wrk-001",
+                            "type": "RUNNING",
+                            "startDate": "2026-02-24T06:00:00Z",
+                            "endDate": "2026-02-24T06:45:00Z",
+                            "zoneOffset": "+01:00",
+                            "source": {
+                                "appId": "com.sec.android.app.shealth",
+                                "deviceId": "R9ZW30ABC12",
+                                "deviceName": "Galaxy Watch7",
+                                "deviceManufacturer": "Samsung",
+                                "deviceModel": "SM-R960",
+                                "deviceType": "watch",
+                                "recordingMethod": None # null
+                            },
+                            "title": None, # null
+                            "notes": "Morning run in the park",
+                            "values": [
+                                { "type": "duration", "value": 2700000, "unit": "ms" },
+                                { "type": "calories", "value": 345.5, "unit": "kcal" },
+                                { "type": "distance", "value": 5234.0, "unit": "m" },
+                                { "type": "meanHeartRate", "value": 142.3, "unit": "bpm" },
+                                { "type": "maxHeartRate", "value": 178.0, "unit": "bpm" },
+                                { "type": "minHeartRate", "value": 95.0, "unit": "bpm" },
+                                { "type": "meanSpeed", "value": 1.50, "unit": "m/s" },
+                                { "type": "maxSpeed", "value": 3.20, "unit": "m/s" },
+                                { "type": "meanCadence", "value": 165.0, "unit": "spm" },
+                                { "type": "maxCadence", "value": 182.0, "unit": "spm" },
+                                { "type": "altitudeGain", "value": 45.0, "unit": "m" },
+                                { "type": "altitudeLoss", "value": 42.0, "unit": "m" },
+                                { "type": "maxAltitude", "value": 185.0, "unit": "m" },
+                                { "type": "minAltitude", "value": 140.0, "unit": "m" },
+                                { "type": "vo2Max", "value": 42.5, "unit": "mL/kg/min" }
                             ],
+                            "segments": None, # null
+                            "laps": None, # null
+                            "route": [
+                            {
+                                "timestamp": "2026-02-24T06:01:00Z",
+                                "latitude": 52.229676,
+                                "longitude": 21.012229,
+                                "altitudeM": 142.0,
+                                "horizontalAccuracyM": 3.5,
+                                "verticalAccuracyM": None # null
+                            }
+                            ],
+                            "samples": [
+                                { "timestamp": "2026-02-24T06:01:00Z", "type": "heartRate", "value": 110.0, "unit": "bpm" },
+                                { "timestamp": "2026-02-24T06:01:00Z", "type": "cadence", "value": 155.0, "unit": "spm" },
+                                { "timestamp": "2026-02-24T06:01:00Z", "type": "speed", "value": 1.8, "unit": "m/s" }
+                            ],
+                            "metadata": None # null
                         }
                     ],
                 }
             }
         }
+
