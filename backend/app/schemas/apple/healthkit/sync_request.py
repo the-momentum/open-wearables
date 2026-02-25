@@ -137,8 +137,7 @@ class SyncRequestData(BaseModel):
     )
     sleep: list[SleepRecord] = Field(
         default_factory=list,
-        description="Sleep phase records. Each record's `value` field contains the sleep phase as integer: "
-        "0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=ASLEEP_CORE (light), 4=ASLEEP_DEEP, 5=ASLEEP_REM",
+        description="Sleep phase records (in bed, awake, light, deep, REM).",
     )
     workouts: list[Workout] = Field(
         default_factory=list,
