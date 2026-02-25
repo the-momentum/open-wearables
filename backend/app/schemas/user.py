@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # Allowlist for user sort columns - keep in sync with Literal type below
-USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name"})
+USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name", "last_synced_at"})
 
 
 class UserQueryParams(BaseModel):
@@ -24,7 +24,7 @@ class UserQueryParams(BaseModel):
     page: int = Field(1, ge=1, description="Page number (1-based)")
     limit: int = Field(20, ge=1, le=100, description="Number of results per page")
 
-    sort_by: Literal["created_at", "email", "first_name", "last_name"] | None = Field(
+    sort_by: Literal["created_at", "email", "first_name", "last_name", "last_synced_at"] | None = Field(
         "created_at",
         description="Field to sort by",
     )
@@ -48,6 +48,7 @@ class UserRead(BaseModel):
     last_name: str | None = None
     email: EmailStr | None = None
     external_user_id: str | None = None
+    last_synced_at: datetime | None = None
 
 
 class UserCreate(BaseModel):

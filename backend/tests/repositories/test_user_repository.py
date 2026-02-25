@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.models import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import UserCreateInternal, UserUpdateInternal
-from tests.factories import UserFactory
+from app.schemas.user import UserCreateInternal, UserQueryParams, UserUpdateInternal
+from tests.factories import UserConnectionFactory, UserFactory
 
 
 class TestUserRepository:
@@ -317,3 +317,62 @@ class TestUserRepository:
         assert len(results) == 1
         assert results[0].email == "test@example.com"
         assert results[0].first_name == "John"
+
+    def test_get_users_with_filters_returns_last_synced_at(self, db: Session, user_repo: UserRepository) -> None:
+        """Test that get_users_with_filters returns MAX last_synced_at across connections."""
+        # Arrange
+        user = UserFactory(email="synced@example.com")
+        older_sync = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        newer_sync = datetime(2024, 6, 15, tzinfo=timezone.utc)
+        UserConnectionFactory(user=user, provider="garmin", last_synced_at=older_sync)
+        UserConnectionFactory(user=user, provider="polar", last_synced_at=newer_sync)
+
+        # Act
+        params = UserQueryParams(email="synced@example.com")
+        rows, total_count = user_repo.get_users_with_filters(db, params)
+
+        # Assert
+        assert total_count == 1
+        assert len(rows) == 1
+        returned_user, last_synced_at = rows[0]
+        assert returned_user.id == user.id
+        assert last_synced_at == newer_sync
+
+    def test_get_users_with_filters_returns_none_without_connections(
+        self, db: Session, user_repo: UserRepository
+    ) -> None:
+        """Test that a user with no connections returns None for last_synced_at."""
+        # Arrange
+        user = UserFactory(email="noconn@example.com")
+
+        # Act
+        params = UserQueryParams(email="noconn@example.com")
+        rows, total_count = user_repo.get_users_with_filters(db, params)
+
+        # Assert
+        assert total_count == 1
+        assert len(rows) == 1
+        returned_user, last_synced_at = rows[0]
+        assert returned_user.id == user.id
+        assert last_synced_at is None
+
+    def test_get_users_with_filters_sort_by_last_synced_at(self, db: Session, user_repo: UserRepository) -> None:
+        """Test sorting by last_synced_at with NULLs last."""
+        # Arrange
+        UserFactory(email="nosync@example.com")
+        user_old_sync = UserFactory(email="oldsync@example.com")
+        user_new_sync = UserFactory(email="newsync@example.com")
+
+        old_time = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        new_time = datetime(2024, 12, 1, tzinfo=timezone.utc)
+        UserConnectionFactory(user=user_old_sync, provider="garmin", last_synced_at=old_time)
+        UserConnectionFactory(user=user_new_sync, provider="garmin", last_synced_at=new_time)
+
+        # Act - sort descending (newest first, NULLs last)
+        params = UserQueryParams(sort_by="last_synced_at", sort_order="desc", limit=100)
+        rows, _ = user_repo.get_users_with_filters(db, params)
+
+        # Assert - find our test users among all results
+        emails = [row[0].email for row in rows]
+        synced_emails = [e for e in emails if e in {"nosync@example.com", "oldsync@example.com", "newsync@example.com"}]
+        assert synced_emails == ["newsync@example.com", "oldsync@example.com", "nosync@example.com"]

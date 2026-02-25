@@ -57,6 +57,7 @@ const columnToSortBy: Record<string, UserQueryParams['sort_by']> = {
   email: 'email',
   first_name: 'first_name',
   name: 'first_name',
+  last_synced_at: 'last_synced_at',
 };
 
 export function UsersTable({
@@ -272,6 +273,21 @@ export function UsersTable({
           {formatDistanceToNow(new Date(row.original.created_at), {
             addSuffix: true,
           })}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'last_synced_at',
+      header: ({ column }) => (
+        <SortableHeader column={column}>Last Synced</SortableHeader>
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs text-zinc-500">
+          {row.original.last_synced_at
+            ? formatDistanceToNow(new Date(row.original.last_synced_at), {
+                addSuffix: true,
+              })
+            : '—'}
         </span>
       ),
     },

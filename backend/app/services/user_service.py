@@ -64,12 +64,18 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         """
         self.logger.debug(f"Fetching users with pagination: page={query_params.page}, limit={query_params.limit}")
 
-        users, total_count = self.crud.get_users_with_filters(db_session, query_params)
+        rows, total_count = self.crud.get_users_with_filters(db_session, query_params)
 
-        self.logger.debug(f"Retrieved {len(users)} users out of {total_count} total")
+        self.logger.debug(f"Retrieved {len(rows)} users out of {total_count} total")
+
+        items = []
+        for user, last_synced_at in rows:
+            user_read = UserRead.model_validate(user)
+            user_read.last_synced_at = last_synced_at
+            items.append(user_read)
 
         return PaginatedResponse[UserRead](
-            items=[UserRead.model_validate(user) for user in users],
+            items=items,
             total=total_count,
             page=query_params.page,
             limit=query_params.limit,
