@@ -60,6 +60,8 @@ class ImportService:
         (EventRecordCreate, EventRecordDetailCreate) ready to insert into your ORM session.
         """
         user_uuid = UUID(user_id)
+        provider = request.provider
+
         for wjson in request.data.workouts:
             workout_id = uuid4()
             external_id = wjson.uuid if wjson.uuid else None
@@ -67,11 +69,13 @@ class ImportService:
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
-                wjson.workoutStatistics,
+                wjson.values,
                 user_uuid,
                 device_model,
                 software_version,
                 wjson.endDate,
+                provider,
+                original_source_name,
             )
 
             if duration is None:
@@ -161,6 +165,8 @@ class ImportService:
         device_model: str | None,
         software_version: str | None,
         end_date: datetime,
+        provider: str,
+        source_name: str | None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -186,10 +192,10 @@ class ImportService:
                     id=uuid4(),
                     external_id=None,
                     user_id=user_uuid,
-                    source="apple_health_sdk",
+                    source=source_name,
                     device_model=device_model,
                     software_version=software_version,
-                    provider="apple",
+                    provider=provider,
                     recorded_at=end_date,
                     value=value,
                     series_type=series_type,
