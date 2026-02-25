@@ -123,6 +123,11 @@
           "icon": "github"
         },
         {
+          "anchor": "Discord",
+          "href": "https://discord.gg/qrcfFnNE6H",
+          "icon": "discord"
+        },
+        {
           "anchor": "Discussions",
           "href": "https://github.com/the-momentum/open-wearables/discussions",
           "icon": "comments"
@@ -156,7 +161,8 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/the-momentum/open-wearables"
+      "github": "https://github.com/the-momentum/open-wearables",
+      "discord": "https://discord.gg/qrcfFnNE6H"
     }
   }
 }
