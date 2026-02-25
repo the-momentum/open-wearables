@@ -4,16 +4,35 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.series_types.apple import (
-    AppleCategoryType,
-    AppleMetricType,
-    WorkoutStatisticType,
-)
+from app.constants.series_types.apple import AppleMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
+
+
+class DeviceType(StrEnum):
+    """Device type for HealthKit records."""
+
+    PHONE = "phone"
+    WATCH = "watch"
+    SCALE = "scale"
+    RING = "ring"
+    FITNESS_BAND = "fitness_band"
+    CHEST_STRAP = "chest_strap"
+    HEAD_MOUNTED = "head_mounted"
+    SMART_DISPLAY = "smart_display"
+    UNKNOWN = "unknown"
+
+class RecordingMethod(StrEnum):
+    """Recording method for HealthKit records."""
+
+    ACTIVE = "active"
+    AUTOMATIC = "automatic"
+    MANUAL = "manual"
+    UNKNOWN = "unknown"
 
 
 class OSVersion(BaseModel):
@@ -31,52 +50,55 @@ class SourceInfo(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    app_id: str | None = Field(default=None, alias="appId")
     name: str | None = None
     bundle_identifier: str | None = Field(default=None, alias="bundleIdentifier")
     version: str | None = None
     product_type: str | None = Field(default=None, alias="productType")
     operating_system_version: OSVersion | None = Field(default=None, alias="operatingSystemVersion")
-    device_name: str | None = Field(default=None, alias="name")
+    device_id: str | None = Field(default=None, alias="deviceId")
+    device_name: str | None = Field(default=None, alias="deviceName")
     device_manufacturer: str | None = Field(default=None, alias="deviceManufacturer")
+    device_type: DeviceType | str | None = Field(default=None, alias="deviceType")
     device_model: str | None = Field(default=None, alias="deviceModel")
     device_hardware_version: str | None = Field(default=None, alias="deviceHardwareVersion")
     device_software_version: str | None = Field(default=None, alias="deviceSoftwareVersion")
+    recording_method: RecordingMethod | str | None = Field(default=None, alias="recordingMethod")
 
 
 class MetricRecord(BaseModel):
     """Health metric record from HealthKit (heart rate, steps, distance, etc.)."""
 
-    uuid: str | None = None
-    type: AppleMetricType | None = None
+    id: str | None = None
+    parentId: str | None = None
+    type: AppleMetricType | str | None = None
     startDate: datetime
     endDate: datetime
-    unit: str | None
-    value: Decimal
+    zoneOffset: str | None = None
     source: SourceInfo | None = None
-    recordMetadata: list[dict[str, Any]] | None = None
+    value: Decimal
+    unit: str | None
+    metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
 class SleepRecord(BaseModel):
     """Sleep analysis record from HealthKit."""
 
-    uuid: str | None = None
-    type: AppleCategoryType | None = None
+    id: str | None = None
+    parentId: str | None = None
+    stage: SleepPhase | str
     startDate: datetime
     endDate: datetime
-    unit: str | None
-    value: Decimal = Field(
-        ge=0,
-        le=5,
-        description="Sleep phase: 0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=LIGHT, 4=DEEP, 5=REM",
-    )
+    zoneOffset: str | None = None
     source: SourceInfo | None = None
-    recordMetadata: list[dict[str, Any]] | None = None
+    values: list[dict[str, Any]] | None = None
+    metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
 class WorkoutStatistic(BaseModel):
     """Schema for workout statistic (distance, heart rate, calories, etc.)."""
 
-    type: WorkoutStatisticType
+    type: WorkoutStatisticType | str
     unit: str
     value: float | int
 
@@ -84,12 +106,23 @@ class WorkoutStatistic(BaseModel):
 class Workout(BaseModel):
     """Schema for workout/exercise session from HealthKit."""
 
-    uuid: str | None = None
-    type: SDKWorkoutType | None = None
+    id: str | None = None
+    parentId: str | None = None
+    type: SDKWorkoutType | str | None = None
     startDate: datetime
     endDate: datetime
+    zoneOffset: str | None = None
     source: SourceInfo | None = None
-    workoutStatistics: list[WorkoutStatistic] | None = None
+    title: str | None = None
+    notes: str | None = None
+    values: list[WorkoutStatistic] | None = None
+
+    # everything below is unused for now
+    segments: list[dict[str, Any]] | None = None
+    laps: list[dict[str, Any]] | None = None
+    route: list[dict[str, Any]] | None = None
+    samples: list[dict[str, Any]] | None = None
+    metadata: list[dict[str, Any]] | dict[str, Any] | None = None
 
 
 class SyncRequestData(BaseModel):
@@ -127,6 +160,9 @@ class SyncRequest(BaseModel):
     All fields within `data` are optional - you can send any combination of records, sleep, and workouts.
     """
 
+    provider: str
+    sdkVersion: str
+    syncTimestamp: datetime
     data: SyncRequestData = Field(
         default_factory=SyncRequestData,
         description="Container for health data arrays (records, sleep, workouts)",
