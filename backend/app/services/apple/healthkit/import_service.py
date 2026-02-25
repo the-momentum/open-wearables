@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from app.constants.series_types.apple import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
-    get_series_type_from_apple_metric_type,
+    get_series_type_from_sdk_metric_type,
     get_series_type_from_workout_statistic_type,
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
@@ -113,7 +113,7 @@ class ImportService:
             value = Decimal(str(rjson.value))
 
             record_type = rjson.type or ""
-            series_type = get_series_type_from_apple_metric_type(record_type)
+            series_type = get_series_type_from_sdk_metric_type(record_type)
 
             if not series_type:
                 continue

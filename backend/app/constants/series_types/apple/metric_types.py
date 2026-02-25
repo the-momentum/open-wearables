@@ -256,3 +256,75 @@ def get_series_type_from_metric_type(metric_type: AppleMetricType | str) -> Seri
     Returns None when the metric type is not supported.
     """
     return METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # type: ignore[arg-type]
+
+
+# =============================================================================
+# Samsung / Health Connect SDK metric types
+# =============================================================================
+
+
+class SDKMetricType(StrEnum):
+    """SDK record type identifiers used by Samsung Health and Health Connect.
+
+    These are the type strings sent in the `type` field of metric records
+    from the Samsung Health SDK and Android Health Connect.
+    """
+
+    STEP_COUNT = "STEP_COUNT"
+    HEART_RATE = "HEART_RATE"
+    RESTING_HEART_RATE = "RESTING_HEART_RATE"
+    HEART_RATE_VARIABILITY = "HEART_RATE_VARIABILITY"
+    OXYGEN_SATURATION = "OXYGEN_SATURATION"
+    BLOOD_PRESSURE_SYSTOLIC = "BLOOD_PRESSURE_SYSTOLIC"
+    BLOOD_PRESSURE_DIASTOLIC = "BLOOD_PRESSURE_DIASTOLIC"
+    BLOOD_GLUCOSE = "BLOOD_GLUCOSE"
+    ACTIVE_CALORIES_BURNED = "ACTIVE_CALORIES_BURNED"
+    BASAL_METABOLIC_RATE = "BASAL_METABOLIC_RATE"
+    BODY_TEMPERATURE = "BODY_TEMPERATURE"
+    WEIGHT = "WEIGHT"
+    HEIGHT = "HEIGHT"
+    BODY_FAT = "BODY_FAT"
+    BODY_FAT_MASS = "BODY_FAT_MASS"
+    LEAN_BODY_MASS = "LEAN_BODY_MASS"
+    SKELETAL_MUSCLE_MASS = "SKELETAL_MUSCLE_MASS"
+    BMI = "BMI"
+    FLOORS_CLIMBED = "FLOORS_CLIMBED"
+    DISTANCE = "DISTANCE"
+    HYDRATION = "HYDRATION"
+    VO2_MAX = "VO2_MAX"
+
+
+SDK_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
+    SDKMetricType.STEP_COUNT: SeriesType.steps,
+    SDKMetricType.HEART_RATE: SeriesType.heart_rate,
+    SDKMetricType.RESTING_HEART_RATE: SeriesType.resting_heart_rate,
+    SDKMetricType.HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
+    SDKMetricType.OXYGEN_SATURATION: SeriesType.oxygen_saturation,
+    SDKMetricType.BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
+    SDKMetricType.BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
+    SDKMetricType.BLOOD_GLUCOSE: SeriesType.blood_glucose,
+    SDKMetricType.ACTIVE_CALORIES_BURNED: SeriesType.energy,
+    SDKMetricType.BASAL_METABOLIC_RATE: SeriesType.basal_energy,
+    SDKMetricType.BODY_TEMPERATURE: SeriesType.body_temperature,
+    SDKMetricType.WEIGHT: SeriesType.weight,
+    SDKMetricType.HEIGHT: SeriesType.height,
+    SDKMetricType.BODY_FAT: SeriesType.body_fat_percentage,
+    SDKMetricType.BODY_FAT_MASS: SeriesType.body_fat_mass,
+    SDKMetricType.LEAN_BODY_MASS: SeriesType.lean_body_mass,
+    SDKMetricType.SKELETAL_MUSCLE_MASS: SeriesType.skeletal_muscle_mass,
+    SDKMetricType.BMI: SeriesType.body_mass_index,
+    SDKMetricType.FLOORS_CLIMBED: SeriesType.flights_climbed,
+    SDKMetricType.DISTANCE: SeriesType.distance_walking_running,
+    SDKMetricType.HYDRATION: SeriesType.hydration,
+    SDKMetricType.VO2_MAX: SeriesType.vo2_max,
+}
+
+
+def get_series_type_from_sdk_metric_type(metric_type: SDKMetricType | str) -> SeriesType | None:
+    """
+    Map a Samsung/Health Connect SDK metric type to the unified SeriesType enum.
+    Returns None when the metric type is not supported.
+    """
+    apple_type = get_series_type_from_metric_type(metric_type)  # type: ignore[arg-type]
+    if not apple_type:
+        return SDK_METRIC_TYPE_TO_SERIES_TYPE.get(metric_type)  # type: ignore[arg-type]
