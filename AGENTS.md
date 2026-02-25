@@ -39,7 +39,7 @@ open-wearables/
 # Start all services
 docker compose up -d
 
-# Admin account and series type definitions are auto-created on startup (admin@admin.com / secret123)
+# Admin account and series type definitions are auto-created on startup (admin@admin.com / your-secure-password)
 # Seed sample test data (optional)
 make seed
 
