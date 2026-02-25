@@ -17,8 +17,6 @@ logger = getLogger(__name__)
 # Reuses Apple/HealthKit import logic since Samsung SDK payload format is identical
 samsung_import_service = ImportService(
     log=getLogger(__name__),
-    provider="samsung",
-    source="samsung_health_sdk",
 )
 
 

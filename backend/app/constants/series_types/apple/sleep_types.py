@@ -8,7 +8,7 @@ class SleepPhase(StrEnum):
     ASLEEP_LIGHT = "light"
     ASLEEP_DEEP = "deep"
     ASLEEP_REM = "rem"
-    ASLEEP_UNSPECIFIED = "unknown"
+    UNKOWN = "unknown"
 
 
 def get_apple_sleep_phase(apple_sleep_phase: str) -> SleepPhase | None:

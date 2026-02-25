@@ -37,12 +37,8 @@ class ImportService:
     def __init__(
         self,
         log: Logger,
-        provider: str = "apple",
-        source: str = "apple_health_sdk",
     ):
         self.log = log
-        self.provider = provider
-        self.source = source
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
@@ -84,16 +80,16 @@ class ImportService:
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=self.source,
+                source_name=original_source_name,
                 device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                source=self.source,
+                source=provider,
                 software_version=software_version,
-                provider=self.provider,
+                provider=provider,
                 user_id=user_uuid,
             )
 
@@ -111,6 +107,7 @@ class ImportService:
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
+        provider = request.provider
 
         for rjson in request.data.records:
             value = Decimal(str(rjson.value))
@@ -131,10 +128,10 @@ class ImportService:
                 id=uuid4(),
                 external_id=rjson.uuid,
                 user_id=user_uuid,
-                source=self.source,
+                source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
-                provider=self.provider,
+                provider=provider,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -305,14 +302,14 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
-                    provider=f"{self.provider}",
-                    action=f"{self.provider}_sdk_validate_data",
+                    action=f"sdk_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Extract incoming counts for logging
+            provider = data.get("provider")
             inner_data = data.get("data", {})
             incoming_records = len(inner_data.get("records", []))
             incoming_workouts = len(inner_data.get("workouts", []))
@@ -321,7 +318,7 @@ class ImportService:
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
 
-            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), self.provider)
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), provider)
             if connection:
                 self.user_connection_repo.update_last_synced_at(db_session, connection)
 
@@ -329,9 +326,9 @@ class ImportService:
             log_structured(
                 self.log,
                 "info",
-                f"{self.provider.capitalize()} data import completed",
-                provider=f"{self.provider}",
-                action=f"{self.provider}_sdk_import_complete",
+                f"{provider.capitalize()} data import completed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_import_complete",
                 batch_id=batch_id,
                 user_id=user_id,
                 incoming_records=incoming_records,
@@ -347,8 +344,8 @@ class ImportService:
                 self.log,
                 "error",
                 f"Import failed for user {user_id}: {e}",
-                provider=f"{self.provider}",
-                action=f"{self.provider}_sdk_import_failed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,

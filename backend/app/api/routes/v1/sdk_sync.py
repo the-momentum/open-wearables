@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
 from app.integrations.celery.tasks.process_samsung_upload_task import process_samsung_upload
-from app.schemas import AppleHealthDataRequest, UploadDataResponse
+from app.schemas import UploadDataResponse
+from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
@@ -13,11 +14,10 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.post("/sdk/users/{user_id}/sync/{provider}")
+@router.post("/sdk/users/{user_id}/sync")
 async def sync_sdk_data(
     user_id: str,
-    provider: str,
-    body: AppleHealthDataRequest,
+    body: SyncRequest,
     auth: SDKAuthDep,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.
@@ -25,6 +25,9 @@ async def sync_sdk_data(
     Supports Apple HealthKit and Samsung Health SDK formats (identical payloads):
     ```json
     {
+        "provider": "apple",
+        "sdkVersion": "1.0.0",
+        "syncTimestamp": "2021-01-01T00:00:00Z",
         "data": {
             "records": [...],
             "sleep": [...],
@@ -35,7 +38,6 @@ async def sync_sdk_data(
 
     Args:
         user_id: SDK user identifier
-        provider: Provider name (apple, samsung)
         body: Health data payload
         auth: SDK authentication (Bearer token or API key)
 
@@ -52,21 +54,21 @@ async def sync_sdk_data(
         )
 
     # Normalize provider name
-    provider = provider.lower()
+    provider = body.provider.lower()
 
-    # ALPHA: Block Samsung Health until ready for production
-    if provider == "samsung":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Samsung Health integration is in alpha and not yet available",
-        )
+    # # ALPHA: Block Samsung Health until ready for production
+    # if provider == "samsung":
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail="Samsung Health integration is in alpha and not yet available",
+    #     )
 
-    # Validate provider
-    if provider not in {"apple", "samsung"}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {provider}. Supported: apple, samsung",
-        )
+    # # Validate provider
+    # if provider not in {"apple", "samsung"}:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_400_BAD_REQUEST,
+    #         detail=f"Unsupported provider: {provider}. Supported: apple, samsung",
+    #     )
 
     # Generate unique batch ID for tracking
     batch_id = str(uuid.uuid4())
@@ -94,21 +96,29 @@ async def sync_sdk_data(
 
     content_str = body.model_dump_json()
 
-    # Route to appropriate Celery task based on provider
-    if provider == "apple":
-        process_apple_upload.delay(
-            content=content_str,
-            content_type="application/json",
-            user_id=user_id,
-            source="healthion",
-            batch_id=batch_id,
-        )
-    elif provider == "samsung":
-        process_samsung_upload.delay(
-            content=content_str,
-            content_type="application/json",
-            user_id=user_id,
-            batch_id=batch_id,
-        )
+    process_apple_upload.delay(
+        content=content_str,
+        content_type="application/json",
+        user_id=user_id,
+        source="healthion",
+        batch_id=batch_id,
+    )
+
+    # # Route to appropriate Celery task based on provider
+    # if provider == "apple":
+    #     process_apple_upload.delay(
+    #         content=content_str,
+    #         content_type="application/json",
+    #         user_id=user_id,
+    #         source="healthion",
+    #         batch_id=batch_id,
+    #     )
+    # elif provider == "samsung":
+    #     process_samsung_upload.delay(
+    #         content=content_str,
+    #         content_type="application/json",
+    #         user_id=user_id,
+    #         batch_id=batch_id,
+    #     )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)
