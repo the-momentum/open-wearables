@@ -7,7 +7,6 @@ from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_sta
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.services.apple.auto_export.import_service import import_service as ae_import_service
 from app.services.apple.healthkit.import_service import import_service as hk_import_service
 from app.utils.structured_logging import log_structured
 from celery import shared_task
@@ -87,10 +86,10 @@ def process_apple_upload(
         connection_repo = UserConnectionRepository()
         connection_repo.ensure_sdk_connection(db, user_uuid, "apple")
 
-        # Select the appropriate import service based on source
-        import_service = hk_import_service if source == "healthion" else ae_import_service
+        # # Select the appropriate import service based on source
+        # import_service = hk_import_service if source == "healthion" else ae_import_service
 
-        result = import_service.import_data_from_request(
+        result = hk_import_service.import_data_from_request(
             db, content, content_type, user_id, batch_id=batch_id
         ).model_dump()
 

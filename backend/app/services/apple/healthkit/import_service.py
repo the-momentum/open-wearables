@@ -60,7 +60,7 @@ class ImportService:
 
         for wjson in request.data.workouts:
             workout_id = uuid4()
-            external_id = wjson.uuid if wjson.uuid else None
+            external_id = wjson.id if wjson.id else None
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
@@ -80,7 +80,7 @@ class ImportService:
             record = EventRecordCreate(
                 category="workout",
                 type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=original_source_name,
+                source_name=original_source_name or "unknown",
                 device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
@@ -126,7 +126,7 @@ class ImportService:
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
-                external_id=rjson.uuid,
+                external_id=rjson.id,
                 user_id=user_uuid,
                 source=original_source_name,
                 device_model=device_model,
@@ -302,14 +302,14 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
-                    action=f"sdk_validate_data",
+                    action="sdk_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Extract incoming counts for logging
-            provider = data.get("provider")
+            provider = data.get("provider", "apple")
             inner_data = data.get("data", {})
             incoming_records = len(inner_data.get("records", []))
             incoming_workouts = len(inner_data.get("workouts", []))

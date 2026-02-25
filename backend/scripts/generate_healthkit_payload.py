@@ -465,7 +465,7 @@ def _generate_realistic_sleep(start_date: datetime, end_date: datetime, count: i
             core_duration = int(remaining_in_cycle * random.uniform(0.4, 0.6))
             if core_duration > 0:
                 sleep_records.append(
-                    _create_sleep_record(current_time, core_duration, SleepPhase.ASLEEP_CORE, source=session_source)
+                    _create_sleep_record(current_time, core_duration, SleepPhase.ASLEEP_LIGHT, source=session_source)
                 )
                 current_time += timedelta(minutes=core_duration)
                 phases_remaining -= core_duration

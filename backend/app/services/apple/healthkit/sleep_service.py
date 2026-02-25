@@ -57,14 +57,16 @@ def delete_sleep_state(user_id: str) -> None:
 
 def _create_new_sleep_state(
     start_time: datetime,
-    uuid: str | None = None,
+    id: str | None = None,
+    provider: str | None = None,
     source_name: str | None = None,
     device_model: str | None = None,
 ) -> SleepState:
     return {
-        "uuid": uuid or str(uuid4()),
+        "uuid": id or str(uuid4()),
         "source_name": source_name or "Apple",
         "device_model": device_model,
+        "provider": provider,
         "start_time": start_time.isoformat(),
         "last_timestamp": start_time.isoformat(),
         "in_bed_seconds": 0,
@@ -96,8 +98,8 @@ def _apply_transition(
         return state
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
-        finish_sleep(db_session, user_id, state, provider)
-        return _create_new_sleep_state(start_time, uuid, source_name, device_model)
+        finish_sleep(db_session, user_id, state)
+        return _create_new_sleep_state(start_time, uuid, provider, source_name, device_model)
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -149,7 +151,7 @@ def handle_sleep_data(
         # Extract device info
         device_model, software_version, original_source_name = extract_device_info(sjson.source)
 
-        sleep_phase = get_apple_sleep_phase(int(sjson.value))
+        sleep_phase = get_apple_sleep_phase(sjson.stage)
 
         if sleep_phase is None:
             continue
@@ -158,7 +160,9 @@ def handle_sleep_data(
             if sleep_phase not in SLEEP_START_STATES:
                 continue
 
-            current_state = _create_new_sleep_state(sjson.startDate, sjson.uuid, original_source_name, device_model)
+            current_state = _create_new_sleep_state(
+                sjson.startDate, sjson.id, provider, original_source_name, device_model
+            )
             # Store endDate as last_timestamp since that's when this period actually ends
             current_state["last_timestamp"] = sjson.endDate.isoformat()
             save_sleep_state(user_id, current_state)
@@ -173,14 +177,14 @@ def handle_sleep_data(
             sjson.startDate,
             sjson.endDate,
             provider,
-            sjson.uuid,
+            sjson.id,
             original_source_name,
             device_model,
         )
         save_sleep_state(user_id, current_state)
 
 
-def finish_sleep(db_session: DbSession, user_id: str, state: SleepState, provider: str) -> None:
+def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None:
     """Finish a sleep session and save the record to the database."""
 
     end_time = datetime.fromisoformat(state["last_timestamp"])
@@ -198,8 +202,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState, provide
         duration_seconds=int(total_duration),
         category="sleep",
         type="sleep_session",
-        source_name=state.get("source_name") or "Apple",
-        source=provider,
+        source_name=state.get("source_name") or "unknown",
+        source=state.get("provider") or "unknown",
         device_model=state.get("device_model"),
     )
 

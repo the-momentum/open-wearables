@@ -26,6 +26,7 @@ class DeviceType(StrEnum):
     SMART_DISPLAY = "smart_display"
     UNKNOWN = "unknown"
 
+
 class RecordingMethod(StrEnum):
     """Recording method for HealthKit records."""
 
@@ -188,12 +189,12 @@ class SyncRequest(BaseModel):
                                 "deviceManufacturer": "Samsung",
                                 "deviceModel": "SM-R960",
                                 "deviceType": "watch",
-                                "recordingMethod": None # null
+                                "recordingMethod": None,  # null
                             },
                             "value": 122.0,
                             "unit": "mmHg",
                             "parentId": "abc-xyz-123",
-                            "metadata": None # null
+                            "metadata": None,  # null
                         }
                     ],
                     "sleep": [
@@ -205,18 +206,16 @@ class SyncRequest(BaseModel):
                             "endDate": "2026-02-24T00:00:00Z",
                             "zoneOffset": "+01:00",
                             "source": {
-                            "appId": "com.sec.android.app.shealth",
-                            "deviceId": "R9ZW30ABC12",
-                            "deviceName": "Galaxy Watch7",
-                            "deviceManufacturer": "Samsung",
-                            "deviceModel": "SM-R960",
-                            "deviceType": "watch",
-                            "recordingMethod": None # null
+                                "appId": "com.sec.android.app.shealth",
+                                "deviceId": "R9ZW30ABC12",
+                                "deviceName": "Galaxy Watch7",
+                                "deviceManufacturer": "Samsung",
+                                "deviceModel": "SM-R960",
+                                "deviceType": "watch",
+                                "recordingMethod": None,  # null
                             },
-                            "values": [
-                                { "type": "sleepScore", "value": 82, "unit": "score" }
-                            ],
-                            "metadata": None # null
+                            "values": [{"type": "sleepScore", "value": 82, "unit": "score"}],
+                            "metadata": None,  # null
                         }
                     ],
                     "workouts": [
@@ -234,48 +233,52 @@ class SyncRequest(BaseModel):
                                 "deviceManufacturer": "Samsung",
                                 "deviceModel": "SM-R960",
                                 "deviceType": "watch",
-                                "recordingMethod": None # null
+                                "recordingMethod": None,  # null
                             },
-                            "title": None, # null
+                            "title": None,  # null
                             "notes": "Morning run in the park",
                             "values": [
-                                { "type": "duration", "value": 2700000, "unit": "ms" },
-                                { "type": "calories", "value": 345.5, "unit": "kcal" },
-                                { "type": "distance", "value": 5234.0, "unit": "m" },
-                                { "type": "meanHeartRate", "value": 142.3, "unit": "bpm" },
-                                { "type": "maxHeartRate", "value": 178.0, "unit": "bpm" },
-                                { "type": "minHeartRate", "value": 95.0, "unit": "bpm" },
-                                { "type": "meanSpeed", "value": 1.50, "unit": "m/s" },
-                                { "type": "maxSpeed", "value": 3.20, "unit": "m/s" },
-                                { "type": "meanCadence", "value": 165.0, "unit": "spm" },
-                                { "type": "maxCadence", "value": 182.0, "unit": "spm" },
-                                { "type": "altitudeGain", "value": 45.0, "unit": "m" },
-                                { "type": "altitudeLoss", "value": 42.0, "unit": "m" },
-                                { "type": "maxAltitude", "value": 185.0, "unit": "m" },
-                                { "type": "minAltitude", "value": 140.0, "unit": "m" },
-                                { "type": "vo2Max", "value": 42.5, "unit": "mL/kg/min" }
+                                {"type": "duration", "value": 2700000, "unit": "ms"},
+                                {"type": "calories", "value": 345.5, "unit": "kcal"},
+                                {"type": "distance", "value": 5234.0, "unit": "m"},
+                                {"type": "meanHeartRate", "value": 142.3, "unit": "bpm"},
+                                {"type": "maxHeartRate", "value": 178.0, "unit": "bpm"},
+                                {"type": "minHeartRate", "value": 95.0, "unit": "bpm"},
+                                {"type": "meanSpeed", "value": 1.50, "unit": "m/s"},
+                                {"type": "maxSpeed", "value": 3.20, "unit": "m/s"},
+                                {"type": "meanCadence", "value": 165.0, "unit": "spm"},
+                                {"type": "maxCadence", "value": 182.0, "unit": "spm"},
+                                {"type": "altitudeGain", "value": 45.0, "unit": "m"},
+                                {"type": "altitudeLoss", "value": 42.0, "unit": "m"},
+                                {"type": "maxAltitude", "value": 185.0, "unit": "m"},
+                                {"type": "minAltitude", "value": 140.0, "unit": "m"},
+                                {"type": "vo2Max", "value": 42.5, "unit": "mL/kg/min"},
                             ],
-                            "segments": None, # null
-                            "laps": None, # null
+                            "segments": None,  # null
+                            "laps": None,  # null
                             "route": [
-                            {
-                                "timestamp": "2026-02-24T06:01:00Z",
-                                "latitude": 52.229676,
-                                "longitude": 21.012229,
-                                "altitudeM": 142.0,
-                                "horizontalAccuracyM": 3.5,
-                                "verticalAccuracyM": None # null
-                            }
+                                {
+                                    "timestamp": "2026-02-24T06:01:00Z",
+                                    "latitude": 52.229676,
+                                    "longitude": 21.012229,
+                                    "altitudeM": 142.0,
+                                    "horizontalAccuracyM": 3.5,
+                                    "verticalAccuracyM": None,  # null
+                                }
                             ],
                             "samples": [
-                                { "timestamp": "2026-02-24T06:01:00Z", "type": "heartRate", "value": 110.0, "unit": "bpm" },
-                                { "timestamp": "2026-02-24T06:01:00Z", "type": "cadence", "value": 155.0, "unit": "spm" },
-                                { "timestamp": "2026-02-24T06:01:00Z", "type": "speed", "value": 1.8, "unit": "m/s" }
+                                {
+                                    "timestamp": "2026-02-24T06:01:00Z",
+                                    "type": "heartRate",
+                                    "value": 110.0,
+                                    "unit": "bpm",
+                                },
+                                {"timestamp": "2026-02-24T06:01:00Z", "type": "cadence", "value": 155.0, "unit": "spm"},
+                                {"timestamp": "2026-02-24T06:01:00Z", "type": "speed", "value": 1.8, "unit": "m/s"},
                             ],
-                            "metadata": None # null
+                            "metadata": None,  # null
                         }
                     ],
-                }
+                },
             }
         }
-

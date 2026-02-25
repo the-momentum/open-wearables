@@ -8,6 +8,7 @@ def _format_os_version(os_version: OSVersion | None) -> str | None:
         return None
     return f"{os_version.major_version}.{os_version.minor_version}.{os_version.patch_version}"
 
+
 def _get_device_model(source: SourceInfo | None) -> str | None:
     if not source:
         return None
@@ -16,6 +17,7 @@ def _get_device_model(source: SourceInfo | None) -> str | None:
     if source.product_type:
         return source.product_type
     return None
+
 
 def _get_original_source_name(source: SourceInfo | None) -> str | None:
     if not source:
@@ -38,6 +40,6 @@ def extract_device_info(source: SourceInfo | None) -> tuple[str | None, str | No
 
     device_model = _get_device_model(source)
     software_version = _format_os_version(source.operating_system_version)
-    original_source_name = _get_original_source_name(source) # e.g. "Apple Watch (Jan)" or "Zepp Life"
+    original_source_name = _get_original_source_name(source)  # e.g. "Apple Watch (Jan)" or "Zepp Life"
 
     return device_model, software_version, original_source_name

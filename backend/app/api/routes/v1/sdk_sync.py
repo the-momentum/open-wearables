@@ -4,7 +4,6 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
-from app.integrations.celery.tasks.process_samsung_upload_task import process_samsung_upload
 from app.schemas import UploadDataResponse
 from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.utils.auth import SDKAuthDep
