@@ -1021,10 +1021,12 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 status_code = result.get("failed_status_codes", {}).get(data_type)
                 mark_type_failed(user_id, data_type, error)
 
-                # 401/403/412/400-endpoint-not-enabled all affect every type identically.
+                # 401/403/412/400-endpoint-not-enabled/400-min-start-time all affect
+                # every type identically.
                 # Stop the chain immediately to avoid cascading doomed requests.
                 is_endpoint_not_enabled = "endpoint not enabled" in error.lower()
-                if status_code in (401, 403, 412) or is_endpoint_not_enabled:
+                is_before_min_start = status_code == 400 and "min start time" in error.lower()
+                if status_code in (401, 403, 412) or is_endpoint_not_enabled or is_before_min_start:
                     if status_code == 401:
                         error_msg = "Authorization expired or revoked. Please re-authorize Garmin."
                         log_msg = "401: token invalid, stopping backfill for all types"
@@ -1034,6 +1036,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     elif is_endpoint_not_enabled:
                         error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                         log_msg = "Endpoint not enabled: stopping backfill for all types"
+                    elif is_before_min_start:
+                        error_msg = (
+                            "Requested date range is before Garmin's minimum start time. No older data available."
+                        )
+                        log_msg = "400: before min start time, stopping backfill chain"
                     else:
                         error_msg = "Historical data access not granted. User must re-authorize."
                         log_msg = "403: marking all remaining types as failed"
@@ -1124,9 +1131,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             # 403 = user didn't grant HISTORICAL_DATA_EXPORT permission during OAuth
             # 412 = HISTORICAL_DATA_EXPORT permission precondition not met
             # 400 "Endpoint not enabled" = app-level config issue in Garmin portal
-            # All four cases affect all types identically, so stop the chain.
+            # 400 "min start time" = requested range too old, all later windows will also fail
+            # All five cases affect all types identically, so stop the chain.
             is_endpoint_not_enabled = e.status_code == 400 and "endpoint not enabled" in error.lower()
-            if e.status_code in (401, 403, 412) or is_endpoint_not_enabled:
+            is_before_min_start = e.status_code == 400 and "min start time" in error.lower()
+            if e.status_code in (401, 403, 412) or is_endpoint_not_enabled or is_before_min_start:
                 if e.status_code == 401:
                     error_msg = "Authorization expired or revoked. Please re-authorize Garmin."
                     log_msg = "401: token invalid, stopping backfill for all types"
@@ -1136,6 +1145,9 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 elif is_endpoint_not_enabled:
                     error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                     log_msg = "Endpoint not enabled: stopping backfill for all types"
+                elif is_before_min_start:
+                    error_msg = "Requested date range is before Garmin's minimum start time. No older data available."
+                    log_msg = "400: before min start time, stopping backfill chain"
                 else:
                     error_msg = "Historical data access not granted. User must re-authorize."
                     log_msg = "403: marking all remaining types as failed"

@@ -399,6 +399,94 @@ class TestBackfillTaskStopChain:
 
         ctx["mock_next"].apply_async.assert_not_called()
 
+    def test_400_min_start_time_stops_chain_via_exception(self) -> None:
+        """400 'min start time' should stop the chain (HTTPException path)."""
+        detail = (
+            'Garmin API error: {"errorMessage":"start 2025-12-28T22:09:49Z'
+            ' before min start time of 2026-01-26T22:10:12Z"}'
+        )
+        ctx = self._run_task_with_status(400, detail)
+
+        assert ctx["result"]["status"] == "failed"
+        assert "min" in ctx["result"]["error"].lower()
+
+        failed_types = [call.args[1] for call in ctx["mock_mark_failed"].call_args_list]
+        assert "sleeps" in failed_types
+        assert "dailies" in failed_types
+        assert "activities" in failed_types
+
+        ctx["mock_next"].apply_async.assert_not_called()
+
+    def test_400_min_start_time_stops_chain_via_result(self) -> None:
+        """400 'min start time' via result dict should stop the chain (production path)."""
+        from app.integrations.celery.tasks.garmin_backfill_task import (
+            trigger_backfill_for_type,
+        )
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        mock_redis.set.return_value = True
+
+        error_detail = (
+            'Garmin API error: {"errorMessage":"start 2025-12-28T22:09:49Z '
+            'before min start time of 2026-01-26T22:10:12Z"}'
+        )
+
+        with (
+            patch(f"{self.TASK_MODULE}.SessionLocal") as mock_session_cls,
+            patch(f"{self.TASK_MODULE}.ProviderFactory") as mock_factory_cls,
+            patch(f"{self.TASK_MODULE}.get_current_window", return_value=1),
+            patch(
+                f"{self.TASK_MODULE}.get_window_date_range",
+                return_value=(
+                    datetime.now(timezone.utc) - timedelta(days=60),
+                    datetime.now(timezone.utc) - timedelta(days=30),
+                ),
+            ),
+            patch(f"{self.TASK_MODULE}.get_trace_id", return_value="test-trace"),
+            patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
+            patch(f"{self.TASK_MODULE}.is_retry_phase", return_value=False),
+            patch(f"{self.TASK_MODULE}.mark_type_triggered"),
+            patch(f"{self.TASK_MODULE}.mark_type_failed") as mock_mark_failed,
+            patch(f"{self.TASK_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
+            patch(f"{self.TASK_MODULE}.trigger_next_pending_type") as mock_next,
+            patch(f"{self.TASK_MODULE}.redis_client", mock_redis),
+            patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
+        ):
+            mock_db = MagicMock()
+            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
+            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_conn_repo_cls.return_value.get_by_user_and_provider.return_value = MagicMock()
+
+            mock_strategy = MagicMock()
+            mock_strategy.oauth = MagicMock()
+            mock_factory_cls.return_value.get_provider.return_value = mock_strategy
+
+            # Return result dict with failed status (as backfill.py does in production)
+            with patch.object(
+                GarminBackfillService,
+                "trigger_backfill",
+                return_value={
+                    "triggered": [],
+                    "failed": {"sleeps": error_detail},
+                    "duplicate": [],
+                    "failed_status_codes": {"sleeps": 400},
+                },
+            ):
+                result = trigger_backfill_for_type(self.USER_ID, "sleeps")
+
+        assert result["status"] == "failed"
+        assert "min" in result["error"].lower()
+
+        # Should mark current type + all pending types as failed
+        failed_types = [call.args[1] for call in mock_mark_failed.call_args_list]
+        assert "sleeps" in failed_types
+        assert "dailies" in failed_types
+        assert "activities" in failed_types
+
+        # Should NOT trigger next type
+        mock_next.apply_async.assert_not_called()
+
     def test_500_does_not_stop_chain(self) -> None:
         """500 should NOT stop the chain — next type should still be triggered."""
         ctx = self._run_task_with_status(500, "internal server error")
