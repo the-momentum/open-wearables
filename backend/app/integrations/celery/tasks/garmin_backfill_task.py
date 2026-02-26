@@ -1057,6 +1057,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                     pending = get_pending_types(user_id)
                     for pending_type in pending:
                         mark_type_failed(user_id, pending_type, error_msg)
+                    # Finalize: persist window results and release lock so
+                    # the status API no longer reports "in_progress".
+                    persist_window_results(user_id, current_window)
+                    release_backfill_lock(user_id)
+                    complete_backfill(user_id)
                     return {"status": "failed", "error": error_msg}
 
                 # Determine delay based on error type
@@ -1165,6 +1170,11 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 pending = get_pending_types(user_id)
                 for pending_type in pending:
                     mark_type_failed(user_id, pending_type, error_msg)
+                # Finalize: persist window results and release lock so
+                # the status API no longer reports "in_progress".
+                persist_window_results(user_id, current_window)
+                release_backfill_lock(user_id)
+                complete_backfill(user_id)
                 return {"status": "failed", "error": error_msg}
 
             # Determine delay based on error type
