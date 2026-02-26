@@ -107,7 +107,9 @@ class GarminBackfillService:
             Dict with backfill results for each data type:
             {
                 "triggered": ["sleeps", "dailies", ...],
-                "failed": {"epochs": "error message", ...},
+                "duplicate": ["epochs", ...],
+                "failed": {"hrv": "error message", ...},
+                "failed_status_codes": {"hrv": 401, ...},
                 "start_time": "2024-01-01T00:00:00Z",
                 "end_time": "2024-01-31T00:00:00Z",
             }
@@ -140,6 +142,7 @@ class GarminBackfillService:
             "triggered": [],
             "duplicate": [],
             "failed": {},
+            "failed_status_codes": {},
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
         }
@@ -211,6 +214,7 @@ class GarminBackfillService:
                         user_id=str(user_id),
                     )
                     results["failed"][data_type] = str(e.detail)
+                    results["failed_status_codes"][data_type] = e.status_code
 
             except Exception as e:
                 log_structured(

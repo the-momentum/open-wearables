@@ -209,5 +209,31 @@ class TestGarminBackfillServiceResults:
         )
 
         assert "sleeps" in result["failed"]
+        assert result["failed_status_codes"]["sleeps"] == 401
         assert "sleeps" not in result["triggered"]
         assert "sleeps" not in result["duplicate"]
+
+    @patch.object(GarminBackfillService, "_make_api_request")
+    def test_401_stops_chain_via_failed_status_code(self, mock_api: MagicMock) -> None:
+        """Task should detect 401 in failed_status_codes and not continue chain."""
+        mock_api.side_effect = HTTPException(status_code=401, detail="authorization expired")
+        service = self._make_service()
+        db = MagicMock()
+        user_id = MagicMock()
+
+        result = service.trigger_backfill(
+            db=db,
+            user_id=user_id,
+            data_types=["sleeps", "dailies"],
+            start_time=datetime.now(timezone.utc) - timedelta(days=1),
+            end_time=datetime.now(timezone.utc),
+        )
+
+        # Both types should fail with status code preserved
+        assert "sleeps" in result["failed"]
+        assert result["failed_status_codes"]["sleeps"] == 401
+        assert "dailies" in result["failed"]
+        assert result["failed_status_codes"]["dailies"] == 401
+        # Neither should be in triggered or duplicate
+        assert result["triggered"] == []
+        assert result["duplicate"] == []

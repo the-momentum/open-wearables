@@ -1018,16 +1018,26 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
             # Check result
             if data_type in result.get("failed", {}):
                 error = result["failed"][data_type]
+                status_code = result.get("failed_status_codes", {}).get(data_type)
                 mark_type_failed(user_id, data_type, error)
 
-                # 400 "Endpoint not enabled" = app-level config issue in Garmin portal.
-                # All types will fail identically, so stop the chain immediately.
-                if "endpoint not enabled" in error.lower():
-                    error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
+                # 401/403/400-endpoint-not-enabled all affect every type identically.
+                # Stop the chain immediately to avoid cascading doomed requests.
+                is_endpoint_not_enabled = "endpoint not enabled" in error.lower()
+                if status_code in (401, 403) or is_endpoint_not_enabled:
+                    if status_code == 401:
+                        error_msg = "Authorization expired or revoked. Please re-authorize Garmin."
+                        log_msg = "401: token invalid, stopping backfill for all types"
+                    elif is_endpoint_not_enabled:
+                        error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
+                        log_msg = "Endpoint not enabled: stopping backfill for all types"
+                    else:
+                        error_msg = "Historical data access not granted. User must re-authorize."
+                        log_msg = "403: marking all remaining types as failed"
                     log_structured(
                         logger,
                         "warning",
-                        "Endpoint not enabled: stopping backfill for all types",
+                        log_msg,
                         provider="garmin",
                         trace_id=trace_id,
                         type_trace_id=type_trace_id,
