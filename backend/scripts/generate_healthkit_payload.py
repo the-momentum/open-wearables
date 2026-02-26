@@ -28,64 +28,64 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from app.constants.series_types.apple import AppleCategoryType, AppleMetricType, SleepPhase
+from app.constants.series_types.apple import AppleCategoryType, SDKMetricType, SleepPhase
 from app.constants.workout_types.apple_sdk import SDKWorkoutType
 
 # Record types with their HealthKit units and realistic value ranges (min, max)
-RECORD_TYPE_CONFIG: dict[AppleMetricType, dict[str, Any]] = {
+RECORD_TYPE_CONFIG: dict[SDKMetricType, dict[str, Any]] = {
     # Heart & Cardiovascular
-    AppleMetricType.HEART_RATE: {"unit": "count/min", "range": (50, 180)},
-    AppleMetricType.RESTING_HEART_RATE: {"unit": "count/min", "range": (45, 85)},
-    AppleMetricType.HEART_RATE_VARIABILITY_SDNN: {"unit": "ms", "range": (15, 120)},
-    AppleMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: {"unit": "count/min", "range": (12, 55)},
-    AppleMetricType.WALKING_HEART_RATE_AVERAGE: {"unit": "count/min", "range": (80, 130)},
+    SDKMetricType.HEART_RATE: {"unit": "count/min", "range": (50, 180)},
+    SDKMetricType.RESTING_HEART_RATE: {"unit": "count/min", "range": (45, 85)},
+    SDKMetricType.HEART_RATE_VARIABILITY_SDNN: {"unit": "ms", "range": (15, 120)},
+    SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: {"unit": "count/min", "range": (12, 55)},
+    SDKMetricType.WALKING_HEART_RATE_AVERAGE: {"unit": "count/min", "range": (80, 130)},
     # Blood & Respiratory
-    AppleMetricType.OXYGEN_SATURATION: {"unit": "%", "range": (0.94, 1.0)},
-    AppleMetricType.BLOOD_GLUCOSE: {"unit": "mg/dL", "range": (70, 180)},
-    AppleMetricType.BLOOD_PRESSURE_SYSTOLIC: {"unit": "mmHg", "range": (90, 140)},
-    AppleMetricType.BLOOD_PRESSURE_DIASTOLIC: {"unit": "mmHg", "range": (60, 90)},
-    AppleMetricType.RESPIRATORY_RATE: {"unit": "count/min", "range": (12, 20)},
+    SDKMetricType.OXYGEN_SATURATION: {"unit": "%", "range": (0.94, 1.0)},
+    SDKMetricType.BLOOD_GLUCOSE: {"unit": "mg/dL", "range": (70, 180)},
+    SDKMetricType.BLOOD_PRESSURE_SYSTOLIC: {"unit": "mmHg", "range": (90, 140)},
+    SDKMetricType.BLOOD_PRESSURE_DIASTOLIC: {"unit": "mmHg", "range": (60, 90)},
+    SDKMetricType.RESPIRATORY_RATE: {"unit": "count/min", "range": (12, 20)},
     # Body Composition
-    AppleMetricType.HEIGHT: {"unit": "m", "range": (1.50, 2.05)},
-    AppleMetricType.BODY_MASS: {"unit": "kg", "range": (45, 120)},
-    AppleMetricType.BODY_FAT_PERCENTAGE: {"unit": "%", "range": (0.08, 0.35)},
-    AppleMetricType.BODY_MASS_INDEX: {"unit": "count", "range": (18, 35)},
-    AppleMetricType.LEAN_BODY_MASS: {"unit": "kg", "range": (35, 90)},
-    AppleMetricType.BODY_TEMPERATURE: {"unit": "degC", "range": (36.0, 37.5)},
+    SDKMetricType.HEIGHT: {"unit": "m", "range": (1.50, 2.05)},
+    SDKMetricType.BODY_MASS: {"unit": "kg", "range": (45, 120)},
+    SDKMetricType.BODY_FAT_PERCENTAGE: {"unit": "%", "range": (0.08, 0.35)},
+    SDKMetricType.BODY_MASS_INDEX: {"unit": "count", "range": (18, 35)},
+    SDKMetricType.LEAN_BODY_MASS: {"unit": "kg", "range": (35, 90)},
+    SDKMetricType.BODY_TEMPERATURE: {"unit": "degC", "range": (36.0, 37.5)},
     # Fitness Metrics
-    AppleMetricType.VO2_MAX: {"unit": "mL/kg/min", "range": (25, 65)},
-    AppleMetricType.SIX_MINUTE_WALK_TEST_DISTANCE: {"unit": "m", "range": (300, 700)},
+    SDKMetricType.VO2_MAX: {"unit": "mL/kg/min", "range": (25, 65)},
+    SDKMetricType.SIX_MINUTE_WALK_TEST_DISTANCE: {"unit": "m", "range": (300, 700)},
     # Activity - Basic
-    AppleMetricType.STEP_COUNT: {"unit": "count", "range": (10, 2000)},
-    AppleMetricType.ACTIVE_ENERGY_BURNED: {"unit": "kcal", "range": (5, 500)},
-    AppleMetricType.BASAL_ENERGY_BURNED: {"unit": "kcal", "range": (50, 150)},
-    AppleMetricType.APPLE_STAND_TIME: {"unit": "min", "range": (1, 60)},
-    AppleMetricType.APPLE_EXERCISE_TIME: {"unit": "min", "range": (1, 120)},
-    AppleMetricType.FLIGHTS_CLIMBED: {"unit": "count", "range": (1, 30)},
+    SDKMetricType.STEP_COUNT: {"unit": "count", "range": (10, 2000)},
+    SDKMetricType.ACTIVE_ENERGY_BURNED: {"unit": "kcal", "range": (5, 500)},
+    SDKMetricType.BASAL_ENERGY_BURNED: {"unit": "kcal", "range": (50, 150)},
+    SDKMetricType.APPLE_STAND_TIME: {"unit": "min", "range": (1, 60)},
+    SDKMetricType.APPLE_EXERCISE_TIME: {"unit": "min", "range": (1, 120)},
+    SDKMetricType.FLIGHTS_CLIMBED: {"unit": "count", "range": (1, 30)},
     # Activity - Distance
-    AppleMetricType.DISTANCE_WALKING_RUNNING: {"unit": "m", "range": (50, 15000)},
-    AppleMetricType.DISTANCE_CYCLING: {"unit": "m", "range": (500, 50000)},
-    AppleMetricType.DISTANCE_SWIMMING: {"unit": "m", "range": (25, 3000)},
-    AppleMetricType.DISTANCE_DOWNHILL_SNOW_SPORTS: {"unit": "m", "range": (100, 20000)},
+    SDKMetricType.DISTANCE_WALKING_RUNNING: {"unit": "m", "range": (50, 15000)},
+    SDKMetricType.DISTANCE_CYCLING: {"unit": "m", "range": (500, 50000)},
+    SDKMetricType.DISTANCE_SWIMMING: {"unit": "m", "range": (25, 3000)},
+    SDKMetricType.DISTANCE_DOWNHILL_SNOW_SPORTS: {"unit": "m", "range": (100, 20000)},
     # Walking Metrics
-    AppleMetricType.WALKING_STEP_LENGTH: {"unit": "m", "range": (0.4, 0.9)},
-    AppleMetricType.WALKING_SPEED: {"unit": "m/s", "range": (0.8, 2.0)},
-    AppleMetricType.WALKING_DOUBLE_SUPPORT_PERCENTAGE: {"unit": "%", "range": (0.2, 0.4)},
-    AppleMetricType.WALKING_ASYMMETRY_PERCENTAGE: {"unit": "%", "range": (0.0, 0.15)},
-    AppleMetricType.APPLE_WALKING_STEADINESS: {"unit": "%", "range": (0.7, 1.0)},
-    AppleMetricType.STAIR_DESCENT_SPEED: {"unit": "m/s", "range": (0.3, 0.8)},
-    AppleMetricType.STAIR_ASCENT_SPEED: {"unit": "m/s", "range": (0.2, 0.6)},
+    SDKMetricType.WALKING_STEP_LENGTH: {"unit": "m", "range": (0.4, 0.9)},
+    SDKMetricType.WALKING_SPEED: {"unit": "m/s", "range": (0.8, 2.0)},
+    SDKMetricType.WALKING_DOUBLE_SUPPORT_PERCENTAGE: {"unit": "%", "range": (0.2, 0.4)},
+    SDKMetricType.WALKING_ASYMMETRY_PERCENTAGE: {"unit": "%", "range": (0.0, 0.15)},
+    SDKMetricType.APPLE_WALKING_STEADINESS: {"unit": "%", "range": (0.7, 1.0)},
+    SDKMetricType.STAIR_DESCENT_SPEED: {"unit": "m/s", "range": (0.3, 0.8)},
+    SDKMetricType.STAIR_ASCENT_SPEED: {"unit": "m/s", "range": (0.2, 0.6)},
     # Running Metrics
-    AppleMetricType.RUNNING_POWER: {"unit": "W", "range": (150, 450)},
-    AppleMetricType.RUNNING_SPEED: {"unit": "m/s", "range": (2.0, 6.0)},
-    AppleMetricType.RUNNING_VERTICAL_OSCILLATION: {"unit": "cm", "range": (5, 12)},
-    AppleMetricType.RUNNING_GROUND_CONTACT_TIME: {"unit": "ms", "range": (180, 300)},
-    AppleMetricType.RUNNING_STRIDE_LENGTH: {"unit": "m", "range": (0.8, 1.8)},
+    SDKMetricType.RUNNING_POWER: {"unit": "W", "range": (150, 450)},
+    SDKMetricType.RUNNING_SPEED: {"unit": "m/s", "range": (2.0, 6.0)},
+    SDKMetricType.RUNNING_VERTICAL_OSCILLATION: {"unit": "cm", "range": (5, 12)},
+    SDKMetricType.RUNNING_GROUND_CONTACT_TIME: {"unit": "ms", "range": (180, 300)},
+    SDKMetricType.RUNNING_STRIDE_LENGTH: {"unit": "m", "range": (0.8, 1.8)},
     # Swimming Metrics
-    AppleMetricType.SWIMMING_STROKE_COUNT: {"unit": "count", "range": (10, 500)},
+    SDKMetricType.SWIMMING_STROKE_COUNT: {"unit": "count", "range": (10, 500)},
     # Environmental
-    AppleMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: {"unit": "dBASPL", "range": (40, 90)},
-    AppleMetricType.HEADPHONE_AUDIO_EXPOSURE: {"unit": "dBASPL", "range": (50, 100)},
+    SDKMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: {"unit": "dBASPL", "range": (40, 90)},
+    SDKMetricType.HEADPHONE_AUDIO_EXPOSURE: {"unit": "dBASPL", "range": (50, 100)},
 }
 
 # Workout-specific configurations for realistic stats
@@ -169,18 +169,18 @@ OUTDOOR_WORKOUT_TYPES: set[SDKWorkoutType] = {
 }
 
 # Common record types that appear more frequently in real data
-COMMON_RECORD_TYPES: list[AppleMetricType] = [
-    AppleMetricType.STEP_COUNT,
-    AppleMetricType.HEART_RATE,
-    AppleMetricType.ACTIVE_ENERGY_BURNED,
-    AppleMetricType.DISTANCE_WALKING_RUNNING,
-    AppleMetricType.BASAL_ENERGY_BURNED,
+COMMON_RECORD_TYPES: list[SDKMetricType] = [
+    SDKMetricType.STEP_COUNT,
+    SDKMetricType.HEART_RATE,
+    SDKMetricType.ACTIVE_ENERGY_BURNED,
+    SDKMetricType.DISTANCE_WALKING_RUNNING,
+    SDKMetricType.BASAL_ENERGY_BURNED,
 ]
 
 # Record types that should produce integer values
-INTEGER_RECORD_TYPES: set[AppleMetricType] = {
-    AppleMetricType.STEP_COUNT,
-    AppleMetricType.FLIGHTS_CLIMBED,
+INTEGER_RECORD_TYPES: set[SDKMetricType] = {
+    SDKMetricType.STEP_COUNT,
+    SDKMetricType.FLIGHTS_CLIMBED,
 }
 
 # All workout types available from the SDK
@@ -364,11 +364,11 @@ def _generate_realistic_records(start_date: datetime, end_date: datetime, count:
         record_start = start_date + timedelta(seconds=offset_seconds)
 
         # Duration depends on type
-        if record_type == AppleMetricType.STEP_COUNT:
+        if record_type == SDKMetricType.STEP_COUNT:
             duration = random.randint(60, 900)  # 1-15 min
-        elif record_type in (AppleMetricType.HEART_RATE, AppleMetricType.RESTING_HEART_RATE):
+        elif record_type in (SDKMetricType.HEART_RATE, SDKMetricType.RESTING_HEART_RATE):
             duration = random.randint(1, 60)  # 1-60 sec
-        elif record_type in (AppleMetricType.ACTIVE_ENERGY_BURNED, AppleMetricType.BASAL_ENERGY_BURNED):
+        elif record_type in (SDKMetricType.ACTIVE_ENERGY_BURNED, SDKMetricType.BASAL_ENERGY_BURNED):
             duration = random.randint(300, 3600)  # 5-60 min
         else:
             duration = random.randint(1, 300)  # 1 sec - 5 min

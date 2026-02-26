@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.series_types.apple import AppleMetricType, SleepPhase, WorkoutStatisticType
+from app.constants.series_types.apple import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
 
 
@@ -72,7 +72,7 @@ class MetricRecord(BaseModel):
 
     id: str | None = None
     parentId: str | None = None
-    type: AppleMetricType | str | None = None
+    type: SDKMetricType | str | None = None
     startDate: datetime
     endDate: datetime
     zoneOffset: str | None = None
@@ -171,7 +171,7 @@ class SyncRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "provider": "samsung_health",
+                "provider": "samsung",
                 "sdkVersion": "0.1.0",
                 "syncTimestamp": "2026-02-24T10:00:00Z",
                 "data": {
