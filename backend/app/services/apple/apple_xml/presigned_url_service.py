@@ -4,6 +4,7 @@ from logging import Logger, getLogger
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
+from app.config import settings
 from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
 from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, s3_client
 
@@ -63,10 +64,14 @@ class ImportService:
                 ExpiresIn=request.expiration_seconds,
             )
 
-            self.log.debug(f"Generated presigned URL: {presigned_post['url']}")
+            upload_url = presigned_post["url"]
+            if settings.aws_public_endpoint_url and settings.aws_endpoint_url:
+                upload_url = upload_url.replace(settings.aws_endpoint_url, settings.aws_public_endpoint_url)
+
+            self.log.debug(f"Generated presigned URL: {upload_url}")
 
             return PresignedURLResponse(
-                upload_url=presigned_post["url"],
+                upload_url=upload_url,
                 form_fields=presigned_post["fields"],
                 file_key=file_key,
                 expires_in=request.expiration_seconds,

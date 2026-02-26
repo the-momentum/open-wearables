@@ -11,7 +11,8 @@ try:
         "s3",
         region_name=AWS_REGION,
         aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
+        aws_secret_access_key=settings.aws_secret_access_key.get_secret_value() if settings.aws_secret_access_key else None,
+        endpoint_url=settings.aws_endpoint_url,
     )
 except NoCredentialsError:
     raise Exception("AWS credentials not configured")

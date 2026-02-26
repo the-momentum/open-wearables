@@ -2,6 +2,7 @@ from app.schemas.oauth import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.strava.strategy import StravaStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
@@ -25,5 +26,7 @@ class ProviderFactory:
                 return WhoopStrategy()
             case ProviderName.STRAVA.value:
                 return StravaStrategy()
+            case ProviderName.OURA.value:
+                return OuraStrategy()
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")

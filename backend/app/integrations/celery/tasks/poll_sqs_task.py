@@ -11,7 +11,7 @@ from celery import shared_task
 
 QUEUE_URL: str = settings.sqs_queue_url
 
-sqs = boto3.client("sqs", region_name=settings.aws_region)
+sqs = boto3.client("sqs", region_name=settings.aws_region, endpoint_url=settings.sqs_endpoint_url if hasattr(settings, "sqs_endpoint_url") else None, aws_access_key_id=settings.aws_access_key_id, aws_secret_access_key=settings.aws_secret_access_key.get_secret_value() if settings.aws_secret_access_key else None)
 
 logger = getLogger(__name__)
 

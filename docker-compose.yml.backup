@@ -6,7 +6,6 @@ services:
       POSTGRES_DB: open-wearables
       POSTGRES_USER: open-wearables
       POSTGRES_PASSWORD: open-wearables
-
     ports:
       - "5432:5432"
     healthcheck:
@@ -30,9 +29,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      - OURA_CLIENT_ID=8ea5ac3f-a107-4686-8bd7-fc9baaa9eb0f
-      - OURA_CLIENT_SECRET=cNDuQwYvXEKSiPZHeRLeiALjL4UGdEHThlQV_agqel8
-      - ENABLE_OURA=true
     ports:
       - "8000:8000"
     depends_on:
@@ -166,13 +162,9 @@ services:
           path: ./frontend/vite.config.ts
     restart: on-failure
 
-  elasticmq:
-    image: softwaremill/elasticmq-native:latest
-    container_name: elasticmq__open-wearables
-    ports:
-      - "9324:9324"
-      - "9325:9325"
-    restart: on-failure
+volumes:
+  postgres_data:
+  redis_data:
 
   minio:
     image: minio/minio:latest
@@ -186,9 +178,5 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
-    restart: on-failure
-
 volumes:
-  postgres_data:
-  redis_data:
   minio_data:
