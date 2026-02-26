@@ -45,10 +45,7 @@ function formatTypeName(typeName: string): string {
 // Parse scope string into individual scope items
 // Handles both comma-separated (Strava) and space-separated (Whoop, Polar) formats
 function parseScopeString(scope: string): string[] {
-  return scope
-    .split(/[,\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return scope.split(/[,\s]+/).filter(Boolean);
 }
 
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
@@ -94,6 +91,9 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
         .filter(([, v]) => v.timed_out > 0)
         .map(([type, v]) => ({ type, timedOutCount: v.timed_out }))
     : [];
+
+  // Parse scope items once for display
+  const scopeItems = connection.scope ? parseScopeString(connection.scope) : [];
 
   // Get failed types from summary
   const failedTypes = backfillStatus?.summary
@@ -179,13 +179,13 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
       <CardContent className="space-y-4">
         {/* Show data scope */}
-        {connection.scope && parseScopeString(connection.scope).length > 0 && (
+        {scopeItems.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-muted-foreground">
               Data scope
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {parseScopeString(connection.scope).map((scopeItem) => (
+              {scopeItems.map((scopeItem) => (
                 <Badge
                   key={scopeItem}
                   variant="secondary"
