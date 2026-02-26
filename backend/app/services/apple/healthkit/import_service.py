@@ -201,12 +201,16 @@ class ImportService:
                 continue
 
             # duration is not a part of EventRecordMetrics, however it is sent as a workout statistic
-            if stat.type == WorkoutStatisticType.DURATION:
-                duration = float(value)
+            if stat.type in (WorkoutStatisticType.DURATION, WorkoutStatisticType.TOTAL_DURATION):
+                duration = float(value) / 1000 if stat.unit == "ms" else float(value)
                 continue
 
-            # energy is separated into active and basal - we only store total
-            if stat.type in (WorkoutStatisticType.ACTIVE_ENERGY_BURNED, WorkoutStatisticType.BASAL_ENERGY_BURNED):
+            if stat.type in (
+                WorkoutStatisticType.ACTIVE_ENERGY_BURNED,
+                WorkoutStatisticType.BASAL_ENERGY_BURNED,
+                WorkoutStatisticType.CALORIES,
+                WorkoutStatisticType.TOTAL_CALORIES,
+            ):
                 stats_dict["energy_burned"] += value
                 continue
 
@@ -309,7 +313,7 @@ class ImportService:
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Extract incoming counts for logging
-            provider = data.get("provider", "apple")
+            provider = data.get("provider", "unknown")
             inner_data = data.get("data", {})
             incoming_records = len(inner_data.get("records", []))
             incoming_workouts = len(inner_data.get("workouts", []))
