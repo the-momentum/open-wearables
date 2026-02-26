@@ -9,16 +9,16 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
+from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from tests.factories import UserFactory
 
 
 class TestProcessAppleUploadTask:
-    """Test suite for process_apple_upload task."""
+    """Test suite for process_sdk_upload task."""
 
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.UserRepository")
-    def test_process_apple_upload_with_nonexistent_user(
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_process_sdk_upload_with_nonexistent_user(
         self,
         mock_user_repo_class: MagicMock,
         mock_session_local: MagicMock,
@@ -35,33 +35,33 @@ class TestProcessAppleUploadTask:
         mock_user_repo_class.return_value = mock_user_repo
 
         # Act
-        result = process_apple_upload(
+        result = process_sdk_upload(
             content='{"data":{"workouts":[],"records":[]}}',
             content_type="application/json",
             user_id=non_existent_user_id,
-            source="healthion",
+            provider="apple",
         )
 
         # Assert
         assert result["status"] == "skipped"
         assert result["reason"] == "user_not_found"
 
-    def test_process_apple_upload_with_invalid_uuid(self) -> None:
+    def test_process_sdk_upload_with_invalid_uuid(self) -> None:
         """Verify task handles invalid UUID format gracefully."""
-        result = process_apple_upload(
+        result = process_sdk_upload(
             content='{"data":{"workouts":[],"records":[]}}',
             content_type="application/json",
             user_id="not-a-valid-uuid",
-            source="healthion",
+            provider="apple",
         )
 
         assert result["status"] == "error"
         assert result["reason"] == "invalid_user_id"
 
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.hk_import_service")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.UserRepository")
-    def test_process_apple_upload_success_healthion(
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.sdk_import_service")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_process_sdk_upload_success_apple(
         self,
         mock_user_repo_class: MagicMock,
         mock_session_local: MagicMock,
@@ -69,7 +69,7 @@ class TestProcessAppleUploadTask:
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
-        """Test successful processing with healthion source."""
+        """Test successful processing with apple provider."""
         # Arrange
         user = UserFactory()
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -87,21 +87,21 @@ class TestProcessAppleUploadTask:
         content_type = "application/json"
 
         # Act
-        result = process_apple_upload(
+        result = process_sdk_upload(
             content=content,
             content_type=content_type,
             user_id=str(user.id),
-            source="healthion",
+            provider="apple",
         )
 
         # Assert
         assert result["status_code"] == 200
         mock_hk_import_service.import_data_from_request.assert_called_once()
 
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.ae_import_service")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.UserRepository")
-    def test_process_apple_upload_success_auto_health_export(
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.ae_import_service")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_process_sdk_upload_success_auto_health_export(
         self,
         mock_user_repo_class: MagicMock,
         mock_session_local: MagicMock,
@@ -109,7 +109,7 @@ class TestProcessAppleUploadTask:
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
-        """Test successful processing with auto-health-export source."""
+        """Test successful processing with auto-health-export provider."""
         # Arrange
         user = UserFactory()
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
@@ -127,20 +127,20 @@ class TestProcessAppleUploadTask:
         content_type = "application/json"
 
         # Act
-        result = process_apple_upload(
+        result = process_sdk_upload(
             content=content,
             content_type=content_type,
             user_id=str(user.id),
-            source="auto-health-export",
+            provider="auto-health-export",
         )
 
         # Assert
         assert result["status_code"] == 200
         mock_ae_import_service.import_data_from_request.assert_called_once()
 
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.SessionLocal")
-    @patch("app.integrations.celery.tasks.process_apple_upload_task.UserRepository")
-    def test_process_apple_upload_user_check_uses_correct_uuid(
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")
+    @patch("app.integrations.celery.tasks.process_sdk_upload_task.UserRepository")
+    def test_process_sdk_upload_user_check_uses_correct_uuid(
         self,
         mock_user_repo_class: MagicMock,
         mock_session_local: MagicMock,
@@ -157,11 +157,11 @@ class TestProcessAppleUploadTask:
         mock_user_repo_class.return_value = mock_user_repo
 
         # Act
-        process_apple_upload(
+        process_sdk_upload(
             content='{"data":{}}',
             content_type="application/json",
             user_id=user_id,
-            source="healthion",
+            provider="apple",
         )
 
         # Assert

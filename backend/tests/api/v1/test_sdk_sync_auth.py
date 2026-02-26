@@ -15,7 +15,7 @@ from tests.utils import developer_auth_headers
 @pytest.fixture(autouse=True)
 def mock_celery_tasks() -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to prevent actual task execution during tests."""
-    with patch("app.api.routes.v1.sdk_sync.process_apple_upload") as mock:
+    with patch("app.api.routes.v1.sdk_sync.process_sdk_upload") as mock:
         mock.delay.return_value = None
         yield mock
 

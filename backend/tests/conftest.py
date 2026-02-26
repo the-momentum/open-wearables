@@ -173,7 +173,7 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
         patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
         # Patch the new finalize_stale_sleeps task that was added in this PR
-        patch("app.integrations.celery.tasks.process_apple_upload_task.finalize_stale_sleeps", mock_task),
+        patch("app.integrations.celery.tasks.process_sdk_upload_task.finalize_stale_sleeps", mock_task),
     ):
         # Configure Celery to use in-memory broker and result backend
         # We Mock the conf object to return our test settings

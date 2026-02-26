@@ -3,7 +3,7 @@ from logging import getLogger
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.integrations.celery.tasks.process_apple_upload_task import process_apple_upload
+from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas import UploadDataResponse
 from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.utils.auth import SDKAuthDep
@@ -55,19 +55,12 @@ async def sync_sdk_data(
     # Normalize provider name
     provider = body.provider.lower()
 
-    # # ALPHA: Block Samsung Health until ready for production
-    # if provider == "samsung":
-    #     raise HTTPException(
-    #         status_code=status.HTTP_400_BAD_REQUEST,
-    #         detail="Samsung Health integration is in alpha and not yet available",
-    #     )
-
-    # # Validate provider
-    # if provider not in {"apple", "samsung"}:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_400_BAD_REQUEST,
-    #         detail=f"Unsupported provider: {provider}. Supported: apple, samsung",
-    #     )
+    # Validate provider
+    if provider not in {"apple", "samsung", "google", "auto-health-export"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",
+        )
 
     # Generate unique batch ID for tracking
     batch_id = str(uuid.uuid4())
@@ -95,11 +88,11 @@ async def sync_sdk_data(
 
     content_str = body.model_dump_json()
 
-    process_apple_upload.delay(
+    process_sdk_upload.delay(
         content=content_str,
         content_type="application/json",
         user_id=user_id,
-        source="healthion",
+        provider=provider,
         batch_id=batch_id,
     )
 
