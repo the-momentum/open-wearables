@@ -320,7 +320,7 @@ SDK_METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
 }
 
 
-def get_series_type_from_sdk_metric_type(metric_type: SDKMetricType | str) -> SeriesType | None:
+def get_series_type_from_sdk_metric_type(metric_type: AppleMetricType | SDKMetricType | str) -> SeriesType | None:
     """
     Map a Samsung/Health Connect SDK metric type to the unified SeriesType enum.
     Returns None when the metric type is not supported.

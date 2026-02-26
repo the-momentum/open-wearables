@@ -56,7 +56,7 @@ async def sync_sdk_data(
     provider = body.provider.lower()
 
     # Validate provider
-    if provider not in {"apple", "samsung", "google", "auto-health-export"}:
+    if provider not in ("apple", "samsung", "google", "auto-health-export"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",
@@ -95,22 +95,5 @@ async def sync_sdk_data(
         provider=provider,
         batch_id=batch_id,
     )
-
-    # # Route to appropriate Celery task based on provider
-    # if provider == "apple":
-    #     process_apple_upload.delay(
-    #         content=content_str,
-    #         content_type="application/json",
-    #         user_id=user_id,
-    #         source="healthion",
-    #         batch_id=batch_id,
-    #     )
-    # elif provider == "samsung":
-    #     process_samsung_upload.delay(
-    #         content=content_str,
-    #         content_type="application/json",
-    #         user_id=user_id,
-    #         batch_id=batch_id,
-    #     )
 
     return UploadDataResponse(status_code=202, response="Import task queued successfully", user_id=user_id)

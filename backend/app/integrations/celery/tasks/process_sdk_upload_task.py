@@ -7,27 +7,31 @@ from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_sta
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.services.apple.healthkit.import_service import ( 
-    ImportService as SDKImportService,
-    import_service as sdk_import_service,
-)
 from app.services.apple.auto_export.import_service import (
     ImportService as AEImportService,
+)
+from app.services.apple.auto_export.import_service import (
     import_service as ae_import_service,
+)
+from app.services.apple.healthkit.import_service import (
+    ImportService as SDKImportService,
+)
+from app.services.apple.healthkit.import_service import (
+    import_service as sdk_import_service,
 )
 from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
 
+
 def _get_import_service(provider: str) -> SDKImportService | AEImportService:
     if provider in ("apple", "samsung", "google"):
         return sdk_import_service
-    elif provider == "auto-health-export":
+    if provider == "auto-health-export":
         return ae_import_service
-    else:
-        raise ValueError(f"Unsupported provider: {provider}")
-        
+    raise ValueError(f"Unsupported provider: {provider}")
+
 
 @shared_task(queue="sdk_sync")
 def process_sdk_upload(
