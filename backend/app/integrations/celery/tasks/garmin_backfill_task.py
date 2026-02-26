@@ -673,7 +673,7 @@ def complete_backfill(user_id: str | UUID) -> None:
 
 @shared_task
 def start_full_backfill(user_id: str) -> dict[str, Any]:
-    """Initialize and start full 365-day backfill (12 x 30-day windows) for all backfill data types.
+    """Initialize and start full 30-day backfill for all backfill data types.
 
     This is called after OAuth connection to auto-trigger historical sync.
     Triggers the first type and the rest will chain via webhooks.

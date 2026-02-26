@@ -21,10 +21,10 @@ class TestGarminBackfillConfig:
 
     def test_backfill_limits_constants(self) -> None:
         """Test that backfill limit constants are set correctly."""
-        # 30-day max per request, 365 days total via 12 windows
+        # 30-day max per request, single window (Garmin limits to 30 days before registration)
         assert BACKFILL_CHUNK_DAYS == 30  # Per request (30 days = max allowed)
-        assert MAX_BACKFILL_DAYS == 365  # Target: ~1 year of history
-        assert BACKFILL_WINDOW_COUNT == 12  # 12 x 30-day windows
+        assert MAX_BACKFILL_DAYS == 30  # Garmin only allows 30 days before user registration
+        assert BACKFILL_WINDOW_COUNT == 1  # Single 30-day window
         assert MAX_REQUEST_DAYS == 30  # Max days per single backfill request (Garmin limit)
         assert DEFAULT_BACKFILL_DAYS == 1  # Default for subsequent syncs
         assert SUMMARY_DAYS == 0  # No summary coverage gap (REST endpoints removed)

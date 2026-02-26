@@ -36,7 +36,7 @@ graph LR
 ```mermaid
 graph TD
     A["OAuth callback"] --> B["start_full_backfill"]
-    B --> C{"For each of 12 windows<br/>(30 days each)"}
+    B --> C{"Single 30-day window"}
     C --> D{"For each of 5 data types<br/>(sequential)"}
     D --> E["POST backfill request<br/>to Garmin"]
     E --> F{"Webhook arrives<br/>within 5 min?"}
@@ -130,12 +130,12 @@ All 16 data types are handled by the webhook regardless of whether they're inclu
 |----------|-------|---------|
 | `BACKFILL_DATA_TYPES` | 5 types | Types included in backfill (sleeps, dailies, activities, activityDetails, hrv) |
 | `ALL_DATA_TYPES` | 16 types | All types handled by webhooks |
-| `BACKFILL_WINDOW_COUNT` | 12 | Number of 30-day windows |
+| `BACKFILL_WINDOW_COUNT` | 1 | Single 30-day window (Garmin's max allowed range) |
 | `BACKFILL_CHUNK_DAYS` | 30 | Days per window (Garmin API limit) |
-| `MAX_BACKFILL_DAYS` | 365 | Total lookback target |
+| `MAX_BACKFILL_DAYS` | 30 | Total lookback (Garmin only allows 30 days before user registration) |
 | `TRIGGERED_TIMEOUT_SECONDS` | 300 | 5-min timeout per type before skipping |
 | `DELAY_BETWEEN_TYPES` | 2 | Seconds between type requests (rate limit budget) |
-| `BACKFILL_LOCK_TTL` | 21600 | 6-hour lock TTL (safety net) |
+| `BACKFILL_LOCK_TTL` | 5100 | ~1.4-hour lock TTL (safety net) |
 | `REDIS_TTL` | 604800 | 7-day TTL for all tracking keys |
 | `GC_STUCK_THRESHOLD_SECONDS` | 600 | 10 minutes of no activity = stuck |
 | `GC_SCAN_INTERVAL_SECONDS` | 180 | GC runs every 3 minutes |
@@ -189,7 +189,7 @@ graph TD
     N -->|"No"| O["Proceed to<br/>retry phase"]
 ```
 
-#### Phase 2: Retry (after all 12 windows)
+#### Phase 2: Retry (after window completes)
 
 When all windows are exhausted, timed-out types get one retry:
 
@@ -220,17 +220,13 @@ See [Garbage Collection](#garbage-collection) below.
 
 ### Window Progression
 
-Each backfill processes 12 windows of 30 days each, working backwards from the connection time:
+The backfill processes a single 30-day window, covering the maximum range allowed by Garmin (data from the last 30 days before user registration):
 
 ```
 Window 0:  [now - 30d,  now]
-Window 1:  [now - 60d,  now - 30d]
-Window 2:  [now - 90d,  now - 60d]
-...
-Window 11: [now - 360d, now - 330d]
 ```
 
-The anchor timestamp is fixed at backfill start so all windows use consistent boundaries regardless of how long the backfill takes.
+The anchor timestamp is fixed at backfill start so all date boundaries are consistent.
 
 **Per-window flow:**
 
@@ -243,7 +239,7 @@ The anchor timestamp is fixed at backfill start so all windows use consistent bo
 
 ### Retry Phase
 
-After all 12 windows complete, the system checks for timed-out entries:
+After the window completes, the system checks for timed-out entries:
 
 - `get_retry_targets()` reads the `timed_out_types` JSON list from Redis
 - Deduplicates by keeping only the latest (highest) window per type
@@ -483,7 +479,7 @@ The Garmin connection card renders different states:
 
 | State | Display |
 |-------|---------|
-| `in_progress` | Progress bar with "X of 12 windows complete", cancel button |
+| `in_progress` | Progress bar with backfill status, cancel button |
 | `retry_in_progress` | "Retrying \{Type\} (window N)..." with spinner |
 | `complete` | Completion indicator |
 | `cancelled` | Cancelled state message |
