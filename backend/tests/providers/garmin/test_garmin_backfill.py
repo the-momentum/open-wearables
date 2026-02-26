@@ -1,6 +1,9 @@
 """Tests for Garmin Backfill Service."""
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
+
+from fastapi import HTTPException
 
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
@@ -14,6 +17,7 @@ from app.services.providers.garmin.backfill_config import (
     REQUEST_DELAY_SECONDS,
     SUMMARY_DAYS,
 )
+from app.services.providers.garmin.handlers.backfill import GarminBackfillService
 
 
 class TestGarminBackfillConfig:
@@ -136,3 +140,74 @@ class TestGarminBackfillTimeframeLogic:
         # When start_time is provided, it should be used as-is
         days_diff = (custom_end - custom_start).days
         assert days_diff == 30
+
+
+class TestGarminBackfillServiceResults:
+    """Tests for backfill service API response handling."""
+
+    def _make_service(self) -> GarminBackfillService:
+        oauth = MagicMock()
+        return GarminBackfillService(
+            provider_name="garmin",
+            api_base_url="https://apis.garmin.com",
+            oauth=oauth,
+        )
+
+    @patch.object(GarminBackfillService, "_make_api_request")
+    def test_409_duplicate_goes_to_duplicate_list(self, mock_api: MagicMock) -> None:
+        """409 responses should land in 'duplicate', not 'triggered'."""
+        mock_api.side_effect = HTTPException(status_code=409, detail="duplicate backfill")
+        service = self._make_service()
+        db = MagicMock()
+        user_id = MagicMock()
+
+        result = service.trigger_backfill(
+            db=db,
+            user_id=user_id,
+            data_types=["sleeps"],
+            start_time=datetime.now(timezone.utc) - timedelta(days=1),
+            end_time=datetime.now(timezone.utc),
+        )
+
+        assert "sleeps" in result["duplicate"]
+        assert "sleeps" not in result["triggered"]
+        assert "sleeps" not in result.get("failed", {})
+
+    @patch.object(GarminBackfillService, "_make_api_request")
+    def test_202_accepted_goes_to_triggered(self, mock_api: MagicMock) -> None:
+        """Successful 202 responses should land in 'triggered'."""
+        mock_api.return_value = None  # 202 returns empty body
+        service = self._make_service()
+        db = MagicMock()
+        user_id = MagicMock()
+
+        result = service.trigger_backfill(
+            db=db,
+            user_id=user_id,
+            data_types=["sleeps"],
+            start_time=datetime.now(timezone.utc) - timedelta(days=1),
+            end_time=datetime.now(timezone.utc),
+        )
+
+        assert "sleeps" in result["triggered"]
+        assert "sleeps" not in result["duplicate"]
+
+    @patch.object(GarminBackfillService, "_make_api_request")
+    def test_401_goes_to_failed(self, mock_api: MagicMock) -> None:
+        """401 responses should land in 'failed'."""
+        mock_api.side_effect = HTTPException(status_code=401, detail="authorization expired")
+        service = self._make_service()
+        db = MagicMock()
+        user_id = MagicMock()
+
+        result = service.trigger_backfill(
+            db=db,
+            user_id=user_id,
+            data_types=["sleeps"],
+            start_time=datetime.now(timezone.utc) - timedelta(days=1),
+            end_time=datetime.now(timezone.utc),
+        )
+
+        assert "sleeps" in result["failed"]
+        assert "sleeps" not in result["triggered"]
+        assert "sleeps" not in result["duplicate"]

@@ -138,6 +138,7 @@ class GarminBackfillService:
 
         results: dict[str, Any] = {
             "triggered": [],
+            "duplicate": [],
             "failed": {},
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
@@ -184,7 +185,8 @@ class GarminBackfillService:
                 )
 
             except HTTPException as e:
-                # 409 = duplicate backfill already processed - treat as success
+                # 409 = duplicate backfill already processed for this timeframe.
+                # Garmin won't send another webhook, so caller should skip (not wait).
                 if e.status_code == 409:
                     log_structured(
                         self.logger,
@@ -195,7 +197,7 @@ class GarminBackfillService:
                         data_type=data_type,
                         user_id=str(user_id),
                     )
-                    results["triggered"].append(data_type)
+                    results["duplicate"].append(data_type)
                 else:
                     log_structured(
                         self.logger,
