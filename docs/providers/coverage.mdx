@@ -80,9 +80,6 @@ This guide provides a comprehensive overview of data type support across all int
 | `vo2_max` | mL/kg/min | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `recovery_score` | score | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `garmin_fitness_age` | years | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `garmin_stress_level` | score | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `garmin_body_battery` | % | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ### Activity - Basic
 
@@ -134,6 +131,16 @@ This guide provides a comprehensive overview of data type support across all int
 | `swimming_stroke_count` | count | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ |
 | `cadence` | rpm | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ |
 | `power` | watts | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ |
+
+### Provider-Specific Metrics
+
+These metrics are unique to specific providers and don't have a universal equivalent across devices.
+
+| Data Type | Unit | Provider | Description |
+|-----------|------|----------|-------------|
+| `garmin_stress_level` | score | Garmin | Stress score (1-100) based on HRV analysis |
+| `garmin_body_battery` | % | Garmin | Energy level indicator (0-100) |
+| `garmin_fitness_age` | years | Garmin | Estimated fitness age based on VO2 max and activity |
 
 ### Environmental
 
