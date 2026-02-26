@@ -42,6 +42,15 @@ function formatTypeName(typeName: string): string {
     .trim();
 }
 
+// Parse scope string into individual scope items
+// Handles both comma-separated (Strava) and space-separated (Whoop, Polar) formats
+function parseScopeString(scope: string): string[] {
+  return scope
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
@@ -169,6 +178,26 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Show data scope */}
+        {connection.scope && parseScopeString(connection.scope).length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              Data scope
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {parseScopeString(connection.scope).map((scopeItem) => (
+                <Badge
+                  key={scopeItem}
+                  variant="secondary"
+                  className="text-xs font-normal"
+                >
+                  {scopeItem}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
