@@ -37,3 +37,19 @@ class SystemInfoResponse(BaseModel):
     total_users: CountWithGrowth
     active_conn: CountWithGrowth
     data_points: DataPointsInfo
+
+
+class EventTypeMetric(BaseModel):
+    """Event record metric grouped by category and type."""
+
+    category: str
+    type: str | None
+    count: int
+
+
+class UserDataStats(BaseModel):
+    """Per-user data type counts and totals."""
+
+    total_data_points: int
+    series_types: list[SeriesTypeMetric]
+    event_types: list[EventTypeMetric]

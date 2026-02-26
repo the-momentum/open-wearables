@@ -334,6 +334,21 @@ class DataPointSeriesRepository(
         )
         return [(series_type_definition_id, count) for series_type_definition_id, count in results]
 
+    def get_count_by_series_type_for_user(self, db_session: DbSession, user_id: UUID) -> list[tuple[int, int]]:
+        """Get count of data points grouped by series type ID for a specific user.
+
+        Returns list of (series_type_definition_id, count) tuples ordered by count descending.
+        """
+        results = (
+            db_session.query(self.model.series_type_definition_id, func.count(self.model.id).label("count"))
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(self.model.series_type_definition_id)
+            .order_by(func.count(self.model.id).desc())
+            .all()
+        )
+        return [(series_type_definition_id, count) for series_type_definition_id, count in results]
+
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source.
 

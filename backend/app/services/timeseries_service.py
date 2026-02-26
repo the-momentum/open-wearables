@@ -56,6 +56,10 @@ class TimeSeriesService(
         """Get count of data points grouped by series type ID."""
         return self.crud.get_count_by_series_type(db_session)
 
+    def get_count_by_series_type_for_user(self, db_session: DbSession, user_id: UUID) -> list[tuple[int, int]]:
+        """Get count of data points grouped by series type ID for a specific user."""
+        return self.crud.get_count_by_series_type_for_user(db_session, user_id)
+
     def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source."""
         return self.crud.get_count_by_source(db_session)

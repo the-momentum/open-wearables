@@ -10,6 +10,7 @@ import type {
   PresignedURLRequest,
   PresignedURLResponse,
   InvitationCode,
+  UserDataStats,
 } from '../types';
 
 export const usersService = {
@@ -100,5 +101,9 @@ export const usersService = {
   async generateInvitationCode(userId: string): Promise<InvitationCode> {
     const endpoint = API_ENDPOINTS.userInvitationCode(userId);
     return apiClient.post<InvitationCode>(endpoint, null);
+  },
+
+  async getStats(userId: string): Promise<UserDataStats> {
+    return apiClient.get<UserDataStats>(API_ENDPOINTS.userStats(userId));
   },
 };

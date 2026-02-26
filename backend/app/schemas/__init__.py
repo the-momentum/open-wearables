@@ -171,7 +171,9 @@ from .sync import (
 from .system_info import (
     CountWithGrowth,
     DataPointsInfo,
+    EventTypeMetric,
     SystemInfoResponse,
+    UserDataStats,
 )
 from .timeseries import (
     ActiveMinutesResult,
@@ -273,6 +275,8 @@ __all__ = [
     "SystemInfoResponse",
     "CountWithGrowth",
     "DataPointsInfo",
+    "EventTypeMetric",
+    "UserDataStats",
     "HKMetricRecordJSON",
     "HKSleepRecordJSON",
     "HKWorkoutJSON",

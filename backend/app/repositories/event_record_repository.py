@@ -289,6 +289,27 @@ class EventRecordRepository(
         )
         return [(workout_type, count) for workout_type, count in results]
 
+    def get_count_by_category_and_type_for_user(
+        self, db_session: DbSession, user_id: UUID
+    ) -> list[tuple[str, str | None, int]]:
+        """Get count of event records grouped by category and type for a specific user.
+
+        Returns list of (category, type, count) tuples ordered by count descending.
+        """
+        results = (
+            db_session.query(
+                self.model.category,
+                self.model.type,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(self.model.category, self.model.type)
+            .order_by(func.count(self.model.id).desc())
+            .all()
+        )
+        return [(category, event_type, count) for category, event_type, count in results]
+
     def get_sleep_summaries(
         self,
         db_session: DbSession,

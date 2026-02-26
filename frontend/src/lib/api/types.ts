@@ -525,6 +525,18 @@ export interface EventRecordResponse {
   sleep_awake_minutes?: number | string | null;
 }
 
+export interface EventTypeMetric {
+  category: string;
+  type: string | null;
+  count: number;
+}
+
+export interface UserDataStats {
+  total_data_points: number;
+  series_types: SeriesTypeMetric[];
+  event_types: EventTypeMetric[];
+}
+
 export interface HealthDataParams {
   start_datetime?: string;
   end_datetime?: string;

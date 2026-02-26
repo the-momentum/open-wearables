@@ -25,6 +25,7 @@ export const API_ENDPOINTS = {
     `/api/v1/users/${userId}/import/apple/xml/s3`,
   userInvitationCode: (userId: string) =>
     `/api/v1/users/${userId}/invitation-code`,
+  userStats: (userId: string) => `/api/v1/users/${userId}/stats`,
 
   // OAuth endpoints
   oauthAuthorize: (provider: string) => `/api/v1/oauth/${provider}/authorize`,

@@ -16,6 +16,7 @@ import {
 import { formatDate, truncateId } from '@/lib/utils/format';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ConnectionCard } from '@/components/user/connection-card';
+import { DataSummarySection } from '@/components/user/data-summary-section';
 
 interface ProfileSectionProps {
   userId: string;
@@ -160,6 +161,9 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
             )}
           </div>
         </div>
+
+        {/* Data Summary */}
+        <DataSummarySection userId={userId} />
 
         {/* Connected Providers */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">

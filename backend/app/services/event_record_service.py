@@ -115,6 +115,12 @@ class EventRecordService(
         """Get count of workouts grouped by workout type."""
         return self.crud.get_count_by_workout_type(db_session)
 
+    def get_count_by_category_and_type_for_user(
+        self, db_session: DbSession, user_id: UUID
+    ) -> list[tuple[str, str | None, int]]:
+        """Get count of event records grouped by category and type for a specific user."""
+        return self.crud.get_count_by_category_and_type_for_user(db_session, user_id)
+
     def _map_source(self, data_source: DataSource) -> DataSourceSchema:
         return DataSourceSchema(
             provider=data_source.source or "unknown",

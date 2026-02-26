@@ -9,6 +9,7 @@ import type {
   UserCreate,
   UserUpdate,
   UserQueryParams,
+  UserDataStats,
 } from '../../lib/api/types';
 
 export function useUsers(params?: UserQueryParams) {
@@ -24,6 +25,14 @@ export function useUser(id: string) {
     queryKey: queryKeys.users.detail(id),
     queryFn: () => usersService.getById(id),
     enabled: !!id,
+  });
+}
+
+export function useUserDataStats(userId: string) {
+  return useQuery<UserDataStats>({
+    queryKey: queryKeys.users.stats(userId),
+    queryFn: () => usersService.getStats(userId),
+    enabled: !!userId,
   });
 }
 
