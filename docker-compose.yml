@@ -31,7 +31,7 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
       - OURA_CLIENT_ID=8ea5ac3f-a107-4686-8bd7-fc9baaa9eb0f
-      - OURA_CLIENT_SECRET=cNDuQwYvXEKSiPZHeRLeiALjL4UGdEHThlQV_agqel8
+      - OURA_CLIENT_SECRET=cNDuQwYvXEKSiPZHeRLeiALjl4UGdEHThIQV_agqel8
       - ENABLE_OURA=true
     ports:
       - "8000:8000"

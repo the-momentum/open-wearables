@@ -31,9 +31,9 @@ class OuraOAuth(BaseOAuthTemplate):
             default_scope=settings.oura_default_scope,
         )
 
-    # OAuth configuration — Oura uses Basic Auth header (not body), no PKCE
+    # OAuth configuration — Oura expects credentials in request body, no PKCE
     use_pkce: bool = False
-    auth_method: AuthenticationMethod = AuthenticationMethod.BASIC_AUTH
+    auth_method: AuthenticationMethod = AuthenticationMethod.BODY
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fetches Oura user ID and email via personal_info endpoint."""
