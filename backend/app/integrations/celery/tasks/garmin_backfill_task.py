@@ -1021,13 +1021,16 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
                 status_code = result.get("failed_status_codes", {}).get(data_type)
                 mark_type_failed(user_id, data_type, error)
 
-                # 401/403/400-endpoint-not-enabled all affect every type identically.
+                # 401/403/412/400-endpoint-not-enabled all affect every type identically.
                 # Stop the chain immediately to avoid cascading doomed requests.
                 is_endpoint_not_enabled = "endpoint not enabled" in error.lower()
-                if status_code in (401, 403) or is_endpoint_not_enabled:
+                if status_code in (401, 403, 412) or is_endpoint_not_enabled:
                     if status_code == 401:
                         error_msg = "Authorization expired or revoked. Please re-authorize Garmin."
                         log_msg = "401: token invalid, stopping backfill for all types"
+                    elif status_code == 412:
+                        error_msg = "HISTORICAL_DATA_EXPORT permission not granted. User must re-authorize."
+                        log_msg = "412: permission precondition failed, stopping backfill for all types"
                     elif is_endpoint_not_enabled:
                         error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                         log_msg = "Endpoint not enabled: stopping backfill for all types"
@@ -1119,13 +1122,17 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
 
             # 401 = token expired/revoked — all subsequent requests will also fail
             # 403 = user didn't grant HISTORICAL_DATA_EXPORT permission during OAuth
+            # 412 = HISTORICAL_DATA_EXPORT permission precondition not met
             # 400 "Endpoint not enabled" = app-level config issue in Garmin portal
-            # All three cases affect all types identically, so stop the chain.
+            # All four cases affect all types identically, so stop the chain.
             is_endpoint_not_enabled = e.status_code == 400 and "endpoint not enabled" in error.lower()
-            if e.status_code in (401, 403) or is_endpoint_not_enabled:
+            if e.status_code in (401, 403, 412) or is_endpoint_not_enabled:
                 if e.status_code == 401:
                     error_msg = "Authorization expired or revoked. Please re-authorize Garmin."
                     log_msg = "401: token invalid, stopping backfill for all types"
+                elif e.status_code == 412:
+                    error_msg = "HISTORICAL_DATA_EXPORT permission not granted. User must re-authorize."
+                    log_msg = "412: permission precondition failed, stopping backfill for all types"
                 elif is_endpoint_not_enabled:
                     error_msg = "Backfill endpoints not enabled for this app in Garmin developer portal."
                     log_msg = "Endpoint not enabled: stopping backfill for all types"
