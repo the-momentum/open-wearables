@@ -8,6 +8,7 @@ Tests the /api/v1/garmin/webhooks endpoints including:
 - Authentication and authorization
 - Error cases
 - userPermissions webhooks
+- deregistrations webhooks
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -15,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -975,3 +977,77 @@ class TestGarminUserPermissionsWebhook:
         # Verify DB was updated
         db.refresh(connection)
         assert connection.scope == "ACTIVITY_EXPORT WELLNESS_EXPORT"
+
+
+class TestGarminDeregistrationWebhook:
+    """Test suite for Garmin deregistration webhook handling."""
+
+    def test_push_webhook_deregistration_revokes_connection(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that deregistration webhook revokes the connection."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
+        assert connection.status == ConnectionStatus.ACTIVE
+
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "deregistrations": [
+                {"userId": "garmin_user_123"},
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "deregistrations" in data
+        assert data["deregistrations"]["revoked"] == 1
+        assert len(data["deregistrations"]["errors"]) == 0
+
+        # Verify DB was updated
+        db.refresh(connection)
+        assert connection.status == ConnectionStatus.REVOKED
+
+    def test_push_webhook_deregistration_unknown_user(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test deregistration webhook with unknown user returns 200 with error info."""
+        # Arrange
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "deregistrations": [
+                {"userId": "unknown_garmin_user"},
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "deregistrations" in data
+        assert data["deregistrations"]["revoked"] == 0
+        assert len(data["deregistrations"]["errors"]) == 1
