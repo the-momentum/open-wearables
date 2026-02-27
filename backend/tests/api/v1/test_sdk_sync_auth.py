@@ -33,7 +33,15 @@ class TestSDKSyncWithSDKToken:
         response = client.post(
             f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
             headers={"Authorization": f"Bearer {token}"},
-            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
+            json={
+                "data": {
+                    "provider": "apple",
+                    "sdkVersion": "1.0.0",
+                    "syncTimestamp": "2021-01-01T00:00:00Z",
+                    "workouts": [],
+                    "records": [],
+                }
+            },
         )
 
         # Should not be 401 (auth should pass)
@@ -48,7 +56,15 @@ class TestSDKSyncWithSDKToken:
         response = client.post(
             f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
+            json={
+                "data": {
+                    "provider": "apple",
+                    "sdkVersion": "1.0.0",
+                    "syncTimestamp": "2021-01-01T00:00:00Z",
+                    "workouts": [],
+                    "records": [],
+                }
+            },
         )
 
         # Should not be 401
@@ -58,7 +74,15 @@ class TestSDKSyncWithSDKToken:
         """No authentication should return 401."""
         response = client.post(
             f"{api_v1_prefix}/sdk/users/user_456/sync/",
-            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
+            json={
+                "data": {
+                    "provider": "apple",
+                    "sdkVersion": "1.0.0",
+                    "syncTimestamp": "2021-01-01T00:00:00Z",
+                    "workouts": [],
+                    "records": [],
+                }
+            },
         )
 
         assert response.status_code == 401

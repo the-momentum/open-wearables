@@ -231,7 +231,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
             logger,
             "error",
             f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
-            provider=provider,
+            provider=state.get("provider") or "unknown",
             action="sleep_record_save_error",
             user_id=user_id,
             sleep_record_id=sleep_record.id,
