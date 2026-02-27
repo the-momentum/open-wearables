@@ -19,12 +19,13 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
+    SDKSyncRequest,
     SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
     UploadDataResponse,
 )
-from app.schemas.apple.healthkit.sync_request import SyncRequest, WorkoutStatistic
+from app.schemas.apple.healthkit.sync_request import WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
@@ -48,11 +49,11 @@ class ImportService:
 
     def _build_workout_bundles(
         self,
-        request: SyncRequest,
+        request: SDKSyncRequest,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate, list[TimeSeriesSampleCreate]]]:
         """
-        Given the parsed SyncRequest, yield tuples of
+        Given the parsed SDKSyncRequest, yield tuples of
         (EventRecordCreate, EventRecordDetailCreate) ready to insert into your ORM session.
         """
         user_uuid = UUID(user_id)
@@ -102,7 +103,7 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
-        request: SyncRequest,
+        request: SDKSyncRequest,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
@@ -236,7 +237,7 @@ class ImportService:
         Returns:
             dict with counts: {"workouts_saved": int, "records_saved": int, "sleep_saved": int}
         """
-        request = SyncRequest(**raw)
+        request = SDKSyncRequest(**raw)
         workouts_saved = 0
         records_saved = 0
         sleep_saved = 0

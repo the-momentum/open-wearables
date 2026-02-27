@@ -13,9 +13,9 @@ from app.integrations.redis_client import get_redis_client
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    SDKSyncRequest,
 )
 from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
-from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
@@ -125,7 +125,7 @@ def _apply_transition(
 
 def handle_sleep_data(
     db_session: DbSession,
-    request: SyncRequest,
+    request: SDKSyncRequest,
     user_id: str,
 ) -> None:
     """
@@ -136,7 +136,7 @@ def handle_sleep_data(
 
     Args:
         db_session: Database session for persisting finalized sleep records
-        request: Parsed SyncRequest containing sleep records
+        request: Parsed SDKSyncRequest containing sleep records
         user_id: User identifier for associating sleep data
 
     Flow:
