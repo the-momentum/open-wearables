@@ -7,6 +7,7 @@ Tests the /api/v1/garmin/webhooks endpoints including:
 - GET /api/v1/garmin/webhooks/health - test health check
 - Authentication and authorization
 - Error cases
+- userPermissions webhooks
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -768,3 +769,124 @@ class TestGarminWebhookHealth:
         assert isinstance(data, dict)
         assert "status" in data
         assert "service" in data
+
+
+class TestGarminUserPermissionsWebhook:
+    """Test suite for Garmin userPermissions webhook handling."""
+
+    def test_push_webhook_user_permissions_updates_scope(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that userPermissions webhook updates the scope in the DB."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="OLD_SCOPE",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissions": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissions" in data
+        assert data["userPermissions"]["updated"] == 1
+        assert len(data["userPermissions"]["errors"]) == 0
+
+        # Verify DB was updated
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT HEALTH_EXPORT"
+
+    def test_push_webhook_user_permissions_unknown_user(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test userPermissions webhook with unknown user returns 200 with error info."""
+        # Arrange
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissions": [
+                {
+                    "userId": "unknown_garmin_user",
+                    "permissions": ["ACTIVITY_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissions" in data
+        assert data["userPermissions"]["updated"] == 0
+        assert len(data["userPermissions"]["errors"]) == 1
+
+    def test_ping_webhook_user_permissions_updates_scope(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that userPermissions in ping webhook also updates scope."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="OLD_SCOPE",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissions": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["ACTIVITY_EXPORT", "WELLNESS_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/ping",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissions" in data
+        assert data["userPermissions"]["updated"] == 1
+
+        # Verify DB was updated
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT WELLNESS_EXPORT"
