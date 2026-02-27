@@ -197,6 +197,62 @@ async def _process_wellness_notification(
     return results
 
 
+def _process_user_permissions(
+    db: DbSession,
+    permissions_list: list[dict[str, Any]],
+    trace_id: str,
+) -> dict[str, Any]:
+    """Process userPermissions webhook entries.
+
+    Called when a user changes their data sharing permissions on Garmin Connect.
+    Updates the scope column on the matching user_connection.
+    """
+    results: dict[str, Any] = {"updated": 0, "errors": []}
+    user_connection_repo = UserConnectionRepository()
+
+    for entry in permissions_list:
+        garmin_user_id = entry.get("userId")
+        if not garmin_user_id:
+            results["errors"].append("Missing userId in userPermissions entry")
+            continue
+
+        connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+        if not connection:
+            log_structured(
+                logger,
+                "warning",
+                "No connection found for Garmin user (userPermissions)",
+                provider="garmin",
+                trace_id=trace_id,
+                garmin_user_id=garmin_user_id,
+            )
+            results["errors"].append(f"User {garmin_user_id} not connected")
+            continue
+
+        # permissions is a flat list of permitted permission names:
+        # ["ACTIVITY_EXPORT", "HEALTH_EXPORT", ...]
+        permissions = entry.get("permissions", [])
+        new_scope = " ".join(sorted(permissions)) if permissions else None
+        old_scope = connection.scope
+
+        user_connection_repo.update_scope(db, connection, new_scope)
+
+        log_structured(
+            logger,
+            "info",
+            "Updated user permissions scope",
+            provider="garmin",
+            trace_id=trace_id,
+            garmin_user_id=garmin_user_id,
+            user_id=str(connection.user_id),
+            old_scope=old_scope,
+            new_scope=new_scope,
+        )
+        results["updated"] += 1
+
+    return results
+
+
 @router.post("/ping")
 async def garmin_ping_notification(
     request: Request,
@@ -409,13 +465,19 @@ async def garmin_ping_notification(
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
-        return {
+        # Process permission changes
+        response: dict[str, Any] = {
             "processed": processed_count,
             "errors": errors,
             "activities": processed_activities,
             "wellness": wellness_results,
             "backfill_chained": backfill_triggered,
         }
+
+        if "userPermissions" in payload:
+            response["userPermissions"] = _process_user_permissions(db, payload["userPermissions"], request_trace_id)
+
+        return response
 
     except Exception as e:
         db.rollback()
@@ -758,7 +820,8 @@ async def garmin_push_notification(
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
-        return {
+        # Process permission changes
+        response: dict[str, Any] = {
             "processed": processed_count,
             "saved": saved_count,
             "errors": errors,
@@ -766,6 +829,11 @@ async def garmin_push_notification(
             "wellness": wellness_results,
             "backfill_chained": backfill_triggered,
         }
+
+        if "userPermissions" in payload:
+            response["userPermissions"] = _process_user_permissions(db, payload["userPermissions"], request_trace_id)
+
+        return response
 
     except Exception as e:
         db.rollback()

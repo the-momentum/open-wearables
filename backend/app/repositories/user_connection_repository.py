@@ -136,6 +136,15 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         db_session.refresh(connection)
         return connection
 
+    def update_scope(self, db_session: DbSession, connection: UserConnection, scope: str | None) -> UserConnection:
+        """Update connection scope (e.g. when user changes permissions on Garmin Connect)."""
+        connection.scope = scope
+        connection.updated_at = datetime.now(timezone.utc)
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+        return connection
+
     def update_tokens(
         self,
         db_session: DbSession,

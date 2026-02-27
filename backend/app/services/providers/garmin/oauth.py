@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 
 from app.config import settings
@@ -8,6 +10,8 @@ from app.schemas import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+
+logger = logging.getLogger(__name__)
 
 
 class GarminOAuth(BaseOAuthTemplate):
@@ -33,7 +37,8 @@ class GarminOAuth(BaseOAuthTemplate):
     auth_method = AuthenticationMethod.BODY
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
-        """Fetches Garmin user ID via API."""
+        """Fetches Garmin user ID and API permissions."""
+        # Fetch user ID (critical - fail returns all None)
         try:
             user_id_response = httpx.get(
                 f"{self.api_base_url}/wellness-api/rest/user/id",
@@ -42,6 +47,28 @@ class GarminOAuth(BaseOAuthTemplate):
             )
             user_id_response.raise_for_status()
             provider_user_id = user_id_response.json().get("userId")
-            return {"user_id": provider_user_id, "username": None}
         except Exception:
-            return {"user_id": None, "username": None}
+            return {"user_id": None, "username": None, "scope": None}
+
+        # Fetch permissions (best-effort - fail returns scope as None)
+        scope: str | None = None
+        try:
+            permissions_response = httpx.get(
+                f"{self.api_base_url}/wellness-api/rest/user/permissions",
+                headers={"Authorization": f"Bearer {token_response.access_token}"},
+                timeout=30.0,
+            )
+            permissions_response.raise_for_status()
+            data = permissions_response.json()
+            # Response format: {"permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT", ...]}
+            permissions = data.get("permissions", [])
+            if permissions:
+                scope = " ".join(sorted(permissions))
+        except Exception:
+            logger.warning(
+                "Failed to fetch Garmin permissions for user %s, will retry via webhook",
+                provider_user_id,
+                exc_info=True,
+            )
+
+        return {"user_id": provider_user_id, "username": None, "scope": scope}
