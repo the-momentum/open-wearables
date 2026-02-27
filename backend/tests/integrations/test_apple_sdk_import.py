@@ -16,6 +16,12 @@ from app.models import EventRecord, WorkoutDetails
 from app.services.apple.healthkit.import_service import ImportService
 from tests.factories import UserFactory
 
+SDK_ENVELOPE: dict[str, str] = {
+    "provider": "apple",
+    "sdkVersion": "1.0.0",
+    "syncTimestamp": "2025-04-10T12:00:00Z",
+}
+
 
 @pytest.fixture(autouse=True)
 def mock_sleep_redis() -> Any:
@@ -43,16 +49,16 @@ class TestAppleSDKImport:
     def sample_sdk_payload(self) -> dict[str, Any]:
         """Sample Apple SDK payload with records, sleep, and workouts."""
         return {
+            **SDK_ENVELOPE,
             "data": {
                 "records": [
                     {
-                        "uuid": "ED008640-6873-4647-92B2-24F7680014A0",
+                        "id": "ED008640-6873-4647-92B2-24F7680014A0",
                         "type": "HKQuantityTypeIdentifierStepCount",
                         "unit": "count",
                         "value": 66,
                         "startDate": "2022-05-28T23:56:11Z",
                         "endDate": "2022-05-29T00:02:58Z",
-                        "recordMetadata": [],
                         "source": {
                             "name": "iPhone",
                             "bundleIdentifier": "com.apple.health",
@@ -71,13 +77,10 @@ class TestAppleSDKImport:
                 ],
                 "sleep": [
                     {
-                        "uuid": "E3D5647B-2B0E-43AA-BE3F-9FAD43D35581",
-                        "type": "HKCategoryTypeIdentifierSleepAnalysis",
-                        "unit": None,
-                        "value": 0,
+                        "id": "E3D5647B-2B0E-43AA-BE3F-9FAD43D35581",
+                        "stage": "inBed",
                         "startDate": "2025-04-02T21:50:46Z",
                         "endDate": "2025-04-02T21:50:50Z",
-                        "recordMetadata": [{"key": "HKTimeZone", "value": "Europe/Warsaw"}],
                         "source": {
                             "name": "Test iPhone",
                             "bundleIdentifier": "com.apple.health",
@@ -95,7 +98,7 @@ class TestAppleSDKImport:
                 ],
                 "workouts": [
                     {
-                        "uuid": "801B68D7-F4AA-4A23-BD26-A3BA1BA6B08D",
+                        "id": "801B68D7-F4AA-4A23-BD26-A3BA1BA6B08D",
                         "type": "walking",
                         "startDate": "2025-03-25T17:27:00Z",
                         "endDate": "2025-03-25T18:51:24Z",
@@ -113,7 +116,7 @@ class TestAppleSDKImport:
                                 "patchVersion": 1,
                             },
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 1683.27},
                             {"type": "activeEnergyBurned", "unit": "kcal", "value": 131.41},
                             {"type": "basalEnergyBurned", "unit": "kcal", "value": 48.59},
@@ -129,7 +132,7 @@ class TestAppleSDKImport:
                         ],
                     }
                 ],
-            }
+            },
         }
 
     def test_import_workout_with_statistics(
@@ -139,30 +142,24 @@ class TestAppleSDKImport:
         sample_sdk_payload: dict[str, Any],
     ) -> None:
         """Test importing workout with full statistics (HR, distance, energy)."""
-        # Arrange
         user = UserFactory()
         user_id = str(user.id)
 
-        # Act
         result = import_service.load_data(db, sample_sdk_payload, user_id)
 
-        # Assert
         assert result["workouts_saved"] == 1
 
-        # Verify workout record was created
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
         assert workout is not None
         assert workout.type == "walking"
         assert workout.duration_seconds == 1683
 
-        # Verify workout details were populated with statistics
         details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).first()
         assert details is not None
         assert details.heart_rate_min == 77
         assert details.heart_rate_max == 141
         assert details.heart_rate_avg == Decimal("121.49")
         assert details.distance == Decimal("2165.35")
-        # energy_burned = activeEnergyBurned + basalEnergyBurned
         assert details.energy_burned == Decimal("180.00")  # 131.41 + 48.59
         assert details.total_elevation_gain == Decimal("15.57")
 
@@ -172,13 +169,13 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test importing workout without heart rate data (older devices)."""
-        # Arrange
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "AAAA0000-1111-2222-3333-444455556666",
+                        "id": "AAAA0000-1111-2222-3333-444455556666",
                         "type": "cycling",
                         "startDate": "2019-09-30T17:00:49Z",
                         "endDate": "2019-09-30T17:14:29Z",
@@ -191,7 +188,7 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "5.3",
                             "operatingSystemVersion": {"majorVersion": 5, "minorVersion": 3, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 819.51},
                             {"type": "activeEnergyBurned", "unit": "kcal", "value": 77.16},
                             {"type": "basalEnergyBurned", "unit": "kcal", "value": 19.01},
@@ -199,13 +196,11 @@ class TestAppleSDKImport:
                         ],
                     }
                 ],
-            }
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 1
 
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
@@ -224,13 +219,13 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test importing multiple workouts in a single batch."""
-        # Arrange
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "BBBB0000-1111-2222-3333-444455556666",
+                        "id": "BBBB0000-1111-2222-3333-444455556666",
                         "type": "running",
                         "startDate": "2025-01-28T08:00:00Z",
                         "endDate": "2025-01-28T08:30:00Z",
@@ -243,14 +238,14 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 1800},
                             {"type": "distance", "unit": "m", "value": 5000},
                             {"type": "averageHeartRate", "unit": "bpm", "value": 155},
                         ],
                     },
                     {
-                        "uuid": "CCCC0000-1111-2222-3333-444455556666",
+                        "id": "CCCC0000-1111-2222-3333-444455556666",
                         "type": "swimming",
                         "startDate": "2025-01-28T18:00:00Z",
                         "endDate": "2025-01-28T18:45:00Z",
@@ -263,19 +258,17 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 2700},
                             {"type": "activeEnergyBurned", "unit": "kcal", "value": 450},
                         ],
                     },
-                ]
-            }
+                ],
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 2
 
         workouts = db.query(EventRecord).filter(EventRecord.category == "workout").all()
@@ -290,13 +283,13 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test that duplicate workouts (same datetime) are skipped."""
-        # Arrange
         user = UserFactory()
-        payload = {
+        payload: dict[str, Any] = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "DDDD0000-1111-2222-3333-444455556666",
+                        "id": "DDDD0000-1111-2222-3333-444455556666",
                         "type": "walking",
                         "startDate": "2025-01-29T10:00:00Z",
                         "endDate": "2025-01-29T10:30:00Z",
@@ -309,26 +302,24 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 1800},
                         ],
                     }
-                ]
-            }
+                ],
+            },
         }
 
-        # Act - First import
+        # First import
         result1 = import_service.load_data(db, payload, str(user.id))
         assert result1["workouts_saved"] == 1
 
-        # Act - Second import (same workout, different UUID)
-        payload["data"]["workouts"][0]["uuid"] = "EEEE0000-1111-2222-3333-444455556666"
+        # Second import (same workout, different ID)
+        payload["data"]["workouts"][0]["id"] = "EEEE0000-1111-2222-3333-444455556666"
         result2 = import_service.load_data(db, payload, str(user.id))
 
-        # Assert - Second import should skip (duplicate datetime)
         assert result2["workouts_saved"] == 0
 
-        # Only one workout should exist
         workouts = db.query(EventRecord).filter(EventRecord.category == "workout").all()
         assert len(workouts) == 1
 
@@ -339,14 +330,11 @@ class TestAppleSDKImport:
         sample_sdk_payload: dict[str, Any],
     ) -> None:
         """Test importing HealthKit records as time series samples."""
-        # Arrange
         user = UserFactory()
 
-        # Act
         result = import_service.load_data(db, sample_sdk_payload, str(user.id))
 
-        # Assert
-        assert result["records_saved"] >= 0  # May be 0 if HR records not included
+        assert result["records_saved"] >= 0
 
     def test_import_empty_payload(
         self,
@@ -354,14 +342,11 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test importing empty payload returns zeros."""
-        # Arrange
         user = UserFactory()
-        payload: dict[str, Any] = {"data": {}}
+        payload: dict[str, Any] = {**SDK_ENVELOPE, "data": {}}
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 0
         assert result["records_saved"] == 0
         assert result["sleep_saved"] == 0
@@ -372,13 +357,13 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test workout with step count statistic."""
-        # Arrange
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "FFFF0000-1111-2222-3333-444455556666",
+                        "id": "FFFF0000-1111-2222-3333-444455556666",
                         "type": "walking",
                         "startDate": "2025-01-29T12:00:00Z",
                         "endDate": "2025-01-29T12:45:00Z",
@@ -391,20 +376,18 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 2700},
                             {"type": "stepCount", "unit": "count", "value": 4500},
                             {"type": "distance", "unit": "m", "value": 3200},
                         ],
                     }
-                ]
-            }
+                ],
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 1
 
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
@@ -421,13 +404,13 @@ class TestAppleSDKImport:
         import_service: ImportService,
     ) -> None:
         """Test workout with fractional step count from Apple SDK is truncated to int."""
-        # Arrange
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "FFFF1111-2222-3333-4444-555566667777",
+                        "id": "FFFF1111-2222-3333-4444-555566667777",
                         "type": "walking",
                         "startDate": "2025-02-10T10:00:00Z",
                         "endDate": "2025-02-10T11:00:00Z",
@@ -440,20 +423,18 @@ class TestAppleSDKImport:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [
+                        "values": [
                             {"type": "duration", "unit": "s", "value": 3600},
                             {"type": "stepCount", "unit": "count", "value": 2981.57515735105},
                             {"type": "distance", "unit": "m", "value": 2165.35},
                         ],
                     }
-                ]
-            }
+                ],
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 1
 
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
@@ -478,13 +459,13 @@ class TestAppleSDKImportEdgeCases:
         import_service: ImportService,
     ) -> None:
         """Test workout with zero/missing duration uses calculated duration."""
-        # Arrange
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "AAAA1111-2222-3333-4444-555566667777",
+                        "id": "AAAA1111-2222-3333-4444-555566667777",
                         "type": "yoga",
                         "startDate": "2025-01-29T14:00:00Z",
                         "endDate": "2025-01-29T14:30:00Z",  # 30 min = 1800 seconds
@@ -497,35 +478,33 @@ class TestAppleSDKImportEdgeCases:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": [],  # No duration stat
+                        "values": [],
                     }
-                ]
-            }
+                ],
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 1
 
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
         assert workout is not None
-        assert workout.duration_seconds == 1800  # Calculated from start/end
+        assert workout.duration_seconds == 1800
 
     def test_import_workout_null_statistics(
         self,
         db: Session,
         import_service: ImportService,
     ) -> None:
-        """Test workout with null workoutStatistics."""
-        # Arrange
+        """Test workout with null values."""
         user = UserFactory()
         payload = {
+            **SDK_ENVELOPE,
             "data": {
                 "workouts": [
                     {
-                        "uuid": "BBBB1111-2222-3333-4444-555566667777",
+                        "id": "BBBB1111-2222-3333-4444-555566667777",
                         "type": "other",
                         "startDate": "2025-01-29T15:00:00Z",
                         "endDate": "2025-01-29T15:20:00Z",
@@ -538,16 +517,14 @@ class TestAppleSDKImportEdgeCases:
                             "deviceSoftwareVersion": "10.0",
                             "operatingSystemVersion": {"majorVersion": 10, "minorVersion": 0, "patchVersion": 0},
                         },
-                        "workoutStatistics": None,
+                        "values": None,
                     }
-                ]
-            }
+                ],
+            },
         }
 
-        # Act
         result = import_service.load_data(db, payload, str(user.id))
 
-        # Assert
         assert result["workouts_saved"] == 1
 
         workout = db.query(EventRecord).filter(EventRecord.category == "workout").first()
@@ -555,7 +532,6 @@ class TestAppleSDKImportEdgeCases:
 
         details = db.query(WorkoutDetails).filter(WorkoutDetails.record_id == workout.id).first()
         assert details is not None
-        # All stats should be None
         assert details.heart_rate_avg is None
         assert details.distance is None
         assert details.energy_burned is None
