@@ -104,7 +104,7 @@ def process_sdk_upload(
         connection_repo = UserConnectionRepository()
         connection_repo.ensure_sdk_connection(db, user_uuid, provider)
 
-        # # Select the appropriate import service based on source
+        # Select the appropriate import service based on source
         import_service = _get_import_service(provider)
 
         result = import_service.import_data_from_request(

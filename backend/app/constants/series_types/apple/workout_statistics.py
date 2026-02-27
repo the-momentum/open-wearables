@@ -11,8 +11,11 @@ class WorkoutStatisticType(StrEnum):
 
     # Duration & Energy
     DURATION = "duration"
+    TOTAL_DURATION = "totalDuration"
     ACTIVE_ENERGY_BURNED = "activeEnergyBurned"
     BASAL_ENERGY_BURNED = "basalEnergyBurned"
+    CALORIES = "calories"
+    TOTAL_CALORIES = "totalCalories"
 
     # Distance & Movement
     DISTANCE = "distance"
@@ -23,17 +26,26 @@ class WorkoutStatisticType(StrEnum):
     MIN_HEART_RATE = "minHeartRate"
     AVERAGE_HEART_RATE = "averageHeartRate"
     MAX_HEART_RATE = "maxHeartRate"
+    MEAN_HEART_RATE = "meanHeartRate"
 
     # Running Metrics
+    MEAN_SPEED = "meanSpeed"
+    MEAN_CADENCE = "meanCadence"
+    MAX_CADENCE = "maxCadence"
     AVERAGE_RUNNING_POWER = "averageRunningPower"
     AVERAGE_RUNNING_SPEED = "averageRunningSpeed"
     AVERAGE_RUNNING_STRIDE_LENGTH = "averageRunningStrideLength"
     AVERAGE_VERTICAL_OSCILLATION = "averageVerticalOscillation"
     AVERAGE_GROUND_CONTACT_TIME = "averageGroundContactTime"
+    VO2_MAX = "vo2Max"
 
     # Elevation
     ELEVATION_ASCENDED = "elevationAscended"
     ELEVATION_DESCENDED = "elevationDescended"
+    ALTITUDE_GAIN = "altitudeGain"
+    ALTITUDE_LOSS = "altitudeLoss"
+    MAX_ALTITUDE = "maxAltitude"
+    MIN_ALTITUDE = "minAltitude"
 
     # Speed
     AVERAGE_SPEED = "averageSpeed"
@@ -48,20 +60,6 @@ class WorkoutStatisticType(StrEnum):
     # Weather
     WEATHER_TEMPERATURE = "weatherTemperature"
     WEATHER_HUMIDITY = "weatherHumidity"
-
-    # Samsung / Health Connect workout statistic keys
-    CALORIES = "calories"
-    MEAN_HEART_RATE = "meanHeartRate"
-    MEAN_SPEED = "meanSpeed"
-    MEAN_CADENCE = "meanCadence"
-    MAX_CADENCE = "maxCadence"
-    ALTITUDE_GAIN = "altitudeGain"
-    ALTITUDE_LOSS = "altitudeLoss"
-    MAX_ALTITUDE = "maxAltitude"
-    MIN_ALTITUDE = "minAltitude"
-    SAMSUNG_VO2_MAX = "vo2Max"
-    TOTAL_DURATION = "totalDuration"
-    TOTAL_CALORIES = "totalCalories"
 
 
 # Mapping from workout statistic type to EventRecordMetrics field name
