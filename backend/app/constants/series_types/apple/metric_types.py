@@ -10,63 +10,61 @@ class SDKMetricType(StrEnum):
     Samsung/HC types use uppercase SCREAMING_SNAKE_CASE strings (e.g. "HEART_RATE").
     """
 
-    SDK_FLOORS_CLIMBED = "FLOORS_CLIMBED"
-    SDK_DISTANCE = "DISTANCE"
-    SDK_HYDRATION = "HYDRATION"
-    SDK_VO2_MAX = "VO2_MAX"
-
     # Heart & Cardiovascular
     APPLE_HEART_RATE = "HKQuantityTypeIdentifierHeartRate"
-    SDK_HEART_RATE = "HEART_RATE"
+    ANDROID_HEART_RATE = "HEART_RATE"
     APPLE_RESTING_HEART_RATE = "HKQuantityTypeIdentifierRestingHeartRate"
-    SDK_RESTING_HEART_RATE = "RESTING_HEART_RATE"
+    ANDROID_RESTING_HEART_RATE = "RESTING_HEART_RATE"
     APPLE_HEART_RATE_VARIABILITY_SDNN = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
-    SDK_HEART_RATE_VARIABILITY = "HEART_RATE_VARIABILITY"
+    ANDROID_HEART_RATE_VARIABILITY = "HEART_RATE_VARIABILITY"
     HEART_RATE_RECOVERY_ONE_MINUTE = "HKQuantityTypeIdentifierHeartRateRecoveryOneMinute"
     WALKING_HEART_RATE_AVERAGE = "HKQuantityTypeIdentifierWalkingHeartRateAverage"
 
     # Blood & Respiratory
     APPLE_OXYGEN_SATURATION = "HKQuantityTypeIdentifierOxygenSaturation"
-    SDK_OXYGEN_SATURATION = "OXYGEN_SATURATION"
-    SDK_BLOOD_GLUCOSE = "BLOOD_GLUCOSE"
+    ANDROID_OXYGEN_SATURATION = "OXYGEN_SATURATION"
+    ANDROID_BLOOD_GLUCOSE = "BLOOD_GLUCOSE"
     APPLE_BLOOD_PRESSURE_SYSTOLIC = "HKQuantityTypeIdentifierBloodPressureSystolic"
-    SDK_BLOOD_PRESSURE_SYSTOLIC = "BLOOD_PRESSURE_SYSTOLIC"
+    ANDROID_BLOOD_PRESSURE_SYSTOLIC = "BLOOD_PRESSURE_SYSTOLIC"
     APPLE_BLOOD_PRESSURE_DIASTOLIC = "HKQuantityTypeIdentifierBloodPressureDiastolic"
-    SDK_BLOOD_PRESSURE_DIASTOLIC = "BLOOD_PRESSURE_DIASTOLIC"
-    SDK_RESPIRATORY_RATE = "RESPIRATORY_RATE"
+    ANDROID_BLOOD_PRESSURE_DIASTOLIC = "BLOOD_PRESSURE_DIASTOLIC"
+    ANDROID_RESPIRATORY_RATE = "RESPIRATORY_RATE"
 
     # Body Composition
     APPLE_HEIGHT = "HKQuantityTypeIdentifierHeight"
-    SDK_HEIGHT = "HEIGHT"
-    SDK_WEIGHT = "WEIGHT"
+    ANDROID_HEIGHT = "HEIGHT"
+    ANDROID_WEIGHT = "WEIGHT"
     APPLE_BODY_MASS = "HKQuantityTypeIdentifierBodyMass"
-    SDK_LEAN_BODY_MASS = "LEAN_BODY_MASS"
-    SDK_SKELETAL_MUSCLE_MASS = "SKELETAL_MUSCLE_MASS"
-    SDK_BODY_FAT_MASS = "BODY_FAT_MASS"
+    ANDROID_LEAN_BODY_MASS = "LEAN_BODY_MASS"
+    ANDROID_SKELETAL_MUSCLE_MASS = "SKELETAL_MUSCLE_MASS"
+    ANDROID_BODY_FAT_MASS = "BODY_FAT_MASS"
     APPLE_BODY_FAT_PERCENTAGE = "HKQuantityTypeIdentifierBodyFatPercentage"
-    SDK_BODY_FAT_PERCENTAGE = "BODY_FAT"
+    ANDROID_BODY_FAT_PERCENTAGE = "BODY_FAT"
     APPLE_BODY_MASS_INDEX = "HKQuantityTypeIdentifierBodyMassIndex"
-    SDK_BODY_MASS_INDEX = "BMI"
+    ANDROID_BODY_MASS_INDEX = "BMI"
     LEAN_BODY_MASS = "HKQuantityTypeIdentifierLeanBodyMass"
     APPLE_BODY_TEMPERATURE = "HKQuantityTypeIdentifierBodyTemperature"
-    SDK_BODY_TEMPERATURE = "BODY_TEMPERATURE"
+    ANDROID_BODY_TEMPERATURE = "BODY_TEMPERATURE"
 
     # Fitness Metrics
-    VO2_MAX = "HKQuantityTypeIdentifierVO2Max"
+    APPLE_VO2_MAX = "HKQuantityTypeIdentifierVO2Max"
+    ANDROID_VO2_MAX = "VO2_MAX"
     SIX_MINUTE_WALK_TEST_DISTANCE = "HKQuantityTypeIdentifierSixMinuteWalkTestDistance"
 
     # Activity - Basic
     APPLE_STEP_COUNT = "HKQuantityTypeIdentifierStepCount"
-    SDK_STEP_COUNT = "STEP_COUNT"
+    ANDROID_STEP_COUNT = "STEP_COUNT"
     APPLE_ACTIVE_ENERGY_BURNED = "HKQuantityTypeIdentifierActiveEnergyBurned"
     APPLE_BASAL_ENERGY_BURNED = "HKQuantityTypeIdentifierBasalEnergyBurned"
-    SDK_ACTIVE_CALORIES_BURNED = "ACTIVE_CALORIES_BURNED"
-    SDK_BASAL_METABOLIC_RATE = "BASAL_METABOLIC_RATE"
+    ANDROID_ACTIVE_CALORIES_BURNED = "ACTIVE_CALORIES_BURNED"
+    ANDROID_BASAL_METABOLIC_RATE = "BASAL_METABOLIC_RATE"
     APPLE_STAND_TIME = "HKQuantityTypeIdentifierAppleStandTime"
     APPLE_EXERCISE_TIME = "HKQuantityTypeIdentifierAppleExerciseTime"
     FLIGHTS_CLIMBED = "HKQuantityTypeIdentifierFlightsClimbed"
+    ANDROID_FLOORS_CLIMBED = "FLOORS_CLIMBED"
 
     # Activity - Distance
+    ANDROID_DISTANCE = "DISTANCE"
     DISTANCE_WALKING_RUNNING = "HKQuantityTypeIdentifierDistanceWalkingRunning"
     DISTANCE_CYCLING = "HKQuantityTypeIdentifierDistanceCycling"
     DISTANCE_SWIMMING = "HKQuantityTypeIdentifierDistanceSwimming"
@@ -128,6 +126,7 @@ class SDKMetricType(StrEnum):
     NUMBER_OF_TIMES_FALLEN = "HKQuantityTypeIdentifierNumberOfTimesFallen"
     INHALER_USAGE = "HKQuantityTypeIdentifierInhalerUsage"
     NUMBER_OF_ALCOHOLIC_BEVERAGES = "HKQuantityTypeIdentifierNumberOfAlcoholicBeverages"
+    ANDROID_HYDRATION = "HYDRATION"
 
     # Electrodermal
     ELECTRODERMAL_ACTIVITY = "HKQuantityTypeIdentifierElectrodermalActivity"
@@ -165,22 +164,22 @@ class SDKMetricType(StrEnum):
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
     SDKMetricType.APPLE_HEART_RATE: SeriesType.heart_rate,
-    SDKMetricType.SDK_HEART_RATE: SeriesType.heart_rate,
+    SDKMetricType.ANDROID_HEART_RATE: SeriesType.heart_rate,
     SDKMetricType.APPLE_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
-    SDKMetricType.SDK_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
+    SDKMetricType.ANDROID_RESTING_HEART_RATE: SeriesType.resting_heart_rate,
     SDKMetricType.APPLE_HEART_RATE_VARIABILITY_SDNN: SeriesType.heart_rate_variability_sdnn,
-    SDKMetricType.SDK_HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
+    SDKMetricType.ANDROID_HEART_RATE_VARIABILITY: SeriesType.heart_rate_variability_rmssd,
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: SeriesType.heart_rate_recovery_one_minute,
     SDKMetricType.WALKING_HEART_RATE_AVERAGE: SeriesType.walking_heart_rate_average,
     # Blood & Respiratory
     SDKMetricType.APPLE_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
-    SDKMetricType.SDK_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
-    SDKMetricType.SDK_BLOOD_GLUCOSE: SeriesType.blood_glucose,
+    SDKMetricType.ANDROID_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
+    SDKMetricType.ANDROID_BLOOD_GLUCOSE: SeriesType.blood_glucose,
     SDKMetricType.APPLE_BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
     SDKMetricType.APPLE_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
-    SDKMetricType.SDK_BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
-    SDKMetricType.SDK_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
-    SDKMetricType.SDK_RESPIRATORY_RATE: SeriesType.respiratory_rate,
+    SDKMetricType.ANDROID_BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
+    SDKMetricType.ANDROID_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
+    SDKMetricType.ANDROID_RESPIRATORY_RATE: SeriesType.respiratory_rate,
     SDKMetricType.BASAL_BODY_TEMPERATURE: SeriesType.body_temperature,
     SDKMetricType.SLEEPING_BREATHING_DISTURBANCES: SeriesType.sleeping_breathing_disturbances,
     # Blood & Respiratory - Extended
@@ -191,40 +190,40 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.PEAK_EXPIRATORY_FLOW_RATE: SeriesType.peak_expiratory_flow_rate,
     # Body Composition
     SDKMetricType.APPLE_HEIGHT: SeriesType.height,
-    SDKMetricType.SDK_HEIGHT: SeriesType.height,
+    SDKMetricType.ANDROID_HEIGHT: SeriesType.height,
     SDKMetricType.APPLE_BODY_MASS: SeriesType.weight,
-    SDKMetricType.SDK_WEIGHT: SeriesType.weight,
+    SDKMetricType.ANDROID_WEIGHT: SeriesType.weight,
     SDKMetricType.APPLE_BODY_FAT_PERCENTAGE: SeriesType.body_fat_percentage,
-    SDKMetricType.SDK_BODY_FAT_PERCENTAGE: SeriesType.body_fat_percentage,
-    SDKMetricType.SDK_BODY_FAT_MASS: SeriesType.body_fat_mass,
+    SDKMetricType.ANDROID_BODY_FAT_PERCENTAGE: SeriesType.body_fat_percentage,
+    SDKMetricType.ANDROID_BODY_FAT_MASS: SeriesType.body_fat_mass,
     SDKMetricType.APPLE_BODY_MASS_INDEX: SeriesType.body_mass_index,
-    SDKMetricType.SDK_BODY_MASS_INDEX: SeriesType.body_mass_index,
+    SDKMetricType.ANDROID_BODY_MASS_INDEX: SeriesType.body_mass_index,
     SDKMetricType.LEAN_BODY_MASS: SeriesType.lean_body_mass,
-    SDKMetricType.SDK_LEAN_BODY_MASS: SeriesType.lean_body_mass,
-    SDKMetricType.SDK_SKELETAL_MUSCLE_MASS: SeriesType.skeletal_muscle_mass,
+    SDKMetricType.ANDROID_LEAN_BODY_MASS: SeriesType.lean_body_mass,
+    SDKMetricType.ANDROID_SKELETAL_MUSCLE_MASS: SeriesType.skeletal_muscle_mass,
     SDKMetricType.APPLE_BODY_TEMPERATURE: SeriesType.body_temperature,
-    SDKMetricType.SDK_BODY_TEMPERATURE: SeriesType.body_temperature,
+    SDKMetricType.ANDROID_BODY_TEMPERATURE: SeriesType.body_temperature,
     # Body Composition - Extended
     SDKMetricType.WAIST_CIRCUMFERENCE: SeriesType.waist_circumference,
     # Fitness Metrics
-    SDKMetricType.VO2_MAX: SeriesType.vo2_max,
-    SDKMetricType.SDK_VO2_MAX: SeriesType.vo2_max,
+    SDKMetricType.APPLE_VO2_MAX: SeriesType.vo2_max,
+    SDKMetricType.ANDROID_VO2_MAX: SeriesType.vo2_max,
     SDKMetricType.SIX_MINUTE_WALK_TEST_DISTANCE: SeriesType.six_minute_walk_test_distance,
     # Activity - Basic
     SDKMetricType.APPLE_STEP_COUNT: SeriesType.steps,
-    SDKMetricType.SDK_STEP_COUNT: SeriesType.steps,
+    SDKMetricType.ANDROID_STEP_COUNT: SeriesType.steps,
     SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED: SeriesType.energy,
     SDKMetricType.APPLE_BASAL_ENERGY_BURNED: SeriesType.basal_energy,
-    SDKMetricType.SDK_ACTIVE_CALORIES_BURNED: SeriesType.energy,
-    SDKMetricType.SDK_BASAL_METABOLIC_RATE: SeriesType.basal_energy,
+    SDKMetricType.ANDROID_ACTIVE_CALORIES_BURNED: SeriesType.energy,
+    SDKMetricType.ANDROID_BASAL_METABOLIC_RATE: SeriesType.basal_energy,
     SDKMetricType.APPLE_STAND_TIME: SeriesType.stand_time,
     SDKMetricType.APPLE_EXERCISE_TIME: SeriesType.exercise_time,
     SDKMetricType.FLIGHTS_CLIMBED: SeriesType.flights_climbed,
-    SDKMetricType.SDK_FLOORS_CLIMBED: SeriesType.flights_climbed,
+    SDKMetricType.ANDROID_FLOORS_CLIMBED: SeriesType.flights_climbed,
     SDKMetricType.PHYSICAL_EFFORT: SeriesType.physical_effort,
     SDKMetricType.APPLE_MOVE_TIME: SeriesType.exercise_time,
     # Activity - Distance
-    SDKMetricType.SDK_DISTANCE: SeriesType.distance_walking_running,
+    SDKMetricType.ANDROID_DISTANCE: SeriesType.distance_walking_running,
     SDKMetricType.DISTANCE_WALKING_RUNNING: SeriesType.distance_walking_running,
     SDKMetricType.DISTANCE_CYCLING: SeriesType.distance_cycling,
     SDKMetricType.DISTANCE_SWIMMING: SeriesType.distance_swimming,
@@ -268,7 +267,7 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.NUMBER_OF_TIMES_FALLEN: SeriesType.number_of_times_fallen,
     SDKMetricType.INHALER_USAGE: SeriesType.inhaler_usage,
     SDKMetricType.NUMBER_OF_ALCOHOLIC_BEVERAGES: SeriesType.number_of_alcoholic_beverages,
-    SDKMetricType.SDK_HYDRATION: SeriesType.hydration,
+    SDKMetricType.ANDROID_HYDRATION: SeriesType.hydration,
     # Electrodermal
     SDKMetricType.ELECTRODERMAL_ACTIVITY: SeriesType.electrodermal_activity,
     # Ultraviolet Exposure
