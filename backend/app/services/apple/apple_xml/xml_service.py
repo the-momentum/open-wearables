@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.constants.series_types.apple import get_series_type_from_apple_metric_type
+from app.constants.series_types.apple import get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
 from app.schemas import (
     EventRecordCreate,
@@ -111,7 +111,7 @@ class XMLService:
         Returns None if the record cannot be created (unsupported type, invalid value, etc.)
         """
         metric_type = document.get("type", "")
-        series_type = get_series_type_from_apple_metric_type(metric_type)
+        series_type = get_series_type_from_metric_type(metric_type)
 
         # Skip unsupported metric types early (this is normal, not an error)
         if series_type is None:

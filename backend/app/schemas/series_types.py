@@ -56,6 +56,8 @@ class SeriesType(str, Enum):
 
     # Body Composition - Extended
     waist_circumference = "waist_circumference"
+    body_fat_mass = "body_fat_mass"
+    skeletal_muscle_mass = "skeletal_muscle_mass"
 
     # =========================================================================
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
@@ -153,6 +155,7 @@ class SeriesType(str, Enum):
     number_of_times_fallen = "number_of_times_fallen"
     number_of_alcoholic_beverages = "number_of_alcoholic_beverages"
     nike_fuel = "nike_fuel"
+    hydration = "hydration"
 
 
 # =============================================================================
@@ -197,6 +200,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (45, SeriesType.body_temperature, "celsius"),
     (46, SeriesType.skin_temperature, "celsius"),
     (47, SeriesType.waist_circumference, "cm"),
+    (48, SeriesType.body_fat_mass, "kg"),
+    (49, SeriesType.skeletal_muscle_mass, "kg"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------
@@ -281,6 +286,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (504, SeriesType.number_of_times_fallen, "count"),
     (505, SeriesType.number_of_alcoholic_beverages, "count"),
     (506, SeriesType.nike_fuel, "count"),
+    (507, SeriesType.hydration, "mL"),
 ]
 
 

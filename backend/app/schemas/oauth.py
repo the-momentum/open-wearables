@@ -17,6 +17,7 @@ class ProviderName(str, Enum):
 
     APPLE = "apple"
     SAMSUNG = "samsung"
+    GOOGLE = "google"
     GARMIN = "garmin"
     POLAR = "polar"
     SUUNTO = "suunto"

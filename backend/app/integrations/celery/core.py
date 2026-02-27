@@ -53,14 +53,10 @@ def create_celery() -> Celery:
         result_expires=3 * 24 * 3600,
         task_queues={
             "default": {},
-            "apple_sync": {},
-            "samsung_sync": {},
+            "sdk_sync": {},
         },
         task_routes={
-            "app.integrations.celery.tasks.process_apple_upload_task.process_apple_upload": {"queue": "apple_sync"},
-            "app.integrations.celery.tasks.process_samsung_upload_task.process_samsung_upload": {
-                "queue": "samsung_sync"
-            },
+            "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
         },
     )
 

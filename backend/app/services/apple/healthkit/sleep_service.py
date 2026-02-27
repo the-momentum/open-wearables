@@ -13,9 +13,9 @@ from app.integrations.redis_client import get_redis_client
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    SDKSyncRequest,
 )
 from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
-from app.schemas.apple.healthkit.sync_request import SyncRequest
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
@@ -57,14 +57,16 @@ def delete_sleep_state(user_id: str) -> None:
 
 def _create_new_sleep_state(
     start_time: datetime,
-    uuid: str | None = None,
+    id: str | None = None,
+    provider: str | None = None,
     source_name: str | None = None,
-    device_id: str | None = None,
+    device_model: str | None = None,
 ) -> SleepState:
     return {
-        "uuid": uuid or str(uuid4()),
-        "source_name": source_name or "Apple",
-        "device_id": device_id,
+        "uuid": id or str(uuid4()),
+        "source_name": source_name or "unknown",
+        "device_model": device_model,
+        "provider": provider,
         "start_time": start_time.isoformat(),
         "last_timestamp": start_time.isoformat(),
         "in_bed_seconds": 0,
@@ -82,9 +84,10 @@ def _apply_transition(
     sleep_phase: SleepPhase,
     start_time: datetime,
     end_time: datetime,
+    provider: str,
     uuid: str | None = None,
     source_name: str | None = None,
-    device_id: str | None = None,
+    device_model: str | None = None,
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
@@ -96,7 +99,7 @@ def _apply_transition(
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
-        return _create_new_sleep_state(start_time, uuid, source_name, device_id)
+        return _create_new_sleep_state(start_time, uuid, provider, source_name, device_model)
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -105,13 +108,13 @@ def _apply_transition(
             state["in_bed_seconds"] += duration_seconds
         case SleepPhase.AWAKE:
             state["awake_seconds"] += duration_seconds
-        case SleepPhase.ASLEEP_CORE:
+        case SleepPhase.ASLEEP_LIGHT:
             state["light_seconds"] += duration_seconds
         case SleepPhase.ASLEEP_DEEP:
             state["deep_seconds"] += duration_seconds
         case SleepPhase.ASLEEP_REM:
             state["rem_seconds"] += duration_seconds
-        case SleepPhase.ASLEEP_UNSPECIFIED:
+        case SleepPhase.SLEEPING:
             state["deep_seconds"] += duration_seconds
         case _:
             pass
@@ -122,18 +125,18 @@ def _apply_transition(
 
 def handle_sleep_data(
     db_session: DbSession,
-    request: SyncRequest,
+    request: SDKSyncRequest,
     user_id: str,
 ) -> None:
     """
-    Process Apple HealthKit sleep data and track sleep sessions using Redis state.
+    Process SDK sleep data and track sleep sessions using Redis state.
 
     Sleep sessions are tracked in Redis and automatically finalized to the database when
     a gap of more than 1 hour is detected between consecutive sleep records.
 
     Args:
         db_session: Database session for persisting finalized sleep records
-        request: Parsed SyncRequest containing sleep records
+        request: Parsed SDKSyncRequest containing sleep records
         user_id: User identifier for associating sleep data
 
     Flow:
@@ -143,14 +146,12 @@ def handle_sleep_data(
           * Otherwise: Accumulate sleep stage durations in existing session
     """
     current_state = load_sleep_state(user_id)
-
+    provider = request.provider
     for sjson in request.data.sleep:
-        source_name = "apple_health_sdk"
-
         # Extract device info
         device_model, software_version, original_source_name = extract_device_info(sjson.source)
 
-        sleep_phase = get_apple_sleep_phase(int(sjson.value))
+        sleep_phase = get_apple_sleep_phase(sjson.stage)
 
         if sleep_phase is None:
             continue
@@ -159,7 +160,9 @@ def handle_sleep_data(
             if sleep_phase not in SLEEP_START_STATES:
                 continue
 
-            current_state = _create_new_sleep_state(sjson.startDate, sjson.uuid, source_name, device_model)
+            current_state = _create_new_sleep_state(
+                sjson.startDate, sjson.id, provider, original_source_name, device_model
+            )
             # Store endDate as last_timestamp since that's when this period actually ends
             current_state["last_timestamp"] = sjson.endDate.isoformat()
             save_sleep_state(user_id, current_state)
@@ -173,8 +176,9 @@ def handle_sleep_data(
             sleep_phase,
             sjson.startDate,
             sjson.endDate,
-            sjson.uuid,
-            source_name,
+            provider,
+            sjson.id,
+            original_source_name,
             device_model,
         )
         save_sleep_state(user_id, current_state)
@@ -198,9 +202,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         duration_seconds=int(total_duration),
         category="sleep",
         type="sleep_session",
-        source_name=state.get("source_name") or "Apple",
-        source="apple_health_sdk",
-        device_model=state.get("device_id"),  # device_id in state holds device_model
+        source_name=state.get("source_name") or "unknown",
+        source=state.get("provider") or "unknown",
+        device_model=state.get("device_model"),
     )
 
     detail = EventRecordDetailCreate(
@@ -227,7 +231,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
             logger,
             "error",
             f"Error saving sleep record {sleep_record.id} for user {user_id}: {e}",
-            provider="apple",
+            provider=state.get("provider") or "unknown",
             action="sleep_record_save_error",
             user_id=user_id,
             sleep_record_id=sleep_record.id,

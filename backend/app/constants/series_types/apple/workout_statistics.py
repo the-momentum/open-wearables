@@ -11,8 +11,11 @@ class WorkoutStatisticType(StrEnum):
 
     # Duration & Energy
     DURATION = "duration"
+    TOTAL_DURATION = "totalDuration"
     ACTIVE_ENERGY_BURNED = "activeEnergyBurned"
     BASAL_ENERGY_BURNED = "basalEnergyBurned"
+    CALORIES = "calories"
+    TOTAL_CALORIES = "totalCalories"
 
     # Distance & Movement
     DISTANCE = "distance"
@@ -23,17 +26,26 @@ class WorkoutStatisticType(StrEnum):
     MIN_HEART_RATE = "minHeartRate"
     AVERAGE_HEART_RATE = "averageHeartRate"
     MAX_HEART_RATE = "maxHeartRate"
+    MEAN_HEART_RATE = "meanHeartRate"
 
     # Running Metrics
+    MEAN_SPEED = "meanSpeed"
+    MEAN_CADENCE = "meanCadence"
+    MAX_CADENCE = "maxCadence"
     AVERAGE_RUNNING_POWER = "averageRunningPower"
     AVERAGE_RUNNING_SPEED = "averageRunningSpeed"
     AVERAGE_RUNNING_STRIDE_LENGTH = "averageRunningStrideLength"
     AVERAGE_VERTICAL_OSCILLATION = "averageVerticalOscillation"
     AVERAGE_GROUND_CONTACT_TIME = "averageGroundContactTime"
+    VO2_MAX = "vo2Max"
 
     # Elevation
     ELEVATION_ASCENDED = "elevationAscended"
     ELEVATION_DESCENDED = "elevationDescended"
+    ALTITUDE_GAIN = "altitudeGain"
+    ALTITUDE_LOSS = "altitudeLoss"
+    MAX_ALTITUDE = "maxAltitude"
+    MIN_ALTITUDE = "minAltitude"
 
     # Speed
     AVERAGE_SPEED = "averageSpeed"
@@ -58,19 +70,27 @@ WORKOUT_STATISTIC_TYPE_TO_DETAIL_FIELD: dict[str, str] = {
     # Distance & Movement
     "distance": "distance",
     "stepCount": "steps_count",
-    # Heart Rate
+    # Heart Rate (Apple)
     "minHeartRate": "heart_rate_min",
     "averageHeartRate": "heart_rate_avg",
     "maxHeartRate": "heart_rate_max",
+    # Heart Rate (Samsung)
+    "meanHeartRate": "heart_rate_avg",
     # Running Metrics
     "averageRunningPower": "average_watts",
     "averageRunningSpeed": "average_speed",
-    # Elevation
+    # Elevation (Apple)
     "elevationAscended": "total_elevation_gain",
     # elevationDescended: not stored
-    # Speed
+    # Elevation (Samsung)
+    "altitudeGain": "total_elevation_gain",
+    # altitudeLoss
+    "maxAltitude": "elev_high",
+    "minAltitude": "elev_low",
+    # Speed (Apple + Samsung)
     "averageSpeed": "average_speed",
     "maxSpeed": "max_speed",
+    "meanSpeed": "average_speed",
 }
 
 
@@ -89,9 +109,12 @@ WORKOUT_STATISTIC_TYPE_TO_SERIES_TYPE: dict[str, SeriesType] = {
     "weatherHumidity": SeriesType.weather_humidity,
     # Swimming specific
     "swimmingStrokeCount": SeriesType.swimming_stroke_count,
+    # Samsung / Health Connect
+    "meanCadence": SeriesType.cadence,
+    "maxCadence": SeriesType.cadence,
+    "vo2Max": SeriesType.vo2_max,
     # Legacy mappings
     "totalEnergyBurned": SeriesType.energy,
-    "totalCalories": SeriesType.energy,
     "totalDistance": SeriesType.distance_walking_running,
     "totalSteps": SeriesType.steps,
 }

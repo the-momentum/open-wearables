@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from app.constants.series_types.apple import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
-    get_series_type_from_apple_metric_type,
+    get_series_type_from_metric_type,
     get_series_type_from_workout_statistic_type,
 )
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
@@ -19,12 +19,13 @@ from app.schemas import (
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
+    SDKSyncRequest,
     SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
     UploadDataResponse,
 )
-from app.schemas.apple.healthkit.sync_request import SyncRequest, WorkoutStatistic
+from app.schemas.apple.healthkit.sync_request import WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
@@ -37,12 +38,8 @@ class ImportService:
     def __init__(
         self,
         log: Logger,
-        provider: str = "apple",
-        source: str = "apple_health_sdk",
     ):
         self.log = log
-        self.provider = provider
-        self.source = source
         self.event_record_service = event_record_service
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
@@ -52,44 +49,51 @@ class ImportService:
 
     def _build_workout_bundles(
         self,
-        request: SyncRequest,
+        request: SDKSyncRequest,
         user_id: str,
     ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate, list[TimeSeriesSampleCreate]]]:
         """
-        Given the parsed SyncRequest, yield tuples of
+        Given the parsed SDKSyncRequest, yield tuples of
         (EventRecordCreate, EventRecordDetailCreate) ready to insert into your ORM session.
         """
         user_uuid = UUID(user_id)
+        provider = request.provider
+
         for wjson in request.data.workouts:
             workout_id = uuid4()
-            external_id = wjson.uuid if wjson.uuid else None
+            external_id = wjson.id if wjson.id else None
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
-                wjson.workoutStatistics,
+                wjson.values,
                 user_uuid,
                 device_model,
                 software_version,
                 wjson.endDate,
+                provider,
+                original_source_name,
             )
 
             if duration is None:
                 duration = int((wjson.endDate - wjson.startDate).total_seconds())
 
+            workout_type = wjson.type.lower() if wjson.type else None
+            type = get_unified_apple_workout_type_sdk(workout_type).value if workout_type else None
+
             record = EventRecordCreate(
                 category="workout",
-                type=get_unified_apple_workout_type_sdk(wjson.type).value if wjson.type else None,
-                source_name=self.source,
+                type=type,
+                source_name=original_source_name or "unknown",
                 device_model=device_model,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
                 id=workout_id,
                 external_id=external_id,
-                source=self.source,
+                source=provider,
                 software_version=software_version,
-                provider=self.provider,
+                provider=provider,
                 user_id=user_uuid,
             )
 
@@ -102,17 +106,18 @@ class ImportService:
 
     def _build_statistic_bundles(
         self,
-        request: SyncRequest,
+        request: SDKSyncRequest,
         user_id: str,
     ) -> list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate]:
         time_series_samples: list[HeartRateSampleCreate | StepSampleCreate | TimeSeriesSampleCreate] = []
         user_uuid = UUID(user_id)
+        provider = request.provider
 
         for rjson in request.data.records:
             value = Decimal(str(rjson.value))
 
             record_type = rjson.type or ""
-            series_type = get_series_type_from_apple_metric_type(record_type)
+            series_type = get_series_type_from_metric_type(record_type)
 
             if not series_type:
                 continue
@@ -125,12 +130,12 @@ class ImportService:
 
             sample = TimeSeriesSampleCreate(
                 id=uuid4(),
-                external_id=rjson.uuid,
+                external_id=rjson.id,
                 user_id=user_uuid,
-                source=self.source,
+                source=original_source_name,
                 device_model=device_model,
                 software_version=software_version,
-                provider=self.provider,
+                provider=provider,
                 recorded_at=rjson.startDate,
                 value=value,
                 series_type=series_type,
@@ -161,6 +166,8 @@ class ImportService:
         device_model: str | None,
         software_version: str | None,
         end_date: datetime,
+        provider: str,
+        source_name: str | None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
         """
         Returns a tuple with the metrics, time series samples, and duration.
@@ -186,10 +193,10 @@ class ImportService:
                     id=uuid4(),
                     external_id=None,
                     user_id=user_uuid,
-                    source="apple_health_sdk",
+                    source=source_name,
                     device_model=device_model,
                     software_version=software_version,
-                    provider="apple",
+                    provider=provider,
                     recorded_at=end_date,
                     value=value,
                     series_type=series_type,
@@ -198,12 +205,16 @@ class ImportService:
                 continue
 
             # duration is not a part of EventRecordMetrics, however it is sent as a workout statistic
-            if stat.type == WorkoutStatisticType.DURATION:
-                duration = float(value)
+            if stat.type in (WorkoutStatisticType.DURATION, WorkoutStatisticType.TOTAL_DURATION):
+                duration = float(value) / 1000 if stat.unit == "ms" else float(value)
                 continue
 
-            # energy is separated into active and basal - we only store total
-            if stat.type in (WorkoutStatisticType.ACTIVE_ENERGY_BURNED, WorkoutStatisticType.BASAL_ENERGY_BURNED):
+            if stat.type in (
+                WorkoutStatisticType.ACTIVE_ENERGY_BURNED,
+                WorkoutStatisticType.BASAL_ENERGY_BURNED,
+                WorkoutStatisticType.CALORIES,
+                WorkoutStatisticType.TOTAL_CALORIES,
+            ):
                 stats_dict["energy_burned"] += value
                 continue
 
@@ -229,7 +240,7 @@ class ImportService:
         Returns:
             dict with counts: {"workouts_saved": int, "records_saved": int, "sleep_saved": int}
         """
-        request = SyncRequest(**raw)
+        request = SDKSyncRequest(**raw)
         workouts_saved = 0
         records_saved = 0
         sleep_saved = 0
@@ -299,14 +310,14 @@ class ImportService:
                     self.log,
                     "warning",
                     "No valid data found in request",
-                    provider=f"{self.provider}",
-                    action=f"{self.provider}_sdk_validate_data",
+                    action="sdk_validate_data",
                     batch_id=batch_id,
                     user_id=user_id,
                 )
                 return UploadDataResponse(status_code=400, response="No valid data found", user_id=user_id)
 
             # Extract incoming counts for logging
+            provider = data.get("provider", "unknown")
             inner_data = data.get("data", {})
             incoming_records = len(inner_data.get("records", []))
             incoming_workouts = len(inner_data.get("workouts", []))
@@ -315,7 +326,7 @@ class ImportService:
             # Load data and get saved counts
             saved_counts = self.load_data(db_session, data, user_id=user_id, batch_id=batch_id)
 
-            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), self.provider)
+            connection = self.user_connection_repo.get_by_user_and_provider(db_session, UUID(user_id), provider)
             if connection:
                 self.user_connection_repo.update_last_synced_at(db_session, connection)
 
@@ -323,9 +334,9 @@ class ImportService:
             log_structured(
                 self.log,
                 "info",
-                f"{self.provider.capitalize()} data import completed",
-                provider=f"{self.provider}",
-                action=f"{self.provider}_sdk_import_complete",
+                f"{provider.capitalize()} data import completed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_import_complete",
                 batch_id=batch_id,
                 user_id=user_id,
                 incoming_records=incoming_records,
@@ -341,8 +352,8 @@ class ImportService:
                 self.log,
                 "error",
                 f"Import failed for user {user_id}: {e}",
-                provider=f"{self.provider}",
-                action=f"{self.provider}_sdk_import_failed",
+                provider=f"{provider}",
+                action=f"{provider}_sdk_import_failed",
                 batch_id=batch_id,
                 user_id=user_id,
                 error_type=type(e).__name__,
