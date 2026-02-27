@@ -1,0 +1,22 @@
+from sqlalchemy.orm import Mapped
+
+from app.database import BaseDbModel
+from app.mappings import PrimaryKey
+
+
+class ArchivalSetting(BaseDbModel):
+    """Global data lifecycle settings for time-series archival and retention.
+
+    Singleton table (always exactly one row with id=1).
+
+    - archive_after_days: Days before live samples are aggregated into daily archive.
+      NULL means archival is disabled.
+    - delete_after_days: Days before archived data is permanently removed.
+      NULL means data is kept indefinitely.
+    """
+
+    __tablename__ = "archival_settings"
+
+    id: Mapped[PrimaryKey[int]]
+    archive_after_days: Mapped[int | None]
+    delete_after_days: Mapped[int | None]

@@ -5,6 +5,7 @@ from .apple.apple_xml.presigned_url_service import import_service as pre_url_ser
 from .apple.auto_export.import_service import import_service as ae_import_service
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .application_service import application_service
+from .archival_service import archival_service
 from .developer_service import developer_service
 from .event_record_service import event_record_service
 from .invitation_service import invitation_service
@@ -22,6 +23,7 @@ __all__ = [
     "AppService",
     "api_key_service",
     "application_service",
+    "archival_service",
     "create_sdk_user_token",
     "developer_service",
     "invitation_service",

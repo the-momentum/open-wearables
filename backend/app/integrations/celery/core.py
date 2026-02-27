@@ -85,6 +85,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "run-daily-archival": {
+            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
+            "schedule": 86400.0,  # Once per day (24h)
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app
