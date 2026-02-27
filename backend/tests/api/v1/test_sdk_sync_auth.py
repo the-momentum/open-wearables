@@ -31,9 +31,9 @@ class TestSDKSyncWithSDKToken:
         token = create_sdk_user_token("app_123", user_id)
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
             headers={"Authorization": f"Bearer {token}"},
-            json={"data": {"workouts": [], "records": []}},
+            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
         )
 
         # Should not be 401 (auth should pass)
@@ -46,9 +46,9 @@ class TestSDKSyncWithSDKToken:
         user_id = "123e4567-e89b-12d3-a456-426614174000"
 
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/{user_id}/sync/apple",
+            f"{api_v1_prefix}/sdk/users/{user_id}/sync/",
             headers={"X-Open-Wearables-API-Key": api_key.id},
-            json={"data": {"workouts": [], "records": []}},
+            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
         )
 
         # Should not be 401
@@ -57,8 +57,8 @@ class TestSDKSyncWithSDKToken:
     def test_no_auth_returns_401(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
         """No authentication should return 401."""
         response = client.post(
-            f"{api_v1_prefix}/sdk/users/user_456/sync/apple",
-            json={"data": {"workouts": [], "records": []}},
+            f"{api_v1_prefix}/sdk/users/user_456/sync/",
+            json={"data": {"provider": "apple", "sdkVersion": "1.0.0", "syncTimestamp": "2021-01-01T00:00:00Z", "workouts": [], "records": []}},
         )
 
         assert response.status_code == 401

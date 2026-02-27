@@ -13,7 +13,7 @@ from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_up
 from tests.factories import UserFactory
 
 
-class TestProcessAppleUploadTask:
+class TestProcessSDKUploadTask:
     """Test suite for process_sdk_upload task."""
 
     @patch("app.integrations.celery.tasks.process_sdk_upload_task.SessionLocal")

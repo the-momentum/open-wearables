@@ -41,7 +41,7 @@ class GoogleWorkouts(BaseWorkoutsTemplate):
 
         Since Google Health Connect is a push-based provider (SDK),
         this method is not used for pulling data.
-        Workouts are received through the /sdk/users/{user_id}/sync/samsung endpoint.
+        Workouts are received through the /sdk/users/{user_id}/sync/ endpoint.
         """
         return []
 
