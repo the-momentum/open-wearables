@@ -31,18 +31,18 @@ MAX_TYPE_ATTEMPTS = 3  # Total attempts (1 original + 2 retries) -- legacy, unus
 # ---------------------------------------------------------------------------
 # Concurrency lock
 # ---------------------------------------------------------------------------
-# 12 windows * 5 types * 5min timeout + 1hr buffer = ~7 hours safety net for crash recovery
-BACKFILL_LOCK_TTL = (12 * 5 * 300) + 3600  # 21600 seconds (6 hours)
+# 1 window * 5 types * 5min timeout + 1hr buffer
+BACKFILL_LOCK_TTL = (1 * 5 * 300) + 3600  # 5100 seconds (~1.4 hours)
 
 # ---------------------------------------------------------------------------
 # Backfill windows & API limits
 # ---------------------------------------------------------------------------
-MAX_BACKFILL_DAYS = 365  # Total target: ~1 year of history
+MAX_BACKFILL_DAYS = 30  # Garmin only allows 30 days before user registration
 BACKFILL_CHUNK_DAYS = 30  # Max days per single request (Garmin limit)
 MAX_REQUEST_DAYS = BACKFILL_CHUNK_DAYS  # Alias for clarity
 MAX_HEALTH_API_DAYS = 30  # Health API max days per request
 MAX_ACTIVITY_API_DAYS = 30  # Activity API max days per request
-BACKFILL_WINDOW_COUNT = 12  # Number of 30-day windows to cover ~365 days
+BACKFILL_WINDOW_COUNT = 1  # Single 30-day window (Garmin's max allowed range)
 DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
 
 # ---------------------------------------------------------------------------
