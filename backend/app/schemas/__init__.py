@@ -118,6 +118,16 @@ from .oauth import (
     UserConnectionRead,
     UserConnectionUpdate,
 )
+from .oura.imports import (
+    OuraDailyActivityJSON,
+    OuraDailyReadinessJSON,
+    OuraDailySpo2JSON,
+    OuraHeartRateJSON,
+    OuraSleepJSON,
+    OuraWebhookNotification,
+    OuraWorkoutCollectionJSON,
+    OuraWorkoutJSON,
+)
 from .personal_record import (
     PersonalRecordCreate,
     PersonalRecordResponse,
@@ -300,6 +310,15 @@ __all__ = [
     "GarminRespirationJSON",
     # Polar schemas
     "PolarExerciseJSON",
+    # Oura schemas
+    "OuraWorkoutJSON",
+    "OuraWorkoutCollectionJSON",
+    "OuraSleepJSON",
+    "OuraDailyReadinessJSON",
+    "OuraDailyActivityJSON",
+    "OuraHeartRateJSON",
+    "OuraDailySpo2JSON",
+    "OuraWebhookNotification",
     # Strava schemas
     "StravaActivityJSON",
     # Whoop schemas

@@ -2,6 +2,7 @@ from app.schemas.oauth import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.samsung.strategy import SamsungStrategy
 from app.services.providers.strava.strategy import StravaStrategy
@@ -26,6 +27,8 @@ class ProviderFactory:
                 return PolarStrategy()
             case ProviderName.WHOOP.value:
                 return WhoopStrategy()
+            case ProviderName.OURA.value:
+                return OuraStrategy()
             case ProviderName.STRAVA.value:
                 return StravaStrategy()
             case _:
