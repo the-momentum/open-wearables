@@ -4,8 +4,7 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
-from app.schemas import UploadDataResponse
-from app.schemas.apple.healthkit.sync_request import SyncRequest
+from app.schemas import SyncRequest, UploadDataResponse
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 

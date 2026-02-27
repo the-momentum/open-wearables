@@ -16,7 +16,7 @@ from .apple.healthkit.sync_request import (
     SleepRecord as HKSleepRecordJSON,
 )
 from .apple.healthkit.sync_request import (
-    SyncRequest as AppleHealthDataRequest,
+    SyncRequest,
 )
 from .apple.healthkit.sync_request import (
     Workout as HKWorkoutJSON,
@@ -277,7 +277,7 @@ __all__ = [
     "HKSleepRecordJSON",
     "HKWorkoutJSON",
     "HKWorkoutStatisticJSON",
-    "AppleHealthDataRequest",
+    "SyncRequest",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",

@@ -34,31 +34,31 @@ from app.constants.workout_types.apple_sdk import SDKWorkoutType
 # Record types with their HealthKit units and realistic value ranges (min, max)
 RECORD_TYPE_CONFIG: dict[SDKMetricType, dict[str, Any]] = {
     # Heart & Cardiovascular
-    SDKMetricType.HEART_RATE: {"unit": "count/min", "range": (50, 180)},
-    SDKMetricType.RESTING_HEART_RATE: {"unit": "count/min", "range": (45, 85)},
-    SDKMetricType.HEART_RATE_VARIABILITY_SDNN: {"unit": "ms", "range": (15, 120)},
+    SDKMetricType.APPLE_HEART_RATE: {"unit": "count/min", "range": (50, 180)},
+    SDKMetricType.APPLE_RESTING_HEART_RATE: {"unit": "count/min", "range": (45, 85)},
+    SDKMetricType.APPLE_HEART_RATE_VARIABILITY_SDNN: {"unit": "ms", "range": (15, 120)},
     SDKMetricType.HEART_RATE_RECOVERY_ONE_MINUTE: {"unit": "count/min", "range": (12, 55)},
     SDKMetricType.WALKING_HEART_RATE_AVERAGE: {"unit": "count/min", "range": (80, 130)},
     # Blood & Respiratory
-    SDKMetricType.OXYGEN_SATURATION: {"unit": "%", "range": (0.94, 1.0)},
-    SDKMetricType.BLOOD_GLUCOSE: {"unit": "mg/dL", "range": (70, 180)},
-    SDKMetricType.BLOOD_PRESSURE_SYSTOLIC: {"unit": "mmHg", "range": (90, 140)},
-    SDKMetricType.BLOOD_PRESSURE_DIASTOLIC: {"unit": "mmHg", "range": (60, 90)},
-    SDKMetricType.RESPIRATORY_RATE: {"unit": "count/min", "range": (12, 20)},
+    SDKMetricType.APPLE_OXYGEN_SATURATION: {"unit": "%", "range": (0.94, 1.0)},
+    SDKMetricType.APPLE_BLOOD_GLUCOSE: {"unit": "mg/dL", "range": (70, 180)},
+    SDKMetricType.APPLE_BLOOD_PRESSURE_SYSTOLIC: {"unit": "mmHg", "range": (90, 140)},
+    SDKMetricType.APPLE_BLOOD_PRESSURE_DIASTOLIC: {"unit": "mmHg", "range": (60, 90)},
+    SDKMetricType.APPLE_RESPIRATORY_RATE: {"unit": "count/min", "range": (12, 20)},
     # Body Composition
-    SDKMetricType.HEIGHT: {"unit": "m", "range": (1.50, 2.05)},
-    SDKMetricType.BODY_MASS: {"unit": "kg", "range": (45, 120)},
-    SDKMetricType.BODY_FAT_PERCENTAGE: {"unit": "%", "range": (0.08, 0.35)},
-    SDKMetricType.BODY_MASS_INDEX: {"unit": "count", "range": (18, 35)},
+    SDKMetricType.APPLE_HEIGHT: {"unit": "m", "range": (1.50, 2.05)},
+    SDKMetricType.APPLE_BODY_MASS: {"unit": "kg", "range": (45, 120)},
+    SDKMetricType.APPLE_BODY_FAT_PERCENTAGE: {"unit": "%", "range": (0.08, 0.35)},
+    SDKMetricType.APPLE_BODY_MASS_INDEX: {"unit": "count", "range": (18, 35)},
     SDKMetricType.LEAN_BODY_MASS: {"unit": "kg", "range": (35, 90)},
-    SDKMetricType.BODY_TEMPERATURE: {"unit": "degC", "range": (36.0, 37.5)},
+    SDKMetricType.APPLE_BODY_TEMPERATURE: {"unit": "degC", "range": (36.0, 37.5)},
     # Fitness Metrics
-    SDKMetricType.VO2_MAX: {"unit": "mL/kg/min", "range": (25, 65)},
+    SDKMetricType.APPLE_VO2_MAX: {"unit": "mL/kg/min", "range": (25, 65)},
     SDKMetricType.SIX_MINUTE_WALK_TEST_DISTANCE: {"unit": "m", "range": (300, 700)},
     # Activity - Basic
-    SDKMetricType.STEP_COUNT: {"unit": "count", "range": (10, 2000)},
-    SDKMetricType.ACTIVE_ENERGY_BURNED: {"unit": "kcal", "range": (5, 500)},
-    SDKMetricType.BASAL_ENERGY_BURNED: {"unit": "kcal", "range": (50, 150)},
+    SDKMetricType.APPLE_STEP_COUNT: {"unit": "count", "range": (10, 2000)},
+    SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED: {"unit": "kcal", "range": (5, 500)},
+    SDKMetricType.APPLE_BASAL_ENERGY_BURNED: {"unit": "kcal", "range": (50, 150)},
     SDKMetricType.APPLE_STAND_TIME: {"unit": "min", "range": (1, 60)},
     SDKMetricType.APPLE_EXERCISE_TIME: {"unit": "min", "range": (1, 120)},
     SDKMetricType.FLIGHTS_CLIMBED: {"unit": "count", "range": (1, 30)},
@@ -170,16 +170,16 @@ OUTDOOR_WORKOUT_TYPES: set[SDKWorkoutType] = {
 
 # Common record types that appear more frequently in real data
 COMMON_RECORD_TYPES: list[SDKMetricType] = [
-    SDKMetricType.STEP_COUNT,
-    SDKMetricType.HEART_RATE,
-    SDKMetricType.ACTIVE_ENERGY_BURNED,
+    SDKMetricType.APPLE_STEP_COUNT,
+    SDKMetricType.APPLE_HEART_RATE,
+    SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED,
     SDKMetricType.DISTANCE_WALKING_RUNNING,
-    SDKMetricType.BASAL_ENERGY_BURNED,
+    SDKMetricType.APPLE_BASAL_ENERGY_BURNED,
 ]
 
 # Record types that should produce integer values
 INTEGER_RECORD_TYPES: set[SDKMetricType] = {
-    SDKMetricType.STEP_COUNT,
+    SDKMetricType.APPLE_STEP_COUNT,
     SDKMetricType.FLIGHTS_CLIMBED,
 }
 
@@ -364,11 +364,11 @@ def _generate_realistic_records(start_date: datetime, end_date: datetime, count:
         record_start = start_date + timedelta(seconds=offset_seconds)
 
         # Duration depends on type
-        if record_type == SDKMetricType.STEP_COUNT:
+        if record_type == SDKMetricType.APPLE_STEP_COUNT:
             duration = random.randint(60, 900)  # 1-15 min
-        elif record_type in (SDKMetricType.HEART_RATE, SDKMetricType.RESTING_HEART_RATE):
+        elif record_type in (SDKMetricType.APPLE_HEART_RATE, SDKMetricType.APPLE_RESTING_HEART_RATE):
             duration = random.randint(1, 60)  # 1-60 sec
-        elif record_type in (SDKMetricType.ACTIVE_ENERGY_BURNED, SDKMetricType.BASAL_ENERGY_BURNED):
+        elif record_type in (SDKMetricType.APPLE_ACTIVE_ENERGY_BURNED, SDKMetricType.APPLE_BASAL_ENERGY_BURNED):
             duration = random.randint(300, 3600)  # 5-60 min
         else:
             duration = random.randint(1, 300)  # 1 sec - 5 min

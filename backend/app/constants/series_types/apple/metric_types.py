@@ -23,11 +23,13 @@ class SDKMetricType(StrEnum):
     # Blood & Respiratory
     APPLE_OXYGEN_SATURATION = "HKQuantityTypeIdentifierOxygenSaturation"
     ANDROID_OXYGEN_SATURATION = "OXYGEN_SATURATION"
+    APPLE_BLOOD_GLUCOSE = "HKQuantityTypeIdentifierBloodGlucose"
     ANDROID_BLOOD_GLUCOSE = "BLOOD_GLUCOSE"
     APPLE_BLOOD_PRESSURE_SYSTOLIC = "HKQuantityTypeIdentifierBloodPressureSystolic"
     ANDROID_BLOOD_PRESSURE_SYSTOLIC = "BLOOD_PRESSURE_SYSTOLIC"
     APPLE_BLOOD_PRESSURE_DIASTOLIC = "HKQuantityTypeIdentifierBloodPressureDiastolic"
     ANDROID_BLOOD_PRESSURE_DIASTOLIC = "BLOOD_PRESSURE_DIASTOLIC"
+    APPLE_RESPIRATORY_RATE = "HKQuantityTypeIdentifierRespiratoryRate"
     ANDROID_RESPIRATORY_RATE = "RESPIRATORY_RATE"
 
     # Body Composition
@@ -174,11 +176,13 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Blood & Respiratory
     SDKMetricType.APPLE_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
     SDKMetricType.ANDROID_OXYGEN_SATURATION: SeriesType.oxygen_saturation,
+    SDKMetricType.APPLE_BLOOD_GLUCOSE: SeriesType.blood_glucose,
     SDKMetricType.ANDROID_BLOOD_GLUCOSE: SeriesType.blood_glucose,
     SDKMetricType.APPLE_BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
     SDKMetricType.APPLE_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
     SDKMetricType.ANDROID_BLOOD_PRESSURE_SYSTOLIC: SeriesType.blood_pressure_systolic,
     SDKMetricType.ANDROID_BLOOD_PRESSURE_DIASTOLIC: SeriesType.blood_pressure_diastolic,
+    SDKMetricType.APPLE_RESPIRATORY_RATE: SeriesType.respiratory_rate,
     SDKMetricType.ANDROID_RESPIRATORY_RATE: SeriesType.respiratory_rate,
     SDKMetricType.BASAL_BODY_TEMPERATURE: SeriesType.body_temperature,
     SDKMetricType.SLEEPING_BREATHING_DISTURBANCES: SeriesType.sleeping_breathing_disturbances,
