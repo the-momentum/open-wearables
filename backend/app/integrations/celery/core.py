@@ -5,6 +5,7 @@ from logging import Formatter, StreamHandler, getLogger
 from app.config import settings
 from celery import Celery, signals
 from celery import current_app as current_celery_app
+from celery.schedules import crontab
 
 
 @signals.setup_logging.connect
@@ -78,6 +79,12 @@ def create_celery() -> Celery:
         "gc-stuck-garmin-backfills": {
             "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
             "schedule": 180.0,  # Every 3 minutes
+            "args": (),
+            "kwargs": {},
+        },
+        "run-daily-archival": {
+            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
+            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
             "args": (),
             "kwargs": {},
         },

@@ -7,6 +7,10 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
+from app.repositories.archival_repository import (
+    ArchivalSettingRepository,
+    DataPointSeriesArchiveRepository,
+)
 from app.repositories.data_point_series_repository import (
     ActiveMinutesResult,
     DataPointSeriesRepository,
@@ -17,7 +21,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
 from app.schemas.device_type import infer_device_type_from_model
 from app.schemas.oauth import ProviderName
-from app.schemas.series_types import SeriesType
+from app.schemas.series_types import SeriesType, get_series_type_id
 from app.schemas.summaries import (
     ActivitySummary,
     BloodPressure,
@@ -83,6 +87,8 @@ class SummariesService:
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
         self.user_repo = UserRepository(User)
+        self.archival_settings_repo = ArchivalSettingRepository()
+        self.archive_repo = DataPointSeriesArchiveRepository()
 
     def _filter_by_priority(
         self,
@@ -177,6 +183,60 @@ class SummariesService:
             "moderate_max": int(max_hr * HR_ZONE_MODERATE[1]),
             "vigorous_max": int(max_hr * HR_ZONE_VIGOROUS[1]),
         }
+
+    def _merge_archive_activity(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        live_results: list,  # noqa: ANN401  — accepts ActivityAggregateResult | dict
+    ) -> list:
+        """Merge archived daily aggregates into live results.
+
+        If archival is enabled, some days may only have data in the archive table.
+        This method queries the archive and merges rows, preferring live data when
+        both exist for the same (date, source, device_model) key.
+        """
+        try:
+            self.archival_settings_repo.get(db_session)
+        except Exception:
+            return live_results
+
+        series_type_ids = [
+            get_series_type_id(t)
+            for t in [
+                SeriesType.steps,
+                SeriesType.energy,
+                SeriesType.basal_energy,
+                SeriesType.heart_rate,
+                SeriesType.distance_walking_running,
+                SeriesType.flights_climbed,
+            ]
+        ]
+
+        archive_results = self.archive_repo.get_daily_activity_aggregates_from_archive(
+            db_session, user_id, start_date, end_date, series_type_ids
+        )
+
+        if not archive_results:
+            return live_results
+
+        # Build lookup from live data keyed on (date, source, device_model)
+        live_keys: set[tuple] = set()
+        for r in live_results:
+            live_keys.add((r["activity_date"], r["source"], r.get("device_model")))
+
+        # Add archive rows that are NOT already covered by live data
+        merged = list(live_results)
+        for ar in archive_results:
+            key = (ar["activity_date"], ar["source"], ar.get("device_model"))
+            if key not in live_keys:
+                merged.append(ar)
+
+        # Sort by date
+        merged.sort(key=lambda r: r["activity_date"])
+        return merged
 
     @handle_exceptions
     async def get_sleep_summaries(
@@ -324,8 +384,11 @@ class SummariesService:
         """
         self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
 
-        # Get aggregated data from time-series repository
+        # Get aggregated data from time-series repository (live data)
         results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
+
+        # Merge archived data when archival is enabled
+        results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)
 
         # Filter by priority to get best source per date
         results = self._filter_by_priority(db_session, user_id, results, date_key="activity_date")

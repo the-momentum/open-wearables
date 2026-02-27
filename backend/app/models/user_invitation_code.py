@@ -1,9 +1,10 @@
 from uuid import UUID
 
+from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, Unique, datetime_tz, str_10
+from app.mappings import FKDeveloper, FKUser, PrimaryKey, Unique, datetime_tz, str_10
 
 
 class UserInvitationCode(BaseDbModel):
@@ -14,10 +15,11 @@ class UserInvitationCode(BaseDbModel):
     """
 
     __tablename__ = "user_invitation_code"
+    __table_args__ = (Index("idx_user_invitation_code_user_id", "user_id"),)
 
     id: Mapped[PrimaryKey[UUID]]
     code: Mapped[Unique[str_10]]
-    user_id: Mapped[Indexed[FKUser]]
+    user_id: Mapped[FKUser]
     created_by_id: Mapped[FKDeveloper]
     expires_at: Mapped[datetime_tz]
     redeemed_at: Mapped[datetime_tz | None]

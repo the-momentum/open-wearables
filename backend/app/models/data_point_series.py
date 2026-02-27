@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
@@ -19,8 +19,12 @@ class DataPointSeries(BaseDbModel):
 
     __tablename__ = "data_point_series"
     __table_args__ = (
-        Index("idx_data_point_series_source_type_time", "data_source_id", "series_type_definition_id", "recorded_at"),
-        UniqueConstraint("data_source_id", "series_type_definition_id", "recorded_at", name="uq_data_point_series_source_type_time"),
+        UniqueConstraint(
+            "data_source_id",
+            "series_type_definition_id",
+            "recorded_at",
+            name="uq_data_point_series_source_type_time",
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]
