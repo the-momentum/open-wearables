@@ -1,6 +1,6 @@
 """archive_data_point_series
 
-Revision ID: 0421f956a084
+Revision ID: 8f618017e710
 Revises: 31c7f45b636f
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "0421f956a084"
+revision: str = "8f618017e710"
 down_revision: Union[str, None] = "31c7f45b636f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -24,6 +24,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("archive_after_days", sa.Integer(), nullable=True),
         sa.Column("delete_after_days", sa.Integer(), nullable=True),
+        sa.CheckConstraint("id = 1", name="ck_archival_settings_singleton"),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(

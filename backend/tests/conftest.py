@@ -231,7 +231,7 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
             f"{webhook_module}.get_backfill_status",
             return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
         ),
-        patch(f"{webhook_module}.trigger_next_pending_type"),
+        patch(f"{webhook_module}.trigger_next_pending_type", return_value={}),
     ):
         mocks["httpx"] = mock_httpx
         mocks["boto3"] = mock_boto3

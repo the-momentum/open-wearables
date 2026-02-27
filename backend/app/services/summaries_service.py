@@ -199,9 +199,7 @@ class SummariesService:
         both exist for the same (date, source, device_model) key.
         """
         try:
-            settings = self.archival_settings_repo.get(db_session)
-            if settings.archive_after_days is None:
-                return live_results
+            self.archival_settings_repo.get(db_session)
         except Exception:
             return live_results
 

@@ -18,6 +18,7 @@ export interface StorageEstimate {
   archive_row_count: number;
   avg_bytes_per_live_row: number;
   avg_bytes_per_archive_row: number;
+  live_data_span_days: number;
   live_total_pretty: string;
   live_data_pretty: string;
   live_index_pretty: string;

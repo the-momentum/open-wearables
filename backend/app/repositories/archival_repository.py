@@ -58,7 +58,8 @@ class DataPointSeriesArchiveRepository:
         """Get storage sizes for ALL user tables from pg_catalog.
 
         Returns live / archive / other breakdowns so the frontend can visualise
-        growth projections accurately.
+        growth projections accurately.  Also queries the actual date span of
+        live data so the frontend doesn't have to guess.
         """
         result = db.execute(
             text("""
@@ -92,6 +93,17 @@ class DataPointSeriesArchiveRepository:
             else:
                 other_bytes += row.total_bytes
 
+        # Query the actual date span of live data for accurate estimation.
+        live_span_days = 0
+        if live_rows > 0:
+            span = db.execute(
+                text("""
+                    SELECT EXTRACT(DAY FROM MAX(recorded_at) - MIN(recorded_at))::int AS span
+                    FROM data_point_series
+                """)
+            ).scalar()
+            live_span_days = max(span or 0, 1)
+
         live_total = live_data_bytes + live_index_bytes
         archive_total = archive_data_bytes + archive_index_bytes
         total = live_total + archive_total + other_bytes
@@ -110,6 +122,7 @@ class DataPointSeriesArchiveRepository:
             "archive_row_count": archive_rows,
             "avg_bytes_per_live_row": round(avg_live, 1),
             "avg_bytes_per_archive_row": round(avg_archive, 1),
+            "live_data_span_days": live_span_days,
             "live_total_pretty": _pretty_bytes(live_total),
             "live_data_pretty": _pretty_bytes(live_data_bytes),
             "live_index_pretty": _pretty_bytes(live_index_bytes),
@@ -213,8 +226,14 @@ class DataPointSeriesArchiveRepository:
                         }
                     )
                 except KeyError:
-                    # Unknown series type ID, skip
+                    # Unknown series type ID — skip this aggregate but don't
+                    # delete the corresponding live rows either.
                     continue
+
+            if not values_list:
+                # All series types in this batch were unknown — skip without
+                # deleting to avoid data loss.
+                continue
 
             # Step 4: Upsert into archive
             for i in range(0, len(values_list), ARCHIVE_BATCH_SIZE):
@@ -263,6 +282,10 @@ class DataPointSeriesArchiveRepository:
         Used when retention policy is active without archival — data is
         simply discarded instead of being aggregated first.
 
+        Uses a subquery + DELETE pattern because PostgreSQL does not support
+        ``DELETE ... LIMIT`` and SQLAlchemy's ``Query.delete()`` rejects
+        queries with ``.limit()``.
+
         Respects the same safety limits as archive_data_before.
 
         Returns the number of live rows deleted.
@@ -275,10 +298,15 @@ class DataPointSeriesArchiveRepository:
             if total_deleted >= MAX_ROWS_PER_RUN or elapsed >= MAX_SECONDS_PER_RUN:
                 break
 
-            deleted = (
-                db.query(DataPointSeries)
+            ids_to_delete = (
+                db.query(DataPointSeries.id)
                 .filter(cast(DataPointSeries.recorded_at, Date) < cutoff_date)
                 .limit(ARCHIVE_BATCH_SIZE)
+                .subquery()
+            )
+            deleted = (
+                db.query(DataPointSeries)
+                .filter(DataPointSeries.id.in_(ids_to_delete))
                 .delete(synchronize_session=False)
             )
 

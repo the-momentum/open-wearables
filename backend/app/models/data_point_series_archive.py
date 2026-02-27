@@ -8,6 +8,7 @@ from app.mappings import (
     FKDataSource,
     FKSeriesTypeDefinition,
     PrimaryKey,
+    Indexed,
     date_col,
     numeric_10_3,
 )
@@ -34,6 +35,6 @@ class DataPointSeriesArchive(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     data_source_id: Mapped[FKDataSource]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
-    date: Mapped[date_col]
+    date: Mapped[Indexed[date_col]]
     value: Mapped[numeric_10_3]
     sample_count: Mapped[int]

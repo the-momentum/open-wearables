@@ -429,7 +429,8 @@ function computeProjection(
   deleteDays: number,
   liveTotalBytes: number,
   liveRows: number,
-  archiveTotalBytes: number
+  archiveTotalBytes: number,
+  liveDataSpanDays: number
 ): { month: number; storage: number }[] {
   if (liveRows === 0) {
     return Array.from({ length: PROJECTION_MONTHS + 1 }, (_, m) => ({
@@ -443,8 +444,8 @@ function computeProjection(
     archiveDays > 0 &&
     (!deleteEnabled || deleteDays > archiveDays);
 
-  const liveWindowDays = archivalEffective ? archiveDays : 30;
-  const dailyRawBytes = liveTotalBytes / Math.max(liveWindowDays, 1);
+  const spanDays = Math.max(liveDataSpanDays, 1);
+  const dailyRawBytes = liveTotalBytes / spanDays;
   const dailyArchiveBytes = dailyRawBytes * VOLUME_COMPRESSION;
 
   let liveBytes = liveTotalBytes;
@@ -522,13 +523,13 @@ function GrowthProjection({
 
   const cfg = GROWTH_CONFIG[growthClass];
 
-  const liveWindowDays = archivalEffective ? archiveDays : 30;
   const liveTotalBytes = storage.live_data_bytes + storage.live_index_bytes;
+  const spanDays = Math.max(storage.live_data_span_days, 1);
 
   const dailyRawEstimate = useMemo(() => {
     if (storage.live_row_count === 0) return 0;
-    return liveTotalBytes / liveWindowDays;
-  }, [storage.live_row_count, liveTotalBytes, liveWindowDays]);
+    return liveTotalBytes / spanDays;
+  }, [storage.live_row_count, liveTotalBytes, spanDays]);
 
   const chartData = useMemo(
     () =>
@@ -539,7 +540,8 @@ function GrowthProjection({
         deleteDays,
         liveTotalBytes,
         storage.live_row_count,
-        storage.archive_data_bytes + storage.archive_index_bytes
+        storage.archive_data_bytes + storage.archive_index_bytes,
+        storage.live_data_span_days
       ),
     [
       archiveEnabled,
@@ -550,6 +552,7 @@ function GrowthProjection({
       storage.live_row_count,
       storage.archive_data_bytes,
       storage.archive_index_bytes,
+      storage.live_data_span_days,
     ]
   );
 
@@ -635,8 +638,8 @@ function GrowthProjection({
               <strong className="text-zinc-500">
                 ~{formatBytes(dailyRawEstimate)}/day
               </strong>{' '}
-              = live table ({formatBytes(liveTotalBytes)}) ÷ {liveWindowDays}{' '}
-              days.
+              = live table ({formatBytes(liveTotalBytes)}) ÷ {spanDays} days of
+              data.
               {archivalEffective &&
                 ' Archive compression ≈ 1/500 of raw volume.'}
             </p>

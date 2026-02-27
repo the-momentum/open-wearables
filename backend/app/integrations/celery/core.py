@@ -5,6 +5,7 @@ from logging import Formatter, StreamHandler, getLogger
 from app.config import settings
 from celery import Celery, signals
 from celery import current_app as current_celery_app
+from celery.schedules import crontab
 
 
 @signals.setup_logging.connect
@@ -87,7 +88,7 @@ def create_celery() -> Celery:
         },
         "run-daily-archival": {
             "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
-            "schedule": 86400.0,  # Once per day (24h)
+            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
             "args": (),
             "kwargs": {},
         },
