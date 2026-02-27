@@ -197,6 +197,54 @@ async def _process_wellness_notification(
     return results
 
 
+def _process_deregistrations(
+    db: DbSession,
+    deregistrations_list: list[dict[str, Any]],
+    trace_id: str,
+) -> dict[str, Any]:
+    """Process deregistration webhook entries.
+
+    Called when a user removes the app from Garmin Connect.
+    Marks the matching user_connection as revoked.
+    """
+    results: dict[str, Any] = {"revoked": 0, "errors": []}
+    user_connection_repo = UserConnectionRepository()
+
+    for entry in deregistrations_list:
+        garmin_user_id = entry.get("userId")
+        if not garmin_user_id:
+            results["errors"].append("Missing userId in deregistrations entry")
+            continue
+
+        connection = user_connection_repo.get_by_provider_user_id(db, "garmin", garmin_user_id)
+        if not connection:
+            log_structured(
+                logger,
+                "warning",
+                "No connection found for Garmin user (deregistration)",
+                provider="garmin",
+                trace_id=trace_id,
+                garmin_user_id=garmin_user_id,
+            )
+            results["errors"].append(f"User {garmin_user_id} not connected")
+            continue
+
+        user_connection_repo.mark_as_revoked(db, connection)
+
+        log_structured(
+            logger,
+            "info",
+            "Revoked connection via deregistration webhook",
+            provider="garmin",
+            trace_id=trace_id,
+            garmin_user_id=garmin_user_id,
+            user_id=str(connection.user_id),
+        )
+        results["revoked"] += 1
+
+    return results
+
+
 @router.post("/ping")
 async def garmin_ping_notification(
     request: Request,
@@ -409,13 +457,18 @@ async def garmin_ping_notification(
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
-        return {
+        response: dict[str, Any] = {
             "processed": processed_count,
             "errors": errors,
             "activities": processed_activities,
             "wellness": wellness_results,
             "backfill_chained": backfill_triggered,
         }
+
+        if "deregistrations" in payload:
+            response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+
+        return response
 
     except Exception as e:
         db.rollback()
@@ -758,7 +811,7 @@ async def garmin_push_notification(
                 trigger_next_pending_type.delay(user_id_str)
                 backfill_triggered.append(user_id_str)
 
-        return {
+        response: dict[str, Any] = {
             "processed": processed_count,
             "saved": saved_count,
             "errors": errors,
@@ -766,6 +819,11 @@ async def garmin_push_notification(
             "wellness": wellness_results,
             "backfill_chained": backfill_triggered,
         }
+
+        if "deregistrations" in payload:
+            response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+
+        return response
 
     except Exception as e:
         db.rollback()
