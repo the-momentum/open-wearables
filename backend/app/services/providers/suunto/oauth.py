@@ -1,4 +1,5 @@
 from jose import jwt
+from jose.jwk import PyJWKClient
 
 from app.config import settings
 from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
@@ -28,13 +29,14 @@ class SuuntoOAuth(BaseOAuthTemplate):
         )
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
-        """Extracts Suunto user info from JWT access token."""
+        """Extracts and verifies Suunto user info from JWT access token."""
         try:
-            # jwt.decode requires a key parameter, but we're not verifying signature
+            # Fetch Suunto's public key and verify the JWT signature
+            jwks_client = PyJWKClient("https://cloudapi-oauth.suunto.com/.well-known/jwks.json")
+            signing_key = jwks_client.get_signing_key_from_jwt(token_response.access_token)
+
             decoded = jwt.decode(
-                token_response.access_token,
-                key="",  # Empty key since we're not verifying
-                options={"verify_signature": False},
+                token_response.access_token, signing_key.key, algorithms=["RS256"], audience=settings.suunto_client_id
             )
             provider_username = decoded.get("user")
             provider_user_id = decoded.get("sub")
