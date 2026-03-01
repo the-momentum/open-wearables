@@ -17,6 +17,7 @@ from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
+from app.services.providers.ultrahuman.strategy import UltrahumanStrategy
 
 
 class TestProviderFactory:
@@ -152,6 +153,39 @@ class TestProviderFactory:
         # Assert
         assert strategy.oauth is not None
         assert strategy.has_cloud_api is True
+
+    def test_get_provider_ultrahuman(self, factory: ProviderFactory) -> None:
+        """Should return UltrahumanStrategy instance."""
+        # Act
+        strategy = factory.get_provider("ultrahuman")
+
+        # Assert
+        assert isinstance(strategy, UltrahumanStrategy)
+        assert isinstance(strategy, BaseProviderStrategy)
+        assert strategy.name == "ultrahuman"
+
+    def test_provider_ultrahuman_has_oauth(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Should initialize OAuth component for Ultrahuman."""
+        # Act
+        strategy = factory.get_provider("ultrahuman")
+
+        # Assert
+        assert strategy.oauth is not None
+        assert strategy.has_cloud_api is True
+
+    def test_provider_ultrahuman_has_data_247(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Should initialize data_247 component for Ultrahuman."""
+        # Act
+        strategy = factory.get_provider("ultrahuman")
+
+        # Assert
+        assert strategy.data_247 is not None
 
     def test_multiple_calls_create_new_instances(
         self,
