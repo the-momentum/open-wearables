@@ -364,19 +364,17 @@ Returns the full backfill status matrix.
 ```json
 {
   "overall_status": "in_progress",
-  "current_window": 3,
-  "total_windows": 12,
+  "current_window": 0,
+  "total_windows": 1,
   "windows": {
-    "0": {"sleeps": "done", "dailies": "done", "activities": "timed_out", "activityDetails": "done", "hrv": "done"},
-    "1": {"sleeps": "done", "dailies": "done", "activities": "done", "activityDetails": "done", "hrv": "done"},
-    "2": {"sleeps": "done", "dailies": "pending", "activities": "pending", "activityDetails": "pending", "hrv": "pending"}
+    "0": {"sleeps": "done", "dailies": "done", "activities": "timed_out", "activityDetails": "done", "hrv": "pending"}
   },
   "summary": {
-    "sleeps": {"done": 3, "timed_out": 0, "failed": 0},
-    "dailies": {"done": 2, "timed_out": 0, "failed": 0},
-    "activities": {"done": 1, "timed_out": 1, "failed": 0},
-    "activityDetails": {"done": 2, "timed_out": 0, "failed": 0},
-    "hrv": {"done": 2, "timed_out": 0, "failed": 0}
+    "sleeps": {"done": 1, "timed_out": 0, "failed": 0},
+    "dailies": {"done": 1, "timed_out": 0, "failed": 0},
+    "activities": {"done": 0, "timed_out": 1, "failed": 0},
+    "activityDetails": {"done": 1, "timed_out": 0, "failed": 0},
+    "hrv": {"done": 0, "timed_out": 0, "failed": 0}
   },
   "in_progress": true,
   "retry_phase": false,
