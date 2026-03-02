@@ -5,6 +5,8 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
+from app.schemas.apple.healthkit.sync_request import WorkoutStatistic
+
 from app.constants.series_types.apple import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
@@ -25,7 +27,6 @@ from app.schemas import (
     TimeSeriesSampleCreate,
     UploadDataResponse,
 )
-from app.schemas.apple.healthkit.sync_request import WorkoutStatistic
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured

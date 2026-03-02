@@ -1,8 +1,9 @@
-from app.schemas.enums import ConnectionStatus
-from pydantic import BaseModel, ConfigDict, Field
-from uuid import UUID
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.enums import ConnectionStatus
 
 
 class UserConnectionBase(BaseModel):
@@ -55,4 +56,3 @@ class UserConnectionRead(UserConnectionBase):
     last_synced_at: datetime | None
     created_at: datetime
     updated_at: datetime
-

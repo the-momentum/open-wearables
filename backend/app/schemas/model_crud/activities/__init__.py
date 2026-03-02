@@ -1,31 +1,31 @@
 from .data_point_series import (
-    TimeSeriesSampleBase,
-    TimeSeriesSampleCreate,
-    TimeSeriesSampleUpdate,
-    TimeSeriesSampleResponse,
     HeartRateSampleCreate,
     StepSampleCreate,
     TimeSeriesQueryParams,
+    TimeSeriesSampleBase,
+    TimeSeriesSampleCreate,
+    TimeSeriesSampleResponse,
+    TimeSeriesSampleUpdate,
+)
+from .event_record import (
+    EventRecordBase,
+    EventRecordCreate,
+    EventRecordMetrics,
+    EventRecordQueryParams,
+    EventRecordResponse,
+    EventRecordUpdate,
 )
 from .event_record_detail import (
     EventRecordDetailBase,
     EventRecordDetailCreate,
-    EventRecordDetailUpdate,
     EventRecordDetailResponse,
-)
-from .event_record import (
-    EventRecordMetrics,
-    EventRecordQueryParams,
-    EventRecordBase,
-    EventRecordCreate,
-    EventRecordUpdate,
-    EventRecordResponse,
+    EventRecordDetailUpdate,
 )
 from .personal_record import (
     PersonalRecordBase,
     PersonalRecordCreate,
-    PersonalRecordUpdate,
     PersonalRecordResponse,
+    PersonalRecordUpdate,
 )
 
 __all__ = [
