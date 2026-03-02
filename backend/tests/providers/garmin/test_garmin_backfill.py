@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
+from app.integrations.celery.tasks.garmin_backfill_task import trigger_backfill_for_type
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
@@ -309,10 +310,6 @@ class TestBackfillTaskStopChain:
         Provide either side_effect (to raise an exception) or return_value
         (to return a result dict) for GarminBackfillService.trigger_backfill.
         """
-        from app.integrations.celery.tasks.garmin_backfill_task import (
-            trigger_backfill_for_type,
-        )
-
         mock_redis = MagicMock()
         mock_redis.get.return_value = None
         mock_redis.set.return_value = True
