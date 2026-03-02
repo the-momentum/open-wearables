@@ -298,8 +298,17 @@ class TestBackfillTaskStopChain:
     TASK_MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
     USER_ID = "c079cf7e-70b3-4529-a325-401a658f5cba"
 
-    def _run_task_with_status(self, status_code: int, detail: str) -> dict:
-        """Run trigger_backfill_for_type with a mocked HTTP error and return result."""
+    def _run_task(
+        self,
+        *,
+        side_effect: Exception | None = None,
+        return_value: dict | None = None,
+    ) -> dict:
+        """Run trigger_backfill_for_type with a mocked backfill service.
+
+        Provide either side_effect (to raise an exception) or return_value
+        (to return a result dict) for GarminBackfillService.trigger_backfill.
+        """
         from app.integrations.celery.tasks.garmin_backfill_task import (
             trigger_backfill_for_type,
         )
@@ -307,6 +316,12 @@ class TestBackfillTaskStopChain:
         mock_redis = MagicMock()
         mock_redis.get.return_value = None
         mock_redis.set.return_value = True
+
+        backfill_patch_kwargs: dict = {}
+        if side_effect is not None:
+            backfill_patch_kwargs["side_effect"] = side_effect
+        else:
+            backfill_patch_kwargs["return_value"] = return_value
 
         with (
             patch(f"{self.TASK_MODULE}.SessionLocal") as mock_session_cls,
@@ -342,11 +357,10 @@ class TestBackfillTaskStopChain:
             mock_strategy.oauth = MagicMock()
             mock_factory_cls.return_value.get_provider.return_value = mock_strategy
 
-            # Make backfill service raise the HTTP error
             with patch.object(
                 GarminBackfillService,
                 "trigger_backfill",
-                side_effect=HTTPException(status_code=status_code, detail=detail),
+                **backfill_patch_kwargs,
             ):
                 result = trigger_backfill_for_type(self.USER_ID, "sleeps")
 
@@ -355,6 +369,12 @@ class TestBackfillTaskStopChain:
                 "mock_mark_failed": mock_mark_failed,
                 "mock_next": mock_next,
             }
+
+    def _run_task_with_status(self, status_code: int, detail: str) -> dict:
+        """Shorthand: run with an HTTPException side_effect."""
+        return self._run_task(
+            side_effect=HTTPException(status_code=status_code, detail=detail),
+        )
 
     def test_412_stops_chain_and_fails_pending_types(self) -> None:
         """412 should stop the chain and mark all pending types as failed."""
@@ -419,73 +439,28 @@ class TestBackfillTaskStopChain:
 
     def test_400_min_start_time_stops_chain_via_result(self) -> None:
         """400 'min start time' via result dict should stop the chain (production path)."""
-        from app.integrations.celery.tasks.garmin_backfill_task import (
-            trigger_backfill_for_type,
-        )
-
-        mock_redis = MagicMock()
-        mock_redis.get.return_value = None
-        mock_redis.set.return_value = True
-
         error_detail = (
             'Garmin API error: {"errorMessage":"start 2025-12-28T22:09:49Z '
             'before min start time of 2026-01-26T22:10:12Z"}'
         )
+        ctx = self._run_task(
+            return_value={
+                "triggered": [],
+                "failed": {"sleeps": error_detail},
+                "duplicate": [],
+                "failed_status_codes": {"sleeps": 400},
+            },
+        )
 
-        with (
-            patch(f"{self.TASK_MODULE}.SessionLocal") as mock_session_cls,
-            patch(f"{self.TASK_MODULE}.ProviderFactory") as mock_factory_cls,
-            patch(f"{self.TASK_MODULE}.get_current_window", return_value=1),
-            patch(
-                f"{self.TASK_MODULE}.get_window_date_range",
-                return_value=(
-                    datetime.now(timezone.utc) - timedelta(days=60),
-                    datetime.now(timezone.utc) - timedelta(days=30),
-                ),
-            ),
-            patch(f"{self.TASK_MODULE}.get_trace_id", return_value="test-trace"),
-            patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
-            patch(f"{self.TASK_MODULE}.is_retry_phase", return_value=False),
-            patch(f"{self.TASK_MODULE}.mark_type_triggered"),
-            patch(f"{self.TASK_MODULE}.mark_type_failed") as mock_mark_failed,
-            patch(f"{self.TASK_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
-            patch(f"{self.TASK_MODULE}.trigger_next_pending_type") as mock_next,
-            patch(f"{self.TASK_MODULE}.redis_client", mock_redis),
-            patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
-        ):
-            mock_db = MagicMock()
-            mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
-            mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
-            mock_conn_repo_cls.return_value.get_by_user_and_provider.return_value = MagicMock()
+        assert ctx["result"]["status"] == "failed"
+        assert "min" in ctx["result"]["error"].lower()
 
-            mock_strategy = MagicMock()
-            mock_strategy.oauth = MagicMock()
-            mock_factory_cls.return_value.get_provider.return_value = mock_strategy
-
-            # Return result dict with failed status (as backfill.py does in production)
-            with patch.object(
-                GarminBackfillService,
-                "trigger_backfill",
-                return_value={
-                    "triggered": [],
-                    "failed": {"sleeps": error_detail},
-                    "duplicate": [],
-                    "failed_status_codes": {"sleeps": 400},
-                },
-            ):
-                result = trigger_backfill_for_type(self.USER_ID, "sleeps")
-
-        assert result["status"] == "failed"
-        assert "min" in result["error"].lower()
-
-        # Should mark current type + all pending types as failed
-        failed_types = [call.args[1] for call in mock_mark_failed.call_args_list]
+        failed_types = [call.args[1] for call in ctx["mock_mark_failed"].call_args_list]
         assert "sleeps" in failed_types
         assert "dailies" in failed_types
         assert "activities" in failed_types
 
-        # Should NOT trigger next type
-        mock_next.apply_async.assert_not_called()
+        ctx["mock_next"].apply_async.assert_not_called()
 
     def test_500_does_not_stop_chain(self) -> None:
         """500 should NOT stop the chain — next type should still be triggered."""
