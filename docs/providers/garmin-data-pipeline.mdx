@@ -159,7 +159,7 @@ The backfill operates as a Celery task chain with three phases:
 graph TD
     A["start_full_backfill(user_id)"] --> B{"permanently_failed?"}
     B -->|"Yes"| B1["Reject"]
-    B -->|"No"| C["Acquire Redis lock<br/>(SETNX + 6h TTL)"]
+    B -->|"No"| C["Acquire Redis lock<br/>(SETNX + ~1.4h TTL)"]
     C --> D{"Existing window<br/>state in Redis?"}
     D -->|"window > 0"| E["Resume from<br/>current position"]
     D -->|"Fresh"| F["init_window_state<br/>(total_windows=1)"]
@@ -298,7 +298,7 @@ All keys use the prefix `garmin:backfill:{user_id}:` and have a 7-day TTL.
 
 | Key | Type | Purpose |
 |-----|------|---------|
-| `:lock` | string | Exclusive backfill lock (SETNX, 6h TTL) |
+| `:lock` | string | Exclusive backfill lock (SETNX, ~1.4h TTL) |
 | `:trace_id` | string | Session-level trace ID for log correlation |
 | `:cancel_flag` | string | Set to "1" to request graceful cancellation |
 | `:permanently_failed` | string | Set to "1" after 3 GC cycles |
