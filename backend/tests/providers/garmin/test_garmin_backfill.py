@@ -214,8 +214,8 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["duplicate"]
 
     @patch.object(GarminBackfillService, "_make_api_request")
-    def test_401_stops_chain_via_failed_status_code(self, mock_api: MagicMock) -> None:
-        """Task should detect 401 in failed_status_codes and not continue chain."""
+    def test_401_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+        """401 on first type should fail all remaining types with status code preserved."""
         mock_api.side_effect = HTTPException(status_code=401, detail="authorization expired")
         service = self._make_service()
         db = MagicMock()
@@ -263,8 +263,8 @@ class TestGarminBackfillServiceResults:
         assert "sleeps" not in result["duplicate"]
 
     @patch.object(GarminBackfillService, "_make_api_request")
-    def test_412_stops_chain_via_failed_status_code(self, mock_api: MagicMock) -> None:
-        """412 should fail all types — permission error affects every data type."""
+    def test_412_fails_all_types_with_status_code(self, mock_api: MagicMock) -> None:
+        """412 on first type should fail all remaining types with status code preserved."""
         mock_api.side_effect = HTTPException(
             status_code=412,
             detail="Access denied for consumer required HISTORICAL_DATA_EXPORT",
