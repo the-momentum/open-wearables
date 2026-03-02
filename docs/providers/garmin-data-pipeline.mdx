@@ -132,7 +132,7 @@ All 16 data types are handled by the webhook regardless of whether they're inclu
 | `ALL_DATA_TYPES` | 16 types | All types handled by webhooks |
 | `BACKFILL_WINDOW_COUNT` | 1 | Single 30-day window (Garmin's max allowed range) |
 | `BACKFILL_CHUNK_DAYS` | 30 | Days per window (Garmin API limit) |
-| `MAX_BACKFILL_DAYS` | 30 | Total lookback (Garmin only allows 30 days before user registration) |
+| `MAX_BACKFILL_DAYS` | 30 | Total lookback (Garmin only allows 30 days before the user connected to the developer app) |
 | `TRIGGERED_TIMEOUT_SECONDS` | 300 | 5-min timeout per type before skipping |
 | `DELAY_BETWEEN_TYPES` | 2 | Seconds between type requests (rate limit budget) |
 | `BACKFILL_LOCK_TTL` | 5100 | ~1.4-hour lock TTL (safety net) |
@@ -220,7 +220,7 @@ See [Garbage Collection](#garbage-collection) below.
 
 ### Window Progression
 
-The backfill processes a single 30-day window, covering the maximum range allowed by Garmin (data from the last 30 days before user registration):
+The backfill processes a single 30-day window, covering the maximum range allowed by Garmin (data from the last 30 days before the user connected to the developer app):
 
 ```
 Window 0:  [now - 30d,  now]
