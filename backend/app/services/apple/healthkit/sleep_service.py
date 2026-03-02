@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from uuid import UUID, uuid4
 
+from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
+
 from app.config import settings
 from app.constants.series_types.apple import (
     SleepPhase,
