@@ -1,4 +1,13 @@
+from enum import StrEnum
+
 from pydantic import BaseModel
+
+
+class TokenType(StrEnum):
+    """Type of refresh token."""
+
+    SDK = "sdk"
+    DEVELOPER = "developer"
 
 
 class TokenResponse(BaseModel):

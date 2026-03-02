@@ -5,15 +5,13 @@ from .sdk_auth import (
 from .token import (
     TokenResponse,
     RefreshTokenRequest,
+    TokenType,
 )
 from .connection_status import (
     ConnectionStatus,
 )
 from .authentication_method import (
     AuthenticationMethod,
-)
-from .token_type import (
-    TokenType,
 )
 
 __all__ = [
@@ -23,10 +21,9 @@ __all__ = [
     # Token
     "RefreshTokenRequest",
     "TokenResponse",
+    "TokenType",
     # Connection status
     "ConnectionStatus",
     # Authentication method
     "AuthenticationMethod",
-    # Token type
-    "TokenType",
 ]
