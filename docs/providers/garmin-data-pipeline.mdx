@@ -162,7 +162,7 @@ graph TD
     B -->|"No"| C["Acquire Redis lock<br/>(SETNX + 6h TTL)"]
     C --> D{"Existing window<br/>state in Redis?"}
     D -->|"window > 0"| E["Resume from<br/>current position"]
-    D -->|"Fresh"| F["init_window_state<br/>(total_windows=12)"]
+    D -->|"Fresh"| F["init_window_state<br/>(total_windows=1)"]
     E --> G["trigger_backfill_for_type"]
     F --> G
 
@@ -309,7 +309,7 @@ All keys use the prefix `garmin:backfill:{user_id}:` and have a 7-day TTL.
 | Key | Type | Purpose |
 |-----|------|---------|
 | `:window:current` | integer | Current window index (0-based) |
-| `:window:total` | integer | Total windows (12) |
+| `:window:total` | integer | Total windows (1) |
 | `:window:anchor_ts` | ISO timestamp | Fixed reference for date range calculations |
 | `:window:completed_count` | integer | Number of completed windows |
 
