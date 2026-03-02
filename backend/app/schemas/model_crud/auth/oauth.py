@@ -1,23 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from enum import Enum
 from pydantic import BaseModel, Field
-
-
-class AuthenticationMethod(str, Enum):
-    """Method used for client authentication."""
-
-    BASIC_AUTH = "basic_auth"
-    BODY = "body"
-
-
-class ConnectionStatus(str, Enum):
-    """Status of a user connection to a provider."""
-
-    ACTIVE = "active"
-    REVOKED = "revoked"
-    EXPIRED = "expired"
 
 
 # OAuth State (Redis)
@@ -28,6 +12,7 @@ class OAuthState(BaseModel):
     provider: str
     redirect_uri: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 # OAuth Token Response
 class OAuthTokenResponse(BaseModel):

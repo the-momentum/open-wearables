@@ -6,6 +6,8 @@ from typing import Any, Generator
 from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
+from app.schemas.apple.apple_xml.stats import XMLParseStats
+
 from app.config import settings
 from app.constants.series_types.apple import get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
@@ -18,7 +20,6 @@ from app.schemas import (
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
-from app.schemas.apple.apple_xml.stats import XMLParseStats
 
 
 class XMLService:

@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class ProviderName(str, Enum):
     """Supported data providers."""
 

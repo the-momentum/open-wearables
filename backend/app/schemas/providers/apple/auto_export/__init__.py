@@ -1,8 +1,8 @@
 from .json_schemas import (
-    RootJSON,
-    QuantityJSON,
-    HeartRateEntryJSON,
     ActiveEnergyEntryJSON,
+    HeartRateEntryJSON,
+    QuantityJSON,
+    RootJSON,
     WorkoutJSON,
 )
 

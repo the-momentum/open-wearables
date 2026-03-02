@@ -44,10 +44,10 @@ def engine() -> Any:
     BaseDbModel.metadata.create_all(bind=test_engine)
 
     # Seed series type definitions (these need to exist for foreign key constraints)
+    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
     from sqlalchemy.orm import Session as SessionClass
 
     from app.models import SeriesTypeDefinition
-    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
 
     with SessionClass(bind=test_engine) as session:
         for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:

@@ -3,6 +3,8 @@ from datetime import datetime
 from logging import getLogger
 from uuid import UUID, uuid4
 
+from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
+
 from app.config import settings
 from app.constants.series_types.apple import (
     SleepPhase,
@@ -15,7 +17,6 @@ from app.schemas import (
     EventRecordDetailCreate,
     SDKSyncRequest,
 )
-from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
