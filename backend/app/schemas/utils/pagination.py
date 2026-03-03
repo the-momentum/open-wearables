@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field, field_validator
+from typing import Generic
+from math import ceil
 
 
 class SourceMetadata(BaseModel):
@@ -43,3 +45,38 @@ class PaginatedResponse[DataT](BaseModel):
     data: list[DataT]
     pagination: Pagination
     metadata: TimeseriesMetadata
+
+# Kept for compatibility for now, may be up to refactor
+class OldPaginatedResponse(BaseModel, Generic[T]):
+    """Generic paginated response wrapper."""
+
+    items: list[T]
+    total: int = Field(ge=0, description="Total number of items matching the query")
+    page: int = Field(ge=1, description="Current page number (1-based)")
+    limit: int = Field(gt=0, description="Number of items per page")
+
+    @field_validator("limit")
+    @classmethod
+    def limit_must_be_positive(cls, v: int) -> int:
+        """Ensure limit is positive to prevent division by zero in pages calculation."""
+        if v <= 0:
+            raise ValueError("limit must be greater than 0")
+        return v
+
+    @computed_field
+    @property
+    def pages(self) -> int:
+        """Total number of pages."""
+        return ceil(self.total / self.limit)
+
+    @computed_field
+    @property
+    def has_next(self) -> bool:
+        """Whether there is a next page."""
+        return self.page < self.pages
+
+    @computed_field
+    @property
+    def has_prev(self) -> bool:
+        """Whether there is a previous page."""
+        return self.page > 1

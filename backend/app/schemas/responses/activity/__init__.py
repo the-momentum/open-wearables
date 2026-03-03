@@ -15,6 +15,11 @@ from .summaries import (
     ActivitySummary,
     BodySummary,
     BloodPressure,
+    BodyAveraged,
+    BodyLatest,
+    BodySlowChanging,
+    HeartRateStats,
+    IntensityMinutes,
     RecoverySummary,
     SleepSummary,
 )
@@ -36,6 +41,11 @@ __all__ = [
     "ActivitySummary",
     "BodySummary",
     "BloodPressure",
+    "BodyAveraged",
+    "BodyLatest",
+    "BodySlowChanging",
+    "HeartRateStats",
+    "IntensityMinutes",
     "RecoverySummary",
     "SleepSummary",
 ]

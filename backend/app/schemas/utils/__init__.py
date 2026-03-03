@@ -4,6 +4,7 @@ from .error_codes import (
 from .pagination import (
     Pagination,
     PaginatedResponse,
+    OldPaginatedResponse,
 )
 from .query_params import (
     FilterParams,
@@ -17,4 +18,8 @@ __all__ = [
     # Pagination
     "Pagination",
     "PaginatedResponse",
+    "OldPaginatedResponse",
+    # Metadata
+    "SourceMetadata",
+    "TimeseriesMetadata",
 ]

@@ -1,6 +1,13 @@
 from typing import Annotated
 from uuid import UUID
 
+from app.schemas.utils import OldPaginatedResponse
+from app.schemas.model_crud.user_management import (
+    UserCreate,
+    UserQueryParams,
+    UserRead,
+    UserUpdate,
+)
 from fastapi import APIRouter, Depends, status
 
 from app.database import DbSession
@@ -11,8 +18,8 @@ from app.services import ApiKeyDep, DeveloperDep, user_service
 router = APIRouter()
 
 
-@router.get("/users", response_model=PaginatedResponse[UserRead])
-def list_users(
+@router.get("/users", response_model=OldPaginatedResponse[UserRead])
+async def list_users(
     db: DbSession,
     _api_key: ApiKeyDep,
     query_params: Annotated[UserQueryParams, Depends()],
