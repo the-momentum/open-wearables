@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.enums import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 
 
 class UserConnectionBase(BaseModel):

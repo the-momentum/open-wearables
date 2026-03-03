@@ -5,8 +5,10 @@ from uuid import UUID
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
 from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler

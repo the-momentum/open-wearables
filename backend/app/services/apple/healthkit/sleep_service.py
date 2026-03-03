@@ -3,8 +3,6 @@ from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from uuid import UUID, uuid4
 
-from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState
-
 from app.config import settings
 from app.constants.series_types.apple import (
     SleepPhase,
@@ -13,10 +11,16 @@ from app.constants.series_types.apple import (
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
-from app.schemas import (
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
-    SDKSyncRequest,
+)
+from app.schemas.providers.mobile_sdk import (
+    SLEEP_START_STATES,
+    SleepState,
+)
+from app.schemas.providers.mobile_sdk import (
+    SyncRequest as SDKSyncRequest,
 )
 from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState, SleepStateStage
 from app.schemas.sleep import SleepStage

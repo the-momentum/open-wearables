@@ -2,9 +2,9 @@ from .error_codes import (
     ErrorCode,
 )
 from .pagination import (
-    Pagination,
-    PaginatedResponse,
     OldPaginatedResponse,
+    PaginatedResponse,
+    Pagination,
 )
 from .query_params import (
     FilterParams,

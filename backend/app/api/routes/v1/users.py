@@ -1,18 +1,16 @@
 from typing import Annotated
 from uuid import UUID
 
-from app.schemas.utils import OldPaginatedResponse
+from fastapi import APIRouter, Depends, status
+
+from app.database import DbSession
 from app.schemas.model_crud.user_management import (
     UserCreate,
     UserQueryParams,
     UserRead,
     UserUpdate,
 )
-from fastapi import APIRouter, Depends, status
-
-from app.database import DbSession
-from app.schemas.common import PaginatedResponse
-from app.schemas.user import UserCreate, UserQueryParams, UserRead, UserUpdate
+from app.schemas.utils import OldPaginatedResponse
 from app.services import ApiKeyDep, DeveloperDep, user_service
 
 router = APIRouter()

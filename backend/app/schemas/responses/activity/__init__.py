@@ -13,11 +13,11 @@ from .events import (
 )
 from .summaries import (
     ActivitySummary,
-    BodySummary,
     BloodPressure,
     BodyAveraged,
     BodyLatest,
     BodySlowChanging,
+    BodySummary,
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,

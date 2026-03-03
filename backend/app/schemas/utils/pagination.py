@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Literal
+from math import ceil
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, computed_field, field_validator
-from typing import Generic
-from math import ceil
 
 
 class SourceMetadata(BaseModel):
@@ -46,7 +45,11 @@ class PaginatedResponse[DataT](BaseModel):
     pagination: Pagination
     metadata: TimeseriesMetadata
 
+
 # Kept for compatibility for now, may be up to refactor
+T = TypeVar("T")
+
+
 class OldPaginatedResponse(BaseModel, Generic[T]):
     """Generic paginated response wrapper."""
 

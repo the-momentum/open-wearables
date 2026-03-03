@@ -18,16 +18,10 @@ from app.repositories.data_point_series_repository import (
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.utils import (
-    PaginatedResponse,
-    Pagination,
-    SourceMetadata,
-    TimeseriesMetadata,
-)
 from app.schemas.enums import (
-    infer_device_type_from_model,
     ProviderName,
     SeriesType,
+    infer_device_type_from_model,
 )
 from app.schemas.responses.activity import (
     ActivitySummary,
@@ -40,6 +34,12 @@ from app.schemas.responses.activity import (
     IntensityMinutes,
     SleepStagesSummary,
     SleepSummary,
+)
+from app.schemas.utils import (
+    PaginatedResponse,
+    Pagination,
+    SourceMetadata,
+    TimeseriesMetadata,
 )
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (

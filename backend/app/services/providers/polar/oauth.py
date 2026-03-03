@@ -1,5 +1,9 @@
 from app.config import settings
-from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
+from app.schemas.model_crud.credentials.oauth import (
+    OAuthTokenResponse,
+    ProviderCredentials,
+    ProviderEndpoints,
+)
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 
