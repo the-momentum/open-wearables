@@ -1,5 +1,6 @@
 import requests
 from jose import jwk, jwt
+from jose.exceptions import JWTError, JWSError
 
 from app.config import settings
 from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
@@ -32,34 +33,59 @@ class SuuntoOAuth(BaseOAuthTemplate):
     @handle_exceptions
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts and verifies Suunto user info from JWT access token."""
-        # Get unverified header to locate the key id (kid)
-        unverified_header = jwt.get_unverified_header(token_response.access_token)
-        kid = unverified_header.get("kid")
-
-        jwks_url = "https://cloudapi-oauth.suunto.com/.well-known/jwks.json"
-        resp = requests.get(jwks_url, timeout=5)
-        resp.raise_for_status()
-        jwks = resp.json()
-        keys = jwks.get("keys", [])
-        matching = next((k for k in keys if k.get("kid") == kid), None)
-        if not matching:
-            raise ValueError("No matching JWK found for token kid")
-
-        # Construct a key object and obtain a PEM representation for decoding
-        public_key = jwk.construct(matching)
         try:
-            public_pem = public_key.to_pem()
+            unverified_header = jwt.get_unverified_header(token_response.access_token)
+            algorithm = unverified_header.get("alg")
+            
+            if algorithm == "HS256":
+                decoded = jwt.decode(
+                    token_response.access_token,
+                    key=None,
+                    options={"verify_signature": False},
+                )
+                provider_username = decoded.get("user")
+                provider_user_id = decoded.get("sub")
+                if provider_user_id is not None:
+                    return {"user_id": provider_user_id, "username": provider_username}
         except Exception:
-            # Fallback: if to_pem is not available, pass the jwk dict directly
-            public_pem = matching
+            pass
 
-        decoded = jwt.decode(
-            token_response.access_token,
-            public_pem,
-            algorithms=["RS256"],
-            audience=settings.suunto_client_id,
-        )
-
-        provider_username = decoded.get("user")
-        provider_user_id = decoded.get("sub")
-        return {"user_id": provider_user_id, "username": provider_username}
+        try:
+            # Get the key ID from token header
+            unverified_header = jwt.get_unverified_header(token_response.access_token)
+            kid = unverified_header.get("kid")
+            
+            if not kid:
+                return {"user_id": None, "username": None}
+            
+            # Fetch Suunto's public keys
+            jwks_url = "https://cloudapi-oauth.suunto.com/.well-known/jwks.json"
+            headers = {}
+            if self.credentials.subscription_key:
+                headers["Ocp-Apim-Subscription-Key"] = self.credentials.subscription_key
+                
+            resp = requests.get(jwks_url, headers=headers, timeout=5)
+            resp.raise_for_status()
+            jwks = resp.json()
+            
+            # Find the key with matching kid
+            keys = jwks.get("keys", [])
+            matching_key = next((k for k in keys if k.get("kid") == kid), None)
+            
+            if not matching_key:
+                return {"user_id": None, "username": None}
+            
+            decoded = jwt.decode(
+                token_response.access_token,
+                matching_key,
+                algorithms=["RS256"], 
+                audience=settings.suunto_client_id,
+            )
+            
+            provider_username = decoded.get("user")
+            provider_user_id = decoded.get("sub")
+            
+            return {"user_id": provider_user_id, "username": provider_username}
+            
+        except (JWTError, JWSError, requests.RequestException, Exception):
+            return {"user_id": None, "username": None}
