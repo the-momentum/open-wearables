@@ -10,22 +10,26 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories import DataSourceRepository, EventRecordDetailRepository, EventRecordRepository
-from app.schemas import (
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordQueryParams,
     EventRecordResponse,
     EventRecordUpdate,
 )
-from app.schemas.common_types import PaginatedResponse, Pagination, TimeseriesMetadata
-from app.schemas.common_types import SourceMetadata as DataSourceSchema
-from app.schemas.events import (
+from app.schemas.utils import (
+    PaginatedResponse,
+    Pagination,
+    TimeseriesMetadata,
+    SourceMetadata as DataSourceSchema,
+)
+from app.schemas.responses.activity import (
     SleepSession,
     Workout,
     WorkoutDetailed,
+    SleepStagesSummary
 )
-from app.schemas.summaries import SleepStagesSummary
-from app.schemas.workout_types import WORKOUTS_WITH_PACE
+from app.schemas.enums import WORKOUTS_WITH_PACE
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor

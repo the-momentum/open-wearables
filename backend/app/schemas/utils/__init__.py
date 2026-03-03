@@ -8,6 +8,7 @@ from .metadata import (
 from .pagination import (
     PaginatedResponse,
     Pagination,
+    OldPaginatedResponse,
 )
 from .query_params import (
     FilterParams,
@@ -21,6 +22,7 @@ __all__ = [
     # Pagination
     "Pagination",
     "PaginatedResponse",
+    "OldPaginatedResponse",
     # Metadata
     "SourceMetadata",
     "TimeseriesMetadata",

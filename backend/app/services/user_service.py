@@ -13,7 +13,7 @@ from app.schemas.model_crud.user_management import (
     UserUpdate,
     UserUpdateInternal,
 )
-from app.schemas.utils import PaginatedResponse
+from app.schemas.utils import OldPaginatedResponse
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 
@@ -58,7 +58,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         self,
         db_session: DbSession,
         query_params: UserQueryParams,
-    ) -> PaginatedResponse[UserRead]:
+    ) -> OldPaginatedResponse[UserRead]:
         """Get users with filtering, searching, and pagination.
 
         Args:
@@ -74,7 +74,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
 
         self.logger.debug(f"Retrieved {len(users)} users out of {total_count} total")
 
-        return PaginatedResponse[UserRead](
+        return OldPaginatedResponse[UserRead](
             items=[UserRead.model_validate(user) for user in users],
             total=total_count,
             page=query_params.page,
