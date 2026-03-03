@@ -532,6 +532,15 @@ async def garmin_push_notification(
         payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
+        garmin_user_ids = list(
+            {
+                item.get("userId")
+                for items in payload.values()
+                if isinstance(items, list)
+                for item in items
+                if item.get("userId")
+            }
+        )
         log_structured(
             logger,
             "info",
@@ -539,6 +548,7 @@ async def garmin_push_notification(
             provider="garmin",
             trace_id=request_trace_id,
             item_counts=item_counts,
+            garmin_user_ids=garmin_user_ids,
         )
 
         processed_count = 0
