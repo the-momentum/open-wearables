@@ -483,9 +483,20 @@ async def garmin_ping_notification(
         }
 
         if "userPermissionsChange" in payload:
-            response["userPermissionsChange"] = _process_user_permissions(
-                db, payload["userPermissionsChange"], request_trace_id
-            )
+            try:
+                response["userPermissionsChange"] = _process_user_permissions(
+                    db, payload["userPermissionsChange"], request_trace_id
+                )
+            except Exception as e:
+                log_structured(
+                    logger,
+                    "error",
+                    "Failed to process permission changes",
+                    provider="garmin",
+                    trace_id=request_trace_id,
+                    error=str(e),
+                )
+                response["userPermissionsChange"] = {"updated": 0, "errors": [str(e)]}
 
         return response
 
@@ -851,9 +862,20 @@ async def garmin_push_notification(
         }
 
         if "userPermissionsChange" in payload:
-            response["userPermissionsChange"] = _process_user_permissions(
-                db, payload["userPermissionsChange"], request_trace_id
-            )
+            try:
+                response["userPermissionsChange"] = _process_user_permissions(
+                    db, payload["userPermissionsChange"], request_trace_id
+                )
+            except Exception as e:
+                log_structured(
+                    logger,
+                    "error",
+                    "Failed to process permission changes",
+                    provider="garmin",
+                    trace_id=request_trace_id,
+                    error=str(e),
+                )
+                response["userPermissionsChange"] = {"updated": 0, "errors": [str(e)]}
 
         return response
 
