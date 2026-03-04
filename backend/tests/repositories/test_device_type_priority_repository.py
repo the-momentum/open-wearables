@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-from app.schemas.device_type import DeviceType
+from app.schemas.enums import DeviceType
 
 
 class TestDeviceTypePriorityRepository:

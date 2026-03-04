@@ -6,7 +6,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,

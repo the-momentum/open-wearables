@@ -33,7 +33,8 @@ from app.models import (
     UserConnection,
     WorkoutDetails,
 )
-from app.schemas.oauth import ConnectionStatus, ProviderName
+from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import ProviderName
 from app.utils.security import get_password_hash
 
 

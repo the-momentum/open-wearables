@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Developer
 from app.repositories.developer_repository import DeveloperRepository
-from app.schemas.developer import DeveloperCreateInternal, DeveloperUpdateInternal
+from app.schemas.model_crud.user_management import DeveloperCreateInternal, DeveloperUpdateInternal
 from tests.factories import DeveloperFactory
 
 

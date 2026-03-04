@@ -14,7 +14,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.schemas import UserConnectionCreate, UserConnectionUpdate
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from app.services.user_connection_service import user_connection_service
 from tests.factories import UserConnectionFactory, UserFactory
 

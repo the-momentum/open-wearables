@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
-from app.schemas.event_record import EventRecordCreate, EventRecordQueryParams
+from app.schemas.model_crud.activities import EventRecordCreate, EventRecordQueryParams
 from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 
 

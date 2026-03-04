@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
-from app.schemas.token_type import TokenType
+from app.schemas.auth import TokenType
 from tests.factories import DeveloperFactory, UserFactory
 
 

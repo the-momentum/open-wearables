@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas.series_types import SeriesType
-from app.schemas.timeseries import TimeSeriesQueryParams, TimeSeriesSampleCreate
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import TimeSeriesQueryParams, TimeSeriesSampleCreate
 from tests.factories import DataSourceFactory, UserFactory
 
 

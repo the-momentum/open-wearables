@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas import PolarExerciseJSON
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 from app.services.providers.polar.workouts import PolarWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
 

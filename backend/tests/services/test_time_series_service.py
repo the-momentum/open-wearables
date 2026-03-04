@@ -13,8 +13,8 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.schemas.series_types import SeriesType
-from app.schemas.timeseries import (
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import (
     HeartRateSampleCreate,
     StepSampleCreate,
     TimeSeriesSampleCreate,
