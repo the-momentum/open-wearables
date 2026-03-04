@@ -7,12 +7,11 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import ProviderPriority
 from app.repositories.repositories import CrudRepository
+from app.schemas.enums import DEFAULT_PROVIDER_PRIORITY, ProviderName
 from app.schemas.model_crud.data_priority import (
-    DEFAULT_PROVIDER_PRIORITY,
     ProviderPriorityCreate,
     ProviderPriorityUpdate,
 )
-from app.schemas.oauth import ProviderName
 
 
 class ProviderPriorityRepository(

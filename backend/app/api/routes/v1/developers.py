@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter
 
 from app.database import DbSession
-from app.schemas import DeveloperRead, DeveloperUpdate
+from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate
 from app.services import DeveloperDep, developer_service
 
 router = APIRouter()

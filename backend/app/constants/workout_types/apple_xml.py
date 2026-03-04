@@ -1,6 +1,6 @@
 import re
 
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # HealthKit HKWorkoutActivityType mappings
 # Source: Apple HealthKit Framework Documentation

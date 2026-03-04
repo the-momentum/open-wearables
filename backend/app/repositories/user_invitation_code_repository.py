@@ -7,7 +7,7 @@ from sqlalchemy import select, update
 from app.database import DbSession
 from app.models.user_invitation_code import UserInvitationCode
 from app.repositories.repositories import CrudRepository
-from app.schemas.user_invitation_code import UserInvitationCodeCreate
+from app.schemas.model_crud.user_management import UserInvitationCodeCreate
 
 
 class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvitationCodeCreate, BaseModel]):

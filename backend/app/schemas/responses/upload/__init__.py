@@ -1,6 +1,7 @@
 from .sync_results import (
-    SyncVendorDataResult,
+    ProviderSyncResult,
     SyncAllUsersResult,
+    SyncVendorDataResult,
 )
 from .system_info import (
     CountWithGrowth,
@@ -17,6 +18,7 @@ __all__ = [
     # Sync results
     "SyncVendorDataResult",
     "SyncAllUsersResult",
+    "ProviderSyncResult",
     # Upload response
     "UploadDataResponse",
     # System info

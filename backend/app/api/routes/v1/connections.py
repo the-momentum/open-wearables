@@ -3,10 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, Response, status
 
 from app.database import DbSession
-from app.schemas import UserConnectionRead
-from app.schemas.oauth import ProviderName
-from app.services import ApiKeyDep, user_connection_service
-from app.services.providers.factory import ProviderFactory
+from app.schemas.model_crud.user_management import UserConnectionRead
+from app.services import ApiKeyDep
 
 router = APIRouter()
 

@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # Strava API SportType values mapped to unified WorkoutType.
 # Strava uses PascalCase strings for sport_type (preferred over the legacy `type` field).

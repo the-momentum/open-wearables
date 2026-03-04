@@ -3,6 +3,8 @@ from .sleep_state import (
     SleepState,
 )
 from .sync_request import (
+    OSVersion,
+    SourceInfo,
     SyncRequest,
     WorkoutStatistic,
 )
@@ -12,4 +14,6 @@ __all__ = [
     "SyncRequest",
     "SLEEP_START_STATES",
     "WorkoutStatistic",
+    "SourceInfo",
+    "OSVersion",
 ]
