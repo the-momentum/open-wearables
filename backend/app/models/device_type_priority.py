@@ -1,12 +1,11 @@
 from uuid import UUID
 from datetime import datetime
 
-from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, Indexed, Unique
-from app.schemas.device_type import DeviceType
+from app.schemas.enums import DeviceType
 
 
 class DeviceTypePriority(BaseDbModel):
