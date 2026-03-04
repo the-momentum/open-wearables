@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas import PolarExerciseJSON
 from app.schemas.enums import WorkoutType
+from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.providers.polar.workouts import PolarWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
 

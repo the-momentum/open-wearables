@@ -23,9 +23,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import SuuntoWorkoutJSON
 from app.schemas.enums import WorkoutType
 from app.schemas.providers.suunto import HeartRateJSON
+from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 

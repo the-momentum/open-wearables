@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.schemas import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from app.utils.conversion import base_to_dict
 from tests.factories import (
     DataPointSeriesFactory,

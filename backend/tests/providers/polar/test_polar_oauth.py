@@ -69,11 +69,10 @@ class TestPolarOAuthConfiguration:
     def test_polar_oauth_uses_basic_auth(self, db: Session) -> None:
         """Test Polar OAuth uses Basic Authentication method."""
         # Arrange
-        from app.schemas.oauth import AuthenticationMethod
-
         from app.models import User
         from app.repositories.user_connection_repository import UserConnectionRepository
         from app.repositories.user_repository import UserRepository
+        from app.schemas.auth import AuthenticationMethod
 
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()

@@ -119,7 +119,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert result.series_type_definition_id is not None
         # Verify it's different from heart_rate
-        from app.schemas.series_types import get_series_type_id
+        from app.schemas.enums import get_series_type_id
 
         expected_id = get_series_type_id(SeriesType.steps)
         assert result.series_type_definition_id == expected_id
@@ -303,7 +303,7 @@ class TestDataPointSeriesRepository:
         # Assert
         assert len(results) == 2
         assert total_count == 2
-        from app.schemas.series_types import get_series_type_id
+        from app.schemas.enums import get_series_type_id
 
         expected_type_id = get_series_type_id(SeriesType.heart_rate)
         for sample, _ in results:
@@ -588,7 +588,7 @@ class TestDataPointSeriesRepository:
 
         # Assert
         counts_dict = dict(results)
-        from app.schemas.series_types import get_series_type_id
+        from app.schemas.enums import get_series_type_id
 
         hr_type_id = get_series_type_id(SeriesType.heart_rate)
         steps_type_id = get_series_type_id(SeriesType.steps)

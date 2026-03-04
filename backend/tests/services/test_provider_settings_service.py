@@ -11,7 +11,8 @@ Tests cover:
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas import ProviderName, ProviderSettingUpdate
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
 
 

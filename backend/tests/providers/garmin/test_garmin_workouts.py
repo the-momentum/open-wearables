@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import EventRecordCreate, EventRecordDetailCreate, GarminActivityJSON
 from app.schemas.enums import WorkoutType
+from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
+from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.workouts import GarminWorkouts
 from tests.factories import UserConnectionFactory, UserFactory

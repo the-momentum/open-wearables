@@ -201,7 +201,7 @@ class TestSuuntoOAuth:
     def test_uses_basic_auth_method(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should use Basic Auth for token exchange."""
         # Act
-        from app.schemas.oauth import AuthenticationMethod
+        from app.schemas.auth import AuthenticationMethod
 
         # Assert
         assert suunto_oauth.auth_method == AuthenticationMethod.BASIC_AUTH
