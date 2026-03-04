@@ -208,9 +208,17 @@ def _process_user_permissions(
     Updates the scope column on the matching user_connection.
     """
     results: dict[str, Any] = {"updated": 0, "errors": []}
+
+    if not isinstance(permissions_list, list):
+        return {"updated": 0, "errors": ["Invalid userPermissions payload format"]}
+
     user_connection_repo = UserConnectionRepository()
 
     for entry in permissions_list:
+        if not isinstance(entry, dict):
+            results["errors"].append("Invalid userPermissions entry format")
+            continue
+
         garmin_user_id = entry.get("userId")
         if not garmin_user_id:
             results["errors"].append("Missing userId in userPermissions entry")
