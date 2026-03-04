@@ -474,8 +474,10 @@ async def garmin_ping_notification(
             "backfill_chained": backfill_triggered,
         }
 
-        if "userPermissions" in payload:
-            response["userPermissions"] = _process_user_permissions(db, payload["userPermissions"], request_trace_id)
+        if "userPermissionsChange" in payload:
+            response["userPermissionsChange"] = _process_user_permissions(
+                db, payload["userPermissionsChange"], request_trace_id
+            )
 
         return response
 
@@ -530,8 +532,6 @@ async def garmin_push_notification(
 
     try:
         payload = await request.json()
-        # TODO: remove - temporary debug logging of full Garmin push payload
-        log_structured(logger, "info", "GARMIN PUSH full payload", provider="garmin", payload=payload)
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         garmin_user_ids = list(
@@ -842,8 +842,10 @@ async def garmin_push_notification(
             "backfill_chained": backfill_triggered,
         }
 
-        if "userPermissions" in payload:
-            response["userPermissions"] = _process_user_permissions(db, payload["userPermissions"], request_trace_id)
+        if "userPermissionsChange" in payload:
+            response["userPermissionsChange"] = _process_user_permissions(
+                db, payload["userPermissionsChange"], request_trace_id
+            )
 
         return response
 
