@@ -272,9 +272,17 @@ def _process_deregistrations(
     Marks the matching user_connection as revoked.
     """
     results: dict[str, Any] = {"revoked": 0, "errors": []}
+
+    if not isinstance(deregistrations_list, list):
+        return {"revoked": 0, "errors": ["Invalid deregistrations payload format"]}
+
     user_connection_repo = UserConnectionRepository()
 
     for entry in deregistrations_list:
+        if not isinstance(entry, dict):
+            results["errors"].append("Invalid deregistrations entry format")
+            continue
+
         garmin_user_id = entry.get("userId")
         if not garmin_user_id:
             results["errors"].append("Missing userId in deregistrations entry")
@@ -546,7 +554,18 @@ async def garmin_ping_notification(
                 response["userPermissionsChange"] = {"updated": 0, "errors": [str(e)]}
 
         if "deregistrations" in payload:
-            response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+            try:
+                response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+            except Exception as e:
+                log_structured(
+                    logger,
+                    "error",
+                    "Failed to process deregistrations",
+                    provider="garmin",
+                    trace_id=request_trace_id,
+                    error=str(e),
+                )
+                response["deregistrations"] = {"revoked": 0, "errors": [str(e)]}
 
         return response
 
@@ -927,7 +946,18 @@ async def garmin_push_notification(
                 response["userPermissionsChange"] = {"updated": 0, "errors": [str(e)]}
 
         if "deregistrations" in payload:
-            response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+            try:
+                response["deregistrations"] = _process_deregistrations(db, payload["deregistrations"], request_trace_id)
+            except Exception as e:
+                log_structured(
+                    logger,
+                    "error",
+                    "Failed to process deregistrations",
+                    provider="garmin",
+                    trace_id=request_trace_id,
+                    error=str(e),
+                )
+                response["deregistrations"] = {"revoked": 0, "errors": [str(e)]}
 
         return response
 
