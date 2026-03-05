@@ -22,14 +22,14 @@ def _make_connection(scope: str | None) -> MagicMock:
 
 
 @pytest.fixture
-def _patch_redis() -> Generator[MagicMock]:
+def _patch_redis() -> Generator[MagicMock, None, None]:
     with patch(f"{MODULE}.redis_client") as mock:
         mock.get.return_value = None
         yield mock
 
 
 @pytest.fixture
-def _patch_session() -> Generator[MagicMock]:
+def _patch_session() -> Generator[MagicMock, None, None]:
     mock_db = MagicMock()
     with patch(f"{MODULE}.SessionLocal") as mock:
         mock.return_value.__enter__ = MagicMock(return_value=mock_db)
