@@ -103,7 +103,7 @@ def _apply_transition(
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
-        return _create_new_sleep_state(start_time, end_time, uuid, provider, source_name, device_model)
+        state = _create_new_sleep_state(start_time, end_time, uuid, provider, source_name, device_model)
 
     duration_seconds = (end_time - start_time).total_seconds()
 
