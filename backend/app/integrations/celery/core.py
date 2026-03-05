@@ -65,6 +65,8 @@ def create_celery() -> Celery:
         task_default_queue="default",
         task_default_exchange="default",
         result_expires=3 * 24 * 3600,
+        control_queue_ttl=300,
+        control_queue_expires=300,
         task_queues={
             "default": {},
             "sdk_sync": {},
