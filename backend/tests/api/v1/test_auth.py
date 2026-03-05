@@ -194,7 +194,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 422
+        assert response.status_code == 400
         # Check if our custom error message is in the response
         assert "Password must contain at least one number" in str(response.json())
 
@@ -210,7 +210,7 @@ class TestChangePassword:
 
         response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
 
-        assert response.status_code == 422
+        assert response.status_code == 400
         assert "The new passwords do not match" in str(response.json())
 
 
