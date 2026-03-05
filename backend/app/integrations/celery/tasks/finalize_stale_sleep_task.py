@@ -19,6 +19,7 @@ logger = getLogger(__name__)
 def finalize_stale_sleeps() -> None:
     now = datetime.now(timezone.utc)
     redis_client = get_redis_client()
+    sleep_end_gap_minutes = settings.sleep_end_gap_minutes
 
     with SessionLocal() as db:
         for user_id in redis_client.smembers(active_users_key()):
@@ -26,8 +27,11 @@ def finalize_stale_sleeps() -> None:
                 state = load_sleep_state(user_id)
                 if not state:
                     continue
-                last = datetime.fromisoformat(state["last_timestamp"])
-                if now - last >= timedelta(minutes=settings.sleep_end_gap_minutes):
+                last_start_timestamp = datetime.fromisoformat(state["last_start_timestamp"])
+                last_end_timestamp = datetime.fromisoformat(state["last_end_timestamp"])
+                if now - last_start_timestamp >= timedelta(
+                    minutes=sleep_end_gap_minutes
+                ) or now - last_end_timestamp >= timedelta(minutes=sleep_end_gap_minutes):
                     finish_sleep(db, user_id, state)
             except Exception as e:
                 log_and_capture_error(

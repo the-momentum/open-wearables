@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
 
     # Time between sleep phases to conclude end of sleep session
-    sleep_end_gap_minutes: int = 60  # 1 hour
+    sleep_end_gap_minutes: int = 120  # 2 hours
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)

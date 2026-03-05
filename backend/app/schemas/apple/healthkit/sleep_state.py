@@ -12,7 +12,10 @@ class SleepState(TypedDict):
     provider: str | None
 
     start_time: str
-    last_timestamp: str
+    end_time: str
+
+    last_start_timestamp: str
+    last_end_timestamp: str
 
     in_bed_seconds: int
     awake_seconds: int
