@@ -1,8 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Check, ArrowRight, ExternalLink } from 'lucide-react';
 import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
 import { API_CONFIG } from '@/lib/api/config';
+import { queryClient } from '@/lib/query/client';
+import { queryKeys } from '@/lib/query/keys';
 
 export const Route = createFileRoute('/users/$userId/pair/success')({
   component: PairSuccessPage,
@@ -15,6 +18,12 @@ export const Route = createFileRoute('/users/$userId/pair/success')({
 function PairSuccessPage() {
   const { userId } = Route.useParams();
   const { provider: providerId, redirect_url: redirectUrl } = Route.useSearch();
+
+  useEffect(() => {
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.connections.all(userId),
+    });
+  }, [userId]);
 
   const { data: providers } = useOAuthProviders(true, true);
   const provider = providerId
