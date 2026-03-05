@@ -697,6 +697,21 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         )
         return {"error": f"Invalid user_id: {e}"}
 
+    # Skip backfill if user didn't grant HISTORICAL_DATA_EXPORT permission
+    with SessionLocal() as db:
+        connection_repo = UserConnectionRepository()
+        connection = connection_repo.get_by_user_and_provider(db, UUID(user_id), "garmin")
+        if not connection or not connection.scope or "HISTORICAL_DATA_EXPORT" not in connection.scope.split():
+            log_structured(
+                logger,
+                "info",
+                "Skipping backfill -- HISTORICAL_DATA_EXPORT not granted",
+                provider="garmin",
+                user_id=user_id,
+                scope=connection.scope if connection else None,
+            )
+            return {"status": "skipped", "reason": "HISTORICAL_DATA_EXPORT permission not granted"}
+
     # Reject re-trigger if permanently failed
     if redis_client.get(_get_key(user_id, "permanently_failed")) == "1":
         log_structured(
