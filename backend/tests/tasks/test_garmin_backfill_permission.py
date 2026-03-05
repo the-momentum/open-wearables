@@ -10,6 +10,8 @@ from uuid import uuid4
 
 import pytest
 
+from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill
+
 MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
 
 
@@ -41,8 +43,6 @@ class TestBackfillPermissionCheck:
     @patch(f"{MODULE}.UserConnectionRepository")
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
     def test_skips_without_historical_data_export(self, mock_repo_cls: MagicMock) -> None:
-        from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill
-
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(
             "ACTIVITY_EXPORT HEALTH_EXPORT"
         )
@@ -55,8 +55,6 @@ class TestBackfillPermissionCheck:
     @patch(f"{MODULE}.UserConnectionRepository")
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
     def test_skips_when_scope_is_none(self, mock_repo_cls: MagicMock) -> None:
-        from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill
-
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(None)
 
         result = start_full_backfill(str(uuid4()))
@@ -67,8 +65,6 @@ class TestBackfillPermissionCheck:
     @patch(f"{MODULE}.UserConnectionRepository")
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
     def test_proceeds_with_historical_data_export(self, mock_repo_cls: MagicMock) -> None:
-        from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill
-
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(
             "ACTIVITY_EXPORT HISTORICAL_DATA_EXPORT"
         )
