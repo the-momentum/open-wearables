@@ -635,9 +635,26 @@ class _MyAppState extends State<MyApp> {
 
 The SDK sends health data to:
 
-```
+<ParamField path="host" type="string" required>
+  Your Open Wearables API base URL (e.g. `https://api.example.com`).
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  The user ID returned when registering the SDK user.
+</ParamField>
+
+```bash
 POST {host}/api/v1/sdk/users/{userId}/sync
 ```
+
+<ResponseExample>
+```json 200
+{
+  "status": "ok",
+  "synced_records": 42
+}
+```
+</ResponseExample>
 
 Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
 

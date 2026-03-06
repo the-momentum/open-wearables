@@ -215,6 +215,8 @@ The SDK supports two health data providers on Android:
 | **Samsung Health** | `"samsung"` | Samsung Health SDK. Works on Samsung devices with Samsung Health installed. |
 
 ```kotlin
+val sdk = OpenWearablesHealthSDK.getInstance()
+
 // Check which providers are available
 val providers = sdk.getAvailableProviders()
 for (p in providers) {
@@ -222,7 +224,10 @@ for (p in providers) {
 }
 
 // Set the active provider
-sdk.setProvider("google") // or "samsung"
+val selected = sdk.setProvider("google") // or "samsung"
+if (!selected) {
+    Log.e("HealthSDK", "Selected provider is unavailable on this device")
+}
 ```
 
 ## Supported Health Data Types
