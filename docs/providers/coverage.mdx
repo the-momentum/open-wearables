@@ -212,7 +212,7 @@ All providers that support workouts provide these common fields:
 | GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ |
 
 <Accordion title="Apple Workout Data Note">
-  All workout metrics are fully supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation).
+  Most workout metrics are supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation). Moving time and max watts are not yet implemented.
 </Accordion>
 
 <Note>
@@ -229,7 +229,7 @@ Key differences and limitations to be aware of when working with each provider:
   **Integration Method:** Push-based via SDK (no OAuth)
 
   - Data arrives via client SDK push, not server-to-server sync
-  - Full support for workouts (all metrics), sleep (stages, duration), and 100+ health record types via HealthKit SDK
+  - Workouts (most metrics), sleep (stages, duration), and 100+ health record types via HealthKit SDK
   - Most comprehensive data coverage (100+ metric types)
   - Full sleep processing with stages (deep, light, REM, awake), duration, and time in bed
   - Sleep biometrics (HR, HRV, SpO2 during sleep) not yet extracted as part of sleep records
