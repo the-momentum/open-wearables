@@ -29,7 +29,7 @@ The SDK supports two authentication modes: **token-based** (recommended) and **A
     Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
     ```
     POST https://api.openwearables.io/v1/tokens
-    X-API-Key: sk_live_your_secret_key
+    X-API-Key: <OPENWEARABLES_API_KEY>
     ```
   </Step>
   <Step title="Backend returns credentials" icon="key">
@@ -294,10 +294,11 @@ for (p in providers) {
     Log.d("HealthSDK", "${p["displayName"]} (${p["id"]}) - available: ${p["isAvailable"]}")
 }
 
-// Set the provider
-val success = sdk.setProvider("google") // Health Connect
-// or
-val success = sdk.setProvider("samsung") // Samsung Health
+// Set the provider based on user selection or your default
+val success = sdk.setProvider("google") // or "samsung" for Samsung Health
+if (!success) {
+    Log.e("HealthSDK", "Selected provider is unavailable on this device")
+}
 ```
 
 <Note>
@@ -455,8 +456,6 @@ class HealthViewModel : ViewModel() {
 
                 if (authorized) {
                     sdk.startBackgroundSync()
-                    _isConnected.value = true
-                    _isSyncing.value = true
                 }
             } catch (e: Exception) {
                 Log.e("HealthSDK", "Connection failed", e)

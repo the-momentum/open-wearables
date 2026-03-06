@@ -41,7 +41,16 @@ description: "Common issues and solutions for the Flutter SDK on iOS and Android
     2. **Set provider before requesting authorization:**
        ```dart
        await OpenWearablesHealthSdk.setProvider(AndroidHealthProvider.healthConnect);
-       await OpenWearablesHealthSdk.requestAuthorization(types: [...]);
+       final authorized = await OpenWearablesHealthSdk.requestAuthorization(
+         types: [
+           HealthDataType.steps,
+           HealthDataType.heartRate,
+           HealthDataType.sleep,
+         ],
+       );
+       // authorized == true  → permissions dialog was shown and accepted
+       // authorized == false → user denied or dialog failed to appear
+       print('Permissions granted: $authorized');
        ```
 
     3. **Check minSdk version:**
@@ -132,8 +141,14 @@ description: "Common issues and solutions for the Flutter SDK on iOS and Android
     4. **Check SignInException details:**
        ```dart
        try {
-         await OpenWearablesHealthSdk.signIn(...);
+         final user = await OpenWearablesHealthSdk.signIn(
+           userId: 'usr_abc123',
+           accessToken: accessToken,
+           refreshToken: refreshToken,
+         );
+         print('Signed in as ${user.userId}');
        } on SignInException catch (e) {
+         // Example output: "Message: Unauthorized" / "Status code: 401"
          print('Message: ${e.message}');
          print('Status code: ${e.statusCode}');
        }
@@ -176,11 +191,19 @@ description: "Common issues and solutions for the Flutter SDK on iOS and Android
     ```dart
     // ✅ Correct order
     await OpenWearablesHealthSdk.configure(host: 'https://api.openwearables.io');
-    await OpenWearablesHealthSdk.signIn(...);
+    await OpenWearablesHealthSdk.signIn(
+      userId: 'usr_abc123',
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
     await OpenWearablesHealthSdk.startBackgroundSync();
 
     // ❌ Wrong - signIn before configure
-    await OpenWearablesHealthSdk.signIn(...); // Throws NotConfiguredException
+    await OpenWearablesHealthSdk.signIn(
+      userId: 'usr_abc123',
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    ); // Throws NotConfiguredException
     ```
   </Accordion>
 
@@ -192,7 +215,11 @@ description: "Common issues and solutions for the Flutter SDK on iOS and Android
 
     ```dart
     if (!OpenWearablesHealthSdk.isSignedIn) {
-      await OpenWearablesHealthSdk.signIn(...);
+      await OpenWearablesHealthSdk.signIn(
+        userId: 'usr_abc123',
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
     }
     await OpenWearablesHealthSdk.startBackgroundSync();
     ```

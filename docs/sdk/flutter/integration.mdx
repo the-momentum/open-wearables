@@ -313,16 +313,57 @@ On Android, you must select a health data provider before requesting authorizati
 
 ```dart
 import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 
-if (Platform.isAndroid) {
+Future<AndroidHealthProvider> selectAndroidProvider() async {
+  final prefs = await SharedPreferences.getInstance();
+  final savedProvider = prefs.getString('health_provider');
+
+  // Restore previously chosen provider if still available
   final providers = await OpenWearablesHealthSdk.getAvailableProviders();
-  
-  // Set provider based on availability
-  await OpenWearablesHealthSdk.setProvider(AndroidHealthProvider.healthConnect);
+
+  if (savedProvider != null) {
+    final restored = providers.cast<AndroidHealthProvider?>().firstWhere(
+      (p) => p?.name == savedProvider,
+      orElse: () => null,
+    );
+    if (restored != null) return restored;
+  }
+
+  // Prefer Health Connect, fall back to Samsung Health
+  final AndroidHealthProvider chosen;
+  if (providers.contains(AndroidHealthProvider.healthConnect)) {
+    chosen = AndroidHealthProvider.healthConnect;
+  } else if (providers.contains(AndroidHealthProvider.samsungHealth)) {
+    chosen = AndroidHealthProvider.samsungHealth;
+  } else {
+    throw Exception(
+      'No supported health provider found. '
+      'Please install Health Connect or Samsung Health.',
+    );
+  }
+
+  await prefs.setString('health_provider', chosen.name);
+  return chosen;
+}
+
+// Usage
+if (Platform.isAndroid) {
+  final provider = await selectAndroidProvider();
+  await OpenWearablesHealthSdk.setProvider(provider);
 }
 
 // Then request authorization
-await OpenWearablesHealthSdk.requestAuthorization(types: [...]);
+final authorized = await OpenWearablesHealthSdk.requestAuthorization(
+  types: [
+    HealthDataType.steps,
+    HealthDataType.heartRate,
+    HealthDataType.sleep,
+    HealthDataType.workout,
+    HealthDataType.activeEnergy,
+  ],
+);
+print('Permissions granted: $authorized');
 ```
 
 <Note>
@@ -384,6 +425,7 @@ import 'dart:io';
 import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HealthSyncService {
   final String _backendUrl;
@@ -458,11 +500,35 @@ class HealthSyncService {
   }
 
   Future<void> _startSync() async {
-    // On Android, set provider first
     if (Platform.isAndroid) {
-      await OpenWearablesHealthSdk.setProvider(
-        AndroidHealthProvider.healthConnect,
-      );
+      final providers = await OpenWearablesHealthSdk.getAvailableProviders();
+
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('health_provider');
+
+      // Restore saved provider or pick the best available one
+      AndroidHealthProvider? chosen;
+      if (savedName != null) {
+        chosen = providers.cast<AndroidHealthProvider?>().firstWhere(
+          (p) => p?.name == savedName,
+          orElse: () => null,
+        );
+      }
+      chosen ??= providers.contains(AndroidHealthProvider.healthConnect)
+          ? AndroidHealthProvider.healthConnect
+          : providers.contains(AndroidHealthProvider.samsungHealth)
+              ? AndroidHealthProvider.samsungHealth
+              : null;
+
+      if (chosen == null) {
+        throw Exception(
+          'No supported health provider available on this device. '
+          'Please install Health Connect or Samsung Health.',
+        );
+      }
+
+      await prefs.setString('health_provider', chosen.name);
+      await OpenWearablesHealthSdk.setProvider(chosen);
     }
 
     final authorized = await OpenWearablesHealthSdk.requestAuthorization(

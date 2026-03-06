@@ -184,6 +184,9 @@ await OpenWearablesHealthSdk.configure(
 final response = await http.post(
   Uri.parse('$host/api/v1/sdk/invitation-codes/$code/redeem'),
 );
+if (response.statusCode != 200) {
+  throw Exception('Invitation redeem failed: ${response.statusCode}');
+}
 final data = json.decode(response.body);
 
 // Sign in with returned credentials
@@ -199,7 +202,12 @@ await OpenWearablesHealthSdk.signIn(
 ```dart
 if (Platform.isAndroid) {
   final providers = await OpenWearablesHealthSdk.getAvailableProviders();
-  // Show provider picker UI
+  if (providers.isEmpty) {
+    throw Exception('No Android health provider is available');
+  }
+  final selectedProvider = providers.contains(AndroidHealthProvider.healthConnect)
+      ? AndroidHealthProvider.healthConnect
+      : providers.first;
   await OpenWearablesHealthSdk.setProvider(selectedProvider);
 }
 ```

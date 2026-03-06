@@ -159,9 +159,14 @@ class HealthService(private val context: Context) {
         sdk.setProvider("google") // or "samsung"
 
         // 8. Request permissions
-        sdk.requestAuthorization(
+        val authorized = sdk.requestAuthorization(
             types = listOf("steps", "heartRate", "sleep", "workout")
         )
+
+        if (!authorized) {
+            Log.w("HealthSDK", "Health permissions were denied")
+            return
+        }
 
         // 9. Start background sync
         sdk.startBackgroundSync()
