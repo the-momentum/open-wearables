@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.sleep import SleepStage
+
 
 class EventRecordDetailBase(BaseModel):
     """Base schema for event record detail."""
@@ -37,7 +39,7 @@ class EventRecordDetailBase(BaseModel):
     sleep_awake_minutes: int | None = None
     is_nap: bool | None = None
 
-    is_nap: bool | None = None
+    sleep_stages: list[SleepStage] | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

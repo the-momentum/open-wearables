@@ -26,7 +26,10 @@ def finalize_stale_sleeps() -> None:
                 state = load_sleep_state(user_id)
                 if not state:
                     continue
-                end_time = datetime.fromisoformat(state["end_time"])
+                end_time = state.end_time
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=timezone.utc)
+
                 if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
                     finish_sleep(db, user_id, state)
             except Exception as e:
