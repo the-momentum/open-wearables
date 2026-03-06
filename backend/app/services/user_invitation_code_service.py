@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import DbSession
 from app.models.user_invitation_code import UserInvitationCode
 from app.repositories.user_invitation_code_repository import UserInvitationCodeRepository
-from app.schemas.model_crud.user_management import (
+from app.schemas.model_crud.credentials import (
     InvitationCodeRedeemResponse,
     UserInvitationCodeCreate,
     UserInvitationCodeRead,

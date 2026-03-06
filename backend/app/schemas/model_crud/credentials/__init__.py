@@ -17,6 +17,12 @@ from .oauth import (
     ProviderCredentials,
     ProviderEndpoints,
 )
+from .user_invitation_code import (
+    InvitationCodeRedeemResponse,
+    UserInvitationCodeCreate,
+    UserInvitationCodeRead,
+    UserInvitationCodeRedeem,
+)
 
 __all__ = [
     # ApiKey
@@ -35,4 +41,9 @@ __all__ = [
     "ProviderEndpoints",
     "ProviderCredentials",
     "AuthorizationURLResponse",
+    # UserInvitationCode
+    "UserInvitationCodeCreate",
+    "UserInvitationCodeRead",
+    "UserInvitationCodeRedeem",
+    "InvitationCodeRedeemResponse",
 ]
