@@ -22,6 +22,7 @@ from app.config import settings
 from app.mappings import email, str_10, str_32, str_50, str_64, str_100, str_255
 from app.schemas.invitation import InvitationStatus
 from app.schemas.oauth import ConnectionStatus, ProviderName
+from app.schemas.series_types import AggregationMethod
 from app.schemas.token_type import TokenType
 from app.utils.mappings_meta import AutoRelMeta
 
@@ -72,6 +73,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         InvitationStatus: String(50),
         ProviderName: String(50),
         TokenType: String(64),
+        AggregationMethod: String(32),
     }
 
 
