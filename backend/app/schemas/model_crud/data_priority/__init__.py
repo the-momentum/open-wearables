@@ -1,5 +1,4 @@
 from .data_source import (
-    DataSourceBase,
     DataSourceCreate,
     DataSourceListResponse,
     DataSourceResponse,
@@ -29,7 +28,6 @@ from .provider_setting import (
 
 __all__ = [
     # DataSource
-    "DataSourceBase",
     "DataSourceCreate",
     "DataSourceUpdate",
     "DataSourceResponse",

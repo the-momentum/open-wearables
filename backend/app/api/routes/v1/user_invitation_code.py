@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.database import DbSession
-from app.schemas.model_crud.user_management import (
+from app.schemas.model_crud.credentials import (
     InvitationCodeRedeemResponse,
     UserInvitationCodeRead,
     UserInvitationCodeRedeem,

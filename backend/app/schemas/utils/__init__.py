@@ -1,6 +1,3 @@
-from .error_codes import (
-    ErrorCode,
-)
 from .metadata import (
     SourceMetadata,
     TimeseriesMetadata,
@@ -15,8 +12,6 @@ from .query_params import (
 )
 
 __all__ = [
-    # Error codes
-    "ErrorCode",
     # Query params
     "FilterParams",
     # Pagination

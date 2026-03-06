@@ -4,10 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from .summaries import SleepStagesSummary
-from .data_point_responses import TimeSeriesSample
-
 from app.schemas.utils import SourceMetadata
+
+from .data_point_responses import TimeSeriesSample
+from .summaries import SleepStagesSummary
 
 
 class Workout(BaseModel):

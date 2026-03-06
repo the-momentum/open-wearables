@@ -1,7 +1,7 @@
 from .workout_import import (
+    HeartRateJSON,
     RootJSON,
     WorkoutJSON,
-    HeartRateJSON,
 )
 
 __all__ = [
