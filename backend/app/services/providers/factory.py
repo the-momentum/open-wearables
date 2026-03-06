@@ -1,4 +1,4 @@
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy

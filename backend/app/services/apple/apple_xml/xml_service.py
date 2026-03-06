@@ -9,16 +9,16 @@ from xml.etree import ElementTree as ET
 from app.config import settings
 from app.constants.series_types.apple import get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.schemas import (
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
-    SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
-from app.schemas.apple.apple_xml.stats import XMLParseStats
+from app.schemas.providers.apple.apple_xml import XMLParseStats
 
 
 class XMLService:

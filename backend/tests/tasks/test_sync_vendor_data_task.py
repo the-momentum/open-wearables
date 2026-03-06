@@ -12,7 +12,7 @@ from app.integrations.celery.tasks.sync_vendor_data_task import (
     _build_sync_params,
     sync_vendor_data,
 )
-from app.schemas import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 

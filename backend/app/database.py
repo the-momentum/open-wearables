@@ -20,9 +20,9 @@ from sqlalchemy.orm import (
 
 from app.config import settings
 from app.mappings import email, str_10, str_32, str_50, str_64, str_100, str_255
-from app.schemas.invitation import InvitationStatus
-from app.schemas.oauth import ConnectionStatus, ProviderName
-from app.schemas.token_type import TokenType
+from app.schemas.auth import ConnectionStatus, TokenType
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.mappings_meta import AutoRelMeta
 
 engine = create_engine(

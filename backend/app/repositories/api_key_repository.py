@@ -1,7 +1,7 @@
 from app.database import DbSession
 from app.models import ApiKey
 from app.repositories.repositories import CrudRepository
-from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
+from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 
 
 class ApiKeyRepository(CrudRepository[ApiKey, ApiKeyCreate, ApiKeyUpdate]):

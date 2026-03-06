@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # Suunto uses integer activity IDs as documented in their Activities.pdf
 # Format: (suunto_activity_id, activity_name, unified_type)

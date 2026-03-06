@@ -6,7 +6,11 @@ from sqlalchemy import and_, func
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.repositories import CrudRepository
-from app.schemas import ConnectionStatus, UserConnectionCreate, UserConnectionUpdate
+from app.schemas.auth import ConnectionStatus
+from app.schemas.model_crud.user_management import (
+    UserConnectionCreate,
+    UserConnectionUpdate,
+)
 
 
 class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCreate, UserConnectionUpdate]):

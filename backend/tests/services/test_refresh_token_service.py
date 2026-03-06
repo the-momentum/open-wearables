@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models import RefreshToken
-from app.schemas.token_type import TokenType
+from app.schemas.auth import TokenType
 from app.services.refresh_token_service import refresh_token_service
 from tests.factories import DeveloperFactory, UserFactory
 

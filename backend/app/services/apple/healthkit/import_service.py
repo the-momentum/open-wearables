@@ -14,18 +14,22 @@ from app.constants.series_types.apple import (
 from app.constants.workout_types import get_unified_apple_workout_type_sdk
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import (
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
-    SDKSyncRequest,
-    SeriesType,
     StepSampleCreate,
     TimeSeriesSampleCreate,
-    UploadDataResponse,
 )
-from app.schemas.apple.healthkit.sync_request import WorkoutStatistic
+from app.schemas.providers.mobile_sdk import (
+    SyncRequest as SDKSyncRequest,
+)
+from app.schemas.providers.mobile_sdk import (
+    WorkoutStatistic,
+)
+from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured

@@ -6,10 +6,10 @@ from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
 from app.integrations.celery.tasks import start_garmin_full_backfill, sync_vendor_data
-from app.schemas import (
-    AuthorizationURLResponse,
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.credentials import AuthorizationURLResponse
+from app.schemas.model_crud.data_priority import (
     BulkProviderSettingsUpdate,
-    ProviderName,
     ProviderSettingRead,
     ProviderSettingUpdate,
 )

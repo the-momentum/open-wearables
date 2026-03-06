@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, PrimaryKey, datetime_tz, str_64
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 
 
 class UserConnection(BaseDbModel):

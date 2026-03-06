@@ -12,8 +12,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.event_record import EventRecordQueryParams
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import EventRecordDetailCreate, EventRecordQueryParams
 from app.services.event_record_service import event_record_service
 from tests.factories import DataSourceFactory, EventRecordFactory, UserFactory
 

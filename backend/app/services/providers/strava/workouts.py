@@ -6,13 +6,13 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
-from app.schemas import (
+from app.schemas.enums import WorkoutType
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
-    StravaActivityJSON,
 )
-from app.schemas.workout_types import WorkoutType
+from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured

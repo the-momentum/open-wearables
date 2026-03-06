@@ -7,12 +7,12 @@ import isodate
 
 from app.constants.workout_types.polar import get_unified_workout_type
 from app.database import DbSession
-from app.schemas import (
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
-    PolarExerciseJSON,
 )
+from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 

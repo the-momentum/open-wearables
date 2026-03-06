@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, Unique, datetime_tz
-from app.schemas.device_type import DeviceType
+from app.schemas.enums import DeviceType
 
 
 class DeviceTypePriority(BaseDbModel):

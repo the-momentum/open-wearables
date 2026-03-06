@@ -15,10 +15,13 @@ from logging import getLogger
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.device_type import DeviceType
-from app.schemas.device_type_priority import DeviceTypePriorityBase, DeviceTypePriorityBulkUpdate
-from app.schemas.oauth import ProviderName
-from app.schemas.provider_priority import ProviderPriorityBase, ProviderPriorityBulkUpdate
+from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.model_crud.data_priority import (
+    DeviceTypePriorityBase,
+    DeviceTypePriorityBulkUpdate,
+    ProviderPriorityBase,
+    ProviderPriorityBulkUpdate,
+)
 from app.services.priority_service import PriorityService
 
 

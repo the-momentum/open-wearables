@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.database import BaseDbModel, DbSession
 from app.repositories.repositories import CrudRepository
-from app.schemas import FilterParams
+from app.schemas.utils import FilterParams
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
 type OptRequest = Request | None

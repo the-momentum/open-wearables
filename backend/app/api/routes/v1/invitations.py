@@ -3,8 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.database import DbSession
-from app.schemas import DeveloperRead
-from app.schemas.invitation import InvitationAccept, InvitationCreate, InvitationRead
+from app.schemas.model_crud.user_management import DeveloperRead, InvitationAccept, InvitationCreate, InvitationRead
 from app.services import DeveloperDep
 from app.services.invitation_service import invitation_service
 

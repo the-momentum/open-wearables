@@ -4,7 +4,8 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
-from app.schemas import SDKSyncRequest, UploadDataResponse
+from app.schemas.providers.mobile_sdk import SyncRequest
+from app.schemas.responses.upload import UploadDataResponse
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
@@ -15,7 +16,7 @@ logger = getLogger(__name__)
 @router.post("/sdk/users/{user_id}/sync")
 async def sync_sdk_data(
     user_id: str,
-    body: SDKSyncRequest,
+    body: SyncRequest,
     auth: SDKAuthDep,
 ) -> UploadDataResponse:
     """Import health data from SDK provider asynchronously via Celery.

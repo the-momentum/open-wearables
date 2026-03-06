@@ -15,14 +15,23 @@ from app.database import SessionLocal
 from app.models import EventRecordDetail, PersonalRecord, UserConnection
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.oauth import ConnectionStatus, ProviderName, UserConnectionCreate, UserConnectionUpdate
-from app.schemas.personal_record import PersonalRecordCreate
-from app.schemas.series_types import SeriesType
-from app.schemas.timeseries import TimeSeriesSampleCreate
-from app.schemas.user import UserCreate
-from app.schemas.workout_types import WorkoutType
+from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import (
+    ProviderName,
+    SeriesType,
+    WorkoutType,
+)
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    PersonalRecordCreate,
+    TimeSeriesSampleCreate,
+)
+from app.schemas.model_crud.user_management import (
+    UserConnectionCreate,
+    UserConnectionUpdate,
+    UserCreate,
+)
 from app.services import event_record_service, timeseries_service, user_service
 from app.utils.structured_logging import log_structured
 

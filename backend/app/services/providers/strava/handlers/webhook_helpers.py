@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
-from app.schemas import StravaActivityJSON
+from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.utils.structured_logging import log_structured
 

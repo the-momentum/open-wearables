@@ -1,6 +1,10 @@
 from app.database import DbSession
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas import ProviderName, ProviderSettingRead, ProviderSettingUpdate
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.data_priority import (
+    ProviderSettingRead,
+    ProviderSettingUpdate,
+)
 from app.services.providers.factory import ProviderFactory
 
 

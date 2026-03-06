@@ -19,9 +19,13 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.oauth import ConnectionStatus, OAuthTokenResponse, UserConnectionCreate
+from app.schemas.auth import ConnectionStatus
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
+from app.schemas.model_crud.credentials import OAuthTokenResponse
+from app.schemas.model_crud.user_management import UserConnectionCreate
 
 
 class TestEventRecordCreateValidation:

@@ -5,15 +5,13 @@ from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-from app.schemas.data_source import DataSourceListResponse, DataSourceResponse
-from app.schemas.device_type import DeviceType
-from app.schemas.device_type_priority import (
+from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.model_crud.data_priority import (
+    DataSourceListResponse,
+    DataSourceResponse,
     DeviceTypePriorityBulkUpdate,
     DeviceTypePriorityListResponse,
     DeviceTypePriorityResponse,
-)
-from app.schemas.oauth import ProviderName
-from app.schemas.provider_priority import (
     ProviderPriorityBulkUpdate,
     ProviderPriorityListResponse,
     ProviderPriorityResponse,

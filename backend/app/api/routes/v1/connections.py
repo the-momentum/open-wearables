@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
-from app.schemas import UserConnectionRead
+from app.schemas.model_crud.user_management import UserConnectionRead
 from app.services import ApiKeyDep
 
 router = APIRouter()

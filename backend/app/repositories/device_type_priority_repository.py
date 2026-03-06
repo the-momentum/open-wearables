@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
 from app.models.device_type_priority import DeviceTypePriority
-from app.schemas.device_type import DEFAULT_DEVICE_TYPE_PRIORITY, DeviceType
+from app.schemas.enums import DEFAULT_DEVICE_TYPE_PRIORITY, DeviceType
 
 
 class DeviceTypePriorityRepository:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 
 class TestProviderNameFromSourceString:
