@@ -20,7 +20,6 @@ EXPOSE 3000
 
 # Set environment for development
 ENV NODE_ENV=development
-ENV VITE_API_URL=http://localhost:8000
 
 # Run the dev server with host binding for Docker
 CMD ["pnpm", "dev", "--host", "0.0.0.0"]
