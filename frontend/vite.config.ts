@@ -13,6 +13,7 @@ const config = defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    allowedHosts: ['wearables.nicolasrusso.ar', 'localhost'],
     watch: {
       usePolling: true,
     },
