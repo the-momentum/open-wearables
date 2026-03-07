@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 
@@ -13,6 +13,42 @@ from app.schemas.sdk import SDKAuthContext
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 developer_repository = DeveloperRepository(Developer)
+
+
+def _decode_and_validate_token(token: str) -> dict:
+    """Decode JWT token and validate common claims.
+
+    Common validation logic for both HTTP Bearer and Query param tokens.
+    """
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+
+        # Reject SDK-scoped tokens - they can only access /sdk/ endpoints
+        if payload.get("scope") == "sdk":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="SDK tokens cannot access this endpoint",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        developer_id: str = payload.get("sub")
+        if not developer_id:
+            # Common credential validation error for get_current_developer
+            # This matches legacy behavior where missing 'sub' raises generic 401
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return payload
+    except JWTError as exc:
+        # Common credential validation error
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
 
 
 async def get_current_developer(
@@ -32,22 +68,8 @@ async def get_current_developer(
     if not token:
         raise credentials_exception
 
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-
-        # Reject SDK-scoped tokens - they can ONLY access /sdk/ endpoints
-        if payload.get("scope") == "sdk":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="SDK tokens cannot access this endpoint",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        developer_id: str = payload.get("sub")
-        if developer_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
+    payload = _decode_and_validate_token(token)
+    developer_id = payload.get("sub")
 
     developer = developer_repository.get(db, UUID(developer_id))
     if not developer:
@@ -140,3 +162,31 @@ async def get_sdk_auth(
 
 
 SDKAuthDep = Annotated[SDKAuthContext, Depends(get_sdk_auth)]
+
+
+def verify_query_token(
+    token: Annotated[str | None, Query(description="JWT Bearer token for authentication")],
+) -> str:
+    """Validate a JWT token passed as a query parameter (for SSE/WebSocket).
+
+    EventSource and native WebSocket APIs do not support custom HTTP headers,
+    so the token is passed as ``?token=<jwt>`` instead of the usual Authorization header.
+
+    Unlike ``get_current_developer``, this returns the subject ID directly
+    without database lookup, for minimal overhead during high-frequency checks.
+
+    Returns:
+        The developer ID (``sub`` claim) from the token.
+
+    Raises:
+        HTTPException(401): If token is missing, invalid, expired, or has wrong scope.
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required: provide token query parameter",
+        )
+
+    # Use shared validation logic
+    payload = _decode_and_validate_token(token)
+    return payload["sub"]

@@ -570,6 +570,54 @@ export interface SyncResponse {
   message: string;
 }
 
+// SSE Sync Event Types (real-time sync progress via Server-Sent Events)
+export type SyncEventType =
+  | 'sync:started'
+  | 'sync:provider:started'
+  | 'sync:provider:workouts:started'
+  | 'sync:provider:workouts:completed'
+  | 'sync:provider:workouts:error'
+  | 'sync:provider:247:started'
+  | 'sync:provider:247:completed'
+  | 'sync:provider:247:error'
+  | 'sync:provider:completed'
+  | 'sync:provider:error'
+  | 'sync:completed'
+  | 'sync:error';
+
+export interface SyncEvent {
+  type: SyncEventType;
+  timestamp: string;
+  task_id?: string;
+  provider?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface SyncProgress {
+  /** Whether a sync is currently in progress */
+  active: boolean;
+  /** Currently active task ID */
+  taskId: string | null;
+  /** All providers involved in this sync */
+  providers: string[];
+  /** Provider currently being synced */
+  currentProvider: string | null;
+  /** Human-readable status message */
+  message: string;
+  /** What step is currently running (workouts / 247 / null) */
+  currentStep: string | null;
+  /** Index of the provider currently being synced (0-based) */
+  currentIndex: number;
+  /** Total number of providers to sync */
+  totalProviders: number;
+  /** List of all SSE events received */
+  events: SyncEvent[];
+  /** Providers that finished successfully */
+  completedProviders: string[];
+  /** Providers that encountered errors */
+  errorProviders: string[];
+}
+
 // Garmin Backfill Types (webhook-based, multi-window sequential sync)
 export interface BackfillWindowStatus {
   [dataType: string]: 'done' | 'pending' | 'timed_out' | 'failed';

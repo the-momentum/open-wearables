@@ -5,6 +5,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from app.database import SessionLocal
+from app.integrations.sync_events import publish_sync_event
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
@@ -56,6 +57,8 @@ def sync_vendor_data(
             errors={"user_id": f"Invalid UUID format: {str(e)}"},
         ).model_dump()
 
+    task_id = sync_vendor_data.request.id or "unknown"
+
     result = SyncVendorDataResult(
         user_id=user_uuid,
         start_date=start_date,
@@ -78,6 +81,12 @@ def sync_vendor_data(
                     task="sync_vendor_data",
                 )
                 result.message = "No active provider connections found"
+                publish_sync_event(
+                    user_id,
+                    "sync:completed",
+                    task_id=task_id,
+                    data={"message": "No active provider connections found", "providers_synced": []},
+                )
                 return result.model_dump()
 
             log_structured(
@@ -88,7 +97,15 @@ def sync_vendor_data(
                 task="sync_vendor_data",
             )
 
-            for connection in connections:
+            provider_names = [c.provider for c in connections]
+            publish_sync_event(
+                user_id,
+                "sync:started",
+                task_id=task_id,
+                data={"providers": provider_names, "total_providers": len(connections)},
+            )
+
+            for idx, connection in enumerate(connections):
                 provider_name = connection.provider
                 log_structured(
                     logger,
@@ -98,16 +115,37 @@ def sync_vendor_data(
                     task="sync_vendor_data",
                 )
 
+                publish_sync_event(
+                    user_id,
+                    "sync:provider:started",
+                    task_id=task_id,
+                    provider=provider_name,
+                    data={"index": idx, "total": len(connections)},
+                )
+
                 try:
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
                     # Sync workouts
                     if strategy.workouts:
+                        publish_sync_event(
+                            user_id,
+                            "sync:provider:workouts:started",
+                            task_id=task_id,
+                            provider=provider_name,
+                        )
                         params = _build_sync_params(provider_name, start_date, end_date)
                         try:
                             success = strategy.workouts.load_data(db, user_uuid, **params)
                             provider_result.params["workouts"] = {"success": success, **params}
+                            publish_sync_event(
+                                user_id,
+                                "sync:provider:workouts:completed",
+                                task_id=task_id,
+                                provider=provider_name,
+                                data={"success": success},
+                            )
                         except Exception as e:
                             log_structured(
                                 logger,
@@ -123,6 +161,13 @@ def sync_vendor_data(
                                 extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
                             )
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
+                            publish_sync_event(
+                                user_id,
+                                "sync:provider:workouts:error",
+                                task_id=task_id,
+                                provider=provider_name,
+                                data={"error": "An error occurred syncing workouts"},
+                            )
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
@@ -140,6 +185,12 @@ def sync_vendor_data(
                             with suppress(ValueError):
                                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
+                        publish_sync_event(
+                            user_id,
+                            "sync:provider:247:started",
+                            task_id=task_id,
+                            provider=provider_name,
+                        )
                         try:
                             # Use load_and_save_all if available (saves data to DB)
                             # Otherwise fallback to load_all_247_data (just returns data)
@@ -168,6 +219,13 @@ def sync_vendor_data(
                                 provider="sync_vendor_data",
                                 task="sync_vendor_data",
                             )
+                            publish_sync_event(
+                                user_id,
+                                "sync:provider:247:completed",
+                                task_id=task_id,
+                                provider=provider_name,
+                                data={"success": True},
+                            )
                         except Exception as e:
                             log_structured(
                                 logger,
@@ -183,19 +241,49 @@ def sync_vendor_data(
                                 extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
                             )
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
+                            publish_sync_event(
+                                user_id,
+                                "sync:provider:247:error",
+                                task_id=task_id,
+                                provider=provider_name,
+                                data={"error": "An error occurred syncing 24/7 data"},
+                            )
 
                     user_connection_repo.update_last_synced_at(db, connection)
 
                     result.providers_synced[provider_name] = provider_result
+
+                    # Compute success based on individual component results
+                    sync_success = True
+                    for component_result in provider_result.params.values():
+                        # Each component result is a dict with a "success" key
+                        if isinstance(component_result, dict) and not component_result.get("success", False):
+                            sync_success = False
+                            break
+
                     log_structured(
                         logger,
                         "info",
-                        f"Successfully synced {provider_name} for user {user_id}",
+                        f"Successfully synced {provider_name} for user {user_id} (success={sync_success})",
                         provider="sync_vendor_data",
                         task="sync_vendor_data",
                     )
+                    publish_sync_event(
+                        user_id,
+                        "sync:provider:completed",
+                        task_id=task_id,
+                        provider=provider_name,
+                        data={"success": sync_success, "index": idx, "total": len(connections)},
+                    )
 
                 except Exception as e:
+                    publish_sync_event(
+                        user_id,
+                        "sync:provider:error",
+                        task_id=task_id,
+                        provider=provider_name,
+                        data={"error": "An error occurred syncing provider data"},
+                    )
                     log_and_capture_error(
                         e,
                         logger,
@@ -205,6 +293,15 @@ def sync_vendor_data(
                     result.errors[provider_name] = str(e)
                     continue
 
+            publish_sync_event(
+                user_id,
+                "sync:completed",
+                task_id=task_id,
+                data={
+                    "providers_synced": list(result.providers_synced.keys()),
+                    "errors": result.errors if result.errors else None,
+                },
+            )
             return result.model_dump()
 
         except Exception as e:
@@ -215,6 +312,12 @@ def sync_vendor_data(
                 extra={"user_id": user_id, "task": "sync_vendor_data"},
             )
             result.errors["general"] = str(e)
+            publish_sync_event(
+                user_id,
+                "sync:error",
+                task_id=task_id,
+                data={"error": str(e)},
+            )
             return result.model_dump()
 
 
