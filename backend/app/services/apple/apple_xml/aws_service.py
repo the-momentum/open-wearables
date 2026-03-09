@@ -16,7 +16,7 @@ def get_s3_client():  # noqa: ANN201
         return boto3.client(
             "s3",
             region_name=AWS_REGION,
-            aws_access_key_id=settings.aws_access_key_id.get_secret_value(),
+            aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),
         )
     except (NoCredentialsError, AttributeError):
