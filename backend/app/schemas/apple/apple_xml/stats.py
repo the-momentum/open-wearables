@@ -9,6 +9,8 @@ class XMLParseStats:
     records_skipped: int = 0
     workouts_processed: int = 0
     workouts_skipped: int = 0
+    sleep_records_processed: int = 0
+    sleep_records_skipped: int = 0
     skip_reasons: dict[str, int] = field(default_factory=dict)
 
     def record_skip(self, reason: str) -> None:
@@ -19,4 +21,9 @@ class XMLParseStats:
     def workout_skip(self, reason: str) -> None:
         """Record a skipped workout with its reason."""
         self.workouts_skipped += 1
+        self.skip_reasons[reason] = self.skip_reasons.get(reason, 0) + 1
+
+    def sleep_record_skip(self, reason: str) -> None:
+        """Record a skipped sleep record with its reason."""
+        self.sleep_records_skipped += 1
         self.skip_reasons[reason] = self.skip_reasons.get(reason, 0) + 1
