@@ -20,7 +20,6 @@ from app.schemas import (
 )
 from app.schemas.apple.apple_xml.stats import XMLParseStats
 from app.schemas.apple.healthkit.sync_request import SourceInfo
-from app.utils.structured_logging import log_structured
 
 
 class XMLService:
@@ -107,31 +106,30 @@ class XMLService:
         """
         Extract device information from source info.
         Example device string: device="<<HKDevice: 0x66aaba640>,
-         name:Apple Watch, manufacturer:Apple Inc., model:Watch,
+          name:Apple Watch, manufacturer:Apple Inc., model:Watch,
           hardware:Watch6,12, software:26.2, creation date:2026-01-15 22:56:09 +0000>"
+        Mobile SDK extracts more info about device, but XML exposes
+          only the fields above.
         """
         if not raw_source:
             return SourceInfo()
 
         source_list = raw_source.strip("<>").split(", ")
-        source_info: dict[str, str] = {}
+        raw_fields: dict[str, str] = {}
         for part in source_list:
             if ":" not in part:
-                log_structured(self.log, "warning", "Invalid source part: %s", part)
                 continue
             key, value = part.split(":", maxsplit=1)
-            source_info[key.strip()] = value.strip()
-        source_info.pop("creation date", None)
+            raw_fields[key.strip()] = value.strip()
 
-        field_mappings = {
-            "device": "device_id",
-            "model": "deviceModel",
-            "manufacturer": "deviceManufacturer",
-            "hardware": "deviceHardwareVersion",
-            "software": "deviceSoftwareVersion",
-        }
-        source_info = {field_mappings.get(key, key): value for key, value in source_info.items()}
-        return SourceInfo(**source_info)
+        return SourceInfo(
+            name=raw_fields.get("name"),
+            device_id=raw_fields.get("device"),
+            device_model=raw_fields.get("model"),
+            device_manufacturer=raw_fields.get("manufacturer"),
+            device_hardware_version=raw_fields.get("hardware"),
+            device_software_version=raw_fields.get("software"),
+        )
 
     def _create_record(
         self,
