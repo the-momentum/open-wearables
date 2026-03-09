@@ -33,7 +33,8 @@ def mock_sleep_redis() -> Any:
     mock_redis.sadd.return_value = 1
     mock_redis.srem.return_value = 1
 
-    with patch("app.services.apple.healthkit.sleep_service.redis_client", mock_redis):
+    with patch("app.services.apple.healthkit.sleep_service.get_redis_client") as mock_get_redis:
+        mock_get_redis.return_value = mock_redis
         yield mock_redis
 
 

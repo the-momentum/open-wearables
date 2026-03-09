@@ -36,7 +36,6 @@ from .garmin_backfill_task import (
 )
 
 logger = getLogger(__name__)
-redis_client = get_redis_client()
 
 
 def _key(user_id: str, *parts: str) -> str:
@@ -64,7 +63,7 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
         for data_type in BACKFILL_DATA_TYPES
         for suffix in ("triggered_at", "completed_at")
     ]
-    for val in redis_client.mget(keys):
+    for val in get_redis_client().mget(keys):
         if val:
             try:
                 ts = datetime.fromisoformat(val)
@@ -73,7 +72,7 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
             except (ValueError, TypeError):
                 continue
 
-    anchor_val = redis_client.get(_key(user_id, "window", "anchor_ts"))
+    anchor_val = get_redis_client().get(_key(user_id, "window", "anchor_ts"))
     if anchor_val:
         try:
             anchor_ts = datetime.fromisoformat(anchor_val)
@@ -83,7 +82,7 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
             pass
 
     # Fallback: check anchor_ts (set when backfill starts, before any type is triggered)
-    anchor_val = redis_client.get(_key(user_id, "window", "anchor_ts"))
+    anchor_val = get_redis_client().get(_key(user_id, "window", "anchor_ts"))
     if anchor_val:
         try:
             anchor_ts = datetime.fromisoformat(anchor_val)
@@ -112,14 +111,14 @@ def clear_stuck_backfill(user_id: str) -> dict[str, Any]:
     """
     # Increment attempt counter
     attempt_key = _key(user_id, "attempt_count")
-    attempt_count = redis_client.incr(attempt_key)
-    redis_client.expire(attempt_key, REDIS_TTL)
+    attempt_count = get_redis_client().incr(attempt_key)
+    get_redis_client().expire(attempt_key, REDIS_TTL)
 
     # Find the currently-triggered type
     cleared_type: str | None = None
     keys = [_key(user_id, "types", data_type, "status") for data_type in BACKFILL_DATA_TYPES]
 
-    for data_type, status in zip(BACKFILL_DATA_TYPES, redis_client.mget(keys)):
+    for data_type, status in zip(BACKFILL_DATA_TYPES, get_redis_client().mget(keys)):
         if status == "triggered":
             cleared_type = data_type
             break
@@ -137,7 +136,7 @@ def clear_stuck_backfill(user_id: str) -> dict[str, Any]:
     permanently_failed = attempt_count >= GC_MAX_ATTEMPTS
     if permanently_failed:
         pf_key = _key(user_id, "permanently_failed")
-        redis_client.setex(pf_key, REDIS_TTL, "1")
+        get_redis_client().setex(pf_key, REDIS_TTL, "1")
 
     log_structured(
         logger,
@@ -184,7 +183,7 @@ def gc_stuck_backfills() -> dict[str, Any]:
     cursor = 0
 
     while True:
-        cursor, keys = redis_client.scan(cursor=cursor, match=match_pattern, count=100)
+        cursor, keys = get_redis_client().scan(cursor=cursor, match=match_pattern, count=100)
 
         for key in keys:
             # key format: "garmin:backfill:{user_id}:lock"

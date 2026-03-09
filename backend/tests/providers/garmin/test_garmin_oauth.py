@@ -53,13 +53,12 @@ class TestGarminOAuth:
         """Garmin should use body authentication method."""
         assert garmin_oauth.auth_method == AuthenticationMethod.BODY
 
-    @patch("app.integrations.redis_client.get_redis_client")
-    def test_get_authorization_url(self, mock_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
+    @patch("app.services.providers.templates.base_oauth.get_redis_client")
+    def test_get_authorization_url(self, mock_get_redis: MagicMock, garmin_oauth: GarminOAuth) -> None:
         """Test generating authorization URL with PKCE."""
         # Arrange
         mock_redis_client = MagicMock()
-        mock_redis.return_value = mock_redis_client
-        garmin_oauth.redis_client = mock_redis_client
+        mock_get_redis.return_value = mock_redis_client
 
         user_id = uuid4()
 

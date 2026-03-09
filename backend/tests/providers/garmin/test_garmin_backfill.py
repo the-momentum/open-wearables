@@ -338,7 +338,7 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TASK_MODULE}.mark_type_failed") as mock_mark_failed,
             patch(f"{self.TASK_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
             patch(f"{self.TASK_MODULE}.trigger_next_pending_type") as mock_next,
-            patch(f"{self.TASK_MODULE}.redis_client", mock_redis),
+            patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
         ):
             # Setup DB session context manager

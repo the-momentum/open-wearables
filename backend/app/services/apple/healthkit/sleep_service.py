@@ -21,8 +21,6 @@ from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
 
-redis_client = get_redis_client()
-
 logger = getLogger(__name__)
 
 
@@ -39,7 +37,7 @@ def active_users_key() -> str:
 def load_sleep_state(user_id: str) -> SleepState | None:
     """Load the sleep state from Redis."""
     sleep_state_key = key(user_id)
-    state = redis_client.get(sleep_state_key)
+    state = get_redis_client().get(sleep_state_key)
     if not state:
         return None
     try:
@@ -52,14 +50,14 @@ def load_sleep_state(user_id: str) -> SleepState | None:
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    redis_client.set(key(user_id), state.model_dump_json())
-    redis_client.expire(key(user_id), settings.redis_sleep_ttl_seconds)
-    redis_client.sadd(active_users_key(), user_id)
+    get_redis_client().set(key(user_id), state.model_dump_json())
+    get_redis_client().expire(key(user_id), settings.redis_sleep_ttl_seconds)
+    get_redis_client().sadd(active_users_key(), user_id)
 
 
 def delete_sleep_state(user_id: str) -> None:
-    redis_client.delete(key(user_id))
-    redis_client.srem(active_users_key(), user_id)
+    get_redis_client().delete(key(user_id))
+    get_redis_client().srem(active_users_key(), user_id)
 
 
 def _create_new_sleep_state(
@@ -193,7 +191,10 @@ def handle_sleep_data(
 
     for item in sorted_raw:
         # Create a unique key for deduplication
-        key_tuple = (item.startDate, item.endDate, item.stage, item.source)
+        # SourceInfo is not hashable, use JSON dump
+        source_key = item.source.model_dump_json() if item.source else None
+        key_tuple = (item.startDate, item.endDate, item.stage, source_key)
+
         if key_tuple not in seen:
             seen.add(key_tuple)
             unique_data.append(item)

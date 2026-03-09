@@ -120,16 +120,20 @@ class TestSuuntoImport:
 
         # Mock Redis state
         assert suunto_strategy.oauth is not None
-        with patch.object(suunto_strategy.oauth.redis_client, "get") as mock_redis_get:
-            state_data = {
-                "user_id": str(user.id),
-                "provider": "suunto",
-                "redirect_uri": None,
-            }
-            import json
 
-            mock_redis_get.return_value = json.dumps(state_data)
+        state_data = {
+            "user_id": str(user.id),
+            "provider": "suunto",
+            "redirect_uri": None,
+        }
+        import json
 
+        # Create a mock redis client
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = json.dumps(state_data).encode("utf-8")
+
+        # Patch get_redis_client to return our mock
+        with patch("app.services.providers.templates.base_oauth.get_redis_client", return_value=mock_redis):
             # Act
             assert suunto_strategy.oauth is not None
             oauth_state = suunto_strategy.oauth.handle_callback(db, "test_code", "test_state")
