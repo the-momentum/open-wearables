@@ -4,11 +4,12 @@ from logging import getLogger
 from pathlib import Path
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.services import event_record_service
-from app.services.apple.apple_xml.aws_service import s3_client
+from app.services.apple.apple_xml.aws_service import get_s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
@@ -27,6 +28,10 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
         bucket_name: S3 bucket name
         object_key: S3 object key (path)
     """
+
+    s3_client = get_s3_client()
+    if not s3_client:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="S3 client not configured")
 
     with SessionLocal() as db:
         temp_xml_file = None
