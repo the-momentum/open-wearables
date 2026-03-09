@@ -7,14 +7,8 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.constants.series_types.apple import get_series_type_from_metric_type
+from app.constants.series_types.apple import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
-from app.constants.series_types.apple import SleepPhase
-from app.schemas.apple.healthkit.sync_request import (
-    SleepRecord,
-    SyncRequest,
-    SyncRequestData,
-)
 from app.schemas import (
     EventRecordCreate,
     EventRecordDetailCreate,
@@ -25,7 +19,12 @@ from app.schemas import (
     TimeSeriesSampleCreate,
 )
 from app.schemas.apple.apple_xml.stats import XMLParseStats
-from app.schemas.apple.healthkit.sync_request import SourceInfo
+from app.schemas.apple.healthkit.sync_request import (
+    SleepRecord,
+    SourceInfo,
+    SyncRequest,
+    SyncRequestData,
+)
 
 
 class XMLService:
@@ -136,7 +135,7 @@ class XMLService:
             device_hardware_version=raw_fields.get("hardware"),
             device_software_version=raw_fields.get("software"),
         )
-        
+
     def _normalize_sleep_record(self, document: dict[str, Any]) -> SleepRecord | None:
         """Normalize a sleep record."""
         value_to_stage = {
@@ -150,16 +149,18 @@ class XMLService:
         if stage is None:
             return None
 
-        # implement source extraction from PR #582
-        # source_info = _get_source_info(raw_source)
-        
+        start_date = datetime.fromisoformat(str(document.get("startDate")))
+        end_date = datetime.fromisoformat(str(document.get("endDate")))
+
+        source_info = self._extract_device_info(document.get("source", ""))
+
         return SleepRecord(
             id=None,
             parentId=None,
             stage=stage,
-            startDate=document.get("startDate"),
-            endDate=document.get("endDate"),
-            source=None, # implement source extraction from PR #582
+            startDate=start_date,
+            endDate=end_date,
+            source=source_info,
         )
 
     def _create_record(
@@ -296,8 +297,8 @@ class XMLService:
 
     def _wrap_sleep_data(self, sleep_records: list[SleepRecord]) -> SyncRequest:
         """Wrap sleep data in a SyncRequest
-         to be sent to the handle_sleep_data function."""
-        payload = SyncRequest(
+        to be sent to the handle_sleep_data function."""
+        return SyncRequest(
             provider="apple_health_xml",
             sdkVersion="n/a",
             syncTimestamp=datetime.now(),
@@ -307,7 +308,6 @@ class XMLService:
                 workouts=[],
             ),
         )
-        return payload
 
     def parse_xml(
         self,
@@ -334,7 +334,7 @@ class XMLService:
         time_series_records: list[TimeSeriesSampleCreate] = []
         workouts: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
         sleep_records: list[SleepRecord] = []
-        
+
         uuid_user = UUID(user_id)
 
         # Reset stats for this parse run
@@ -344,7 +344,8 @@ class XMLService:
             if elem.tag == "Record" and event == "end":
                 if len(workouts) + len(time_series_records) + len(sleep_records) >= self.chunk_size:
                     self.log.info(
-                        "Yielding chunk: %s time series records, %s workouts, %s sleep records (skipped so far: %s records, %s workouts, %s sleep records)",
+                        "Yielding chunk: %s time series records, %s workouts, %s sleep records \
+                            (skipped so far: %s records, %s workouts, %s sleep records)",
                         len(time_series_records),
                         len(workouts),
                         len(sleep_records),
@@ -371,7 +372,7 @@ class XMLService:
                             self.stats.sleep_record_skip(f"unknown_sleep_stage:{record.get('value')}")
                             elem.clear()
                         continue
-                    
+
                     record_create = self._create_record(record, uuid_user)
                     if record_create is not None:
                         time_series_records.append(record_create)
@@ -397,6 +398,7 @@ class XMLService:
                         self.stats.records_skipped,
                         self.stats.workouts_skipped,
                     )
+                    sync_request = self._wrap_sleep_data(sleep_records)
                     yield time_series_records, workouts, sync_request
                     time_series_records = []
                     workouts = []
@@ -430,7 +432,8 @@ class XMLService:
             len(time_series_records),
             len(workouts),
         )
-        yield time_series_records, workouts
+        sync_request = self._wrap_sleep_data(sleep_records)
+        yield time_series_records, workouts, sync_request
 
         # Log final stats
         self._log_parse_summary()

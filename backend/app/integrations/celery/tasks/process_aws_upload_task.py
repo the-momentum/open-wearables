@@ -10,6 +10,7 @@ from app.database import SessionLocal
 from app.services import event_record_service
 from app.services.apple.apple_xml.aws_service import get_s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.sentry_helpers import log_and_capture_error
@@ -102,7 +103,7 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
     """
     xml_service = XMLService(Path(xml_path), getLogger(__name__))
 
-    for time_series_records, workouts in xml_service.parse_xml(user_id):
+    for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
         for record, detail in workouts:
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
@@ -110,3 +111,5 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
             db.commit()
+        if sync_request:
+            handle_sleep_data(db, sync_request, user_id)
