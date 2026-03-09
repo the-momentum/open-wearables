@@ -369,6 +369,10 @@ class XMLService:
                             sleep_records.append(sleep_record)
                             self.stats.sleep_records_processed += 1
                         else:
+                            self.log.warning(
+                                "Skipping sleep record with unsupported stage %s",
+                                record.get("value"),
+                            )
                             self.stats.sleep_record_skip(f"unknown_sleep_stage:{record.get('value')}")
                         elem.clear()
                         continue
