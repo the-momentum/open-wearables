@@ -370,7 +370,7 @@ class XMLService:
                             self.stats.sleep_records_processed += 1
                         else:
                             self.stats.sleep_record_skip(f"unknown_sleep_stage:{record.get('value')}")
-                            elem.clear()
+                        elem.clear()
                         continue
 
                     record_create = self._create_record(record, uuid_user)
