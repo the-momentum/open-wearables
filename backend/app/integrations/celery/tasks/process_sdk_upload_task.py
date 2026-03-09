@@ -3,7 +3,6 @@ from logging import getLogger
 from uuid import UUID
 
 from app.database import SessionLocal
-from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
@@ -127,7 +126,5 @@ def process_sdk_upload(
             workouts_saved=result.get("workouts_saved", 0),
             sleep_saved=result.get("sleep_saved", 0),
         )
-
-        finalize_stale_sleeps.delay()
 
         return {**result, "batch_id": batch_id}
