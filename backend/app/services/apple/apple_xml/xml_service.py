@@ -152,7 +152,7 @@ class XMLService:
         start_date = datetime.fromisoformat(str(document.get("startDate")))
         end_date = datetime.fromisoformat(str(document.get("endDate")))
 
-        source_info = self._extract_device_info(document.get("source", ""))
+        source_info = self._extract_device_info(document.get("device", ""))
 
         return SleepRecord(
             id=None,
@@ -402,6 +402,7 @@ class XMLService:
                     yield time_series_records, workouts, sync_request
                     time_series_records = []
                     workouts = []
+                    sleep_records = []
 
                 try:
                     workout_data: dict[str, Any] = elem.attrib.copy()

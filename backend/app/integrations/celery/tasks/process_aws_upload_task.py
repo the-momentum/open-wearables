@@ -111,5 +111,5 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
             db.commit()
-        if sync_request:
+        if sync_request and sync_request.data.sleep:
             handle_sleep_data(db, sync_request, user_id)
