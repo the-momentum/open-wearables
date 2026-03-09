@@ -257,7 +257,7 @@ class TestImportXmlData:
 
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            (mock_time_series_records, [(mock_record, mock_detail)]),
+            (mock_time_series_records, [(mock_record, mock_detail)], None),
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
@@ -291,7 +291,7 @@ class TestImportXmlData:
         mock_event_record_service.create.return_value = mock_created_record
 
         mock_xml_service = MagicMock()
-        mock_xml_service.parse_xml.return_value = [([], [workout1, workout2])]
+        mock_xml_service.parse_xml.return_value = [([], [workout1, workout2], None)]
         mock_xml_service_class.return_value = mock_xml_service
 
         # Act
@@ -319,7 +319,7 @@ class TestImportXmlData:
         # Mock XMLService with empty time series (time_series_records, workouts)
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            ([], []),  # Empty time series and workouts
+            ([], [], None),  # Empty time series and workouts
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
@@ -349,7 +349,7 @@ class TestImportXmlData:
 
         mock_xml_service = MagicMock()
         mock_xml_service.parse_xml.return_value = [
-            (mock_time_series_records, []),  # Only time series, no workouts
+            (mock_time_series_records, [], None),  # Only time series, no workouts
         ]
         mock_xml_service_class.return_value = mock_xml_service
 
