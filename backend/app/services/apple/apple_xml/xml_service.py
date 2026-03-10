@@ -25,6 +25,7 @@ from app.schemas.apple.healthkit.sync_request import (
     SyncRequest,
     SyncRequestData,
 )
+from app.utils.structured_logging import log_structured
 
 
 class XMLService:
@@ -65,6 +66,15 @@ class XMLService:
         "minimum",
         "unit",
     )
+    SLEEP_VALUE_TO_STAGE: dict[str, SleepPhase] = {
+        "HKCategoryValueSleepAnalysisAsleepCore": SleepPhase.ASLEEP_LIGHT,
+        "HKCategoryValueSleepAnalysisAsleepDeep": SleepPhase.ASLEEP_DEEP,
+        "HKCategoryValueSleepAnalysisAsleepREM": SleepPhase.ASLEEP_REM,
+        "HKCategoryValueSleepAnalysisAwake": SleepPhase.AWAKE,
+        "HKCategoryValueSleepAnalysisInBed": SleepPhase.IN_BED,
+        "HKCategoryValueSleepAnalysisAsleep": SleepPhase.SLEEPING,
+        "HKCategoryValueSleepAnalysisAsleepUnspecified": SleepPhase.SLEEPING,
+    }
 
     def _parse_date_fields(self, document: dict[str, Any]) -> dict[str, Any]:
         for date_field in self.DATE_FIELDS:
@@ -138,16 +148,7 @@ class XMLService:
 
     def _normalize_sleep_record(self, document: dict[str, Any]) -> SleepRecord | None:
         """Normalize a sleep record."""
-        value_to_stage = {
-            "HKCategoryValueSleepAnalysisAsleepCore": SleepPhase.ASLEEP_LIGHT,
-            "HKCategoryValueSleepAnalysisAsleepDeep": SleepPhase.ASLEEP_DEEP,
-            "HKCategoryValueSleepAnalysisAsleepREM": SleepPhase.ASLEEP_REM,
-            "HKCategoryValueSleepAnalysisAwake": SleepPhase.AWAKE,
-            "HKCategoryValueSleepAnalysisInBed": SleepPhase.IN_BED,
-            "HKCategoryValueSleepAnalysisAsleep": SleepPhase.SLEEPING,
-            "HKCategoryValueSleepAnalysisAsleepUnspecified": SleepPhase.SLEEPING,
-        }
-        stage = value_to_stage.get(document.get("value"))
+        stage = self.SLEEP_VALUE_TO_STAGE.get(str(document.get("value")))
         if stage is None:
             return None
 
@@ -184,7 +185,7 @@ class XMLService:
         # Parse the value - skip record if invalid
         value = self._parse_decimal_value(document.get("value"), metric_type)
         if value is None:
-            self.stats.record_skip(f"invalid_value:{metric_type}")
+            self.stats.records.skip(f"invalid_value:{metric_type}")
             return None
 
         # Parse date fields
@@ -192,13 +193,13 @@ class XMLService:
             document = self._parse_date_fields(document)
         except ValueError as e:
             self.log.warning("Failed to parse date for metric type %s: %s", metric_type, str(e))
-            self.stats.record_skip(f"invalid_date:{metric_type}")
+            self.stats.records.skip(f"invalid_date:{metric_type}")
             return None
 
         # Check required date field
         if "startDate" not in document:
             self.log.warning("Missing startDate for metric type %s", metric_type)
-            self.stats.record_skip(f"missing_startDate:{metric_type}")
+            self.stats.records.skip(f"missing_startDate:{metric_type}")
             return None
 
         device_info = self._extract_device_info(document.get("device", ""))
@@ -355,9 +356,9 @@ class XMLService:
                         len(time_series_records),
                         len(workouts),
                         len(sleep_records),
-                        self.stats.records_skipped,
-                        self.stats.workouts_skipped,
-                        self.stats.sleep_records_skipped,
+                        self.stats.records.skipped,
+                        self.stats.workouts.skipped,
+                        self.stats.sleep.skipped,
                     )
                     sync_request = self._wrap_sleep_data(sleep_records)
                     yield time_series_records, workouts, sync_request
@@ -373,20 +374,20 @@ class XMLService:
                         sleep_record = self._normalize_sleep_record(record)
                         if sleep_record is not None:
                             sleep_records.append(sleep_record)
-                            self.stats.sleep_records_processed += 1
+                            self.stats.sleep.mark_processed()
                         else:
                             self.log.warning(
                                 "Skipping sleep record with unsupported stage %s",
                                 record.get("value"),
                             )
-                            self.stats.sleep_record_skip(f"unknown_sleep_stage:{record.get('value')}")
+                            self.stats.sleep.skip(f"unknown_sleep_stage:{record.get('value')}")
                         elem.clear()
                         continue
 
                     record_create = self._create_record(record, uuid_user)
                     if record_create is not None:
                         time_series_records.append(record_create)
-                        self.stats.records_processed += 1
+                        self.stats.records.mark_processed()
                 except Exception as e:
                     # Catch any unexpected errors to prevent entire import from failing
                     metric_type = elem.attrib.get("type", "unknown")
@@ -395,7 +396,7 @@ class XMLService:
                         metric_type,
                         str(e),
                     )
-                    self.stats.record_skip(f"unexpected_error:{type(e).__name__}")
+                    self.stats.records.skip(f"unexpected_error:{type(e).__name__}")
                 finally:
                     elem.clear()
 
@@ -405,8 +406,8 @@ class XMLService:
                         "Yielding chunk: %s time series records, %s workouts (skipped so far: %s records, %s workouts)",
                         len(time_series_records),
                         len(workouts),
-                        self.stats.records_skipped,
-                        self.stats.workouts_skipped,
+                        self.stats.records.skipped,
+                        self.stats.workouts.skipped,
                     )
                     sync_request = self._wrap_sleep_data(sleep_records)
                     yield time_series_records, workouts, sync_request
@@ -424,7 +425,7 @@ class XMLService:
                         self._update_metrics_from_stat(metrics, statistic)
                     workout_record, workout_detail = self._create_workout(workout_data, uuid_user, metrics)
                     workouts.append((workout_record, workout_detail))
-                    self.stats.workouts_processed += 1
+                    self.stats.workouts.mark_processed()
                 except Exception as e:
                     # Catch any unexpected errors to prevent entire import from failing
                     workout_type = elem.attrib.get("workoutActivityType", "unknown")
@@ -433,15 +434,20 @@ class XMLService:
                         workout_type,
                         str(e),
                     )
-                    self.stats.workout_skip(f"unexpected_error:{type(e).__name__}")
+                    self.stats.workouts.skip(f"unexpected_error:{type(e).__name__}")
                 finally:
                     elem.clear()
 
         # yield remaining records and workout pairs
-        self.log.info(
-            "Final chunk: %s time series records, %s workouts",
-            len(time_series_records),
-            len(workouts),
+        log_structured(
+            self.log,
+            "info",
+            "Final chunk",
+            provider="apple_xml",
+            task="process_xml_upload",
+            record_count=len(time_series_records),
+            workout_count=len(workouts),
+            sleep_count=len(sleep_records),
         )
         sync_request = self._wrap_sleep_data(sleep_records)
         yield time_series_records, workouts, sync_request
@@ -451,27 +457,43 @@ class XMLService:
 
     def _log_parse_summary(self) -> None:
         """Log a summary of the parsing results."""
-        total_records = self.stats.records_processed + self.stats.records_skipped
-        total_workouts = self.stats.workouts_processed + self.stats.workouts_skipped
+        total_records = self.stats.records.processed + self.stats.records.skipped
+        total_workouts = self.stats.workouts.processed + self.stats.workouts.skipped
+        total_sleep = self.stats.sleep.processed + self.stats.sleep.skipped
 
-        self.log.info(
-            "XML parsing complete: %s/%s records processed, %s/%s workouts processed",
-            self.stats.records_processed,
-            total_records,
-            self.stats.workouts_processed,
-            total_workouts,
+        log_structured(
+            self.log,
+            "info",
+            "XML parsing complete",
+            provider="apple_xml",
+            task="process_xml_upload",
+            records_processed=self.stats.records.processed,
+            total_records=total_records,
+            workouts_processed=self.stats.workouts.processed,
+            total_workouts=total_workouts,
+            sleep_processed=self.stats.sleep.processed,
+            total_sleep=total_sleep,
         )
 
-        if self.stats.records_skipped > 0 or self.stats.workouts_skipped > 0:
-            self.log.warning(
-                "Skipped %s records and %s workouts during import",
-                self.stats.records_skipped,
-                self.stats.workouts_skipped,
+        if self.stats.any_skipped():
+            log_structured(
+                self.log,
+                "warning",
+                "Records, workouts, or sleep skipped during import",
+                provider="apple_xml",
+                task="process_xml_upload",
+                skipped_records=self.stats.records.skipped,
+                skipped_workouts=self.stats.workouts.skipped,
+                skipped_sleep=self.stats.sleep.skipped,
             )
 
             # Log breakdown of skip reasons
-            if self.stats.skip_reasons:
-                reasons_summary = ", ".join(
-                    f"{reason}: {count}" for reason, count in sorted(self.stats.skip_reasons.items())
+            for type, reasons in self.stats.get_skip_summary().items():
+                log_structured(
+                    self.log,
+                    "warning",
+                    f"Skipped {type}: {reasons}",
+                    provider="apple_xml",
+                    task="process_xml_upload",
+                    skip_type=type,
                 )
-                self.log.warning("Skip reasons: %s", reasons_summary)

@@ -49,11 +49,13 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 "status": "success",
                 "message": "Import completed successfully",
                 "stats": {
-                    "records_processed": stats.records_processed,
-                    "records_skipped": stats.records_skipped,
-                    "workouts_processed": stats.workouts_processed,
-                    "workouts_skipped": stats.workouts_skipped,
-                    "skip_reasons": stats.skip_reasons,
+                    "records_processed": stats.records.processed,
+                    "records_skipped": stats.records.skipped,
+                    "workouts_processed": stats.workouts.processed,
+                    "workouts_skipped": stats.workouts.skipped,
+                    "sleep_processed": stats.sleep.processed,
+                    "sleep_skipped": stats.sleep.skipped,
+                    "skip_reasons": stats.get_skip_summary(),
                 },
             }
 
@@ -117,7 +119,7 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                     "Failed to save workout record %s: %s - skipping",
                     extra={"record_type": record.type if hasattr(record, "type") else "unknown", "user_id": user_id},
                 )
-                xml_service.stats.workout_skip(f"db_error:{type(e).__name__}")
+                xml_service.stats.workouts.skip(f"db_error:{type(e).__name__}")
 
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
