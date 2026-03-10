@@ -383,6 +383,7 @@ function UserDetailPage() {
                   variant="outline"
                   size="icon"
                   className="shrink-0"
+                  aria-label="Copy API URL"
                 >
                   {urlCopied ? (
                     <Check className="h-4 w-4 text-emerald-500" />
@@ -408,6 +409,7 @@ function UserDetailPage() {
                   variant="outline"
                   size="icon"
                   className="shrink-0"
+                  aria-label="Copy invitation code"
                 >
                   {codeCopied ? (
                     <Check className="h-4 w-4 text-emerald-500" />
