@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 from logging import getLogger
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from app.config import settings
@@ -19,6 +20,9 @@ from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepSta
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
+
+if TYPE_CHECKING:
+    from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
 redis_client = get_redis_client()
 
@@ -192,9 +196,6 @@ def handle_sleep_data(
             device_model,
         )
         save_sleep_state(user_id, current_state)
-
-    # import not at module level in order to avoid circular import
-    from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
     # if we dont call the task, last sleep session in payload will stay
     # in redis until celery beat task runs
