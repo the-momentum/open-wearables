@@ -1,7 +1,6 @@
 import json
 from datetime import datetime
 from logging import getLogger
-from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from app.config import settings
@@ -20,10 +19,6 @@ from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepSta
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service
 from app.utils.structured_logging import log_structured
-
-# also imported below to avoid circular import, adding it here to avoid confusion
-if TYPE_CHECKING:
-    pass
 
 redis_client = get_redis_client()
 
