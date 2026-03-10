@@ -297,9 +297,9 @@ class XMLService:
                 metrics["heart_rate_max"] = int(max_value)
             if avg_value is not None:
                 metrics["heart_rate_avg"] = avg_value
-        
-        if "energyburned" in lowered:
-            metrics["energy_burned"] += self._decimal_from_stat(statistic.get("sum"))
+
+        if "energyburned" in lowered and metrics["energy_burned"] is not None:
+            metrics["energy_burned"] += self._decimal_from_stat(statistic.get("sum")) or Decimal("0")
 
     def _wrap_sleep_data(self, sleep_records: list[SleepRecord]) -> SyncRequest:
         """Wrap sleep data in a SyncRequest
