@@ -144,6 +144,8 @@ class XMLService:
             "HKCategoryValueSleepAnalysisAsleepREM": SleepPhase.ASLEEP_REM,
             "HKCategoryValueSleepAnalysisAwake": SleepPhase.AWAKE,
             "HKCategoryValueSleepAnalysisInBed": SleepPhase.IN_BED,
+            "HKCategoryValueSleepAnalysisAsleep": SleepPhase.SLEEPING,
+            "HKCategoryValueSleepAnalysisAsleepUnspecified": SleepPhase.SLEEPING,
         }
         stage = value_to_stage.get(document.get("value"))
         if stage is None:
