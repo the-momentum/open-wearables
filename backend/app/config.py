@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
+    # WITHINGS OAUTH SETTINGS
+    withings_client_id: str | None = None
+    withings_client_secret: SecretStr | None = None
+    withings_redirect_uri: str = "http://localhost:8000/api/v1/oauth/withings/callback"
+    withings_default_scope: str = "user.info,user.metrics,user.activity"
+
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
     email_from_address: str | None = None
