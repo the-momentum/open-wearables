@@ -26,7 +26,12 @@ basicConfig(
 api = FastAPI(title=settings.api_name)
 celery_app = create_celery()
 init_sentry()
-raw_payload_storage.configure(settings.raw_payload_storage, settings.raw_payload_max_size_bytes)
+raw_payload_storage.configure(
+    settings.raw_payload_storage,
+    settings.raw_payload_max_size_bytes,
+    s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
+    s3_prefix=settings.raw_payload_s3_prefix,
+)
 
 add_cors_middleware(api)
 

@@ -3,6 +3,11 @@
 Stores raw payloads received from SDKs, webhooks, and API responses.
 Disabled by default - enable via RAW_PAYLOAD_STORAGE env var.
 
+Supported backends:
+    - "disabled" (default): no-op
+    - "log": prints JSON to stdout
+    - "s3": uploads to S3 bucket (configured via RAW_PAYLOAD_S3_BUCKET / AWS creds)
+
 Usage (one-liner at ingestion point):
     store_raw_payload(source="webhook", provider="garmin", payload=data)
 """
@@ -10,7 +15,9 @@ Usage (one-liner at ingestion point):
 import json
 import logging
 import sys
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from app.utils.structured_logging import json_serial
 
@@ -18,13 +25,52 @@ logger = logging.getLogger(__name__)
 
 _storage_backend: str = "disabled"
 _max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
+_s3_bucket: str | None = None
+_s3_prefix: str = "raw-payloads"
+_s3_client: Any = None
 
 
-def configure(storage_backend: str, max_size_bytes: int) -> None:
+def configure(
+    storage_backend: str,
+    max_size_bytes: int,
+    s3_bucket: str | None = None,
+    s3_prefix: str = "raw-payloads",
+) -> None:
     """Called once at startup from settings."""
-    global _storage_backend, _max_size_bytes
+    global _storage_backend, _max_size_bytes, _s3_bucket, _s3_prefix, _s3_client
     _storage_backend = storage_backend
     _max_size_bytes = max_size_bytes
+    _s3_prefix = s3_prefix
+
+    if storage_backend == "s3":
+        _s3_bucket = s3_bucket
+        if not _s3_bucket:
+            logger.error("RAW_PAYLOAD_STORAGE=s3 but no S3 bucket configured")
+            _storage_backend = "disabled"
+            return
+        _s3_client = _create_s3_client()
+        if _s3_client is None:
+            logger.error("Failed to create S3 client - raw payload storage disabled")
+            _storage_backend = "disabled"
+
+
+def _create_s3_client() -> Any:
+    """Create a boto3 S3 client using app AWS settings."""
+    try:
+        import boto3
+        from botocore.exceptions import NoCredentialsError
+
+        from app.config import settings
+
+        return boto3.client(
+            "s3",
+            region_name=settings.aws_region,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),
+        )
+    except (NoCredentialsError, AttributeError, Exception) as e:
+        logger.error("Cannot create S3 client for raw payload storage: %s", e)
+        return None
 
 
 def store_raw_payload(
@@ -61,6 +107,8 @@ def store_raw_payload(
 
     if _storage_backend == "log":
         _store_to_log(source, provider, payload_str, size, user_id, trace_id)
+    elif _storage_backend == "s3":
+        _store_to_s3(source, provider, payload_str, size, user_id, trace_id)
 
 
 def _store_to_log(
@@ -85,3 +133,55 @@ def _store_to_log(
     entry["payload"] = payload_str
 
     print(json.dumps(entry), file=sys.stdout, flush=True)
+
+
+def _store_to_s3(
+    source: str,
+    provider: str,
+    payload_str: str,
+    size: int,
+    user_id: str | None,
+    trace_id: str | None,
+) -> None:
+    """Upload raw payload to S3.
+
+    Key format: {prefix}/{provider}/{source}/{YYYY-MM-DD}/{uuid}.json
+    Metadata includes user_id, trace_id, and size for easy filtering.
+    """
+    if _s3_client is None or _s3_bucket is None:
+        logger.warning("S3 client or bucket not configured - skipping raw payload storage")
+        return
+
+    now = datetime.now(UTC)
+    date_part = now.strftime("%Y-%m-%d")
+    file_id = uuid4().hex[:12]
+    user_part = user_id if user_id else "_unknown"
+    key = f"{_s3_prefix}/{provider}/{source}/{date_part}/{user_part}/{file_id}.json"
+
+    metadata: dict[str, str] = {
+        "source": source,
+        "provider": provider,
+        "size_bytes": str(size),
+        "timestamp": now.isoformat(),
+    }
+    if user_id:
+        metadata["user_id"] = user_id
+    if trace_id:
+        metadata["trace_id"] = trace_id
+
+    try:
+        _s3_client.put_object(
+            Bucket=_s3_bucket,
+            Key=key,
+            Body=payload_str.encode("utf-8"),
+            ContentType="application/json",
+            Metadata=metadata,
+        )
+        logger.debug(
+            "Stored raw payload to S3: s3://%s/%s (%d bytes)",
+            _s3_bucket,
+            key,
+            size,
+        )
+    except Exception:
+        logger.exception("Failed to store raw payload to S3: s3://%s/%s", _s3_bucket, key)
