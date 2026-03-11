@@ -22,6 +22,7 @@ function PairSuccessPage() {
   useEffect(() => {
     queryClient.invalidateQueries({
       queryKey: queryKeys.connections.all(userId),
+      refetchType: 'all',
     });
   }, [userId]);
 
