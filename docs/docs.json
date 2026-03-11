@@ -51,6 +51,14 @@
                 ]
               },
               {
+                "group": "Android (Kotlin)",
+                "pages": [
+                  "sdk/android/index",
+                  "sdk/android/integration",
+                  "sdk/android/troubleshooting"
+                ]
+              },
+              {
                 "group": "Flutter",
                 "pages": [
                   "sdk/flutter/index",

@@ -1,0 +1,587 @@
+---
+title: "Integration Guide"
+sidebarTitle: "Integration Guide"
+description: "Complete guide to integrating the native Android SDK with your Kotlin application"
+---
+
+## Overview
+
+This guide walks you through the complete integration of the Open Wearables Android SDK into a native Kotlin application, from backend setup to production deployment.
+
+<Steps>
+  <Step title="Set up backend authentication endpoint" />
+  <Step title="Initialize and configure the SDK" />
+  <Step title="Implement sign-in flow" />
+  <Step title="Select health provider" />
+  <Step title="Request health permissions" />
+  <Step title="Start background sync" />
+</Steps>
+
+## Authentication Architecture
+
+The SDK supports two authentication modes: **token-based** (recommended) and **API key**. The token-based flow keeps your API keys safe on your backend:
+
+<Steps>
+  <Step title="Mobile App requests credentials" icon="mobile">
+    User initiates health connection in your Android app. App calls your backend.
+  </Step>
+  <Step title="Your Backend generates token" icon="server">
+    Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
+    ```
+    POST https://api.openwearables.io/v1/tokens
+    X-API-Key: <OPENWEARABLES_API_KEY>
+    ```
+  </Step>
+  <Step title="Backend returns credentials" icon="key">
+    Open Wearables returns `userId` + `accessToken` (+ optional `refreshToken`). Your backend passes these to the mobile app (**not the API Key!**).
+  </Step>
+  <Step title="SDK stores & syncs" icon="lock">
+    Android SDK stores credentials in EncryptedSharedPreferences and uses `accessToken` to sync health data directly to Open Wearables.
+  </Step>
+</Steps>
+
+<Warning>
+  **Never embed your API Key in the mobile app.** The API Key should only exist on your backend server. Only the `accessToken` is passed to the mobile app.
+</Warning>
+
+## Step 1: Backend Setup
+
+Your backend needs a single endpoint that generates access tokens for your users.
+
+### Generate Access Token
+
+When a user wants to connect their health data, your backend should:
+
+1. Authenticate the user (your own auth system)
+2. Call Open Wearables API to generate an access token
+3. Return the token to the mobile app
+
+<Tabs>
+  <Tab title="Node.js">
+```javascript
+// Express.js example
+const express = require('express');
+const app = express();
+
+app.post('/api/health/connect', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const response = await fetch('https://api.openwearables.io/v1/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.OPENWEARABLES_API_KEY,
+      },
+      body: JSON.stringify({
+        externalId: userId.toString(),
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to generate token');
+    }
+    
+    const { userId: owUserId, accessToken, refreshToken } = await response.json();
+    
+    res.json({ userId: owUserId, accessToken, refreshToken });
+  } catch (error) {
+    console.error('Health connect error:', error);
+    res.status(500).json({ error: 'Failed to connect health' });
+  }
+});
+```
+  </Tab>
+
+  <Tab title="Python">
+```python
+# FastAPI example
+from fastapi import FastAPI, Depends, HTTPException
+import httpx
+import os
+
+app = FastAPI()
+
+@app.post("/api/health/connect")
+async def connect_health(current_user = Depends(get_current_user)):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.openwearables.io/v1/tokens",
+            headers={
+                "Content-Type": "application/json",
+                "X-API-Key": os.environ["OPENWEARABLES_API_KEY"],
+            },
+            json={
+                "externalId": str(current_user.id),
+            },
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(500, "Failed to generate token")
+        
+        data = response.json()
+    
+    return {
+        "userId": data["userId"],
+        "accessToken": data["accessToken"],
+        "refreshToken": data.get("refreshToken"),
+    }
+```
+  </Tab>
+
+  <Tab title="Ruby">
+```ruby
+# Rails controller example
+class HealthController < ApplicationController
+  before_action :authenticate_user!
+
+  def connect
+    response = HTTParty.post(
+      'https://api.openwearables.io/v1/tokens',
+      headers: {
+        'Content-Type' => 'application/json',
+        'X-API-Key' => ENV['OPENWEARABLES_API_KEY']
+      },
+      body: {
+        externalId: current_user.id.to_s
+      }.to_json
+    )
+
+    if response.success?
+      render json: {
+        userId: response['userId'],
+        accessToken: response['accessToken'],
+        refreshToken: response['refreshToken']
+      }
+    else
+      render json: { error: 'Failed to connect' }, status: 500
+    end
+  end
+end
+```
+  </Tab>
+</Tabs>
+
+<Note>
+  The `externalId` parameter links the Open Wearables user to your user. Use your internal user ID to easily correlate data later.
+</Note>
+
+## Step 2: SDK Initialization & Configuration
+
+Initialize the SDK once in your `Application` class or main activity, then configure it with your backend host.
+
+```kotlin
+import com.openwearables.health.sdk.OpenWearablesHealthSDK
+
+class MyApplication : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+
+        // Initialize SDK (once per app lifecycle)
+        val sdk = OpenWearablesHealthSDK.initialize(this)
+
+        // Optional: Set up logging
+        sdk.logListener = { message ->
+            Log.d("HealthSDK", message)
+        }
+
+        // Optional: Handle auth errors (e.g. token expired)
+        sdk.authErrorListener = { error ->
+            Log.e("HealthSDK", "Auth error: $error")
+        }
+
+        // Configure with your backend host
+        sdk.configure(host = "https://api.openwearables.io")
+    }
+}
+```
+
+### Configuration Options
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `host` | `String` | **Required.** The Open Wearables API URL |
+| `customSyncUrl` | `String?` | Optional custom sync endpoint URL |
+
+```kotlin
+// For self-hosted Open Wearables
+sdk.configure(host = "https://your-domain.com")
+
+// With custom sync URL
+sdk.configure(
+    host = "https://your-domain.com",
+    customSyncUrl = "https://custom-endpoint.com/sync"
+)
+```
+
+### Session Restoration
+
+The SDK automatically restores credentials from EncryptedSharedPreferences:
+
+```kotlin
+val sdk = OpenWearablesHealthSDK.getInstance()
+
+if (sdk.isSessionValid()) {
+    val userId = sdk.restoreSession()
+    Log.d("HealthSDK", "Session restored for user: $userId")
+} else {
+    // Need to sign in
+}
+```
+
+## Step 3: Sign In
+
+After getting credentials from your backend, sign in with the SDK.
+
+### Token-Based Authentication (Recommended)
+
+```kotlin
+suspend fun connectHealth(credentials: HealthCredentials) {
+    val sdk = OpenWearablesHealthSDK.getInstance()
+
+    sdk.signIn(
+        userId = credentials.userId,
+        accessToken = credentials.accessToken,
+        refreshToken = credentials.refreshToken,
+        apiKey = null
+    )
+
+    Log.d("HealthSDK", "Signed in: ${credentials.userId}")
+}
+```
+
+### API Key Authentication
+
+For simpler setups (e.g. internal tools):
+
+```kotlin
+sdk.signIn(
+    userId = "user123",
+    accessToken = null,
+    refreshToken = null,
+    apiKey = "your_api_key"
+)
+```
+
+<Warning>
+  API key authentication embeds the key in the app. Only use this for internal or trusted applications. For production apps, always use token-based authentication.
+</Warning>
+
+### Automatic Token Refresh
+
+When you provide a `refreshToken`, the SDK automatically handles 401 responses by refreshing the access token and retrying the request.
+
+You can also update tokens manually:
+
+```kotlin
+sdk.updateTokens(
+    accessToken = newAccessToken,
+    refreshToken = newRefreshToken
+)
+```
+
+## Step 4: Select Health Provider
+
+Before requesting permissions, you must select a health data provider:
+
+```kotlin
+val sdk = OpenWearablesHealthSDK.getInstance()
+
+// Check available providers
+val providers = sdk.getAvailableProviders()
+for (p in providers) {
+    Log.d("HealthSDK", "${p["displayName"]} (${p["id"]}) - available: ${p["isAvailable"]}")
+}
+
+// Set the provider based on user selection or your default
+val success = sdk.setProvider("google") // or "samsung" for Samsung Health
+if (!success) {
+    Log.e("HealthSDK", "Selected provider is unavailable on this device")
+}
+```
+
+<Note>
+  Call `setProvider()` before `requestAuthorization()`. The SDK needs to know which provider to request permissions from.
+</Note>
+
+### Provider Comparison
+
+| Feature | Health Connect (`"google"`) | Samsung Health (`"samsung"`) |
+|---------|---------------------------|------------------------------|
+| Device support | All Android 10+ | Samsung devices only |
+| Data types | 25+ types | 16 types |
+| Pre-installed | Android 14+ | Samsung devices |
+| Install required | Play Store (Android < 14) | Samsung Health app |
+
+<Tip>
+  Health Connect is recommended as the default provider for the widest device and data type support.
+</Tip>
+
+## Step 5: Request Permissions
+
+Request access to specific health data types. The type IDs are string-based:
+
+```kotlin
+suspend fun requestHealthPermissions(): Boolean {
+    val sdk = OpenWearablesHealthSDK.getInstance()
+
+    val authorized = sdk.requestAuthorization(
+        types = listOf(
+            "steps",
+            "heartRate",
+            "restingHeartRate",
+            "sleep",
+            "workout",
+            "activeEnergy",
+            "bodyMass"
+        )
+    )
+
+    if (authorized) {
+        Log.d("HealthSDK", "Health permissions granted")
+    } else {
+        Log.d("HealthSDK", "Some permissions were denied")
+    }
+
+    return authorized
+}
+```
+
+<Note>
+  Make sure to call `setActivity()` on the SDK before requesting authorization, so the SDK can launch the permission dialog from the correct Activity context.
+</Note>
+
+## Step 6: Start Background Sync
+
+Enable background sync to keep data flowing even when your app is in the background:
+
+```kotlin
+suspend fun startSync() {
+    val sdk = OpenWearablesHealthSDK.getInstance()
+    sdk.startBackgroundSync()
+    Log.d("HealthSDK", "Background sync started: ${sdk.isSyncActive()}")
+}
+```
+
+### Background Sync Behavior
+
+| Mechanism | Description |
+|-----------|-------------|
+| WorkManager | Periodic background sync with system-managed scheduling |
+| Foreground Service | Used during active sync for reliability (`dataSync` type) |
+| Notification | Shows a notification during active sync (Android 13+ requires permission) |
+
+### Manual Sync
+
+Trigger an immediate sync:
+
+```kotlin
+sdk.syncNow()
+```
+
+### Stop Sync
+
+```kotlin
+sdk.stopBackgroundSync()
+```
+
+### Lifecycle Management
+
+Notify the SDK of app lifecycle changes for optimal sync behavior:
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+
+    override fun onResume() {
+        super.onResume()
+        OpenWearablesHealthSDK.getInstance().onForeground()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        OpenWearablesHealthSDK.getInstance().onBackground()
+    }
+}
+```
+
+## Complete Integration Example
+
+Here's a complete ViewModel showing the full integration:
+
+```kotlin
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.openwearables.health.sdk.OpenWearablesHealthSDK
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+class HealthViewModel : ViewModel() {
+
+    private val sdk = OpenWearablesHealthSDK.getInstance()
+
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected
+
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing
+
+    init {
+        _isConnected.value = sdk.isSessionValid()
+        _isSyncing.value = sdk.isSyncActive()
+    }
+
+    fun connect(userId: String, accessToken: String, refreshToken: String?) {
+        viewModelScope.launch {
+            try {
+                // Sign in
+                sdk.signIn(
+                    userId = userId,
+                    accessToken = accessToken,
+                    refreshToken = refreshToken,
+                    apiKey = null
+                )
+
+                // Set provider
+                sdk.setProvider("google")
+
+                // Request permissions
+                val authorized = sdk.requestAuthorization(
+                    types = listOf(
+                        "steps", "heartRate", "sleep",
+                        "workout", "activeEnergy"
+                    )
+                )
+
+                if (authorized) {
+                    sdk.startBackgroundSync()
+                }
+            } catch (e: Exception) {
+                Log.e("HealthSDK", "Connection failed", e)
+            }
+        }
+    }
+
+    fun disconnect() {
+        viewModelScope.launch {
+            sdk.stopBackgroundSync()
+            sdk.signOut()
+            _isConnected.value = false
+            _isSyncing.value = false
+        }
+    }
+
+    fun syncNow() {
+        viewModelScope.launch {
+            sdk.syncNow()
+        }
+    }
+
+    fun checkAndResumeSync() {
+        viewModelScope.launch {
+            if (sdk.hasResumableSyncSession()) {
+                val status = sdk.getSyncStatus()
+                Log.d("HealthSDK", "Resuming sync, sent: ${status["sentCount"]}")
+                sdk.resumeSync()
+            }
+        }
+    }
+
+    fun resyncAllData() {
+        viewModelScope.launch {
+            sdk.resetAnchors()
+            sdk.syncNow()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        sdk.destroy()
+    }
+}
+```
+
+### Using the ViewModel
+
+```kotlin
+class HealthActivity : AppCompatActivity() {
+
+    private val viewModel: HealthViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val sdk = OpenWearablesHealthSDK.getInstance()
+        sdk.setActivity(this)
+
+        // Observe state
+        lifecycleScope.launch {
+            viewModel.isConnected.collect { connected ->
+                updateUI(connected)
+            }
+        }
+
+        // Check for interrupted syncs
+        viewModel.checkAndResumeSync()
+
+        connectButton.setOnClickListener {
+            val credentials = getCredentialsFromBackend()
+            viewModel.connect(
+                userId = credentials.userId,
+                accessToken = credentials.accessToken,
+                refreshToken = credentials.refreshToken
+            )
+        }
+
+        disconnectButton.setOnClickListener {
+            viewModel.disconnect()
+        }
+
+        syncNowButton.setOnClickListener {
+            viewModel.syncNow()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        OpenWearablesHealthSDK.getInstance().setActivity(null)
+    }
+}
+```
+
+## Data Sync Endpoint
+
+The SDK sends health data to:
+
+```
+POST {host}/api/v1/sdk/users/{userId}/sync
+```
+
+The payload includes a `provider` field (`"samsung"` or `"google"`) and the SDK version:
+
+```json
+{
+  "provider": "google",
+  "sdkVersion": "0.2.0",
+  "syncTimestamp": "2025-01-15T10:30:00Z",
+  "data": {
+    "records": [...],
+    "workouts": [...],
+    "sleep": [...]
+  }
+}
+```
+
+Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/android/troubleshooting">
+    Common issues and solutions for Android.
+  </Card>
+  <Card title="Data Types" icon="database" href="/architecture/data-types">
+    Available health metrics and data formats.
+  </Card>
+</CardGroup>

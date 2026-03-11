@@ -18,7 +18,7 @@ This guide walks you through the complete integration of the Open Wearables Flut
 
 ## Authentication Architecture
 
-The SDK uses a secure token-based flow that keeps your API keys safe on your backend:
+The SDK supports two authentication modes: **token-based** (recommended) and **API key**. The token-based flow keeps your API keys safe on your backend:
 
 <Steps>
   <Step title="Mobile App requests credentials" icon="mobile">
@@ -28,14 +28,14 @@ The SDK uses a secure token-based flow that keeps your API keys safe on your bac
     Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
     ```
     POST https://api.openwearables.io/v1/tokens
-    X-API-Key: sk_live_your_secret_key
+    X-API-Key: <OPENWEARABLES_API_KEY>
     ```
   </Step>
   <Step title="Backend returns credentials" icon="key">
-    Open Wearables returns `userId` + `accessToken`. Your backend passes these to the mobile app (**not the API Key!**).
+    Open Wearables returns `userId` + `accessToken` (+ optional `refreshToken`). Your backend passes these to the mobile app (**not the API Key!**).
   </Step>
   <Step title="SDK stores & syncs" icon="lock">
-    Flutter SDK stores credentials in iOS Keychain and uses `accessToken` to sync health data directly to Open Wearables.
+    Flutter SDK stores credentials in iOS Keychain / Android EncryptedSharedPreferences and uses `accessToken` to sync health data directly to Open Wearables.
   </Step>
 </Steps>
 
@@ -83,12 +83,13 @@ app.post('/api/health/connect', authenticateUser, async (req, res) => {
       throw new Error('Failed to generate token');
     }
     
-    const { userId: owUserId, accessToken } = await response.json();
+    const { userId: owUserId, accessToken, refreshToken } = await response.json();
     
     // 3. Return credentials to mobile app (NOT the API Key!)
     res.json({ 
       userId: owUserId, 
-      accessToken 
+      accessToken,
+      refreshToken
     });
   } catch (error) {
     console.error('Health connect error:', error);
@@ -131,6 +132,7 @@ async def connect_health(current_user = Depends(get_current_user)):
     return {
         "userId": data["userId"],
         "accessToken": data["accessToken"],
+        "refreshToken": data.get("refreshToken"),
     }
 ```
   </Tab>
@@ -158,7 +160,8 @@ class HealthController < ApplicationController
       # 2. Return credentials to mobile app
       render json: {
         userId: response['userId'],
-        accessToken: response['accessToken']
+        accessToken: response['accessToken'],
+        refreshToken: response['refreshToken']
       }
     else
       render json: { error: 'Failed to connect' }, status: 500
@@ -178,14 +181,14 @@ end
 Configure the SDK once at app startup, typically in your main initialization code.
 
 ```dart
-import 'package:health_bg_sync/health_bg_sync.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Configure SDK - this also restores any existing session
-  await HealthBgSync.configure(
-    environment: HealthBgSyncEnvironment.production,
+  // Configure SDK with your backend host - this also restores any existing session
+  await OpenWearablesHealthSdk.configure(
+    host: 'https://api.openwearables.io',
   );
   
   runApp(MyApp());
@@ -194,20 +197,14 @@ Future<void> main() async {
 
 ### Configuration Options
 
-| Parameter | Description |
-|-----------|-------------|
-| `environment` | `production` (default) or `sandbox` for testing |
-| `customSyncUrl` | Custom URL for self-hosted instances |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `host` | `String` | **Required.** The Open Wearables API URL (e.g. `https://api.openwearables.io`) |
 
 ```dart
 // For self-hosted Open Wearables
-await HealthBgSync.configure(
-  customSyncUrl: 'https://your-domain.com/sdk/users/{user_id}/sync/apple/healthkit',
-);
-
-// For testing/sandbox environment
-await HealthBgSync.configure(
-  environment: HealthBgSyncEnvironment.sandbox,
+await OpenWearablesHealthSdk.configure(
+  host: 'https://your-domain.com',
 );
 ```
 
@@ -216,11 +213,11 @@ await HealthBgSync.configure(
 The SDK automatically restores the user session from secure storage when `configure()` is called:
 
 ```dart
-await HealthBgSync.configure();
+await OpenWearablesHealthSdk.configure(host: 'https://api.openwearables.io');
 
 // Check if user was previously signed in
-if (HealthBgSync.isSignedIn) {
-  print('Welcome back, ${HealthBgSync.currentUser?.userId}!');
+if (OpenWearablesHealthSdk.isSignedIn) {
+  print('Welcome back, ${OpenWearablesHealthSdk.currentUser?.userId}!');
   // User is already signed in, can start sync directly
 } else {
   // Need to sign in first
@@ -231,6 +228,8 @@ if (HealthBgSync.isSignedIn) {
 
 After getting credentials from your backend, sign in with the SDK:
 
+### Token-Based Authentication (Recommended)
+
 ```dart
 Future<void> connectHealth() async {
   try {
@@ -239,36 +238,46 @@ Future<void> connectHealth() async {
     final credentials = json.decode(response.body);
     
     // 2. Sign in with the SDK
-    final user = await HealthBgSync.signIn(
+    final user = await OpenWearablesHealthSdk.signIn(
       userId: credentials['userId'],
       accessToken: credentials['accessToken'],
+      refreshToken: credentials['refreshToken'],
     );
     
     print('Connected: ${user.userId}');
   } on SignInException catch (e) {
-    print('Sign-in failed: ${e.message}');
+    print('Sign-in failed: ${e.message} (status: ${e.statusCode})');
   }
 }
 ```
 
-### With Automatic Token Refresh
+### API Key Authentication
 
-For long-running sessions, enable automatic token refresh:
+For simpler setups (e.g. internal tools), you can use API key authentication directly:
 
 ```dart
-final user = await HealthBgSync.signIn(
-  userId: credentials['userId'],
-  accessToken: credentials['accessToken'],
-  // Optional: Enable auto-refresh
-  appId: 'your-app-id',
-  appSecret: 'your-app-secret',
-  baseUrl: 'https://api.openwearables.io',
+final user = await OpenWearablesHealthSdk.signIn(
+  userId: 'user123',
+  apiKey: 'your_api_key',
 );
 ```
 
-<Tip>
-  Token refresh credentials can also be fetched from your backend to avoid embedding secrets in the app.
-</Tip>
+<Warning>
+  API key authentication embeds the key in the app. Only use this for internal or trusted applications. For production apps, always use token-based authentication.
+</Warning>
+
+### Automatic Token Refresh
+
+When you provide a `refreshToken`, the SDK automatically handles 401 responses by refreshing the access token and retrying the request.
+
+You can also update tokens manually:
+
+```dart
+await OpenWearablesHealthSdk.updateTokens(
+  accessToken: newAccessToken,
+  refreshToken: newRefreshToken,
+);
+```
 
 ## Step 4: Request Permissions
 
@@ -276,7 +285,7 @@ Request access to specific health data types:
 
 ```dart
 Future<bool> requestHealthPermissions() async {
-  final authorized = await HealthBgSync.requestAuthorization(
+  final authorized = await OpenWearablesHealthSdk.requestAuthorization(
     types: [
       HealthDataType.steps,
       HealthDataType.heartRate,
@@ -298,13 +307,68 @@ Future<bool> requestHealthPermissions() async {
 }
 ```
 
+### Android Provider Selection
+
+On Android, you must select a health data provider before requesting authorization:
+
+```dart
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+
+Future<AndroidHealthProvider> selectAndroidProvider() async {
+  final prefs = await SharedPreferences.getInstance();
+  final savedProvider = prefs.getString('health_provider');
+
+  // Restore previously chosen provider if still available
+  final providers = await OpenWearablesHealthSdk.getAvailableProviders();
+
+  if (savedProvider != null) {
+    final restored = providers.cast<AndroidHealthProvider?>().firstWhere(
+      (p) => p?.name == savedProvider,
+      orElse: () => null,
+    );
+    if (restored != null) return restored;
+  }
+
+  // Prefer Health Connect, fall back to Samsung Health
+  final AndroidHealthProvider chosen;
+  if (providers.contains(AndroidHealthProvider.healthConnect)) {
+    chosen = AndroidHealthProvider.healthConnect;
+  } else if (providers.contains(AndroidHealthProvider.samsungHealth)) {
+    chosen = AndroidHealthProvider.samsungHealth;
+  } else {
+    throw Exception(
+      'No supported health provider found. '
+      'Please install Health Connect or Samsung Health.',
+    );
+  }
+
+  await prefs.setString('health_provider', chosen.name);
+  return chosen;
+}
+
+// Usage
+if (Platform.isAndroid) {
+  final provider = await selectAndroidProvider();
+  await OpenWearablesHealthSdk.setProvider(provider);
+}
+
+// Then request authorization
+final authorized = await OpenWearablesHealthSdk.requestAuthorization(
+  types: [
+    HealthDataType.steps,
+    HealthDataType.heartRate,
+    HealthDataType.sleep,
+    HealthDataType.workout,
+    HealthDataType.activeEnergy,
+  ],
+);
+print('Permissions granted: $authorized');
+```
+
 <Note>
   On iOS, users can grant partial permissions. The SDK will sync whatever data the user allows.
 </Note>
-
-### iOS Permission UI
-
-When requesting permissions, iOS shows a system dialog listing all requested data types. Users can toggle each type individually.
 
 <Tip>
   Request only the data types you actually need. Requesting too many types can overwhelm users and reduce acceptance rates.
@@ -315,20 +379,32 @@ When requesting permissions, iOS shows a system dialog listing all requested dat
 Enable background sync to keep data flowing even when your app is in the background:
 
 ```dart
-await HealthBgSync.startBackgroundSync();
+await OpenWearablesHealthSdk.startBackgroundSync();
 
 // Check sync status
-print('Sync active: ${HealthBgSync.isSyncActive}');
+print('Sync active: ${OpenWearablesHealthSdk.isSyncActive}');
 ```
 
 ### Background Sync Behavior
 
-| Mechanism | Frequency |
-|-----------|-----------|
-| iOS Background App Refresh + BGTaskScheduler | Every 15 minutes (system-managed) |
+<Tabs>
+  <Tab title="iOS">
+    | Mechanism | Frequency |
+    |-----------|-----------|
+    | HealthKit Observer Queries | Immediate on new data |
+    | BGAppRefreshTask | Every ~15 minutes (system-managed) |
+    | BGProcessingTask | Network-required background processing |
+  </Tab>
+  <Tab title="Android">
+    | Mechanism | Frequency |
+    |-----------|-----------|
+    | WorkManager | Periodic sync with foreground service |
+    | Foreground Service | Used during active sync for reliability |
+  </Tab>
+</Tabs>
 
 <Warning>
-  Background sync frequency is controlled by iOS and may vary based on battery level, network conditions, and user behavior. The 15-minute interval is a minimum - actual syncs may be less frequent.
+  Background sync frequency is managed by the OS and may vary based on battery level, network conditions, and user behavior.
 </Warning>
 
 ### Manual Sync
@@ -336,8 +412,7 @@ print('Sync active: ${HealthBgSync.isSyncActive}');
 Trigger an immediate sync when needed:
 
 ```dart
-// Sync now
-await HealthBgSync.syncNow();
+await OpenWearablesHealthSdk.syncNow();
 ```
 
 ## Complete Integration Example
@@ -346,8 +421,11 @@ Here's a complete service class showing the full integration:
 
 ```dart
 import 'dart:convert';
-import 'package:health_bg_sync/health_bg_sync.dart';
+import 'dart:io';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HealthSyncService {
   final String _backendUrl;
@@ -361,40 +439,45 @@ class HealthSyncService {
 
   /// Initialize the health sync service
   Future<void> initialize() async {
-    await HealthBgSync.configure(
-      environment: HealthBgSyncEnvironment.production,
+    // Set up event listeners
+    MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {
+      print('[HealthSync] $message');
+    });
+
+    MethodChannelOpenWearablesHealthSdk.authErrorStream.listen((error) {
+      print('[HealthSync] Auth error: ${error['statusCode']}');
+    });
+
+    await OpenWearablesHealthSdk.configure(
+      host: 'https://api.openwearables.io',
     );
   }
 
   /// Get current status
-  HealthBgSyncStatus get status => HealthBgSync.status;
-  bool get isConnected => HealthBgSync.isSignedIn;
-  bool get isSyncing => HealthBgSync.isSyncActive;
+  OpenWearablesHealthSdkStatus get status => OpenWearablesHealthSdk.status;
+  bool get isConnected => OpenWearablesHealthSdk.isSignedIn;
+  bool get isSyncing => OpenWearablesHealthSdk.isSyncActive;
 
   /// Connect health data for the current user
   Future<void> connect() async {
-    // Check current state
-    switch (HealthBgSync.status) {
-      case HealthBgSyncStatus.signedIn:
-        // Already signed in
-        if (!HealthBgSync.isSyncActive) {
+    switch (OpenWearablesHealthSdk.status) {
+      case OpenWearablesHealthSdkStatus.signedIn:
+        if (!OpenWearablesHealthSdk.isSyncActive) {
           await _startSync();
         }
         return;
 
-      case HealthBgSyncStatus.configured:
-        // Need to sign in
+      case OpenWearablesHealthSdkStatus.configured:
         await _signIn();
         await _startSync();
         return;
 
-      case HealthBgSyncStatus.notConfigured:
+      case OpenWearablesHealthSdkStatus.notConfigured:
         throw Exception('SDK not configured. Call initialize() first.');
     }
   }
 
   Future<void> _signIn() async {
-    // Get credentials from your backend
     final response = await http.post(
       Uri.parse('$_backendUrl/api/health/connect'),
       headers: {
@@ -409,16 +492,46 @@ class HealthSyncService {
 
     final data = json.decode(response.body);
 
-    // Sign in with SDK
-    await HealthBgSync.signIn(
+    await OpenWearablesHealthSdk.signIn(
       userId: data['userId'],
       accessToken: data['accessToken'],
+      refreshToken: data['refreshToken'],
     );
   }
 
   Future<void> _startSync() async {
-    // Request permissions
-    final authorized = await HealthBgSync.requestAuthorization(
+    if (Platform.isAndroid) {
+      final providers = await OpenWearablesHealthSdk.getAvailableProviders();
+
+      final prefs = await SharedPreferences.getInstance();
+      final savedName = prefs.getString('health_provider');
+
+      // Restore saved provider or pick the best available one
+      AndroidHealthProvider? chosen;
+      if (savedName != null) {
+        chosen = providers.cast<AndroidHealthProvider?>().firstWhere(
+          (p) => p?.name == savedName,
+          orElse: () => null,
+        );
+      }
+      chosen ??= providers.contains(AndroidHealthProvider.healthConnect)
+          ? AndroidHealthProvider.healthConnect
+          : providers.contains(AndroidHealthProvider.samsungHealth)
+              ? AndroidHealthProvider.samsungHealth
+              : null;
+
+      if (chosen == null) {
+        throw Exception(
+          'No supported health provider available on this device. '
+          'Please install Health Connect or Samsung Health.',
+        );
+      }
+
+      await prefs.setString('health_provider', chosen.name);
+      await OpenWearablesHealthSdk.setProvider(chosen);
+    }
+
+    final authorized = await OpenWearablesHealthSdk.requestAuthorization(
       types: [
         HealthDataType.steps,
         HealthDataType.heartRate,
@@ -432,31 +545,30 @@ class HealthSyncService {
       throw Exception('Health permissions not granted');
     }
 
-    // Start background sync
-    await HealthBgSync.startBackgroundSync();
+    await OpenWearablesHealthSdk.startBackgroundSync();
   }
 
   /// Disconnect health data
   Future<void> disconnect() async {
-    await HealthBgSync.stopBackgroundSync();
-    await HealthBgSync.signOut();
+    await OpenWearablesHealthSdk.stopBackgroundSync();
+    await OpenWearablesHealthSdk.signOut();
   }
 
   /// Check for interrupted sync sessions
   Future<void> checkAndResumeSync() async {
-    final status = await HealthBgSync.getSyncStatus();
+    final status = await OpenWearablesHealthSdk.getSyncStatus();
     
     if (status['hasResumableSession'] == true) {
       print('Resuming interrupted sync...');
       print('Already sent: ${status['sentCount']} records');
-      await HealthBgSync.resumeSync();
+      await OpenWearablesHealthSdk.resumeSync();
     }
   }
 
   /// Force a full re-sync of all data
   Future<void> resyncAllData() async {
-    await HealthBgSync.resetAnchors();
-    await HealthBgSync.syncNow();
+    await OpenWearablesHealthSdk.resetAnchors();
+    await OpenWearablesHealthSdk.syncNow();
   }
 }
 ```
@@ -523,9 +635,26 @@ class _MyAppState extends State<MyApp> {
 
 The SDK sends health data to:
 
+<ParamField path="host" type="string" required>
+  Your Open Wearables API base URL (e.g. `https://api.example.com`).
+</ParamField>
+
+<ParamField path="userId" type="string" required>
+  The user ID returned when registering the SDK user.
+</ParamField>
+
+```bash
+POST {host}/api/v1/sdk/users/{userId}/sync
 ```
-POST /sdk/users/{user_id}/sync/apple/healthkit
+
+<ResponseExample>
+```json 200
+{
+  "status": "ok",
+  "synced_records": 42
+}
 ```
+</ResponseExample>
 
 Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
 
@@ -533,7 +662,7 @@ Data is automatically normalized to the Open Wearables unified data model and ca
 
 <CardGroup cols={2}>
   <Card title="Troubleshooting" icon="wrench" href="/sdk/flutter/troubleshooting">
-    Common issues and solutions for iOS.
+    Common issues and solutions for iOS and Android.
   </Card>
   <Card title="Data Types" icon="database" href="/architecture/data-types">
     Available health metrics and data formats.

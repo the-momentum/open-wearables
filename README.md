@@ -140,8 +140,8 @@ The platform's most powerful feature - define intelligent health insights using 
 Access health data through a consistent REST API regardless of the source device.
 
 ### Provider Support
-- ☁️ **Cloud-based**: Garmin, Suunto, Polar (more comming soon!)
-- 📱 **SDK-based**: Apple Health (via XML export and webhooks)
+- ☁️ **Cloud-based**: Garmin, Suunto, Polar (more coming soon!)
+- 📱 **SDK-based**: Apple HealthKit, Samsung Health, Google Health Connect
 
 ### OAuth Flow Management
 Simplified connection process for end users:
@@ -150,10 +150,15 @@ Simplified connection process for end users:
 3. Data automatically syncs to your platform
 4. Access via unified API
 
-### SDK & Widgets (coming soon)
+### Mobile Sync SDKs
+Native SDKs for push-based health data sync from on-device health stores:
+- **[iOS SDK](https://github.com/the-momentum/open_wearables_ios_sdk)** (Swift) - Apple HealthKit
+- **[Android SDK](https://github.com/the-momentum/open_wearables_android_sdk)** (Kotlin) - Samsung Health & Google Health Connect
+- **[Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk)** (Dart) - Cross-platform wrapper around native SDKs
+
+### Widgets (coming soon)
 - 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
 - 🤖 **AI Health Assistant Widget**: Embed the AI chat interface for user health queries
-- 🍏 **Flutter SDK**: Handles HealthKit permissions, background sync, and data normalization
 
 ## Architecture
 
@@ -174,12 +179,12 @@ The platform is designed for self-hosting, meaning each deployment serves a sing
 - User management (via API and developer portal)
 - OAuth flow for Garmin, Polar, and Suunto
 - Workout data sync and API access for Garmin, Polar, and Suunto
+- Mobile Sync SDKs (iOS, Android, Flutter)
 
 **In Development**:
 - Core health data endpoints
 - Health Insights automations
 - AI Health Assistant
-- Mobile SDK (Flutter)
 - Enhanced widget integration
 
 ## Join the Discord
@@ -212,3 +217,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 ---
 
 The backend part of this project was generated from the [Python AI Kit](https://github.com/the-momentum/python-ai-kit).
+
+Built with ❤️ by [Momentum](https://themomentum.ai/)

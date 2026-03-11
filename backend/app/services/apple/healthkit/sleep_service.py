@@ -231,6 +231,13 @@ def handle_sleep_data(
         )
         save_sleep_state(user_id, current_state)
 
+    # import not at module level in order to avoid circular import
+    from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+
+    # if we dont call the task, last sleep session in payload will stay
+    # in redis until celery beat task runs
+    finalize_stale_sleeps.delay()
+
 
 def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[SleepStage]]:
     """

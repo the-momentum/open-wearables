@@ -11,7 +11,7 @@ This guide provides a comprehensive overview of data type support across all int
 |------------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
 | **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Sleep** | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **Sleep** | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | **24/7 Data** | ✅ | ✅ | ❌ | ✅ | ◐ | ❌ |
 | **Timeseries** | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ |
 
@@ -157,15 +157,15 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 
 | Feature | Apple | Garmin | Polar | Suunto | Whoop | Strava |
 |---------|:-----:|:------:|:-----:|:------:|:-----:|:------:|
-| Sleep sessions | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Total duration | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Time in bed | 🔜 | ❌ | ❌ | ✅ | ✅ | ❌ |
+| Sleep sessions | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Total duration | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Time in bed | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | Sleep efficiency | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
 | **Sleep Stages** | | | | | | |
-| Deep sleep | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Light sleep | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| REM sleep | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
-| Awake time | 🔜 | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Deep sleep | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Light sleep | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| REM sleep | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Awake time | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ |
 | **Biometrics During Sleep** | | | | | | |
 | Average heart rate | 🔜 | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Min heart rate | 🔜 | ✅ | ❌ | ✅ | ❌ | ❌ |
@@ -191,30 +191,28 @@ All providers that support workouts provide these common fields:
 | Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | **Heart Rate** | | | | | | |
-| Avg heart rate | ◐ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Max heart rate | ◐ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Min heart rate | ◐ | 🔜 | ❌ | ✅ | ❌ | ❌ |
+| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Max heart rate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ |
 | **Activity Metrics** | | | | | | |
-| Calories burned | ◐ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Distance | ◐ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Steps | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ |
 | **Speed & Power** | | | | | | |
-| Average speed | 🔜 | ✅ | 🔜 | ✅ | ❌ | ✅ |
-| Max speed | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ✅ |
-| Average watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ✅ |
+| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ |
+| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ✅ |
+| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ✅ |
 | Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ✅ |
 | **Elevation** | | | | | | |
-| Total elevation gain | 🔜 | ✅ | 🔜 | ✅ | ✅ | ✅ |
-| Elevation high | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ✅ |
-| Elevation low | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ✅ |
+| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ |
+| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ✅ |
+| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ✅ |
 | **Other** | | | | | | |
 | GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ |
 
 <Accordion title="Apple Workout Data Note">
-  Apple workout fields marked ◐ depend on import method:
-  - **Auto Health Export**: Heart rate ✅, other metrics 🔜
-  - **Healthion/HealthKit**: Calories ✅, distance ✅, steps ✅, heart rate 🔜
+  Most workout metrics are supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation). Moving time and max watts are not yet implemented.
 </Accordion>
 
 <Note>
@@ -229,12 +227,12 @@ Key differences and limitations to be aware of when working with each provider:
 
 <Accordion title="Apple Health">
   **Integration Method:** Push-based via SDK (no OAuth)
-  
+
   - Data arrives via client SDK push, not server-to-server sync
-  - Multiple import methods with different data availability:
-    - **Auto Health Export app**: Best for heart rate time series
-    - **Healthion SDK**: Best for workout summaries (calories, distance, steps)
-  - Most comprehensive data coverage (35+ metric types)
+  - Workouts (most metrics), sleep (stages, duration), and 100+ health record types via HealthKit SDK
+  - Most comprehensive data coverage (100+ metric types)
+  - Full sleep processing with stages (deep, light, REM, awake), duration, and time in bed
+  - Sleep biometrics (HR, HRV, SpO2 during sleep) not yet extracted as part of sleep records
   - Some walking metrics require iPhone in pocket during activity
   - HRV is measured as SDNN, typically during sleep or rest periods
 </Accordion>

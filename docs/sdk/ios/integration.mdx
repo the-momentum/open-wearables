@@ -28,7 +28,7 @@ The SDK supports two authentication modes: **token-based** (recommended) and **A
     Your backend calls Open Wearables API with your **API Key** (server-to-server, HTTPS).
     ```
     POST https://api.openwearables.io/v1/tokens
-    X-API-Key: sk_live_your_secret_key
+    X-API-Key: <OPENWEARABLES_API_KEY>
     ```
   </Step>
   <Step title="Backend returns credentials" icon="key">
@@ -236,7 +236,7 @@ The SDK automatically persists credentials in the iOS Keychain. On app launch, c
 sdk.configure(host: "https://api.openwearables.io")
 
 // Check if user was previously signed in
-if sdk.restoreSession() {
+if sdk.isSessionValid {
     print("Welcome back!")
     // User is already signed in, can resume sync
 } else {
@@ -398,8 +398,7 @@ class HealthSyncService {
     private var authToken: String?
 
     var isConnected: Bool {
-        // Check if SDK has an active session
-        return sdk.restoreSession()
+        return sdk.isSessionValid
     }
 
     private init() {
@@ -558,7 +557,7 @@ class HealthViewController: UIViewController {
 The SDK sends health data to:
 
 ```
-POST /sdk/users/{user_id}/sync/apple/healthkit
+POST {host}/api/v1/sdk/users/{userId}/sync
 ```
 
 Data is automatically normalized to the Open Wearables unified data model and can be accessed through the standard API endpoints.
