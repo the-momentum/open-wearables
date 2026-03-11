@@ -1,6 +1,7 @@
 from app.schemas.oauth import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.dexcom.strategy import DexcomStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
@@ -29,6 +30,8 @@ class ProviderFactory:
                 return StravaStrategy()
             case ProviderName.OURA.value:
                 return OuraStrategy()
+            case ProviderName.DEXCOM.value:
+                return DexcomStrategy()
             case ProviderName.WITHINGS.value:
                 return WithingsStrategy()
             case _:
