@@ -214,7 +214,7 @@ export interface SleepStagesSummary {
 }
 
 export interface SleepStage {
-  stage: 'in_bed' | 'light' | 'deep' | 'rem' | 'awake' | 'unknown';
+  stage: 'in_bed' | 'sleeping' | 'light' | 'deep' | 'rem' | 'awake' | 'unknown';
   start_time: string;
   end_time: string;
   duration_seconds?: number;

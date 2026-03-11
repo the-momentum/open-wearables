@@ -172,8 +172,6 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
         patch("celery.current_app") as mock_celery,
         patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
-        # Patch the new finalize_stale_sleeps task that was added in this PR
-        patch("app.integrations.celery.tasks.process_sdk_upload_task.finalize_stale_sleeps", mock_task),
         # Patch Garmin backfill task dispatched from webhook route
         patch("app.api.routes.v1.garmin_webhooks.trigger_next_pending_type", mock_task),
     ):

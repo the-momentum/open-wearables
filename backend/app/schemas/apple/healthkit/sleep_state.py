@@ -28,6 +28,7 @@ class SleepState(BaseModel):
 
     in_bed_seconds: float = 0
     awake_seconds: float = 0
+    sleeping_seconds: float = 0
     light_seconds: float = 0
     deep_seconds: float = 0
     rem_seconds: float = 0

@@ -79,6 +79,7 @@ def _create_new_sleep_state(
         last_end_timestamp=end_time,
         in_bed_seconds=0,
         awake_seconds=0,
+        sleeping_seconds=0,
         light_seconds=0,
         deep_seconds=0,
         rem_seconds=0,
@@ -125,9 +126,12 @@ def _apply_transition(
         case SleepPhase.ASLEEP_LIGHT:
             state.light_seconds += duration_seconds
             stage_label = SleepStageType.LIGHT
-        case SleepPhase.ASLEEP_DEEP | SleepPhase.SLEEPING:
+        case SleepPhase.ASLEEP_DEEP:
             state.deep_seconds += duration_seconds
             stage_label = SleepStageType.DEEP
+        case SleepPhase.SLEEPING:
+            state.sleeping_seconds += duration_seconds
+            stage_label = SleepStageType.SLEEPING
         case SleepPhase.ASLEEP_REM:
             state.rem_seconds += duration_seconds
             stage_label = SleepStageType.REM
@@ -249,6 +253,7 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
     metrics = {
         "in_bed_seconds": 0,
         "awake_seconds": 0,
+        "sleeping_seconds": 0,
         "light_seconds": 0,
         "deep_seconds": 0,
         "rem_seconds": 0,
@@ -257,10 +262,10 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
     # Map normalized SleepStageType strings to metric keys
     stage_to_metric = {
         "awake": "awake_seconds",
+        "sleeping": "sleeping_seconds",
         "light": "light_seconds",
         "deep": "deep_seconds",
         "rem": "rem_seconds",
-        # "sleeping" is already normalized to "deep" in storage
     }
 
     # 1. Process specific stages (Deep, Light, REM, Awake)
@@ -324,7 +329,11 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
             metrics["in_bed_seconds"] += (current_end - current_start).total_seconds()
     else:
         metrics["in_bed_seconds"] = (
-            metrics["awake_seconds"] + metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
+            metrics["awake_seconds"]
+            + metrics["sleeping_seconds"]
+            + metrics["light_seconds"]
+            + metrics["deep_seconds"]
+            + metrics["rem_seconds"]
         )
 
     return metrics, cleaned_stages
@@ -345,7 +354,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         start_time = state.start_time
 
     total_duration = (end_time - start_time).total_seconds()
-    total_sleep_seconds = metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
+    total_sleep_seconds = (
+        metrics["sleeping_seconds"] + metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
+    )
 
     sleep_record = EventRecordCreate(
         id=uuid4(),
