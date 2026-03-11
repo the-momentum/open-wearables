@@ -35,6 +35,7 @@ def configure(
     max_size_bytes: int,
     s3_bucket: str | None = None,
     s3_prefix: str = "raw-payloads",
+    s3_endpoint_url: str | None = None,
 ) -> None:
     """Called once at startup from settings."""
     global _storage_backend, _max_size_bytes, _s3_bucket, _s3_prefix, _s3_client
@@ -48,13 +49,13 @@ def configure(
             logger.error("RAW_PAYLOAD_STORAGE=s3 but no S3 bucket configured")
             _storage_backend = "disabled"
             return
-        _s3_client = _create_s3_client()
+        _s3_client = _create_s3_client(endpoint_url=s3_endpoint_url)
         if _s3_client is None:
             logger.error("Failed to create S3 client - raw payload storage disabled")
             _storage_backend = "disabled"
 
 
-def _create_s3_client() -> Any:
+def _create_s3_client(endpoint_url: str | None = None) -> Any:
     """Create a boto3 S3 client using app AWS settings."""
     try:
         import boto3
@@ -62,12 +63,15 @@ def _create_s3_client() -> Any:
 
         from app.config import settings
 
-        return boto3.client(
-            "s3",
-            region_name=settings.aws_region,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),
-        )
+        kwargs: dict[str, Any] = {
+            "region_name": settings.aws_region,
+            "aws_access_key_id": settings.aws_access_key_id,
+            "aws_secret_access_key": settings.aws_secret_access_key.get_secret_value(),
+        }
+        if endpoint_url:
+            kwargs["endpoint_url"] = endpoint_url
+
+        return boto3.client("s3", **kwargs)
     except (NoCredentialsError, AttributeError, Exception) as e:
         logger.error("Cannot create S3 client for raw payload storage: %s", e)
         return None
