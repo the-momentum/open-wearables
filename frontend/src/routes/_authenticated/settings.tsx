@@ -58,7 +58,7 @@ function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-zinc-900/50 border border-zinc-800"> 
+        <TabsList className="bg-zinc-900/50 border border-zinc-800">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
@@ -67,7 +67,11 @@ function SettingsPage() {
         </TabsList>
 
         {tabs.map((tab) => (
-          <TabsContent key={tab.id} value={tab.id} className="mt-6 focus-visible:outline-none">
+          <TabsContent
+            key={tab.id}
+            value={tab.id}
+            className="mt-6 focus-visible:outline-none"
+          >
             <tab.component />
           </TabsContent>
         ))}
