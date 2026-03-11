@@ -338,7 +338,7 @@ class TestFinalizeStaleSleepsTask:
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
-    def test_finalize_stale_sleeps_handles_invalid_timestamp(
+    def test_finalize_stale_sleeps_handles_malformed_state(
         self,
         mock_session_local: MagicMock,
         mock_redis_client_func: MagicMock,
@@ -346,7 +346,7 @@ class TestFinalizeStaleSleepsTask:
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
-        """Verify task handles malformed timestamp in sleep state."""
+        """Verify task skips users whose sleep state cannot be parsed from Redis."""
         # Arrange
         user_id = str(uuid4())
 
@@ -357,11 +357,12 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.return_value = [user_id]
         mock_redis_client_func.return_value = mock_redis
 
-        # Invalid timestamp format causing load_sleep_state to fail
-        mock_load_state.side_effect = ValueError("Invalid timestamp format")
+        # Simulate load_sleep_state returning None (as it does when state is malformed/unparseable)
+        mock_load_state.return_value = None
 
         # Act - should not crash
         result = finalize_stale_sleeps()
 
         # Assert
-        assert result is None  # Task completes despite error
+        assert result is None  # Task completes and skips the malformed user
+        mock_load_state.assert_called_once_with(user_id)

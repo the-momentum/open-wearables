@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from logging import getLogger
 from uuid import UUID, uuid4
@@ -45,8 +46,13 @@ def load_sleep_state(user_id: str) -> SleepState | None:
             state = state.decode("utf-8")
         return SleepState.model_validate_json(state)
     except Exception as e:
-        logger.error(f"Failed to load sleep state for user {user_id}: {e}")
-        return None
+        logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
+        try:
+            raw = json.loads(state)
+            return SleepState.model_validate(raw)
+        except Exception as fallback_e:
+            logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
+            return None
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:

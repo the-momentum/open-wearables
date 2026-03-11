@@ -9,7 +9,7 @@ Apple Watch sleep data patterns:
 - Newer Apple Watch (watchOS 9+): "in_bed", "awake", "light", "deep", "rem" stages
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 

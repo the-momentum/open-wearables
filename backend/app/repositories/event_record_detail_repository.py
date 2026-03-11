@@ -41,6 +41,10 @@ class EventRecordDetailRepository(
         if detail_type == "workout":
             detail = WorkoutDetails(**creation_data)
         elif detail_type == "sleep":
+            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+            # use Pydantic's JSON mode to convert datetimes to ISO strings.
+            if creator.sleep_stages:
+                creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
             detail = SleepDetails(**creation_data)
         else:
             raise ValueError(f"Unknown detail type: {detail_type}")
