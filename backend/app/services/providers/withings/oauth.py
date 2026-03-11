@@ -10,6 +10,7 @@ Withings uses a non-standard OAuth 2.0 flow:
 import hashlib
 import hmac
 import logging
+import time
 
 import httpx
 from fastapi import HTTPException
@@ -56,24 +57,30 @@ class WithingsOAuth(BaseOAuthTemplate):
     use_pkce: bool = False
     auth_method: AuthenticationMethod = AuthenticationMethod.BODY
 
-    def _compute_signature(self, action: str, client_id: str, nonce: str) -> str:
-        """Compute HMAC-SHA256 signature for Withings API requests.
-
-        Withings requires params sorted alphabetically by key (action, client_id, nonce),
-        joined by commas, signed with the client_secret.
-        """
-        data = f"{action},{client_id},{nonce}"
+    def _hmac_sign(self, data: str) -> str:
+        """Compute HMAC-SHA256 hex digest of data using client_secret."""
         secret = self.credentials.client_secret
         return hmac.new(secret.encode(), data.encode(), hashlib.sha256).hexdigest()
 
     def _get_nonce(self) -> str:
-        """Fetch a nonce from the Withings signature endpoint."""
+        """Fetch a nonce from the Withings signature endpoint.
+
+        The getnonce endpoint requires: action, client_id, timestamp, signature.
+        Signature is HMAC-SHA256 of "action,client_id,timestamp".
+        """
+        client_id = self.credentials.client_id
+        timestamp = str(int(time.time()))
+        action = "getnonce"
+        signature = self._hmac_sign(f"{action},{client_id},{timestamp}")
+
         try:
             response = httpx.post(
                 self.SIGNATURE_URL,
                 data={
-                    "action": "getnonce",
-                    "client_id": self.credentials.client_id,
+                    "action": action,
+                    "client_id": client_id,
+                    "timestamp": timestamp,
+                    "signature": signature,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=30.0,
@@ -89,6 +96,8 @@ class WithingsOAuth(BaseOAuthTemplate):
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to get Withings nonce: {e.response.text}",
             )
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=HTTP_500_INTERNAL_SERVER_ERROR,
@@ -106,7 +115,7 @@ class WithingsOAuth(BaseOAuthTemplate):
         nonce = self._get_nonce()
         client_id = self.credentials.client_id
         action = "requesttoken"
-        signature = self._compute_signature(action, client_id, nonce)
+        signature = self._hmac_sign(f"{action},{client_id},{nonce}")
 
         data = {
             "action": action,
@@ -159,7 +168,7 @@ class WithingsOAuth(BaseOAuthTemplate):
         nonce = self._get_nonce()
         client_id = self.credentials.client_id
         action = "requesttoken"
-        signature = self._compute_signature(action, client_id, nonce)
+        signature = self._hmac_sign(f"{action},{client_id},{nonce}")
 
         data = {
             "action": action,
