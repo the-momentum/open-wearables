@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from app.schemas.series_types import SeriesType
 from app.schemas.timeseries import TimeSeriesSampleCreate
+from app.services.cgm_csv.pdf_parser import parse_libreview_pdf
 from app.services.cgm_csv.stats import CSVParseStats
 
 # Dexcom boundary values
@@ -299,3 +300,36 @@ def parse_cgm_csv(
         stats.records_skipped,
     )
     return samples, stats
+
+
+def _decode_csv(file_contents: bytes) -> str:
+    """Decode CSV bytes with encoding fallback: UTF-8 → UTF-8-SIG → Latin-1."""
+    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+        try:
+            return file_contents.decode(encoding)
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise ValueError("Unable to decode CSV file with supported encodings (UTF-8, UTF-8-SIG, Latin-1)")
+
+
+def parse_cgm_file(
+    file_contents: bytes,
+    filename: str,
+    user_id: UUID,
+    log: Logger,
+) -> tuple[list[TimeSeriesSampleCreate], CSVParseStats]:
+    """Parse a CGM file (CSV or PDF), auto-detecting format.
+
+    Args:
+        file_contents: Raw file bytes.
+        filename: Original filename (used to detect PDF vs CSV).
+        user_id: User ID to associate samples with.
+        log: Logger instance.
+
+    Returns:
+        Tuple of (list of samples, parse stats).
+    """
+    if filename.lower().endswith(".pdf"):
+        return parse_libreview_pdf(file_contents, user_id, log)
+    csv_content = _decode_csv(file_contents)
+    return parse_cgm_csv(csv_content, user_id, log)
