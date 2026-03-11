@@ -1,8 +1,9 @@
-from fastapi import APIRouter, UploadFile
+from fastapi import APIRouter, Request, UploadFile
 
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas import PresignedURLRequest, PresignedURLResponse
+from app.schemas.apple.apple_xml.aws import SNSConfirmRequest
 from app.services import ApiKeyDep
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
 
@@ -39,4 +40,26 @@ def import_xml_file(
         "status": "processing",
         "task_id": task.id,
         "user_id": user_id,
+    }
+
+@router.post("/sns/confirm")
+async def sns_confirm(
+    request: SNSConfirmRequest,
+) -> dict[str, str]:
+    """Confirm SNS notification."""
+    return {
+        "status": "success",
+    }
+
+@router.post("/sns/notifications")
+async def get_sns_notifications(
+    user_id: str,
+    _api_key: ApiKeyDep,
+    request: Request,
+) -> dict[str, str]:
+    """Get SNS notifications for the user."""
+    return {
+        "status": "success",
+        "user_id": user_id,
+        "request": request.body,
     }
