@@ -18,19 +18,39 @@ class OpenWearablesClient:
         self.timeout = settings.request_timeout
         self._api_key = settings.open_wearables_api_key.get_secret_value()
 
+    def _get_api_key(self) -> str:
+        """Get the API key for the current request.
+
+        In HTTP transport mode, the API key is stored in the OAuth access token's
+        claims (set during the OAuth authorization flow). In stdio mode, falls back
+        to the configured OPEN_WEARABLES_API_KEY from settings.
+        """
+        try:
+            from fastmcp.server.dependencies import get_access_token
+
+            token = get_access_token()
+            if token:
+                # OAuth flow stores the API key in claims
+                api_key = getattr(token, "claims", {}).get("api_key")
+                if api_key:
+                    return api_key
+        except (RuntimeError, LookupError):
+            pass
+
+        return self._api_key
+
     def _ensure_configured(self) -> None:
-        """Raise an error if the API key is not configured."""
-        if not self._api_key:
+        """Raise an error if no API key is available."""
+        if not self._get_api_key():
             from app.config import Settings
 
             env_file = Settings.model_config.get("env_file")
-            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
+            raise ValueError(f"No API key available. Set OPEN_WEARABLES_API_KEY in: {env_file}")
 
-    @property
-    def headers(self) -> dict[str, str]:
-        """Get headers for API requests."""
+    def _get_headers(self) -> dict[str, str]:
+        """Get headers for API requests, using the current request's API key."""
         return {
-            "X-Open-Wearables-API-Key": self._api_key,
+            "X-Open-Wearables-API-Key": self._get_api_key(),
             "Content-Type": "application/json",
         }
 
@@ -44,7 +64,7 @@ class OpenWearablesClient:
             response = await client.request(
                 method=method,
                 url=url,
-                headers=self.headers,
+                headers=self._get_headers(),
                 **kwargs,
             )
 

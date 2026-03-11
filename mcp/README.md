@@ -177,13 +177,79 @@ Get sleep summaries for a user within a date range.
 }
 ```
 
+## Transports
+
+The server supports two transport protocols, selected via the `MCP_TRANSPORT` environment variable.
+
+### stdio (default)
+
+For local AI assistants (Claude Desktop, Cursor). This is the default - no extra config needed.
+
+```bash
+uv run start
+```
+
+### HTTP (Streamable HTTP)
+
+For remote deployment (Railway, cloud VMs, etc.). Uses the MCP Streamable HTTP protocol.
+
+```bash
+MCP_TRANSPORT=http uv run start
+```
+
+The server listens on `http://0.0.0.0:8080/mcp` by default. Customize with `MCP_HOST` and `MCP_PORT`.
+
+#### Authentication (OAuth 2.1)
+
+The server implements the full MCP authorization spec (OAuth 2.1 with Dynamic Client Registration). When a user connects via Claude Desktop or another MCP client:
+
+1. The client discovers OAuth endpoints at `/.well-known/oauth-authorization-server`
+2. The client registers via Dynamic Client Registration (`POST /register`)
+3. The user is redirected to an API key entry form
+4. The user enters their Open Wearables API key from the developer panel
+5. The server validates the key against the backend
+6. An OAuth access token is issued - the API key is embedded in the token claims
+
+Each user's API key determines which data they can access - the same scoping as the REST API. The `/health` endpoint is always unauthenticated.
+
+#### Connecting via Claude Desktop
+
+In Claude Desktop, go to **Settings > Connectors > Add custom connector** and enter:
+
+```
+https://your-deployment.railway.app/mcp
+```
+
+Claude will handle the OAuth flow automatically - the user just needs to enter their API key when prompted.
+
+## Deploy to Railway
+
+### 1. Create a new Railway service
+
+Point it at the `mcp/` directory of this repo (or use the included `Dockerfile` and `railway.toml`).
+
+### 2. Set environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPEN_WEARABLES_API_URL` | Yes | Backend API URL (e.g. `https://api.your-domain.com`) |
+| `MCP_TRANSPORT` | Yes | Set to `http` |
+| `MCP_BASE_URL` | Yes | Public URL of this server (e.g. `https://mcp.railway.app`) |
+
+`OPEN_WEARABLES_API_KEY` is **not needed** in HTTP mode - each user authenticates with their own API key via the OAuth flow. Railway automatically injects `PORT`.
+
+### 3. Health check
+
+Railway uses `/health` for health checks (configured in `railway.toml`).
+
 ## Architecture
 
 ```
 mcp/
 ├── app/
-│   ├── main.py           # FastMCP entry point
-│   ├── config.py         # Settings (API URL, API key)
+│   ├── main.py           # FastMCP entry point (stdio + HTTP)
+│   ├── config.py         # Settings (API URL, API key, transport)
+│   ├── auth.py           # Bearer token auth for HTTP transport
 │   ├── tools/
 │   │   ├── users.py      # get_users tool
 │   │   ├── activity.py   # get_activity_summary tool
@@ -193,6 +259,8 @@ mcp/
 │       └── api_client.py # HTTP client for backend API
 ├── config/
 │   └── .env.example      # Environment template
+├── Dockerfile            # Container image for Railway
+├── railway.toml          # Railway deployment config
 ├── pyproject.toml
 └── README.md
 ```
@@ -213,6 +281,24 @@ docker compose up -d
 # Then start the MCP server
 cd mcp
 uv run start
+```
+
+### Testing HTTP transport locally
+
+```bash
+# Start in HTTP mode
+MCP_TRANSPORT=http MCP_PORT=9000 MCP_BASE_URL=http://localhost:9000 uv run start
+
+# Test health
+curl http://localhost:9000/health
+
+# Test OAuth discovery
+curl http://localhost:9000/.well-known/oauth-authorization-server
+
+# Register a client (DCR)
+curl -X POST http://localhost:9000/register \
+  -H "Content-Type: application/json" \
+  -d '{"client_name":"test","redirect_uris":["http://localhost:3000/callback"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"none"}'
 ```
 
 ### Testing with MCPJam
@@ -250,6 +336,10 @@ For local development:
 # From project root
 docker compose up -d
 ```
+
+### 401 Unauthorized on MCP endpoint
+
+In HTTP mode, all MCP requests require a valid OAuth access token obtained through the OAuth 2.1 flow. If you're using Claude Desktop, reconnect via Settings > Connectors. The `/health` endpoint does not require auth.
 
 ### No users found
 

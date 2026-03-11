@@ -1,9 +1,13 @@
 """Open Wearables MCP Server - Main entry point."""
 
 import logging
+import sys
 from datetime import date
 
 from fastmcp import FastMCP
+from fastmcp.server.auth.auth import OAuthProvider
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.config import settings
 from app.prompts import prompts_router
@@ -122,9 +126,51 @@ mcp.mount(prompts_router)
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
 
+# Health check endpoint (used by Railway and load balancers, bypasses MCP auth)
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    """Health check endpoint for deployment platforms."""
+    return JSONResponse({"status": "healthy", "server": "open-wearables-mcp"})
+
+
+def _build_auth() -> "OAuthProvider":
+    """Build OAuth provider for HTTP transport.
+
+    Implements full OAuth 2.1 flow so Claude Desktop and other MCP clients
+    can authenticate via the Connectors UI. Users enter their Open Wearables
+    API key on a form during the OAuth authorization step.
+    """
+    from app.auth import ApiKeyOAuthProvider
+
+    base_url = settings.mcp_base_url
+    if not base_url:
+        logger.error("MCP_BASE_URL is required for HTTP transport (e.g. https://mcp.railway.app)")
+        sys.exit(1)
+
+    logger.info(f"OAuth enabled - base_url={base_url}")
+    return ApiKeyOAuthProvider(base_url=base_url)
+
+
 def main() -> None:
-    """Entry point for the MCP server."""
-    mcp.run()
+    """Entry point for the MCP server.
+
+    Transport is selected via MCP_TRANSPORT env var:
+    - "stdio" (default): for local AI assistants (Claude Desktop, Cursor)
+    - "http": for remote deployment (Railway, etc.) with Streamable HTTP + OAuth 2.1
+    """
+    if settings.mcp_transport == "http":
+        mcp.auth = _build_auth()
+
+        port = settings.effective_port
+        logger.info(f"Starting HTTP transport on {settings.mcp_host}:{port}")
+        mcp.run(
+            transport="http",
+            host=settings.mcp_host,
+            port=port,
+        )
+    else:
+        logger.info("Starting stdio transport")
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
