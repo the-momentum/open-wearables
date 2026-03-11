@@ -63,11 +63,10 @@ def _create_s3_client(endpoint_url: str | None = None) -> Any:
 
         from app.config import settings
 
-        kwargs: dict[str, Any] = {
-            "region_name": settings.aws_region,
-            "aws_access_key_id": settings.aws_access_key_id,
-            "aws_secret_access_key": settings.aws_secret_access_key.get_secret_value(),
-        }
+        kwargs: dict[str, Any] = {"region_name": settings.aws_region}
+        if settings.aws_access_key_id and settings.aws_secret_access_key:
+            kwargs["aws_access_key_id"] = settings.aws_access_key_id
+            kwargs["aws_secret_access_key"] = settings.aws_secret_access_key.get_secret_value()
         if endpoint_url:
             kwargs["endpoint_url"] = endpoint_url
 
