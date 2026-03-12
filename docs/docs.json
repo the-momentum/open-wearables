@@ -82,8 +82,14 @@
             "pages": [
               "dev-guides/backend-e2e-integration",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/aws-setup",
               "dev-guides/ngrok-setup"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "dev-guides/aws-setup",
+              "dev-guides/raw-payload-storage"
             ]
           },
           {
