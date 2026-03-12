@@ -668,6 +668,7 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
     ) -> dict[str, int]:
         """Load and save all Oura data types (sleep, readiness, activity, SpO2, heart rate).
 
@@ -676,6 +677,7 @@ class Oura247Data(Base247DataTemplate):
             user_id: User UUID
             start_time: Start of date range (defaults to 30 days ago)
             end_time: End of date range (defaults to now)
+            is_first_sync: Whether this is the first sync (accepted for API compatibility)
         """
         # Parse string datetimes
         if isinstance(start_time, str):
