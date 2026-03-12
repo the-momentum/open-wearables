@@ -4,10 +4,10 @@ from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord
+from app.models import DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_source_repository import DataSourceRepository
 from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
@@ -28,7 +28,7 @@ class Oura247Data(Base247DataTemplate):
         provider_name: str,
         api_base_url: str,
         oauth: BaseOAuthTemplate,
-    ):
+    ) -> None:
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
@@ -163,8 +163,11 @@ class Oura247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data to database as EventRecord with SleepDetails."""
+    ) -> bool:
+        """Save normalized sleep data to database as EventRecord with SleepDetails.
+
+        Returns True if the record was saved successfully, False otherwise.
+        """
         sleep_id = normalized_sleep["id"]
 
         # Parse start and end times
@@ -186,7 +189,7 @@ class Oura247Data(Base247DataTemplate):
 
         if not start_dt or not end_dt:
             self.logger.warning(f"Skipping sleep record {sleep_id}: missing start/end time")
-            return
+            return False
 
         record = EventRecordCreate(
             id=sleep_id,
@@ -225,8 +228,10 @@ class Oura247Data(Base247DataTemplate):
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
+            return True
         except Exception as e:
             self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            return False
 
     def load_and_save_sleep(
         self,
@@ -241,8 +246,8 @@ class Oura247Data(Base247DataTemplate):
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
+                if self.save_sleep_data(db, user_id, normalized):
+                    count += 1
             except Exception as e:
                 self.logger.warning(f"Failed to save sleep data: {e}")
         return count
@@ -277,7 +282,8 @@ class Oura247Data(Base247DataTemplate):
             try:
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
-                timestamp = datetime.now(timezone.utc)
+                self.logger.warning(f"Skipping readiness record with malformed timestamp: {timestamp_str}")
+                timestamp = None
 
         return {
             "user_id": user_id,
@@ -315,7 +321,7 @@ class Oura247Data(Base247DataTemplate):
         if score is not None:
             try:
                 sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
+                    id=uuid5(NAMESPACE_URL, f"oura:recovery_score:{user_id}:{timestamp.isoformat()}"),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=timestamp,
@@ -332,7 +338,7 @@ class Oura247Data(Base247DataTemplate):
         if temp_deviation is not None and temp_deviation != 0:
             try:
                 sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
+                    id=uuid5(NAMESPACE_URL, f"oura:body_temperature:{user_id}:{timestamp.isoformat()}"),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=timestamp,
@@ -433,7 +439,7 @@ class Oura247Data(Base247DataTemplate):
             if value is not None:
                 try:
                     sample = TimeSeriesSampleCreate(
-                        id=uuid4(),
+                        id=uuid5(NAMESPACE_URL, f"oura:{field_name}:{user_id}:{timestamp.isoformat()}"),
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=timestamp,
@@ -513,7 +519,7 @@ class Oura247Data(Base247DataTemplate):
         if spo2_avg is not None:
             try:
                 sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
+                    id=uuid5(NAMESPACE_URL, f"oura:oxygen_saturation:{user_id}:{timestamp.isoformat()}"),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=timestamp,
@@ -530,7 +536,7 @@ class Oura247Data(Base247DataTemplate):
         if bdi is not None:
             try:
                 sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
+                    id=uuid5(NAMESPACE_URL, f"oura:breathing_disturbance:{user_id}:{timestamp.isoformat()}"),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=timestamp,
@@ -597,7 +603,7 @@ class Oura247Data(Base247DataTemplate):
             try:
                 timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
                 sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
+                    id=uuid5(NAMESPACE_URL, f"oura:heart_rate:{user_id}:{timestamp.isoformat()}"),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=timestamp,
@@ -662,16 +668,14 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-        is_first_sync: bool = False,
     ) -> dict[str, int]:
-        """Load and save all Oura data types (sleep, readiness, activity, SpO2, [heart rate]).
+        """Load and save all Oura data types (sleep, readiness, activity, SpO2, heart rate).
 
         Args:
             db: Database session
             user_id: User UUID
             start_time: Start of date range (defaults to 30 days ago)
             end_time: End of date range (defaults to now)
-            is_first_sync: Whether this is the first sync; enables heart rate sync when True
         """
         # Parse string datetimes
         if isinstance(start_time, str):
@@ -712,13 +716,11 @@ class Oura247Data(Base247DataTemplate):
         except Exception as e:
             self.logger.error(f"Failed to sync Oura SpO2 data: {e}")
 
-        # Heart rate: only sync on first sync (can be very large dataset)
-        if is_first_sync:
-            try:
-                results["heart_rate_samples_synced"] = self.load_and_save_heart_rate(
-                    db, user_id, start_time, end_time
-                )
-            except Exception as e:
-                self.logger.error(f"Failed to sync Oura heart rate data: {e}")
+        try:
+            results["heart_rate_samples_synced"] = self.load_and_save_heart_rate(
+                db, user_id, start_time, end_time
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to sync Oura heart rate data: {e}")
 
         return results

@@ -6,7 +6,7 @@ from app.services.providers.oura.oauth import OuraOAuth
 class OuraStrategy(BaseProviderStrategy):
     """Oura Ring provider implementation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         # Initialize OAuth component
