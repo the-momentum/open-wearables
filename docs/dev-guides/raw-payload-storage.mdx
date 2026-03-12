@@ -121,10 +121,10 @@ Raw payloads storage is currently enabled at two ingestion points:
 
 Raw payloads storage is designed to never break your data ingestion pipeline:
 
-- **Oversized payloads** - Payloads exceeding `RAW_PAYLOAD_MAX_SIZE_BYTES` are silently skipped with a warning log. Data processing continues normally.
+- **Oversized payloads** - Payloads exceeding `RAW_PAYLOAD_MAX_SIZE_BYTES` are skipped with a warning log. Data processing continues normally.
 - **S3 upload failures** - Errors are logged but not propagated. The webhook or sync request continues processing.
 - **Missing S3 bucket** - If the S3 backend is configured but no bucket is available, it falls back to `disabled` with an error log.
-- **Missing boto3** - If the `boto3` library is not installed, S3 backend falls back to `disabled`.
+- **S3 client failure** - If the S3 client cannot be created (e.g., missing `boto3` or invalid credentials), it falls back to `disabled`.
 
 ## Example Setup
 
