@@ -403,13 +403,14 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         sleep_stages=cleaned_stages or None,
     )
 
-    delete_sleep_state(user_id)
-
     try:
         created_or_existing_record = event_record_service.create(db_session, sleep_record)
         # Always use the returned record's ID (whether newly created or existing)
         detail_for_record = detail.model_copy(update={"record_id": created_or_existing_record.id})
         event_record_service.create_detail(db_session, detail_for_record, detail_type="sleep")
+        # Delete from Redis only after a successful DB write so a transient error
+        # keeps the session available for the next periodic finalization attempt.
+        delete_sleep_state(user_id)
     except Exception as e:
         log_structured(
             logger,
