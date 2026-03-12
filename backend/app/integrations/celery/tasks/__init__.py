@@ -67,7 +67,6 @@ __all__ = [
     "run_daily_archival",
     # Other tasks
     "finalize_stale_sleeps",
-    "poll_sqs_task",
     "process_sdk_upload",
     "process_aws_upload",
     "process_xml_upload",
