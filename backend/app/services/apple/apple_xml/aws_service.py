@@ -24,7 +24,8 @@ def get_s3_client():  # noqa: ANN201
         log_structured(logger, "warning", "AWS credentials not configured")
         return None
 
-def get_sns_client(): # noqa: ANN201
+
+def get_sns_client():  # noqa: ANN201
     try:
         return boto3.client(
             "sns",

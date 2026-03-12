@@ -32,8 +32,10 @@ class PresignedURLResponse(BaseModel):
     max_file_size: int
     bucket: str
 
+
 class SNSNotification(BaseModel):
     """Handles both SubscriptionConfirmation and Notification message types from SNS."""
+
     message_type: str = Field(..., alias="Type")
     message_id: str = Field(..., alias="MessageId")
     topic_arn: str = Field(..., alias="TopicArn")

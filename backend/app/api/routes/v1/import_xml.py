@@ -1,16 +1,14 @@
 import json
-from typing import Any
 
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, HTTPException, Request, UploadFile, status
+from pydantic import ValidationError
 
-from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
-from app.schemas import PresignedURLRequest, PresignedURLResponse
+from app.schemas import PresignedURLRequest, PresignedURLResponse, UploadDataResponse
 from app.schemas.apple.apple_xml.aws import SNSNotification
 from app.services import ApiKeyDep
-from app.services.apple.apple_xml.sns_service import sns_service
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
-
+from app.services.apple.apple_xml.sns_service import sns_service
 
 router = APIRouter()
 
@@ -22,11 +20,7 @@ async def import_xml_presigned_url(
     _api_key: ApiKeyDep,
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
-    presigned_response = presigned_url_service.create_presigned_url(user_id, request)
-
-    poll_sqs_task.delay(expiration_seconds=presigned_response.expires_in, user_id=user_id)
-
-    return presigned_response
+    return presigned_url_service.create_presigned_url(user_id, request)
 
 
 @router.post("/users/{user_id}/import/apple/xml/direct")
@@ -51,8 +45,11 @@ async def import_xml_file(
 @router.post("/sns/notification")
 async def receive_sns_notification(
     request: Request,
-) -> dict[str, Any]:
+) -> UploadDataResponse:
     """Handle all SNS messages (subscription confirmation + S3 upload notifications)."""
     body = await request.body()
-    notification = SNSNotification.model_validate(json.loads(body))
+    try:
+        notification = SNSNotification.model_validate(json.loads(body))
+    except ValidationError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return sns_service.handle_sns_notification(notification)
