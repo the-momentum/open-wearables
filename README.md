@@ -155,6 +155,7 @@ Native SDKs for push-based health data sync from on-device health stores:
 - **[iOS SDK](https://github.com/the-momentum/open_wearables_ios_sdk)** (Swift) - Apple HealthKit
 - **[Android SDK](https://github.com/the-momentum/open_wearables_android_sdk)** (Kotlin) - Samsung Health & Google Health Connect
 - **[Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk)** (Dart) - Cross-platform wrapper around native SDKs
+- **[React Native SDK](https://github.com/the-momentum/open-wearables-react-native-sdk)** (TypeScript) - Cross-platform wrapper around native SDKs
 
 ### Widgets (coming soon)
 - 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
@@ -179,7 +180,7 @@ The platform is designed for self-hosting, meaning each deployment serves a sing
 - User management (via API and developer portal)
 - OAuth flow for Garmin, Polar, and Suunto
 - Workout data sync and API access for Garmin, Polar, and Suunto
-- Mobile Sync SDKs (iOS, Android, Flutter)
+- Mobile Sync SDKs (iOS, Android, Flutter, React Native)
 
 **In Development**:
 - Core health data endpoints
