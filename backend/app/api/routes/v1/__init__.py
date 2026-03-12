@@ -9,6 +9,7 @@ from .developers import router as developers_router
 from .events import router as events_router
 from .external_connectors import router as external_connectors_router
 from .garmin_webhooks import router as garmin_webhooks_router
+from .import_csv import router as import_csv_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
@@ -44,6 +45,7 @@ v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])
 v1_router.include_router(import_xml_router, tags=["Apple Health XML import"])
+v1_router.include_router(import_csv_router, tags=["CGM CSV import"])
 v1_router.include_router(external_connectors_router, tags=["External connectors"])
 v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])

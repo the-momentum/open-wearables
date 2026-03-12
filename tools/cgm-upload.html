@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CGM Data Upload</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f7fa;
+    color: #1a1a2e;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    max-width: 520px;
+    width: 100%;
+    padding: 40px 36px;
+  }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: #6b7280; margin-bottom: 28px; }
+
+  /* Login form */
+  .login-form { display: flex; flex-direction: column; gap: 12px; }
+  .login-form label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+  .login-form input {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 14px; color: #1a1a2e; transition: border-color .2s;
+  }
+  .login-form input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+  .login-btn {
+    padding: 10px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    background: #6366f1; color: #fff; cursor: pointer; transition: background .2s;
+  }
+  .login-btn:hover { background: #4f46e5; }
+  .login-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .login-error { font-size: 13px; color: #991b1b; }
+
+  /* Session bar */
+  .session-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: #ecfdf5; border: 1px solid #a7f3d0;
+    border-radius: 10px; margin-bottom: 20px; font-size: 13px; color: #065f46;
+  }
+  .session-bar button {
+    background: none; border: 1px solid #a7f3d0; border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; color: #065f46; cursor: pointer;
+  }
+  .session-bar button:hover { background: #d1fae5; }
+
+  /* User select */
+  .user-picker { margin-bottom: 16px; }
+  .user-picker label { display: block; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .user-picker select {
+    width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 14px; color: #1a1a2e; background: #fff; transition: border-color .2s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  .user-picker select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+  .user-picker select:disabled { opacity: .6; }
+
+  .drop-zone {
+    border: 2px dashed #d1d5db;
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: #6366f1;
+    background: #eef2ff;
+  }
+  .drop-zone.uploading {
+    pointer-events: none;
+    opacity: .6;
+  }
+  .drop-zone input { display: none; }
+  .drop-icon { font-size: 40px; margin-bottom: 12px; display: block; }
+  .drop-label { font-size: 15px; color: #374151; line-height: 1.5; }
+  .drop-label strong { color: #6366f1; }
+  .drop-hint { font-size: 12px; color: #9ca3af; margin-top: 8px; }
+
+  /* Messages */
+  .messages { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .msg {
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    animation: slideIn .25s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .msg.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+  .msg.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+  .msg.info { background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; }
+  .msg .filename { font-weight: 600; }
+  .msg .detail { margin-top: 4px; font-size: 12px; opacity: .8; }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #c7d2fe; border-top-color: #6366f1;
+    border-radius: 50%; animation: spin .6s linear infinite;
+    vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>CGM Data Upload</h1>
+  <p class="subtitle">Drag and drop Dexcom Clarity or LibreView files (CSV or PDF)</p>
+
+  <!-- Login form (shown when not authenticated) -->
+  <div id="loginSection">
+    <div class="login-form">
+      <div>
+        <label for="emailInput">Email</label>
+        <input type="email" id="emailInput" placeholder="admin@admin.com" autocomplete="username">
+      </div>
+      <div>
+        <label for="passwordInput">Password</label>
+        <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password">
+      </div>
+      <button class="login-btn" id="loginBtn">Sign in</button>
+      <div class="login-error hidden" id="loginError"></div>
+    </div>
+  </div>
+
+  <!-- Upload area (shown when authenticated) -->
+  <div id="uploadSection" class="hidden">
+    <div class="session-bar">
+      <span>Signed in as <strong id="sessionEmail"></strong></span>
+      <button id="logoutBtn">Sign out</button>
+    </div>
+
+    <div class="user-picker">
+      <label for="userSelect">Patient</label>
+      <select id="userSelect" disabled><option value="">Loading users...</option></select>
+    </div>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".csv,.txt,.pdf" multiple>
+      <span class="drop-icon">&#128200;</span>
+      <div class="drop-label">Drop CSV or PDF files here or <strong>click to browse</strong></div>
+      <div class="drop-hint">Supports Dexcom Clarity CSV &amp; LibreView CSV/PDF exports</div>
+    </div>
+  </div>
+
+  <div class="messages" id="messages"></div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:8000/api/v1';
+const TOKEN_KEY = 'cgm_upload_token';
+const REFRESH_KEY = 'cgm_upload_refresh';
+const EMAIL_KEY = 'cgm_upload_email';
+const USER_KEY = 'cgm_upload_user_id';
+
+const loginSection = document.getElementById('loginSection');
+const uploadSection = document.getElementById('uploadSection');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
+const emailInput = document.getElementById('emailInput');
+const passwordInput = document.getElementById('passwordInput');
+const logoutBtn = document.getElementById('logoutBtn');
+const sessionEmail = document.getElementById('sessionEmail');
+const userSelect = document.getElementById('userSelect');
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const messages = document.getElementById('messages');
+
+// --- Auth state ---
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function getRefresh() { return localStorage.getItem(REFRESH_KEY); }
+
+function saveSession(token, refresh, email) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(REFRESH_KEY, refresh);
+  localStorage.setItem(EMAIL_KEY, email);
+}
+
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(EMAIL_KEY);
+}
+
+function showLogin() {
+  loginSection.classList.remove('hidden');
+  uploadSection.classList.add('hidden');
+}
+
+function showUpload() {
+  loginSection.classList.add('hidden');
+  uploadSection.classList.remove('hidden');
+  sessionEmail.textContent = localStorage.getItem(EMAIL_KEY) || '';
+  loadUsers();
+}
+
+// Remember last-selected user
+userSelect.addEventListener('change', () => {
+  localStorage.setItem(USER_KEY, userSelect.value);
+});
+
+async function loadUsers() {
+  userSelect.disabled = true;
+  userSelect.innerHTML = '<option value="">Loading users...</option>';
+
+  try {
+    const res = await authFetch(`${API_BASE}/users?limit=100&sort_by=last_name&sort_order=asc`);
+    if (!res || !res.ok) {
+      userSelect.innerHTML = '<option value="">Failed to load users</option>';
+      return;
+    }
+    const data = await res.json();
+    const users = data.items || [];
+
+    if (!users.length) {
+      userSelect.innerHTML = '<option value="">No users found</option>';
+      return;
+    }
+
+    const saved = localStorage.getItem(USER_KEY);
+    userSelect.innerHTML = '<option value="">Select a patient...</option>';
+    for (const u of users) {
+      const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || u.external_user_id || u.id;
+      const opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = name + (u.email && (u.first_name || u.last_name) ? ` (${u.email})` : '');
+      if (u.id === saved) opt.selected = true;
+      userSelect.appendChild(opt);
+    }
+    userSelect.disabled = false;
+  } catch (err) {
+    userSelect.innerHTML = `<option value="">Error: ${err.message}</option>`;
+  }
+}
+
+// --- Login ---
+
+async function login() {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  if (!email || !password) {
+    showError('Please enter email and password.');
+    return;
+  }
+
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Signing in...';
+  hideError();
+
+  try {
+    const body = new URLSearchParams({ username: email, password });
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showError(data.detail || `Login failed (HTTP ${res.status})`);
+      return;
+    }
+
+    const data = await res.json();
+    saveSession(data.access_token, data.refresh_token, email);
+    showUpload();
+  } catch (err) {
+    showError(`Network error: ${err.message}`);
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Sign in';
+  }
+}
+
+function showError(msg) {
+  loginError.textContent = msg;
+  loginError.classList.remove('hidden');
+}
+function hideError() { loginError.classList.add('hidden'); }
+
+loginBtn.addEventListener('click', login);
+passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+emailInput.addEventListener('keydown', e => { if (e.key === 'Enter') passwordInput.focus(); });
+
+// --- Logout ---
+
+logoutBtn.addEventListener('click', () => {
+  clearSession();
+  showLogin();
+});
+
+// --- Token refresh ---
+
+async function refreshToken() {
+  const rt = getRefresh();
+  if (!rt) return false;
+
+  try {
+    const res = await fetch(`${API_BASE}/token/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    localStorage.setItem(TOKEN_KEY, data.access_token);
+    localStorage.setItem(REFRESH_KEY, data.refresh_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function authFetch(url, options = {}) {
+  const token = getToken();
+  if (!token) { clearSession(); showLogin(); return null; }
+
+  options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+  let res = await fetch(url, options);
+
+  // If 401, try refreshing the token once
+  if (res.status === 401) {
+    const refreshed = await refreshToken();
+    if (refreshed) {
+      options.headers['Authorization'] = `Bearer ${getToken()}`;
+      res = await fetch(url, options);
+    } else {
+      clearSession();
+      showLogin();
+      addMsg('error', 'Session', 'Session expired. Please sign in again.');
+      return null;
+    }
+  }
+  return res;
+}
+
+// --- Drag & drop ---
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+
+function handleFiles(files) {
+  for (const file of files) uploadFile(file);
+}
+
+async function uploadFile(file) {
+  const userId = userSelect.value;
+  if (!userId) { addMsg('error', file.name, 'Please select a patient first.'); return; }
+
+  const infoId = addMsg('info', file.name, '<span class="spinner"></span>Uploading...');
+  dropZone.classList.add('uploading');
+
+  try {
+    const form = new FormData();
+    form.append('file', file);
+
+    const res = await authFetch(`${API_BASE}/users/${userId}/import/cgm/csv`, {
+      method: 'POST',
+      body: form,
+    });
+
+    removeMsg(infoId);
+
+    if (!res) return; // auth failure handled by authFetch
+
+    if (!res.ok) {
+      const text = await res.text();
+      let detail;
+      try { detail = JSON.parse(text).detail; } catch { detail = text; }
+      addMsg('error', file.name, `HTTP ${res.status}: ${detail || res.statusText}`);
+      return;
+    }
+
+    const data = await res.json();
+    addMsg('success', file.name,
+      `Queued for import<div class="detail">Task ID: ${data.task_id}</div>`
+    );
+  } catch (err) {
+    removeMsg(infoId);
+    addMsg('error', file.name, `Network error: ${err.message}`);
+  } finally {
+    dropZone.classList.remove('uploading');
+  }
+}
+
+let msgCounter = 0;
+function addMsg(type, filename, html) {
+  const id = `msg-${++msgCounter}`;
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
+  div.id = id;
+  div.innerHTML = `<span class="filename">${esc(filename)}</span> &mdash; ${html}`;
+  messages.prepend(div);
+  while (messages.children.length > 20) messages.lastChild.remove();
+  return id;
+}
+
+function removeMsg(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Init: restore session if token exists ---
+if (getToken()) {
+  showUpload();
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>
