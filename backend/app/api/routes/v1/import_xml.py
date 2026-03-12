@@ -8,7 +8,7 @@ from app.integrations.celery.tasks.process_xml_upload_task import process_xml_up
 from app.schemas import PresignedURLRequest, PresignedURLResponse
 from app.schemas.apple.apple_xml.aws import SNSNotification
 from app.services import ApiKeyDep
-from app.services.apple.apple_xml.aws_service import sns_service
+from app.services.apple.apple_xml.sns_service import sns_service
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
 
 
@@ -49,11 +49,10 @@ def import_xml_file(
 
 
 @router.post("/sns/notification")
-async def sns_confirm(
+async def receive_sns_notification(
     request: Request,
-) -> dict[str, bool]:
-    """Confirm SNS subscription. SNS sends text/plain, so we parse the raw body manually."""
+) -> dict[str, Any]:
+    """Handle all SNS messages (subscription confirmation + S3 upload notifications)."""
     body = await request.body()
-    sns_request = SNSNotification.model_validate(json.loads(body))
-    result = sns_service.handle_sns_notification(sns_request)
-    return {"success": result}
+    notification = SNSNotification.model_validate(json.loads(body))
+    return sns_service.handle_sns_notification(notification)

@@ -33,13 +33,18 @@ class PresignedURLResponse(BaseModel):
     bucket: str
 
 class SNSNotification(BaseModel):
-    message_type: str = Field(..., alias="Type", description="Type of message received from SNS")
-    message_id: str = Field(..., alias="MessageId", description="Message ID of the message received from SNS")
-    token: str = Field(..., alias="Token", description="Token of the message received from SNS")
-    topic_arn: str = Field(..., alias="TopicArn", description="Topic ARN of the message received from SNS")
-    message: str = Field(..., alias="Message", description="Message of the message received from SNS")
-    subscribe_url: str = Field(..., alias="SubscribeURL", description="Subscribe URL of the message received from SNS")
-    timestamp: str = Field(..., alias="Timestamp", description="Timestamp of the message received from SNS")
-    signature: str = Field(..., alias="Signature", description="Signature of the message received from SNS")
-    signature_version: str = Field(..., alias="SignatureVersion", description="Signature version of the message received from SNS")
-    signing_cert_url: str = Field(..., alias="SigningCertURL", description="Signing certificate URL of the message received from SNS")
+    """Handles both SubscriptionConfirmation and Notification message types from SNS."""
+    message_type: str = Field(..., alias="Type")
+    message_id: str = Field(..., alias="MessageId")
+    topic_arn: str = Field(..., alias="TopicArn")
+    message: str = Field(..., alias="Message")
+    timestamp: str = Field(..., alias="Timestamp")
+    signature: str = Field(..., alias="Signature")
+    signature_version: str = Field(..., alias="SignatureVersion")
+    signing_cert_url: str = Field(..., alias="SigningCertURL")
+    # Only present on SubscriptionConfirmation
+    token: str | None = Field(None, alias="Token")
+    subscribe_url: str | None = Field(None, alias="SubscribeURL")
+    # Only present on Notification
+    subject: str | None = Field(None, alias="Subject")
+    unsubscribe_url: str | None = Field(None, alias="UnsubscribeURL")
