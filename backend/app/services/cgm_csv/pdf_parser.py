@@ -1,6 +1,6 @@
 import io
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from logging import Logger
 from uuid import UUID, uuid4
 
@@ -101,6 +101,139 @@ def _is_glucose_value(value: str) -> bool:
     return bool(re.match(r"^\d+\.?\d*$", value.strip()))
 
 
+# Regex patterns for Daily Log PDF format
+_DAY_HEADER_RE = re.compile(r"(MON|TUE|WED|THU|FRI|SAT|SUN)\s+(\d{1,2})\s+(\w+)")
+_MAX_LINE_RE = re.compile(r"Max\s+([\d.\s]+)")
+_MIN_LINE_RE = re.compile(r"Min\s+([\d.\s]+)")
+_DATE_RANGE_RE = re.compile(r"(\d{1,2}\s+\w+\s+\d{4})\s*-\s*(\d{1,2}\s+\w+\s+\d{4})")
+
+_MONTH_MAP = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "june": 6, "july": 7, "august": 8, "september": 9,
+    "october": 10, "november": 11, "december": 12,
+}
+
+
+def _parse_daily_log_pdf(
+    pages_text: list[str],
+    user_id: UUID,
+    log: Logger,
+    stats: CSVParseStats,
+) -> list[TimeSeriesSampleCreate]:
+    """Parse a LibreView Daily Log PDF (chart-based with hourly Max/Min summaries).
+
+    These PDFs show daily glucose charts with Max and Min values per hour.
+    Each day has a header like "WED 25 Feb" followed by Max/Min lines with 24 hourly values.
+    """
+    # Extract year from date range header (e.g., "16 February 2026 - 1 March 2026")
+    year = None
+    full_text = "\n".join(pages_text)
+    range_match = _DATE_RANGE_RE.search(full_text)
+    if range_match:
+        try:
+            end_date = datetime.strptime(range_match.group(2), "%d %B %Y")
+            year = end_date.year
+        except ValueError:
+            pass
+    if year is None:
+        year = datetime.now(timezone.utc).year
+
+    # Detect unit from text
+    needs_conversion = "mg/dl" not in full_text.lower()
+
+    # Collect max and min values per (date, hour), then average them into one sample
+    # Keys: (date_str, hour) -> {"max": value, "min": value}
+    hourly_data: dict[tuple[str, int], dict[str, float]] = {}
+    samples: list[TimeSeriesSampleCreate] = []
+
+    for page_text in pages_text:
+        lines = page_text.split("\n")
+        current_date: datetime | None = None
+
+        for line in lines:
+            # Match day header: "WED 25 Feb"
+            day_match = _DAY_HEADER_RE.search(line)
+            if day_match:
+                day_num = int(day_match.group(2))
+                month_str = day_match.group(3).lower()
+                month_num = _MONTH_MAP.get(month_str)
+                if month_num:
+                    try:
+                        current_date = datetime(year, month_num, day_num, tzinfo=timezone.utc)
+                    except ValueError:
+                        current_date = None
+                continue
+
+            if current_date is None:
+                continue
+
+            # Collect Max/Min values per hour
+            max_match = _MAX_LINE_RE.match(line.strip())
+            min_match = _MIN_LINE_RE.match(line.strip())
+
+            if max_match or min_match:
+                match = max_match or min_match
+                label = "max" if max_match else "min"
+                vals_str = match.group(1).strip().split()
+                date_str = current_date.strftime("%Y-%m-%d")
+
+                for hour_idx, val_str in enumerate(vals_str):
+                    if hour_idx >= 24:
+                        break
+                    try:
+                        glucose_raw = float(val_str)
+                    except ValueError:
+                        stats.record_skip("invalid_glucose_value")
+                        continue
+
+                    glucose_value = round(glucose_raw * MMOL_TO_MGDL, 1) if needs_conversion else round(glucose_raw, 1)
+
+                    # For partial days, values start from the last hours of the day
+                    if len(vals_str) < 24:
+                        hour = 24 - len(vals_str) + hour_idx
+                    else:
+                        hour = hour_idx
+
+                    key = (date_str, hour)
+                    if key not in hourly_data:
+                        hourly_data[key] = {}
+                    hourly_data[key][label] = glucose_value
+
+    # Create one sample per hour using the average of max and min
+    for (date_str, hour), values in sorted(hourly_data.items()):
+        if not values:
+            continue
+        avg_value = round(sum(values.values()) / len(values), 1)
+        recorded_at = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=hour, tzinfo=timezone.utc)
+        external_id = f"libreview_daily_{date_str}_{hour:02d}"
+
+        samples.append(
+            TimeSeriesSampleCreate(
+                id=uuid4(),
+                user_id=user_id,
+                recorded_at=recorded_at,
+                value=avg_value,
+                series_type=SeriesType.blood_glucose,
+                source="libreview",
+                external_id=external_id,
+            )
+        )
+        stats.records_processed += 1
+
+    return samples
+
+
+def _is_daily_log_pdf(pages_text: list[str]) -> bool:
+    """Detect if this is a LibreView Daily Log PDF by looking for characteristic patterns."""
+    full_text = "\n".join(pages_text[:2])
+    has_daily_log = "Daily Log" in full_text
+    has_day_headers = bool(_DAY_HEADER_RE.search(full_text))
+    has_glucose_label = "Glucose mmol/L" in full_text or "Glucose mg/dL" in full_text
+    return has_daily_log and has_day_headers and has_glucose_label
+
+
 def parse_libreview_pdf(
     file_contents: bytes,
     user_id: UUID,
@@ -122,10 +255,24 @@ def parse_libreview_pdf(
 
     with pdfplumber.open(io.BytesIO(file_contents)) as pdf:
         all_tables: list[list[list[str | None]]] = []
+        pages_text: list[str] = []
         for page in pdf.pages:
             page_tables = page.extract_tables()
             if page_tables:
                 all_tables.extend(page_tables)
+            pages_text.append(page.extract_text() or "")
+
+    # Try Daily Log format first (chart-based with hourly Max/Min)
+    if _is_daily_log_pdf(pages_text):
+        stats.detected_format = "libreview_daily_log_pdf"
+        log.info("Detected LibreView Daily Log PDF format")
+        samples = _parse_daily_log_pdf(pages_text, user_id, log, stats)
+        log.info(
+            "LibreView Daily Log PDF parse complete: processed=%d, skipped=%d",
+            stats.records_processed,
+            stats.records_skipped,
+        )
+        return samples, stats
 
     if not all_tables:
         log.warning("No tables found in PDF")
