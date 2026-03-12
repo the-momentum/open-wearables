@@ -522,10 +522,6 @@ class TestHandleSleepDataIntegration:
 class TestSDKSyncEndpointSleep:
     """Test the /sdk/users/{user_id}/sync endpoint with sleep payloads."""
 
-    @pytest.fixture(autouse=True)
-    def _mock_celery(self) -> None:
-        """Handled by global mock_celery_tasks in conftest."""
-
     def test_sync_endpoint_accepts_sleeping_stage(
         self,
         client: MagicMock,

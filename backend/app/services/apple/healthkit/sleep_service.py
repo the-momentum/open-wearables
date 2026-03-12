@@ -24,6 +24,14 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
+_STAGE_TO_METRIC: dict[str, str] = {
+    "awake": "awake_seconds",
+    "sleeping": "sleeping_seconds",
+    "light": "light_seconds",
+    "deep": "deep_seconds",
+    "rem": "rem_seconds",
+}
+
 
 def key(user_id: str) -> str:
     """Generate a key for the sleep state."""
@@ -265,15 +273,6 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
         "rem_seconds": 0,
     }
 
-    # Map normalized SleepStageType strings to metric keys
-    stage_to_metric = {
-        "awake": "awake_seconds",
-        "sleeping": "sleeping_seconds",
-        "light": "light_seconds",
-        "deep": "deep_seconds",
-        "rem": "rem_seconds",
-    }
-
     # 1. Process specific stages (Deep, Light, REM, Awake)
     # Exclude IN_BED (which is separate) and unknown
     specific_raw = [s for s in stages if s.stage != "in_bed" and s.stage != "unknown"]
@@ -297,13 +296,9 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
         # Safe to access .stage (Pydantic model)
         phase_str = str(stage.stage)
 
-        metric_key = stage_to_metric.get(phase_str)
+        metric_key = _STAGE_TO_METRIC.get(phase_str)
         if metric_key:
             metrics[metric_key] += duration
-
-        # Construct final SleepStage (also Pydantic)
-        # Note: stage.stage is SleepStageType enum member
-        from app.constants.sleep import SleepStageType
 
         cleaned_stages.append(SleepStage(stage=SleepStageType(phase_str), start_time=start, end_time=end))
         last_end = end
