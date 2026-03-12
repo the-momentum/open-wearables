@@ -32,7 +32,7 @@ class PresignedURLResponse(BaseModel):
     max_file_size: int
     bucket: str
 
-class SNSConfirmRequest(BaseModel):
+class SNSNotification(BaseModel):
     message_type: str = Field(..., alias="Type", description="Type of message received from SNS")
     message_id: str = Field(..., alias="MessageId", description="Message ID of the message received from SNS")
     token: str = Field(..., alias="Token", description="Token of the message received from SNS")
@@ -41,5 +41,5 @@ class SNSConfirmRequest(BaseModel):
     subscribe_url: str = Field(..., alias="SubscribeURL", description="Subscribe URL of the message received from SNS")
     timestamp: str = Field(..., alias="Timestamp", description="Timestamp of the message received from SNS")
     signature: str = Field(..., alias="Signature", description="Signature of the message received from SNS")
-    signature_version: int = Field(..., alias="SignatureVersion", description="Signature version of the message received from SNS")
+    signature_version: str = Field(..., alias="SignatureVersion", description="Signature version of the message received from SNS")
     signing_cert_url: str = Field(..., alias="SigningCertURL", description="Signing certificate URL of the message received from SNS")
