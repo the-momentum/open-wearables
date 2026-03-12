@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
+    # DEXCOM OAUTH SETTINGS
+    dexcom_client_id: str | None = None
+    dexcom_client_secret: SecretStr | None = None
+    dexcom_redirect_uri: str = "http://localhost:8000/api/v1/oauth/dexcom/callback"
+    dexcom_default_scope: str = "offline_access"
+
     # WITHINGS OAUTH SETTINGS
     withings_client_id: str | None = None
     withings_client_secret: SecretStr | None = None
