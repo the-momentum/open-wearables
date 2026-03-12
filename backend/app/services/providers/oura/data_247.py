@@ -1,10 +1,9 @@
 """Oura Ring 247 Data implementation for sleep, readiness, activity, and SpO2."""
 
-from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.database import DbSession
 from app.models import DataSource, EventRecord
@@ -18,6 +17,13 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
+
+# Activity metrics to sync: (Oura API field name, target series type)
+_ACTIVITY_METRICS: list[tuple[str, SeriesType]] = [
+    ("steps", SeriesType.steps),
+    ("active_calories", SeriesType.energy),
+    ("total_calories", SeriesType.basal_energy),
+]
 
 
 class Oura247Data(Base247DataTemplate):
@@ -132,11 +138,14 @@ class Oura247Data(Base247DataTemplate):
 
         efficiency = raw_sleep.get("efficiency")
 
-        # Generate a stable UUID from the Oura ID
-        internal_id = uuid4()
+        # Generate a deterministic UUID from the Oura ID
         if sleep_id_str:
-            with suppress(ValueError, TypeError):
+            try:
                 internal_id = UUID(sleep_id_str)
+            except (ValueError, TypeError):
+                internal_id = uuid5(NAMESPACE_URL, f"oura:sleep:{sleep_id_str}")
+        else:
+            internal_id = uuid5(NAMESPACE_URL, f"oura:sleep:{user_id}:{bedtime_start}")
 
         return {
             "id": internal_id,
@@ -428,13 +437,8 @@ class Oura247Data(Base247DataTemplate):
             return 0
 
         count = 0
-        metrics = [
-            ("steps", SeriesType.steps),
-            ("active_calories", SeriesType.energy),
-            ("total_calories", SeriesType.basal_energy),
-        ]
 
-        for field_name, series_type in metrics:
+        for field_name, series_type in _ACTIVITY_METRICS:
             value = raw_activity.get(field_name)
             if value is not None:
                 try:
