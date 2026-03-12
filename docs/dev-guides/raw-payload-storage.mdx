@@ -128,39 +128,39 @@ Raw payloads storage is designed to never break your data ingestion pipeline:
 
 ## Example Setup
 
-### Development (log to stdout)
+<Tabs>
+  <Tab title="Development">
+    ```bash
+    RAW_PAYLOAD_STORAGE=log
+    ```
 
-```bash
-RAW_PAYLOAD_STORAGE=log
-```
+    Then inspect payloads in Docker logs:
 
-Then inspect payloads in Docker logs:
+    ```bash
+    docker compose logs -f backend | grep raw_payload
+    ```
+  </Tab>
+  <Tab title="Production (S3)">
+    ```bash
+    RAW_PAYLOAD_STORAGE=s3
+    RAW_PAYLOAD_S3_BUCKET=mycompany-raw-payloads
+    RAW_PAYLOAD_S3_PREFIX=open-wearables
+    RAW_PAYLOAD_MAX_SIZE_BYTES=10485760
 
-```bash
-docker compose logs -f backend | grep raw_payload
-```
-
-### Production (store in S3)
-
-```bash
-RAW_PAYLOAD_STORAGE=s3
-RAW_PAYLOAD_S3_BUCKET=mycompany-raw-payloads
-RAW_PAYLOAD_S3_PREFIX=open-wearables
-RAW_PAYLOAD_MAX_SIZE_BYTES=10485760
-
-# AWS credentials (if not already configured)
-AWS_ACCESS_KEY_ID=your-key
-AWS_SECRET_ACCESS_KEY=your-secret
-AWS_REGION=eu-north-1
-```
-
-### S3-compatible storage (e.g., MinIO)
-
-```bash
-RAW_PAYLOAD_STORAGE=s3
-RAW_PAYLOAD_S3_BUCKET=raw-payloads
-RAW_PAYLOAD_S3_ENDPOINT_URL=http://minio:9000
-```
+    # AWS credentials (if not already configured)
+    AWS_ACCESS_KEY_ID=your-key
+    AWS_SECRET_ACCESS_KEY=your-secret
+    AWS_REGION=eu-north-1
+    ```
+  </Tab>
+  <Tab title="S3-compatible (MinIO)">
+    ```bash
+    RAW_PAYLOAD_STORAGE=s3
+    RAW_PAYLOAD_S3_BUCKET=raw-payloads
+    RAW_PAYLOAD_S3_ENDPOINT_URL=http://minio:9000
+    ```
+  </Tab>
+</Tabs>
 
 ## Related Guides
 
