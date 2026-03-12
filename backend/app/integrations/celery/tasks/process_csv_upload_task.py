@@ -24,10 +24,10 @@ def process_csv_upload(file_contents: bytes, filename: str, user_id: str) -> dic
     Returns:
         Dict with status, message, and import statistics
     """
-    samples, stats = parse_cgm_file(file_contents, filename, UUID(user_id), log)
-
     with SessionLocal() as db:
         try:
+            samples, stats = parse_cgm_file(file_contents, filename, UUID(user_id), log)
+
             if samples:
                 timeseries_service.bulk_create_samples(db, samples)
                 db.commit()

@@ -130,6 +130,8 @@ class Withings247Data(Base247DataTemplate):
                     )
                     response.raise_for_status()
                     result = response.json()
+                    if result.get("status") != 0:
+                        raise ValueError(f"Withings API error after retry: status={result.get('status')}")
                     return result.get("body", {})
             raise
         except ValueError:
@@ -319,15 +321,18 @@ class Withings247Data(Base247DataTemplate):
         db,
         user_id: UUID,
         normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data to database as EventRecord with SleepDetails."""
+    ) -> bool:
+        """Save normalized sleep data to database as EventRecord with SleepDetails.
+
+        Returns True if data was persisted, False otherwise.
+        """
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
             self.logger.warning(f"Skipping sleep record {sleep_id}: missing start/end time")
-            return
+            return False
 
         record = EventRecordCreate(
             id=sleep_id,
@@ -381,8 +386,10 @@ class Withings247Data(Base247DataTemplate):
                     series_type=SeriesType.heart_rate,
                 )
                 timeseries_service.crud.create(db, sample)
+            return True
         except Exception as e:
             self.logger.error(f"Error saving Withings sleep record {sleep_id}: {e}")
+            return False
 
     def load_and_save_sleep(
         self,
@@ -397,8 +404,8 @@ class Withings247Data(Base247DataTemplate):
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
+                if self.save_sleep_data(db, user_id, normalized):
+                    count += 1
             except Exception as e:
                 self.logger.warning(f"Failed to save Withings sleep data: {e}")
         return count

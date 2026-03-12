@@ -52,6 +52,14 @@ def _find_glucose_table(
     return None
 
 
+def _detect_unit_from_headers(headers: list[str]) -> str:
+    """Detect glucose unit from header text. Returns 'mg/dl' or 'mmol/l'."""
+    joined = " ".join(headers).lower()
+    if "mg/dl" in joined:
+        return "mg/dl"
+    return "mmol/l"
+
+
 def _build_col_map(headers: list[str]) -> dict[str, int]:
     """Build column index map from header row using substring matching."""
     col_map: dict[str, int] = {}
@@ -130,6 +138,8 @@ def parse_libreview_pdf(
 
     headers, data_rows = result
     col_map = _build_col_map(headers)
+    unit = _detect_unit_from_headers(headers)
+    needs_conversion = unit != "mg/dl"
 
     timestamp_col = col_map.get("timestamp")
     historic_glucose_col = col_map.get("historic_glucose")
@@ -189,8 +199,8 @@ def parse_libreview_pdf(
                 stats.record_skip("invalid_glucose_value")
                 continue
 
-            # Convert mmol/L → mg/dL
-            glucose_value = round(glucose_mmol * MMOL_TO_MGDL, 1)
+            # Convert mmol/L → mg/dL if needed
+            glucose_value = round(glucose_mmol * MMOL_TO_MGDL, 1) if needs_conversion else round(glucose_mmol, 1)
 
             # External ID for idempotency
             if id_col is not None and len(row) > id_col and (row[id_col] or "").strip():

@@ -304,7 +304,7 @@ def parse_cgm_csv(
 
 def _decode_csv(file_contents: bytes) -> str:
     """Decode CSV bytes with encoding fallback: UTF-8 → UTF-8-SIG → Latin-1."""
-    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
         try:
             return file_contents.decode(encoding)
         except (UnicodeDecodeError, ValueError):

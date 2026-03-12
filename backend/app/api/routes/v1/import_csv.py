@@ -6,6 +6,7 @@ from app.services import ApiKeyDep
 router = APIRouter()
 
 _ALLOWED_EXTENSIONS = {".csv", ".txt", ".pdf"}
+_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
 @router.post("/users/{user_id}/import/cgm/csv")
@@ -26,6 +27,9 @@ async def import_csv_file(
         )
 
     file_contents = await file.read()
+
+    if len(file_contents) > _MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail=f"File too large. Maximum size is {_MAX_FILE_SIZE // (1024 * 1024)} MB.")
 
     task = process_csv_upload.delay(file_contents=file_contents, filename=filename, user_id=user_id)
 
