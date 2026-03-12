@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # OURA OAUTH SETTINGS
+    oura_client_id: str | None = None
+    oura_client_secret: SecretStr | None = None
+    oura_redirect_uri: str = "http://localhost:8000/api/v1/oauth/oura/callback"
+    oura_default_scope: str = "email personal daily heartrate workout tag session spo2"
+
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None
     strava_client_secret: SecretStr | None = None
