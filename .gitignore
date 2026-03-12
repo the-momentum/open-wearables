@@ -164,7 +164,7 @@ volumes
 
 # AI instruction local overrides (not committed)
 CLAUDE.local.md
-.claude/settings.local.json
+.claude/
 *.local.mdc
 
 # Exception: AI tool configs that should be tracked
