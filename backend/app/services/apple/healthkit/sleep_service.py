@@ -273,15 +273,32 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
         "rem_seconds": 0,
     }
 
-    # 1. Process specific stages (Deep, Light, REM, Awake)
-    # Exclude IN_BED (which is separate) and unknown
-    specific_raw = [s for s in stages if s.stage != "in_bed" and s.stage != "unknown"]
-    sorted_specific = sorted(specific_raw, key=lambda x: x.start_time)
+    # Determine processing strategy based on what stage types are present:
+    # - Only in_bed (no sleeping/light/deep/rem): treat in_bed as sleeping (legacy devices)
+    # - Detailed phases present (light/deep/rem): use only detailed + awake, drop sleeping wrapper
+    # - Only sleeping (no detailed): use sleeping + awake as-is
+    has_detailed = any(s.stage in ("light", "deep", "rem") for s in stages)
+    has_sleep_data = any(s.stage in ("sleeping", "light", "deep", "rem") for s in stages)
+
+    if not has_sleep_data:
+        processable = [
+            SleepStateStage(stage=SleepStageType.SLEEPING, start_time=s.start_time, end_time=s.end_time)
+            if s.stage == "in_bed"
+            else s
+            for s in stages
+            if s.stage != "unknown"
+        ]
+    elif has_detailed:
+        processable = [s for s in stages if s.stage not in ("in_bed", "sleeping", "unknown")]
+    else:
+        processable = [s for s in stages if s.stage not in ("in_bed", "unknown")]
+
+    sorted_processable = sorted(processable, key=lambda x: x.start_time)
 
     cleaned_stages: list[SleepStage] = []
     last_end = None
 
-    for stage in sorted_specific:
+    for stage in sorted_processable:
         start = stage.start_time
         end = stage.end_time
 

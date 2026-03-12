@@ -285,6 +285,103 @@ class TestCalculateFinalMetrics:
         assert metrics["in_bed_seconds"] == 0
         assert cleaned == []
 
+    def test_only_in_bed_treated_as_sleeping(self) -> None:
+        """When only in_bed stages exist (no sleep phases), treat in_bed as sleeping."""
+        stages = [
+            SleepStateStage(
+                stage=SleepStageType.IN_BED,
+                start_time=_dt("2026-04-10T22:30:00Z"),
+                end_time=_dt("2026-04-11T06:00:00Z"),
+            ),
+        ]
+
+        metrics, cleaned = _calculate_final_metrics(stages)
+
+        # in_bed should be converted to sleeping
+        assert metrics["sleeping_seconds"] == 7.5 * 3600
+        assert metrics["deep_seconds"] == 0
+        assert metrics["light_seconds"] == 0
+        assert metrics["rem_seconds"] == 0
+        # in_bed_seconds still calculated from original in_bed intervals
+        assert metrics["in_bed_seconds"] == 7.5 * 3600
+        # Hypnogram should show sleeping, not in_bed
+        assert len(cleaned) == 1
+        assert cleaned[0].stage == SleepStageType.SLEEPING
+
+    def test_detailed_plus_sleeping_wrapper_excludes_sleeping(self) -> None:
+        """When detailed phases + sleeping wrapper coexist, sleeping is dropped."""
+        stages = [
+            SleepStateStage(
+                stage=SleepStageType.SLEEPING,
+                start_time=_dt("2026-04-10T22:00:00Z"),
+                end_time=_dt("2026-04-11T06:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.LIGHT,
+                start_time=_dt("2026-04-10T22:10:00Z"),
+                end_time=_dt("2026-04-10T23:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.DEEP,
+                start_time=_dt("2026-04-10T23:00:00Z"),
+                end_time=_dt("2026-04-11T01:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.REM,
+                start_time=_dt("2026-04-11T01:00:00Z"),
+                end_time=_dt("2026-04-11T02:00:00Z"),
+            ),
+        ]
+
+        metrics, cleaned = _calculate_final_metrics(stages)
+
+        # sleeping wrapper must NOT be counted
+        assert metrics["sleeping_seconds"] == 0
+        assert metrics["light_seconds"] == 50 * 60
+        assert metrics["deep_seconds"] == 2 * 3600
+        assert metrics["rem_seconds"] == 1 * 3600
+        # Hypnogram should not contain sleeping
+        stage_types = {s.stage for s in cleaned}
+        assert SleepStageType.SLEEPING not in stage_types
+        assert SleepStageType.IN_BED not in stage_types
+
+    def test_detailed_plus_sleeping_plus_in_bed(self) -> None:
+        """Full modern scenario: in_bed + sleeping wrapper + detailed phases."""
+        stages = [
+            SleepStateStage(
+                stage=SleepStageType.IN_BED,
+                start_time=_dt("2026-04-10T22:00:00Z"),
+                end_time=_dt("2026-04-11T06:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.SLEEPING,
+                start_time=_dt("2026-04-10T22:00:00Z"),
+                end_time=_dt("2026-04-11T06:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.DEEP,
+                start_time=_dt("2026-04-10T22:30:00Z"),
+                end_time=_dt("2026-04-11T00:00:00Z"),
+            ),
+            SleepStateStage(
+                stage=SleepStageType.LIGHT,
+                start_time=_dt("2026-04-11T00:00:00Z"),
+                end_time=_dt("2026-04-11T02:00:00Z"),
+            ),
+        ]
+
+        metrics, cleaned = _calculate_final_metrics(stages)
+
+        # Only detailed phases should be counted
+        assert metrics["sleeping_seconds"] == 0
+        assert metrics["deep_seconds"] == 1.5 * 3600
+        assert metrics["light_seconds"] == 2 * 3600
+        # in_bed still calculated from original intervals
+        assert metrics["in_bed_seconds"] == 8 * 3600
+        # Hypnogram: only deep + light
+        stage_types = {s.stage for s in cleaned}
+        assert stage_types == {SleepStageType.DEEP, SleepStageType.LIGHT}
+
 
 class TestFinishSleep:
     """Tests for finish_sleep with different stage compositions."""
