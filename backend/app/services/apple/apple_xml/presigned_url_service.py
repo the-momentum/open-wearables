@@ -6,12 +6,13 @@ from fastapi import HTTPException, status
 
 from app.config import settings
 from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
-from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, s3_client
+from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, get_s3_client
 
 
-class ImportService:
+class PresignedURLService:
     def __init__(self, log: Logger, **kwargs):
         self.log = log
+        self.s3_client = get_s3_client()
 
     def generate_file_key(self, user_id: str, filename: str | None = None) -> str:
         timestamp = datetime.now(UTC)
@@ -27,8 +28,11 @@ class ImportService:
 
     def validate_bucket_exists(self) -> bool:
         """Check if the S3 bucket exists and is accessible"""
+        if not self.s3_client:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="S3 client not configured")
+
         try:
-            s3_client.head_bucket(Bucket=AWS_BUCKET_NAME)
+            self.s3_client.head_bucket(Bucket=AWS_BUCKET_NAME)
             self.log.debug(f"S3 bucket exists: {AWS_BUCKET_NAME}")
             return True
         except ClientError as e:
@@ -43,6 +47,9 @@ class ImportService:
             ) from e
 
     def create_presigned_url(self, user_id: str, request: PresignedURLRequest) -> PresignedURLResponse:
+        if not self.s3_client:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="S3 client not configured")
+
         self.validate_bucket_exists()
 
         file_key = self.generate_file_key(
@@ -56,7 +63,7 @@ class ImportService:
                 {"Content-Type": "application/xml"},
             ]
 
-            presigned_post = s3_client.generate_presigned_post(
+            presigned_post = self.s3_client.generate_presigned_post(
                 Bucket=AWS_BUCKET_NAME,
                 Key=file_key,
                 Fields={"Content-Type": "application/xml"},
@@ -92,4 +99,4 @@ class ImportService:
             ) from e
 
 
-import_service = ImportService(getLogger(__name__))
+presigned_url_service = PresignedURLService(getLogger(__name__))

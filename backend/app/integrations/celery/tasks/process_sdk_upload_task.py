@@ -3,34 +3,51 @@ from logging import getLogger
 from uuid import UUID
 
 from app.database import SessionLocal
-from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.services.apple.auto_export.import_service import import_service as ae_import_service
-from app.services.apple.healthkit.import_service import import_service as hk_import_service
+from app.services.apple.auto_export.import_service import (
+    ImportService as AEImportService,
+)
+from app.services.apple.auto_export.import_service import (
+    import_service as ae_import_service,
+)
+from app.services.apple.healthkit.import_service import (
+    ImportService as SDKImportService,
+)
+from app.services.apple.healthkit.import_service import (
+    import_service as sdk_import_service,
+)
 from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
 
 
-@shared_task(queue="apple_sync")
-def process_apple_upload(
+def _get_import_service(provider: str) -> SDKImportService | AEImportService:
+    if provider in ("apple", "samsung", "google"):
+        return sdk_import_service
+    if provider == "auto-health-export":
+        return ae_import_service
+    raise ValueError(f"Unsupported provider: {provider}")
+
+
+@shared_task(queue="sdk_sync")
+def process_sdk_upload(
     content: str,
     content_type: str,
     user_id: str,
-    source: str = "healthion",
+    provider: str,
     batch_id: str | None = None,
 ) -> dict[str, int | str]:
     """
-    Process Apple Health data import asynchronously (HealthKit/Auto Health Export).
+    Process SDK data import asynchronously.
 
     Args:
         content: The request content as string (JSON or multipart data)
         content_type: The content type header value
         user_id: User ID to associate with the data
-        source: Import source - "healthion" or "auto-health-export"
+        provider: Import provider - "apple", "samsung", "google", "auto-health-export"
         batch_id: Unique batch identifier for tracking (optional for backwards compatibility)
 
     Returns:
@@ -48,6 +65,7 @@ def process_apple_upload(
             logger,
             "warning",
             "Invalid user_id format",
+            provider=provider,
             action="validate_user_id",
             batch_id=batch_id,
             user_id=user_id,
@@ -62,6 +80,7 @@ def process_apple_upload(
                 logger,
                 "warning",
                 "Skipping import for non-existent user",
+                provider=provider,
                 action="validate_user_exists",
                 batch_id=batch_id,
                 user_id=user_id,
@@ -72,20 +91,20 @@ def process_apple_upload(
     log_structured(
         logger,
         "info",
-        "Apple sync batch processing started",
-        action="apple_batch_processing_start",
+        f"{provider.capitalize()} sync batch processing started",
+        action=f"{provider}_batch_processing_start",
         batch_id=batch_id,
         user_id=user_id,
-        source=source,
+        provider=provider,
     )
 
     with SessionLocal() as db:
-        # Ensure Apple connection exists for this user (SDK-based, no OAuth tokens)
+        # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens)
         connection_repo = UserConnectionRepository()
-        connection_repo.ensure_sdk_connection(db, user_uuid, "apple")
+        connection_repo.ensure_sdk_connection(db, user_uuid, provider)
 
         # Select the appropriate import service based on source
-        import_service = hk_import_service if source == "healthion" else ae_import_service
+        import_service = _get_import_service(provider)
 
         result = import_service.import_data_from_request(
             db, content, content_type, user_id, batch_id=batch_id
@@ -95,11 +114,11 @@ def process_apple_upload(
         log_structured(
             logger,
             "info",
-            "Apple sync batch processing completed",
-            action="apple_batch_processing_complete",
+            f"{provider.capitalize()} sync batch processing completed",
+            action=f"{provider}_batch_processing_complete",
             batch_id=batch_id,
             user_id=user_id,
-            source=source,
+            provider=provider,
             status_code=result.get("status_code"),
             response=result.get("response"),
             # Include counts from result if available
@@ -107,7 +126,5 @@ def process_apple_upload(
             workouts_saved=result.get("workouts_saved", 0),
             sleep_saved=result.get("sleep_saved", 0),
         )
-
-        finalize_stale_sleeps.delay()
 
         return {**result, "batch_id": batch_id}

@@ -53,10 +53,10 @@ def create_celery() -> Celery:
         result_expires=3 * 24 * 3600,
         task_queues={
             "default": {},
-            "apple_sync": {},
+            "sdk_sync": {},
         },
         task_routes={
-            "app.integrations.celery.tasks.process_apple_upload_task.process_apple_upload": {"queue": "apple_sync"},
+            "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
         },
     )
 
@@ -72,6 +72,12 @@ def create_celery() -> Celery:
         "finalize-stale-sleeps-periodic": {
             "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
             "schedule": float(settings.sleep_sync_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
+        "gc-stuck-garmin-backfills": {
+            "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
+            "schedule": 180.0,  # Every 3 minutes
             "args": (),
             "kwargs": {},
         },

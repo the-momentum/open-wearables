@@ -6,6 +6,7 @@ import { ArrowRight, Mail, Lock, Loader2 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { CodePreviewCard } from '@/components/login/code-preview-card';
 import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
+import { getCopyrightText } from '@/lib/constants/app';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -115,7 +116,7 @@ function LoginPage() {
 
           {/* Footer Links */}
           <div className="flex items-center text-xs text-zinc-600">
-            <p>© 2025 Open Wearables</p>
+            <p>{getCopyrightText()}</p>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from pydantic import BaseModel
+from sqlalchemy import exists
 from sqlalchemy.orm import Query
 
 from app.database import BaseDbModel, DbSession
@@ -27,6 +28,9 @@ class CrudRepository[
         db_session.commit()
         db_session.refresh(creation)
         return creation
+
+    def exists_any(self, db_session: DbSession) -> bool:
+        return db_session.query(exists().where(self.model.id.isnot(None))).scalar()
 
     def get(self, db_session: DbSession, object_id: UUID | int) -> ModelType | None:
         return db_session.query(self.model).filter(getattr(self.model, "id") == object_id).one_or_none()

@@ -14,6 +14,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.structured_logging import log_structured
 
 
 class WhoopWorkouts(BaseWorkoutsTemplate):
@@ -64,10 +65,22 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                self.logger.error(f"Error fetching Whoop workout data: {e}")
+                log_structured(
+                    self.logger,
+                    "error",
+                    f"Error fetching Whoop workout data: {e}",
+                    provider="whoop",
+                    task="get_workouts",
+                )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
-                    self.logger.warning(f"Returning partial workout data due to error: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        f"Returning partial workout data due to error: {e}",
+                        provider="whoop",
+                        task="get_workouts",
+                    )
                     break
                 raise
 
@@ -280,10 +293,18 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     break
 
             except Exception as e:
-                self.logger.error(f"Error fetching Whoop workout data: {e}")
+                log_structured(
+                    self.logger, "error", f"Error fetching Whoop workout data: {e}", provider="whoop", task="load_data"
+                )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:
-                    self.logger.warning(f"Processing partial workout data due to error: {e}")
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        f"Processing partial workout data due to error: {e}",
+                        provider="whoop",
+                        task="load_data",
+                    )
                     break
                 raise
 

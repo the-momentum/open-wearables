@@ -3,8 +3,10 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.dexcom.strategy import DexcomStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.google.strategy import GoogleStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
+from app.services.providers.samsung.strategy import SamsungStrategy
 from app.services.providers.strava.strategy import StravaStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.whoop.strategy import WhoopStrategy
@@ -18,6 +20,10 @@ class ProviderFactory:
         match provider_name:
             case ProviderName.APPLE.value:
                 return AppleStrategy()
+            case ProviderName.SAMSUNG.value:
+                return SamsungStrategy()
+            case ProviderName.GOOGLE.value:
+                return GoogleStrategy()
             case ProviderName.GARMIN.value:
                 return GarminStrategy()
             case ProviderName.SUUNTO.value:

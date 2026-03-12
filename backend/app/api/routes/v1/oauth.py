@@ -92,7 +92,7 @@ async def oauth_callback(
         providers=[provider.value],
     )
 
-    # For Garmin: Auto-trigger 90-day backfill for all 16 data types
+    # For Garmin: Auto-trigger 30-day backfill for all backfill data types
     if provider == ProviderName.GARMIN:
         start_garmin_full_backfill.delay(str(oauth_state.user_id))
 

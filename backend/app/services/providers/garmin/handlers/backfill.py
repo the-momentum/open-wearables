@@ -16,8 +16,8 @@ from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.garmin.backfill_config import (
-    ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
+    BACKFILL_DATA_TYPES,
     BACKFILL_ENDPOINTS,
     DEFAULT_BACKFILL_DAYS,
     REQUEST_DELAY_SECONDS,
@@ -97,7 +97,7 @@ class GarminBackfillService:
         Args:
             db: Database session
             user_id: User ID
-            data_types: List of data types to backfill (defaults to DEFAULT_DATA_TYPES)
+            data_types: List of data types to backfill (defaults to BACKFILL_DATA_TYPES)
             start_time: Start of date range (defaults based on is_first_sync)
             end_time: End of date range (defaults to now)
             is_first_sync: If True, use max timeframe (2 years). If False, use DEFAULT_BACKFILL_DAYS.
@@ -107,7 +107,9 @@ class GarminBackfillService:
             Dict with backfill results for each data type:
             {
                 "triggered": ["sleeps", "dailies", ...],
-                "failed": {"epochs": "error message", ...},
+                "duplicate": ["epochs", ...],
+                "failed": {"hrv": "error message", ...},
+                "failed_status_codes": {"hrv": 401, ...},
                 "start_time": "2024-01-01T00:00:00Z",
                 "end_time": "2024-01-31T00:00:00Z",
             }
@@ -117,7 +119,7 @@ class GarminBackfillService:
             The response only indicates if the backfill request was accepted.
         """
         if data_types is None:
-            data_types = ALL_DATA_TYPES
+            data_types = BACKFILL_DATA_TYPES
 
         if end_time is None:
             end_time = datetime.now(timezone.utc)
@@ -129,6 +131,7 @@ class GarminBackfillService:
                 self.logger,
                 "info",
                 "Backfill timeframe calculated",
+                provider="garmin",
                 trace_id=trace_id,
                 days=days,
                 sync_type="first" if is_first_sync else "subsequent",
@@ -137,7 +140,9 @@ class GarminBackfillService:
 
         results: dict[str, Any] = {
             "triggered": [],
+            "duplicate": [],
             "failed": {},
+            "failed_status_codes": {},
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
         }
@@ -162,6 +167,7 @@ class GarminBackfillService:
                     self.logger,
                     "info",
                     "Sending backfill API request",
+                    provider="garmin",
                     trace_id=trace_id,
                     data_type=data_type,
                     start_time=start_time.isoformat(),
@@ -175,28 +181,32 @@ class GarminBackfillService:
                     self.logger,
                     "info",
                     "Backfill API request accepted",
+                    provider="garmin",
                     trace_id=trace_id,
                     data_type=data_type,
                     user_id=str(user_id),
                 )
 
             except HTTPException as e:
-                # 409 = duplicate backfill already processed - treat as success
+                # 409 = duplicate backfill already processed for this timeframe.
+                # Garmin won't send another webhook, so caller should skip (not wait).
                 if e.status_code == 409:
                     log_structured(
                         self.logger,
                         "info",
                         "Backfill already requested (409 duplicate)",
+                        provider="garmin",
                         trace_id=trace_id,
                         data_type=data_type,
                         user_id=str(user_id),
                     )
-                    results["triggered"].append(data_type)
+                    results["duplicate"].append(data_type)
                 else:
                     log_structured(
                         self.logger,
                         "error",
                         "Backfill API request failed",
+                        provider="garmin",
                         trace_id=trace_id,
                         data_type=data_type,
                         status_code=e.status_code,
@@ -204,12 +214,14 @@ class GarminBackfillService:
                         user_id=str(user_id),
                     )
                     results["failed"][data_type] = str(e.detail)
+                    results["failed_status_codes"][data_type] = e.status_code
 
             except Exception as e:
                 log_structured(
                     self.logger,
                     "error",
                     "Backfill request error",
+                    provider="garmin",
                     trace_id=trace_id,
                     data_type=data_type,
                     error=str(e),

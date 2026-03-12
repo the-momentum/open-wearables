@@ -1,0 +1,330 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Common issues and solutions for the native Android SDK"
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Health Connect permissions not showing">
+    **Symptoms:** The permission dialog doesn't appear when calling `requestAuthorization()`.
+
+    **Solutions:**
+
+    1. **Ensure Health Connect is installed:**
+       Health Connect is pre-installed on Android 14+. On older versions, install it from the Google Play Store.
+
+    2. **Set Activity before requesting:**
+       ```kotlin
+       sdk.setActivity(this) // Must be called before requestAuthorization
+       ```
+
+    3. **Verify provider is set:**
+       ```kotlin
+       sdk.setProvider("google") // Must be set before requesting permissions
+       sdk.requestAuthorization(types = listOf("steps", "heartRate"))
+       ```
+
+    4. **Check min SDK:**
+       Your app's `minSdk` must be 29 or higher.
+
+    5. **Check Health Connect package query:**
+       The SDK declares this in its manifest, but verify it merged correctly:
+       ```xml
+       <queries>
+           <package android:name="com.google.android.apps.healthdata" />
+       </queries>
+       ```
+  </Accordion>
+
+  <Accordion title="Samsung Health not available">
+    **Symptoms:** Samsung Health provider not found or `setProvider("samsung")` returns false.
+
+    **Solutions:**
+
+    1. **Samsung devices only:**
+       Samsung Health SDK typically only works on Samsung devices.
+
+    2. **Samsung Health app must be installed:**
+       The user needs the Samsung Health app installed and set up.
+
+    3. **Try Health Connect instead:**
+       Health Connect works on all Android 10+ devices:
+       ```kotlin
+       sdk.setProvider("google")
+       ```
+
+    4. **Check available providers:**
+       ```kotlin
+       val providers = sdk.getAvailableProviders()
+       for (p in providers) {
+           Log.d("SDK", "${p["displayName"]}: available=${p["isAvailable"]}")
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="Background sync not working">
+    **Symptoms:** Data only syncs when the app is in the foreground.
+
+    **Solutions:**
+
+    1. **Check battery optimization:**
+       Many Android manufacturers (Samsung, Xiaomi, Huawei, etc.) aggressively kill background services. Ask users to:
+       - Go to Settings → Apps → Your App → Battery → Unrestricted
+       - Or Settings → Battery → Battery Optimization → Your App → Don't Optimize
+
+    2. **Verify notification permission (Android 13+):**
+       The SDK uses a foreground service with a notification. On Android 13+, `POST_NOTIFICATIONS` permission must be granted:
+       ```kotlin
+       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+           requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+       }
+       ```
+
+    3. **Check WorkManager status:**
+       WorkManager handles background scheduling. Verify it's not constrained:
+       ```kotlin
+       val workInfos = WorkManager.getInstance(context)
+           .getWorkInfosByTag("health_sync")
+           .get()
+       for (info in workInfos) {
+           Log.d("SDK", "Work state: ${info.state}")
+       }
+       ```
+
+    4. **Lifecycle callbacks:**
+       Ensure you're calling lifecycle methods:
+       ```kotlin
+       override fun onResume() {
+           super.onResume()
+           sdk.onForeground()
+       }
+       override fun onPause() {
+           super.onPause()
+           sdk.onBackground()
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="Sign-in fails">
+    **Symptoms:** Exception when calling `signIn()`.
+
+    **Solutions:**
+
+    1. **Check credentials:**
+       Ensure you provide either (`accessToken` + optional `refreshToken`) or `apiKey`:
+       ```kotlin
+       // Token-based (recommended)
+       sdk.signIn(
+           userId = userId,
+           accessToken = accessToken,
+           refreshToken = refreshToken,
+           apiKey = null
+       )
+       
+       // OR API key-based
+       sdk.signIn(
+           userId = userId,
+           accessToken = null,
+           refreshToken = null,
+           apiKey = apiKey
+       )
+       ```
+
+    2. **Check network connectivity:**
+       Ensure the device can reach your Open Wearables host.
+
+    3. **Check token expiration:**
+       Access tokens expire. Ensure your backend generates fresh tokens.
+
+    4. **Listen for auth errors:**
+       ```kotlin
+       sdk.authErrorListener = { error ->
+           Log.e("SDK", "Auth error: $error")
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="Data not appearing in Open Wearables">
+    **Symptoms:** Sync seems to complete but data doesn't show up in the API.
+
+    **Solutions:**
+
+    1. **Check logs:**
+       ```kotlin
+       sdk.logListener = { message ->
+           Log.d("HealthSDK", message)
+       }
+       ```
+
+    2. **Verify health data exists:**
+       Open Health Connect (or Samsung Health) and confirm data exists for the requested types.
+
+    3. **Check sync status:**
+       ```kotlin
+       val status = sdk.getSyncStatus()
+       Log.d("SDK", "Status: $status")
+       ```
+
+    4. **Reset anchors for full sync:**
+       ```kotlin
+       sdk.resetAnchors()
+       sdk.syncNow()
+       ```
+
+    5. **Check permissions:**
+       Users may have denied specific data types.
+  </Accordion>
+
+  <Accordion title="SDK not initialized exception">
+    **Symptoms:** `getInstance()` throws because SDK wasn't initialized.
+
+    **Solution:**
+    Ensure `initialize()` is called before `getInstance()`:
+
+    ```kotlin
+    // ✅ Correct - in Application.onCreate()
+    class MyApp : Application() {
+        override fun onCreate() {
+            super.onCreate()
+            OpenWearablesHealthSDK.initialize(this)
+        }
+    }
+
+    // Then anywhere else:
+    val sdk = OpenWearablesHealthSDK.getInstance()
+    ```
+  </Accordion>
+
+  <Accordion title="Sync doesn't resume after app restart">
+    **Symptoms:** Sync session lost after app is killed.
+
+    **Solutions:**
+
+    1. **Ensure configure() is called on launch:**
+       ```kotlin
+       // In Application.onCreate()
+       val sdk = OpenWearablesHealthSDK.initialize(this)
+       sdk.configure(host = "https://api.openwearables.io")
+       ```
+
+    2. **Check for resumable sessions:**
+       ```kotlin
+       if (sdk.hasResumableSyncSession()) {
+           sdk.resumeSync()
+       }
+       ```
+
+    3. **Verify EncryptedSharedPreferences:**
+       If the device was factory reset or the app's data was cleared, stored credentials are lost and the user needs to sign in again.
+  </Accordion>
+
+  <Accordion title="Foreground service notification">
+    **Symptoms:** A persistent notification appears during sync.
+
+    **Solution:**
+    This is expected behavior. The SDK uses a foreground service during active data sync for reliability. The notification disappears once the sync cycle completes. You cannot hide this notification — it's an Android platform requirement for foreground services.
+  </Accordion>
+</AccordionGroup>
+
+## Battery Optimization
+
+Android's battery optimization can significantly impact background sync. Here's how different manufacturers handle it:
+
+| Manufacturer | Setting Location | Recommendation |
+|-------------|-----------------|----------------|
+| Samsung | Settings → Battery → Background Usage Limits | Allow background activity |
+| Xiaomi | Settings → Battery → App Battery Saver | No restrictions |
+| Huawei | Settings → Battery → App Launch | Manage manually, enable all |
+| OnePlus | Settings → Battery → Battery Optimization | Don't optimize |
+| Pixel/Stock | Settings → Apps → Battery → Unrestricted | Set to Unrestricted |
+
+<Tip>
+  Consider linking users to [dontkillmyapp.com](https://dontkillmyapp.com) which has device-specific instructions for keeping background services alive.
+</Tip>
+
+## Testing
+
+### Manual Sync Test
+
+```kotlin
+// Trigger immediate sync and check results
+sdk.syncNow()
+
+// Check status after sync
+val status = sdk.getSyncStatus()
+Log.d("SDK", "Sent count: ${status["sentCount"]}")
+Log.d("SDK", "Completed types: ${status["completedTypes"]}")
+```
+
+### Check Stored State
+
+```kotlin
+val creds = sdk.getStoredCredentials()
+Log.d("SDK", "Stored: $creds")
+Log.d("SDK", "Session valid: ${sdk.isSessionValid()}")
+Log.d("SDK", "Sync active: ${sdk.isSyncActive()}")
+```
+
+### Force Fresh Start
+
+If things are in a bad state:
+
+```kotlin
+// Clear everything
+sdk.stopBackgroundSync()
+sdk.signOut()
+sdk.clearSyncSession()
+sdk.resetAnchors()
+
+// Re-initialize
+sdk.configure(host = "https://api.openwearables.io")
+```
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+```kotlin
+sdk.logListener = { message ->
+    Log.d("HealthSDK", message)
+}
+
+sdk.authErrorListener = { error ->
+    Log.e("HealthSDK", "Auth error: $error")
+}
+```
+
+### Check Provider State
+
+```kotlin
+val providers = sdk.getAvailableProviders()
+for (p in providers) {
+    Log.d("SDK", """
+        Provider: ${p["displayName"]}
+        ID: ${p["id"]}
+        Available: ${p["isAvailable"]}
+    """.trimIndent())
+}
+```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open-wearables-android-sdk/issues">
+    Report bugs or request features on the SDK repository.
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">
+    Ask questions and get help from the community.
+  </Card>
+</CardGroup>
+
+When reporting issues, please include:
+- Android version and device model
+- SDK version
+- Health provider used (Samsung Health or Health Connect)
+- Relevant logs from `logListener`
+- Steps to reproduce

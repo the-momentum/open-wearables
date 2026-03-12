@@ -59,11 +59,15 @@ class Settings(BaseSettings):
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
+    # ADMIN ACCOUNT SEED
+    admin_email: str = "admin@admin.com"
+    admin_password: SecretStr = SecretStr("your-secure-password")
+
     # Time to live for sleep state in Redis
     redis_sleep_ttl_seconds: int = 24 * 3600  # 24 hours
 
     # Time between sleep phases to conclude end of sleep session
-    sleep_end_gap_minutes: int = 60  # 1 hour
+    sleep_end_gap_minutes: int = 120  # 2 hours
 
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
@@ -143,6 +147,13 @@ class Settings(BaseSettings):
     sqs_endpoint_url: str | None = None
 
     xml_chunk_size: int = 50_000
+
+    # RAW PAYLOAD STORAGE
+    raw_payload_storage: str = "disabled"  # disabled | log | s3
+    raw_payload_max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
+    raw_payload_s3_bucket: str | None = None  # defaults to aws_bucket_name if not set
+    raw_payload_s3_prefix: str = "raw-payloads"
+    raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
 
     @field_validator("cors_origins", mode="after")
     @classmethod

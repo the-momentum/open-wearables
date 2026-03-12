@@ -1,30 +1,30 @@
 ---
 title: "Sync SDK"
 sidebarTitle: "Overview"
-description: "Native SDKs for syncing health data from Apple HealthKit"
+description: "Native SDKs for syncing health data from Apple HealthKit, Samsung Health, and Health Connect"
 ---
 
 ## Introduction
 
-Open Wearables Sync SDKs enable seamless background synchronization of health data directly from Apple HealthKit to the Open Wearables platform.
+Open Wearables Sync SDKs enable seamless background synchronization of health data directly from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
 
-Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth, Apple HealthKit requires a **push-based model** where data is sent from the user's device to your backend.
+Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth, on-device health stores require a **push-based model** where data is sent from the user's device to your backend.
 
 <Note>
-  **Why Push-Based?** Apple HealthKit doesn't expose a cloud API. Health data lives exclusively on the user's device, so the mobile app must actively push data to your backend.
+  **Why Push-Based?** Apple HealthKit, Samsung Health, and Health Connect don't expose cloud APIs. Health data lives exclusively on the user's device, so the mobile app must actively push data to your backend.
 </Note>
 
 ## Architecture Overview
 
 <Steps>
-  <Step title="Apple Health (HealthKit)" icon="heart-pulse">
-    Health data is stored locally on the user's iOS device in Apple Health.
+  <Step title="Health Data Store" icon="heart-pulse">
+    Health data is stored locally on the user's device — in Apple Health (iOS), Samsung Health, or Health Connect (Android).
   </Step>
-  <Step title="Your Flutter App + Sync SDK" icon="mobile">
-    The SDK reads data from HealthKit and handles background synchronization automatically.
+  <Step title="Your App + Sync SDK" icon="mobile">
+    The SDK reads data from the health store and handles background synchronization automatically. Available as native iOS (Swift), native Android (Kotlin), or Flutter (cross-platform).
   </Step>
   <Step title="Open Wearables Platform" icon="cloud-arrow-up">
-    Data is pushed to `POST /sdk/users/{user_id}/sync/apple` and normalized to the unified data model.
+    Data is pushed to `POST {host}/api/v1/sdk/users/{userId}/sync` and normalized to the unified data model.
   </Step>
 </Steps>
 
@@ -32,40 +32,32 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 
 <CardGroup cols={2}>
   <Card title="Background Sync" icon="rotate">
-    Health data syncs automatically even when your app is in the background, using iOS Background App Refresh.
+    Health data syncs automatically even when your app is in the background, using iOS Background App Refresh or Android WorkManager.
   </Card>
   <Card title="Incremental Updates" icon="bolt">
     Uses anchored queries to sync only new data since the last sync, minimizing battery usage and network traffic.
   </Card>
   <Card title="Secure Storage" icon="shield">
-    Credentials stored securely in iOS Keychain. API keys never leave your backend.
+    Credentials stored securely in iOS Keychain or Android EncryptedSharedPreferences. API keys never leave your backend.
   </Card>
   <Card title="Wide Data Support" icon="chart-line">
-    Steps, heart rate, workouts, sleep, body measurements, nutrition, and more - all normalized to Open Wearables data model.
+    Steps, heart rate, workouts, sleep, body measurements, nutrition, and more — all normalized to Open Wearables data model.
   </Card>
 </CardGroup>
 
 ## Available SDKs
 
-<CardGroup cols={2}>
-  <Card title="Flutter" icon="mobile" href="/sdk/flutter">
-    Flutter SDK for iOS with Apple HealthKit support.
+<CardGroup cols={3}>
+  <Card title="iOS (Swift)" icon="apple" href="/sdk/ios">
+    Native iOS SDK — the core implementation for Apple HealthKit sync.
   </Card>
-  <Card title="More Coming Soon" icon="clock">
-    Android Health Connect, native iOS (Swift), and Android (Kotlin) SDKs are on our roadmap.
+  <Card title="Android (Kotlin)" icon="android" href="/sdk/android">
+    Native Android SDK — sync from Samsung Health and Health Connect.
+  </Card>
+  <Card title="Flutter" icon="mobile" href="/sdk/flutter">
+    Flutter SDK — cross-platform wrapper around the native iOS and Android SDKs.
   </Card>
 </CardGroup>
-
-## How It Differs from Cloud Providers
-
-| Aspect | Cloud Providers (Garmin, Polar) | Apple HealthKit |
-|--------|--------------------------------|-----------------|
-| **Data Source** | Provider's cloud servers | User's device only |
-| **Sync Model** | Pull/Webhook (server-to-server) | Push (device-to-server) |
-| **OAuth** | Required for authorization | Not applicable |
-| **Connectivity** | Works anytime | Requires device to be online |
-| **Battery Impact** | None on device | Optimized background sync |
-| **Data Freshness** | Provider-dependent | Real-time from device |
 
 ## Security Model
 
@@ -73,8 +65,9 @@ The SDK uses a secure token-based authentication flow that keeps your API keys s
 
 1. **API Keys stay on your backend** - Never exposed to mobile apps
 2. **Short-lived access tokens** - Generated server-to-server, used by mobile SDK
-3. **Secure credential storage** - iOS Keychain
+3. **Secure credential storage** - iOS Keychain / Android EncryptedSharedPreferences
 4. **Optional token refresh** - SDK can automatically refresh expired tokens
+5. **API key auth** - Alternative for internal tools (not recommended for production)
 
 <Warning>
   **Never embed your Open Wearables API Key in your mobile app.** Always generate access tokens on your backend and pass only the token to the mobile SDK.
@@ -82,6 +75,14 @@ The SDK uses a secure token-based authentication flow that keeps your API keys s
 
 ## Next Steps
 
-<Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
-  Get started with the Flutter SDK
-</Card>
+<CardGroup cols={3}>
+  <Card title="iOS SDK" icon="arrow-right" href="/sdk/ios">
+    Get started with the native iOS SDK (Swift)
+  </Card>
+  <Card title="Android SDK" icon="arrow-right" href="/sdk/android">
+    Get started with the native Android SDK (Kotlin)
+  </Card>
+  <Card title="Flutter SDK" icon="arrow-right" href="/sdk/flutter">
+    Get started with the Flutter SDK
+  </Card>
+</CardGroup>

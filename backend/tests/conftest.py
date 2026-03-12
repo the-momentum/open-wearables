@@ -172,8 +172,6 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
         patch("celery.current_app") as mock_celery,
         patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
         patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
-        # Patch the new finalize_stale_sleeps task that was added in this PR
-        patch("app.integrations.celery.tasks.process_apple_upload_task.finalize_stale_sleeps", mock_task),
     ):
         # Configure Celery to use in-memory broker and result backend
         # We Mock the conf object to return our test settings
@@ -221,8 +219,9 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         patch("requests.Session") as mock_requests,
         patch("app.services.apple.apple_xml.aws_service.AWS_BUCKET_NAME", "test-bucket"),
         patch("app.services.apple.apple_xml.presigned_url_service.AWS_BUCKET_NAME", "test-bucket"),
-        patch("app.services.apple.apple_xml.aws_service.s3_client", mock_s3),
-        patch("app.services.apple.apple_xml.presigned_url_service.s3_client", mock_s3),
+        patch("app.services.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
+        patch("app.services.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
+        patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
     ):
         mocks["httpx"] = mock_httpx
         mocks["boto3"] = mock_boto3

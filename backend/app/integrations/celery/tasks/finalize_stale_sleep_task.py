@@ -26,8 +26,8 @@ def finalize_stale_sleeps() -> None:
                 state = load_sleep_state(user_id)
                 if not state:
                     continue
-                last = datetime.fromisoformat(state["last_timestamp"])
-                if now - last >= timedelta(minutes=settings.sleep_end_gap_minutes):
+                end_time = datetime.fromisoformat(state["end_time"])
+                if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
                     finish_sleep(db, user_id, state)
             except Exception as e:
                 log_and_capture_error(

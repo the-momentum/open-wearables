@@ -8,10 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.services import event_record_service
-from app.services.apple.apple_xml.aws_service import s3_client
+from app.services.apple.apple_xml.aws_service import get_s3_client
 from app.services.apple.apple_xml.xml_service import XMLService
+from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
@@ -26,6 +29,17 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
         bucket_name: S3 bucket name
         object_key: S3 object key (path)
     """
+
+    s3_client = get_s3_client()
+    if not s3_client:
+        err = RuntimeError("S3 client not configured — cannot process AWS upload")
+        log_and_capture_error(
+            err,
+            logger,
+            "S3 client unavailable in process_aws_upload task",
+            extra={"bucket_name": bucket_name, "object_key": object_key, "user_id": user_id},
+        )
+        raise err
 
     with SessionLocal() as db:
         temp_xml_file = None
@@ -42,10 +56,12 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
             else:
                 raise ValueError(f"Cannot determine user_id from object key: {object_key}")
             if user_id and user_id_str != user_id:
-                logger.warning(
-                    "[process_aws_upload] Provided user_id does not match object key user_id: %s vs %s",
-                    user_id,
-                    user_id_str,
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Provided user_id does not match object key user_id: {user_id} vs {user_id_str}",
+                    provider="apple_xml",
+                    task="process_aws_upload",
                 )
             try:
                 user_uuid = UUID(user_id_str)
@@ -87,7 +103,7 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
     """
     xml_service = XMLService(Path(xml_path), getLogger(__name__))
 
-    for time_series_records, workouts in xml_service.parse_xml(user_id):
+    for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
         for record, detail in workouts:
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
@@ -95,3 +111,5 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
             db.commit()
+        if sync_request and sync_request.data.sleep:
+            handle_sleep_data(db, sync_request, user_id)

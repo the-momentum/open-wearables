@@ -24,6 +24,7 @@ from app.schemas.timeseries import TimeSeriesSampleCreate
 from app.schemas.user import UserCreate
 from app.schemas.workout_types import WorkoutType
 from app.services import event_record_service, timeseries_service, user_service
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 fake = Faker()
@@ -105,7 +106,13 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
                 values_ranges[series_type] = (min_val, max_val)
                 series_type_percentages[series_type] = percentage
             except (ValueError, KeyError) as e:
-                logger.warning("Skipping invalid series type '%s': %s", series_name, e)
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Skipping invalid series type '{series_name}': {e}",
+                    provider="seed_activity_data",
+                    task="load_series_type_config",
+                )
                 continue
 
     return values_ranges, series_type_percentages
@@ -114,7 +121,13 @@ def _load_series_type_config() -> tuple[dict[SeriesType, tuple[float, float]], d
 try:
     SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
 except FileNotFoundError:
-    logger.error("series_type_config.yaml file not found. Using default configuration.")
+    log_structured(
+        logger,
+        "error",
+        "series_type_config.yaml file not found. Using default configuration.",
+        provider="seed_activity_data",
+        task="load_series_type_config",
+    )
     SERIES_VALUES_RANGES = {}
     SERIES_TYPE_PERCENTAGES = {}
 
@@ -295,7 +308,13 @@ def generate_time_series_samples(
     current_time = workout_start
 
     if not SERIES_TYPE_PERCENTAGES or not SERIES_VALUES_RANGES:
-        logger.warning("No series type configuration found. Skipping time series samples.")
+        log_structured(
+            logger,
+            "warning",
+            "No series type configuration found. Skipping time series samples.",
+            provider="seed_activity_data",
+            task="generate_time_series_samples",
+        )
         return samples
 
     # Generate samples every 20-60 seconds during the workout

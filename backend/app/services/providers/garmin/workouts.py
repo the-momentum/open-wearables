@@ -14,6 +14,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +85,12 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                     all_activities.extend(activities)
             except Exception as e:
                 # Log error but continue with other chunks
-                logger.warning(
-                    f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}"
+                log_structured(
+                    logger,
+                    "warning",
+                    f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
+                    provider="garmin",
+                    task="get_workouts_historical",
                 )
 
             current_start = current_end

@@ -72,14 +72,17 @@ class TestFinalizeStaleSleepsTask:
         mock_sleep_state = {
             "uuid": str(uuid4()),
             "source_name": "Apple Watch",
+            "device_model": None,
+            "provider": None,
             "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,  # ASLEEP_CORE
-            "in_bed": 900,
-            "awake": 300,
-            "light": 3600,
-            "deep": 1800,
-            "rem": 1200,
+            "end_time": stale_timestamp.isoformat(),
+            "last_start_timestamp": stale_timestamp.isoformat(),
+            "last_end_timestamp": stale_timestamp.isoformat(),
+            "in_bed_seconds": 900,
+            "awake_seconds": 300,
+            "light_seconds": 3600,
+            "deep_seconds": 1800,
+            "rem_seconds": 1200,
         }
         mock_load_state.return_value = mock_sleep_state
 
@@ -120,14 +123,17 @@ class TestFinalizeStaleSleepsTask:
         mock_sleep_state = {
             "uuid": str(uuid4()),
             "source_name": "Apple Watch",
+            "device_model": None,
+            "provider": None,
             "start_time": recent_timestamp.isoformat(),
-            "last_timestamp": recent_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 900,
-            "deep": 0,
-            "rem": 0,
+            "end_time": recent_timestamp.isoformat(),
+            "last_start_timestamp": recent_timestamp.isoformat(),
+            "last_end_timestamp": recent_timestamp.isoformat(),
+            "in_bed_seconds": 900,
+            "awake_seconds": 0,
+            "light_seconds": 900,
+            "deep_seconds": 0,
+            "rem_seconds": 0,
         }
         mock_load_state.return_value = mock_sleep_state
 
@@ -201,14 +207,17 @@ class TestFinalizeStaleSleepsTask:
         state_1 = {
             "uuid": str(uuid4()),
             "source_name": "Apple Watch",
+            "device_model": None,
+            "provider": None,
             "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 1800,
-            "rem": 1200,
+            "end_time": stale_timestamp.isoformat(),
+            "last_start_timestamp": stale_timestamp.isoformat(),
+            "last_end_timestamp": stale_timestamp.isoformat(),
+            "in_bed_seconds": 900,
+            "awake_seconds": 0,
+            "light_seconds": 3600,
+            "deep_seconds": 1800,
+            "rem_seconds": 1200,
         }
 
         # User 2: No state (should skip)
@@ -218,14 +227,17 @@ class TestFinalizeStaleSleepsTask:
         state_3 = {
             "uuid": str(uuid4()),
             "source_name": "iPhone",
+            "device_model": None,
+            "provider": None,
             "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 2,
-            "in_bed": 600,
-            "awake": 600,
-            "light": 0,
-            "deep": 0,
-            "rem": 0,
+            "end_time": stale_timestamp.isoformat(),
+            "last_start_timestamp": stale_timestamp.isoformat(),
+            "last_end_timestamp": stale_timestamp.isoformat(),
+            "in_bed_seconds": 600,
+            "awake_seconds": 600,
+            "light_seconds": 0,
+            "deep_seconds": 0,
+            "rem_seconds": 0,
         }
 
         mock_load_state.side_effect = [state_1, state_2, state_3]
@@ -272,27 +284,33 @@ class TestFinalizeStaleSleepsTask:
         state_1 = {
             "uuid": str(uuid4()),
             "source_name": "Apple Watch",
+            "device_model": None,
+            "provider": None,
             "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 0,
-            "rem": 0,
+            "end_time": stale_timestamp.isoformat(),
+            "last_start_timestamp": stale_timestamp.isoformat(),
+            "last_end_timestamp": stale_timestamp.isoformat(),
+            "in_bed_seconds": 900,
+            "awake_seconds": 0,
+            "light_seconds": 3600,
+            "deep_seconds": 0,
+            "rem_seconds": 0,
         }
 
         state_2 = {
             "uuid": str(uuid4()),
             "source_name": "iPhone",
+            "device_model": None,
+            "provider": None,
             "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 5,
-            "in_bed": 0,
-            "awake": 0,
-            "light": 0,
-            "deep": 0,
-            "rem": 1800,
+            "end_time": stale_timestamp.isoformat(),
+            "last_start_timestamp": stale_timestamp.isoformat(),
+            "last_end_timestamp": stale_timestamp.isoformat(),
+            "in_bed_seconds": 0,
+            "awake_seconds": 0,
+            "light_seconds": 0,
+            "deep_seconds": 0,
+            "rem_seconds": 1800,
         }
 
         mock_load_state.side_effect = [state_1, state_2]
@@ -336,14 +354,17 @@ class TestFinalizeStaleSleepsTask:
         mock_sleep_state = {
             "uuid": str(uuid4()),
             "source_name": "Apple Watch",
+            "device_model": None,
+            "provider": None,
             "start_time": "2026-01-01T00:00:00Z",
-            "last_timestamp": "invalid-timestamp",
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 0,
-            "rem": 0,
+            "end_time": "invalid-timestamp",
+            "last_start_timestamp": "2026-01-01T00:00:00Z",
+            "last_end_timestamp": "invalid-timestamp",
+            "in_bed_seconds": 900,
+            "awake_seconds": 0,
+            "light_seconds": 3600,
+            "deep_seconds": 0,
+            "rem_seconds": 0,
         }
         mock_load_state.return_value = mock_sleep_state
 

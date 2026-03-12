@@ -26,18 +26,31 @@ DELAY_AFTER_RATE_LIMIT = GARMIN_RATE_LIMIT_WINDOW  # Wait for full window reset 
 # Timeout / retry
 # ---------------------------------------------------------------------------
 TRIGGERED_TIMEOUT_SECONDS = 300  # 5 min before skipping a triggered type
-MAX_TYPE_ATTEMPTS = 3  # Total attempts (1 original + 2 retries)
+MAX_TYPE_ATTEMPTS = 3  # Total attempts (1 original + 2 retries) -- legacy, unused in task
+
+# ---------------------------------------------------------------------------
+# Concurrency lock
+# ---------------------------------------------------------------------------
+# 1 window * 5 types * 5min timeout + 1hr buffer
+BACKFILL_LOCK_TTL = (1 * 5 * 300) + 3600  # 5100 seconds (~1.4 hours)
 
 # ---------------------------------------------------------------------------
 # Backfill windows & API limits
 # ---------------------------------------------------------------------------
-MAX_BACKFILL_DAYS = 365  # Total target: ~1 year of history
+MAX_BACKFILL_DAYS = 30  # Garmin only allows 30 days before user registration
 BACKFILL_CHUNK_DAYS = 30  # Max days per single request (Garmin limit)
 MAX_REQUEST_DAYS = BACKFILL_CHUNK_DAYS  # Alias for clarity
 MAX_HEALTH_API_DAYS = 30  # Health API max days per request
 MAX_ACTIVITY_API_DAYS = 30  # Activity API max days per request
-BACKFILL_WINDOW_COUNT = 12  # Number of 30-day windows to cover ~365 days
+BACKFILL_WINDOW_COUNT = 1  # Single 30-day window (Garmin's max allowed range)
 DEFAULT_BACKFILL_DAYS = 1  # Default for subsequent syncs
+
+# ---------------------------------------------------------------------------
+# Recovery / GC
+# ---------------------------------------------------------------------------
+GC_MAX_ATTEMPTS = 3  # Max GC-and-retry cycles before permanently failed
+GC_STUCK_THRESHOLD_SECONDS = 600  # 10 minutes of no activity = stuck
+GC_SCAN_INTERVAL_SECONDS = 180  # Every 3 minutes (used by celery beat in Plan 02)
 SUMMARY_DAYS = 0  # No summary coverage gap (REST endpoints removed)
 REQUEST_DELAY_SECONDS = 0.5  # Small delay between requests (prod limit: 10,000 days/min)
 
@@ -75,6 +88,16 @@ ALL_DATA_TYPES = [
     "userMetrics",
     "skinTemp",
     "mct",
+]
+
+# Data types included in backfill orchestration (subset of ALL_DATA_TYPES).
+# All 16 types remain available for webhook ingestion.
+BACKFILL_DATA_TYPES = [
+    "sleeps",
+    "dailies",
+    "activities",
+    "activityDetails",
+    "hrv",
 ]
 
 # Mapping of data type to backfill endpoint
