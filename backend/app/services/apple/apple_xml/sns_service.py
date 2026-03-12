@@ -1,12 +1,12 @@
 import json
 from logging import getLogger
-from typing import Any
 
-import boto3
+from fastapi import status
 
 from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
+from app.schemas import UploadDataResponse
 from app.schemas.apple.apple_xml.aws import SNSNotification
-from app.services.apple.apple_xml.aws_service import AWS_REGION, get_sns_client
+from app.services.apple.apple_xml.aws_service import get_sns_client
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -16,25 +16,32 @@ class SNSService:
     def __init__(self) -> None:
         self.sns_client = get_sns_client()
 
-    def _confirm_subscription(self, notification: SNSNotification) -> dict[str, Any]:
+    def _confirm_subscription(self, notification: SNSNotification) -> UploadDataResponse:
         try:
-            sns_client = boto3.client("sns", region_name=AWS_REGION)
-            sns_client.confirm_subscription(
+            self.sns_client.confirm_subscription(
                 TopicArn=notification.topic_arn,
                 Token=notification.token,
                 AuthenticateOnUnsubscribe="true",
             )
-            return {"status": "subscription_confirmed"}
+            return UploadDataResponse(status_code=status.HTTP_200_OK, response="subscription_confirmed", user_id=None)
         except Exception as e:
-            logger.error(f"Error confirming SNS subscription: {e}")
-            return {"status": "error", "reason": str(e)}
+            log_structured(
+                logger,
+                "error",
+                f"Error confirming SNS subscription: {e}",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return UploadDataResponse(status_code=status.HTTP_400_BAD_REQUEST, response=str(e), user_id=None)
 
-    def _process_s3_notification(self, notification: SNSNotification) -> dict[str, Any]:
+    def _process_s3_notification(self, notification: SNSNotification) -> UploadDataResponse:
         message_body = json.loads(notification.message)
 
         if message_body.get("Event") == "s3:TestEvent":
-            logger.info("Received S3 test event, ignoring")
-            return {"status": "ignored", "reason": "s3:TestEvent"}
+            log_structured(
+                logger, "info", "Received S3 test event, ignoring", provider="apple_xml", task="sns_notification"
+            )
+            return UploadDataResponse(status_code=status.HTTP_200_OK, response="ignored: s3:TestEvent", user_id=None)
 
         records = message_body.get("Records", [])
         dispatched = 0
@@ -64,14 +71,20 @@ class SNSService:
                 task="sns_notification",
             )
 
-        return {"status": "ok", "tasks_dispatched": dispatched}
+        return UploadDataResponse(
+            status_code=status.HTTP_200_OK, response=f"{dispatched} tasks dispatched", user_id=None
+        )
 
-    def handle_sns_notification(self, notification: SNSNotification) -> dict[str, Any]:
+    def handle_sns_notification(self, notification: SNSNotification) -> UploadDataResponse:
         if notification.message_type == "SubscriptionConfirmation":
             return self._confirm_subscription(notification)
         if notification.message_type == "Notification":
             return self._process_s3_notification(notification)
-        return {"status": "ignored", "reason": f"unknown type: {notification.message_type}"}
+        return UploadDataResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            response=f"unknown message type: {notification.message_type}",
+            user_id=None,
+        )
 
 
 sns_service = SNSService()

@@ -134,7 +134,6 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: SecretStr | None = None
     aws_region: str = "eu-north-1"
-    sqs_queue_url: str | None = None
     aws_sns_topic_arn: str | None = None
 
     xml_chunk_size: int = 50_000
