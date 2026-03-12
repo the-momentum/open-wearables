@@ -7,7 +7,7 @@ description: "API endpoints for importing Apple Health XML exports"
 
 Import complete Apple Health data exports via XML files using one of two methods:
 
-1. **S3 Presigned URL** (Recommended) - For large files, uses direct S3 upload
+1. **S3 Presigned URL** (Recommended) - For large files, uses direct S3 upload. The frontend handles this automatically; the scripts below are for manual or testing purposes.
 2. **Direct Upload** - For smaller files or testing, uploads directly to the API
 
 ## Authentication
@@ -277,9 +277,9 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
 
       <Step title="Processing Happens Automatically">
         The system automatically:
-        - Detects the S3 upload via event notification → SQS
-        - Celery `poll_sqs_task` picks up the SQS message
-        - `process_aws_upload` task processes the XML file
+        - Detects the S3 upload via S3 event notification → SNS
+        - SNS sends an HTTPS notification to the backend
+        - `process_aws_upload` Celery task downloads and processes the XML file
         - Imports workouts and time series data to database
       </Step>
     </Steps>
