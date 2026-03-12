@@ -1,3 +1,5 @@
+from logging import getLogger
+
 import httpx
 
 from app.config import settings
@@ -51,5 +53,5 @@ class OuraOAuth(BaseOAuthTemplate):
             username = user_data.get("email")
             return {"user_id": provider_user_id, "username": username}
         except Exception:
-            # If user info fetch fails, connection can still be saved without provider_user_id
+            getLogger(__name__).warning("Failed to fetch Oura personal_info, saving connection without provider identity")
             return {"user_id": None, "username": None}
