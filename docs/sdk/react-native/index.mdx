@@ -165,6 +165,33 @@ await OpenWearables.startBackgroundSync();
 await OpenWearables.syncNow();
 ```
 
+##Events
+Subscribe to native SDK events using the standard Expo module event emitter:
+
+```TypeScript
+
+  const subscription = OpenWearables.addListener("onLog", ({ message }) => {
+    console.log("SDK log:", message);
+  });
+
+  const authSub = OpenWearables.addListener(
+    "onAuthError",
+    ({ statusCode, message }) => {
+      console.error(`Auth error ${statusCode}:`, message);
+    }
+  );
+
+  // Clean up
+  subscription.remove();
+  authSub.remove();
+
+```
+
+| Event         | Payload                                   | Description                            |
+| ------------- | ----------------------------------------- | -------------------------------------- |
+| `onLog`       | `{ message: string }`                     | Log messages emitted by the native SDK |
+| `onAuthError` | `{ statusCode: number, message: string }` | Authentication errors                  |
+
 ## Documentation
 
 <CardGroup cols={2}>

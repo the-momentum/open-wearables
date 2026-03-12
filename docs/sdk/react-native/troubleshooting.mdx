@@ -1,7 +1,7 @@
 ---
 title: "Troubleshooting"
 sidebarTitle: "Troubleshooting"
-description: "Common issues and solutions for the Flutter SDK on iOS and Android"
+description: "Common issues and solutions for the React Native SDK on iOS and Android"
 ---
 
 ## Common Issues
@@ -57,7 +57,7 @@ description: "Common issues and solutions for the Flutter SDK on iOS and Android
        Your `android/app/build.gradle` must have `minSdk 29` or higher.
 
     4. **Verify the Activity is set (if using native Android directly):**
-       The Flutter plugin handles this automatically, but if you see permission launcher issues, try rebuilding the app.
+       The React Native plugin handles this automatically, but if you see permission launcher issues, try rebuilding the app.
   </Accordion>
 
   <Accordion title="Background sync not working (iOS)">
@@ -359,8 +359,8 @@ If you're still experiencing issues:
 </CardGroup>
 
 When reporting issues, please include:
-- Flutter version (`flutter --version`)
-- SDK version (from `pubspec.lock`)
+- React Native version (`npx react-native --version`)
+- SDK version (from `package.json`)
 - Platform (iOS/Android) and OS version
 - Device model
 - Relevant logs and error messages
