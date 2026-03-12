@@ -4,18 +4,14 @@ from logging import Logger, getLogger
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
-from app.integrations.redis_client import get_redis_client
 from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
 from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, get_s3_client
-
-REDIS_PREFIX = "sns:pending:"
 
 
 class PresignedURLService:
     def __init__(self, log: Logger, **kwargs):
         self.log = log
         self.s3_client = get_s3_client()
-        self.redis_client = get_redis_client()
 
     def generate_file_key(self, user_id: str, filename: str | None = None) -> str:
         timestamp = datetime.now(UTC)
@@ -75,10 +71,6 @@ class PresignedURLService:
             )
 
             self.log.debug(f"Generated presigned URL: {presigned_post['url']}")
-
-            # Store the file key in Redis for when SNS notification is received
-            # with ttl of pre-signed url expiration time
-            self.redis_client.set(f"{REDIS_PREFIX}{file_key}", user_id, ex=request.expiration_seconds)
 
             return PresignedURLResponse(
                 upload_url=presigned_post["url"],
