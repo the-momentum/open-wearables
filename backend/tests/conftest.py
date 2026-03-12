@@ -163,15 +163,12 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, No
 @pytest.fixture(autouse=True)
 def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to run synchronously."""
-    # Mock the poll_sqs_task specifically
     mock_task = MagicMock()
     mock_task.delay.return_value = MagicMock()
     mock_task.apply_async.return_value = MagicMock()
 
     with (
         patch("celery.current_app") as mock_celery,
-        patch("app.integrations.celery.tasks.poll_sqs_task.poll_sqs_task", mock_task),
-        patch("app.api.routes.v1.import_xml.poll_sqs_task", mock_task),
     ):
         # Configure Celery to use in-memory broker and result backend
         # We Mock the conf object to return our test settings

@@ -9,6 +9,7 @@ from app.schemas.apple.apple_xml.aws import SNSNotification
 from app.services.apple.apple_xml.aws_service import get_sns_client
 from app.utils.structured_logging import log_structured
 
+
 logger = getLogger(__name__)
 
 
@@ -55,6 +56,15 @@ class SNSService:
 
             object_key_parts = object_key.split("/")
             user_id = object_key_parts[0] if len(object_key_parts) >= 3 else None
+            if not user_id:
+                log_structured(
+                    logger,
+                    "warning",
+                    f"No user_id found in object key: {object_key}",
+                    provider="apple_xml",
+                    task="sns_notification",
+                )
+                continue
 
             process_aws_upload.delay(
                 bucket_name=bucket_name,
