@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+import httpx
+
 from app.database import DbSession
 from app.models import DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -89,6 +91,16 @@ class Oura247Data(Base247DataTemplate):
                 params = dict(params)
                 params["next_token"] = next_token
 
+            except httpx.HTTPStatusError as e:
+                # Don't mask auth (401/403) or rate-limit (429) failures
+                if e.response.status_code in (401, 403, 429):
+                    self.logger.error(f"HTTP {e.response.status_code} fetching {endpoint}: {e}")
+                    raise
+                self.logger.error(f"HTTP error fetching {endpoint}: {e}")
+                if all_records:
+                    self.logger.warning(f"Returning partial data from {endpoint} due to error: {e}")
+                    break
+                raise
             except Exception as e:
                 self.logger.error(f"Error fetching {endpoint}: {e}")
                 if all_records:
@@ -145,7 +157,7 @@ class Oura247Data(Base247DataTemplate):
             except (ValueError, TypeError):
                 internal_id = uuid5(NAMESPACE_URL, f"oura:sleep:{sleep_id_str}")
         else:
-            internal_id = uuid5(NAMESPACE_URL, f"oura:sleep:{user_id}:{bedtime_start}")
+            internal_id = uuid5(NAMESPACE_URL, f"oura:sleep:{user_id}:{bedtime_start}:{bedtime_end}:{sleep_type}")
 
         return {
             "id": internal_id,
