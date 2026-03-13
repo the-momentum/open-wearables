@@ -31,3 +31,22 @@ class PresignedURLResponse(BaseModel):
     expires_in: int
     max_file_size: int
     bucket: str
+
+
+class SNSNotification(BaseModel):
+    """Handles both SubscriptionConfirmation and Notification message types from SNS."""
+
+    message_type: str = Field(..., alias="Type")
+    message_id: str = Field(..., alias="MessageId")
+    topic_arn: str = Field(..., alias="TopicArn")
+    message: str = Field(..., alias="Message")
+    timestamp: str = Field(..., alias="Timestamp")
+    signature: str = Field(..., alias="Signature")
+    signature_version: str = Field(..., alias="SignatureVersion")
+    signing_cert_url: str = Field(..., alias="SigningCertURL")
+    # Only present on SubscriptionConfirmation
+    token: str | None = Field(None, alias="Token")
+    subscribe_url: str | None = Field(None, alias="SubscribeURL")
+    # Only present on Notification
+    subject: str | None = Field(None, alias="Subject")
+    unsubscribe_url: str | None = Field(None, alias="UnsubscribeURL")

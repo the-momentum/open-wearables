@@ -14,14 +14,13 @@ from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 from celery import shared_task
 
 logger = getLogger(__name__)
 
 
 @shared_task
-def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = None) -> dict[str, str]:
+def process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict[str, str]:
     """
     Process XML file uploaded to S3 and import to Postgres database.
 
@@ -48,33 +47,13 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
             temp_dir = tempfile.gettempdir()
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
 
-            object_key_parts = object_key.split("/")
-            if user_id:
-                user_id_str = user_id
-            elif len(object_key_parts) >= 3:
-                user_id_str = object_key_parts[-3]
-            else:
-                raise ValueError(f"Cannot determine user_id from object key: {object_key}")
-            if user_id and user_id_str != user_id:
-                log_structured(
-                    logger,
-                    "warning",
-                    f"Provided user_id does not match object key user_id: {user_id} vs {user_id_str}",
-                    provider="apple_xml",
-                    task="process_aws_upload",
-                )
-            try:
-                user_uuid = UUID(user_id_str)
-            except ValueError as e:
-                raise ValueError(f"Invalid user_id format in object key: {user_id_str}") from e
-
             # Validate that the user exists before processing
-            _ = user_service.get(db, user_uuid, raise_404=True)
+            _ = user_service.get(db, UUID(user_id), raise_404=True)
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 
             try:
-                _import_xml_data(db, temp_xml_file, user_id_str)
+                _import_xml_data(db, temp_xml_file, user_id)
             except Exception as e:
                 db.rollback()
                 raise e
@@ -82,7 +61,7 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str | None = 
             return {
                 "bucket": bucket_name,
                 "input_key": object_key,
-                "user_id": user_id_str,
+                "user_id": user_id,
                 "status": "success",
                 "message": "Import completed successfully",
             }
