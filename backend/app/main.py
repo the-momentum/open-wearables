@@ -11,6 +11,7 @@ from app.config import settings
 from app.integrations.celery import create_celery
 from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
+from app.services import raw_payload_storage
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
 # Configure logging to use stdout instead of stderr
@@ -25,6 +26,13 @@ basicConfig(
 api = FastAPI(title=settings.api_name)
 celery_app = create_celery()
 init_sentry()
+raw_payload_storage.configure(
+    settings.raw_payload_storage,
+    settings.raw_payload_max_size_bytes,
+    s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
+    s3_prefix=settings.raw_payload_s3_prefix,
+    s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
+)
 
 add_cors_middleware(api)
 

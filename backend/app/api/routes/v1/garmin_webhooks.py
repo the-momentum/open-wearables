@@ -30,6 +30,7 @@ from app.schemas import GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.workouts import GarminWorkouts
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
@@ -639,6 +640,13 @@ async def garmin_push_notification(
             trace_id=request_trace_id,
             item_counts=item_counts,
             garmin_user_ids=garmin_user_ids,
+        )
+
+        store_raw_payload(
+            source="webhook",
+            provider="garmin",
+            payload=payload,
+            trace_id=request_trace_id,
         )
 
         processed_count = 0

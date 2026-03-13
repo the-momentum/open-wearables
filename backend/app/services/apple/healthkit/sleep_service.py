@@ -57,6 +57,7 @@ def delete_sleep_state(user_id: str) -> None:
 
 def _create_new_sleep_state(
     start_time: datetime,
+    end_time: datetime,
     id: str | None = None,
     provider: str | None = None,
     source_name: str | None = None,
@@ -68,7 +69,9 @@ def _create_new_sleep_state(
         "device_model": device_model,
         "provider": provider,
         "start_time": start_time.isoformat(),
-        "last_timestamp": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "last_start_timestamp": start_time.isoformat(),
+        "last_end_timestamp": end_time.isoformat(),
         "in_bed_seconds": 0,
         "awake_seconds": 0,
         "light_seconds": 0,
@@ -91,15 +94,16 @@ def _apply_transition(
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
-    last_timestamp = datetime.fromisoformat(state["last_timestamp"])
-    delta_seconds = (start_time - last_timestamp).total_seconds()
+    last_start_timestamp = datetime.fromisoformat(state["last_start_timestamp"])
+    last_end_timestamp = datetime.fromisoformat(state["last_end_timestamp"])
 
-    if delta_seconds < 0:
-        return state
+    delta_seconds = min(
+        abs((start_time - last_start_timestamp).total_seconds()), abs((end_time - last_end_timestamp).total_seconds())
+    )
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
-        return _create_new_sleep_state(start_time, uuid, provider, source_name, device_model)
+        state = _create_new_sleep_state(start_time, end_time, uuid, provider, source_name, device_model)
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -119,7 +123,14 @@ def _apply_transition(
         case _:
             pass
 
-    state["last_timestamp"] = end_time.isoformat()
+    if end_time > datetime.fromisoformat(state["end_time"]):
+        state["end_time"] = end_time.isoformat()
+    elif start_time < datetime.fromisoformat(state["start_time"]):
+        state["start_time"] = start_time.isoformat()
+
+    state["last_start_timestamp"] = start_time.isoformat()
+    state["last_end_timestamp"] = end_time.isoformat()
+
     return state
 
 
@@ -132,7 +143,10 @@ def handle_sleep_data(
     Process SDK sleep data and track sleep sessions using Redis state.
 
     Sleep sessions are tracked in Redis and automatically finalized to the database when
-    a gap of more than 1 hour is detected between consecutive sleep records.
+    a gap of more than 2 hours (configurable) is detected between consecutive sleep records.
+
+    Handles bidirectional gaps between records - the service works fine whether the SDK
+    sends records in chronological order or reverse chronological order.
 
     Args:
         db_session: Database session for persisting finalized sleep records
@@ -142,7 +156,7 @@ def handle_sleep_data(
     Flow:
         - If no active session exists: Create new session in Redis (only for valid start states)
         - If active session exists: Check gap between last record's end and current record's start
-          * Gap > 1 hour: Finalize existing session, start new one
+          * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
     """
     current_state = load_sleep_state(user_id)
@@ -161,12 +175,8 @@ def handle_sleep_data(
                 continue
 
             current_state = _create_new_sleep_state(
-                sjson.startDate, sjson.id, provider, original_source_name, device_model
+                sjson.startDate, sjson.endDate, sjson.id, provider, original_source_name, device_model
             )
-            # Store endDate as last_timestamp since that's when this period actually ends
-            current_state["last_timestamp"] = sjson.endDate.isoformat()
-            save_sleep_state(user_id, current_state)
-            continue
 
         # Check if there's a gap between the last record's end and this record's start
         current_state = _apply_transition(
@@ -183,11 +193,18 @@ def handle_sleep_data(
         )
         save_sleep_state(user_id, current_state)
 
+    # import not at module level in order to avoid circular import
+    from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+
+    # if we dont call the task, last sleep session in payload will stay
+    # in redis until celery beat task runs
+    finalize_stale_sleeps.delay()
+
 
 def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None:
     """Finish a sleep session and save the record to the database."""
 
-    end_time = datetime.fromisoformat(state["last_timestamp"])
+    end_time = datetime.fromisoformat(state["end_time"])
     start_time = datetime.fromisoformat(state["start_time"])
 
     total_duration = (end_time - start_time).total_seconds()

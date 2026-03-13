@@ -240,9 +240,13 @@ sdk.onAuthError = { statusCode, message in
 ### Check Stored Session
 
 ```swift
-// Verify session can be restored
-let restored = sdk.restoreSession()
-print("Session restored: \(restored)")
+// Verify session is valid
+print("Session valid: \(sdk.isSessionValid)")
+print("Sync active: \(sdk.isSyncActive)")
+
+// Check stored credentials for debugging
+let creds = sdk.getStoredCredentials()
+print("Stored credentials found: \(creds != nil)")
 ```
 
 ### Force Fresh Start
@@ -272,7 +276,7 @@ The SDK includes built-in network monitoring via `NWPathMonitor`. When the devic
 If you're still experiencing issues:
 
 <CardGroup cols={2}>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open_wearables_ios_sdk/issues">
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/OpenWearablesHealthSDK/issues">
     Report bugs or request features on the SDK repository.
   </Card>
   <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">

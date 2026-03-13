@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useOAuthConnect } from '@/hooks/use-oauth-connect';
 import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
+import { useUserConnections } from '@/hooks/api/use-health';
 import { useMemo } from 'react';
 import { API_CONFIG } from '@/lib/api/config';
 
@@ -32,6 +33,14 @@ function PairWearablePage() {
     useOAuthConnect({ userId, redirectUrl });
 
   const { data: apiProviders, isLoading } = useOAuthProviders(true, true);
+  const { data: connections } = useUserConnections(userId);
+
+  const connectedProviders = useMemo(() => {
+    if (!connections) return new Set<string>();
+    return new Set(
+      connections.filter((c) => c.status === 'active').map((c) => c.provider)
+    );
+  }, [connections]);
 
   const displayProviders = useMemo(() => {
     if (!apiProviders) return [];
@@ -44,9 +53,10 @@ function PairWearablePage() {
           ? `${API_CONFIG.baseUrl}${apiProvider.icon_url}`
           : '',
         isAvailable: apiProvider.is_enabled,
+        isConnected: connectedProviders.has(apiProvider.provider),
       };
     });
-  }, [apiProviders]);
+  }, [apiProviders, connectedProviders]);
 
   const connectingProviderData = connectingProvider
     ? displayProviders.find((p) => p.id === connectingProvider)
@@ -123,7 +133,12 @@ function PairWearablePage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05, duration: 0.3 }}
                     onClick={() => handleConnect(provider.id)}
-                    className="group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border border-white/5 hover:bg-zinc-900/80 hover:border-white/10 transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20"
+                    disabled={provider.isConnected}
+                    className={`group relative flex flex-col items-center text-center p-10 rounded-2xl bg-zinc-900/40 border transition-all duration-300 ease-out outline-none focus:ring-2 focus:ring-white/20 ${
+                      provider.isConnected
+                        ? 'border-emerald-500/20 cursor-default'
+                        : 'border-white/5 hover:bg-zinc-900/80 hover:border-white/10'
+                    }`}
                   >
                     {/* Brand Logo */}
                     <div className="mb-8 flex items-center justify-center h-20 w-20 bg-white rounded-2xl shadow-lg shadow-black/20 group-hover:scale-105 transition-transform duration-300">
@@ -143,9 +158,20 @@ function PairWearablePage() {
                     </p>
 
                     {/* Connect indicator */}
-                    <div className="mt-8 flex items-center gap-1.5 text-base font-medium text-zinc-200 group-hover:text-white transition-colors">
-                      <span>Connect</span>
-                      <ChevronRight className="w-4 h-4 stroke-[1.5]" />
+                    <div className="mt-8 flex items-center gap-1.5 text-base font-medium transition-colors">
+                      {provider.isConnected ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span className="text-emerald-400">Connected</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-zinc-200 group-hover:text-white">
+                            Connect
+                          </span>
+                          <ChevronRight className="w-4 h-4 stroke-[1.5] text-zinc-200 group-hover:text-white" />
+                        </>
+                      )}
                     </div>
                   </motion.button>
                 ))

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas import SDKSyncRequest, UploadDataResponse
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 
@@ -86,6 +87,14 @@ async def sync_sdk_data(
     )
 
     content_str = body.model_dump_json()
+
+    store_raw_payload(
+        source="sdk",
+        provider=provider,
+        payload=content_str,
+        user_id=user_id,
+        trace_id=batch_id,
+    )
 
     process_sdk_upload.delay(
         content=content_str,

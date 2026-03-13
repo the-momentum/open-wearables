@@ -1,0 +1,162 @@
+---
+title: "Raw Payloads Storage"
+description: "Capture raw incoming data from wearable providers for debugging and testing"
+---
+
+## Overview
+
+Raw payloads storage lets you capture the exact JSON payloads received from wearable providers before any processing. This is useful when you need to:
+
+- **Debug data issues** - inspect exactly what a provider sent when something doesn't look right
+- **Test ingestion changes** - replay real payloads against updated parsing logic to make sure nothing breaks
+- **Reproduce bugs** - grab the original payload that caused a problem and use it in local development
+
+The feature is **disabled by default** and adds zero overhead when turned off.
+
+## Configuration
+
+Add these environment variables to your `.env` file:
+
+```bash
+# Storage backend: "disabled" (default), "log", or "s3"
+RAW_PAYLOAD_STORAGE=disabled
+
+# Maximum payload size in bytes (default: 10 MB)
+RAW_PAYLOAD_MAX_SIZE_BYTES=10485760
+
+# S3-specific settings (only needed when using "s3" backend)
+RAW_PAYLOAD_S3_BUCKET=my-raw-payloads        # Falls back to AWS_BUCKET_NAME if not set
+RAW_PAYLOAD_S3_PREFIX=raw-payloads            # S3 key prefix (default: "raw-payloads")
+# RAW_PAYLOAD_S3_ENDPOINT_URL=              # Optional: custom endpoint for S3-compatible providers
+```
+
+<Warning>
+  Raw payloads can contain sensitive health data. Make sure your storage destination meets your organization's data protection requirements.
+</Warning>
+
+## Storage Backends
+
+### Disabled (default)
+
+No payloads are stored. The `store_raw_payload()` call returns immediately with no overhead.
+
+```bash
+RAW_PAYLOAD_STORAGE=disabled
+```
+
+### Log
+
+Writes each payload as a structured JSON line to stdout. Useful for development, or when your infrastructure already captures application logs (e.g., CloudWatch, Datadog).
+
+```bash
+RAW_PAYLOAD_STORAGE=log
+```
+
+Example output:
+
+```json
+{
+  "level": "debug",
+  "message": "raw_payload",
+  "source": "webhook",
+  "provider": "garmin",
+  "size_bytes": 4521,
+  "trace_id": "a1b2c3d4",
+  "payload": "{...}"
+}
+```
+
+### S3
+
+Uploads each payload as a JSON file to an S3 bucket (or any S3-compatible object store like MinIO or Railway Object Storage).
+
+```bash
+RAW_PAYLOAD_STORAGE=s3
+RAW_PAYLOAD_S3_BUCKET=my-raw-payloads
+```
+
+AWS credentials are reused from the existing application config (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`). See the [AWS Setup guide](/dev-guides/aws-setup) for details.
+
+#### S3 key format
+
+Files are organized by provider, source, date, and user:
+
+```
+{prefix}/{provider}/{source}/{YYYY-MM-DD}/{user_id}/{file_id}.json
+```
+
+Example:
+
+```
+raw-payloads/garmin/webhook/2025-03-12/_unknown/a1b2c3d4e5f6.json
+raw-payloads/apple/sdk/2025-03-12/user-123/f6e5d4c3b2a1.json
+```
+
+- `_unknown` is used when a user ID is not available (e.g., Garmin webhooks)
+- `file_id` is a random 12-character hex string
+
+#### S3 object metadata
+
+Each object includes metadata for filtering and querying:
+
+| Key | Description |
+|-----|-------------|
+| `source` | Origin type (`sdk`, `webhook`) |
+| `provider` | Provider name (`garmin`, `apple`, `samsung`, etc.) |
+| `size_bytes` | Payload size in bytes |
+| `timestamp` | ISO 8601 UTC timestamp |
+| `user_id` | User identifier (if available) |
+| `trace_id` | Request trace/batch ID (if available) |
+
+## Supported Ingestion Points
+
+Raw payloads storage is currently enabled at two ingestion points:
+
+| Endpoint | Source | Provider | Trace ID |
+|----------|--------|----------|----------|
+| `POST /api/v1/garmin/push` | `webhook` | `garmin` | 8-char request trace ID |
+| `POST /api/v1/sdk/users/{user_id}/sync` | `sdk` | `apple`, `samsung`, `google`, `auto-health-export` | UUID4 batch ID |
+
+## Error Handling
+
+Raw payloads storage is designed to never break your data ingestion pipeline:
+
+- **Oversized payloads** - Payloads exceeding `RAW_PAYLOAD_MAX_SIZE_BYTES` are skipped with a warning log. Data processing continues normally.
+- **S3 upload failures** - Errors are logged but not propagated. The webhook or sync request continues processing.
+- **Missing S3 bucket** - If the S3 backend is configured but no bucket is available, it falls back to `disabled` with an error log.
+- **S3 client failure** - If the S3 client cannot be created (e.g., missing `boto3` or invalid credentials), it falls back to `disabled`.
+
+## Example Setup
+
+<Tabs>
+  <Tab title="Development">
+    ```bash
+    RAW_PAYLOAD_STORAGE=log
+    ```
+
+    Then inspect payloads in Docker logs:
+
+    ```bash
+    docker compose logs -f backend | grep raw_payload
+    ```
+  </Tab>
+  <Tab title="Production (S3)">
+    ```bash
+    RAW_PAYLOAD_STORAGE=s3
+    RAW_PAYLOAD_S3_BUCKET=mycompany-raw-payloads
+    RAW_PAYLOAD_S3_PREFIX=open-wearables
+    RAW_PAYLOAD_MAX_SIZE_BYTES=10485760
+
+    # AWS credentials (if not already configured)
+    AWS_ACCESS_KEY_ID=your-key
+    AWS_SECRET_ACCESS_KEY=your-secret
+    AWS_REGION=eu-north-1
+    ```
+  </Tab>
+</Tabs>
+
+## Related Guides
+
+- [AWS Setup](/dev-guides/aws-setup) - Configure AWS credentials and S3 buckets
+- [How to Add a Provider](/dev-guides/how-to-add-new-provider) - Adding raw payload storage to new providers
+- [Backend E2E Integration](/dev-guides/backend-e2e-integration) - Testing your setup
