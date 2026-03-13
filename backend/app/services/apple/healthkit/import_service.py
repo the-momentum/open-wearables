@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
@@ -65,12 +65,16 @@ class ImportService:
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
+            end_date = datetime.fromisoformat(wjson.endDate)
+            if wjson.zoneOffset:
+                end_date = end_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
+
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
                 user_uuid,
                 device_model,
                 software_version,
-                wjson.endDate,
+                end_date,
                 provider,
                 original_source_name,
             )
@@ -81,14 +85,20 @@ class ImportService:
             workout_type = wjson.type.lower() if wjson.type else None
             type = get_unified_apple_workout_type_sdk(workout_type).value if workout_type else None
 
+            start_date = datetime.fromisoformat(wjson.startDate)
+            end_date = datetime.fromisoformat(wjson.endDate)
+            if wjson.zoneOffset:
+                start_date = start_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
+                end_date = end_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
+
             record = EventRecordCreate(
                 category="workout",
                 type=type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
                 duration_seconds=int(duration),
-                start_datetime=wjson.startDate,
-                end_datetime=wjson.endDate,
+                start_datetime=start_date,
+                end_datetime=end_date,
                 id=workout_id,
                 external_id=external_id,
                 source=provider,
@@ -187,6 +197,8 @@ class ImportService:
 
             # series type conversion only happens for metrics that are not in EventRecordMetrics
             series_type = get_series_type_from_workout_statistic_type(stat.type)
+
+            
 
             if series_type:
                 sample = TimeSeriesSampleCreate(
