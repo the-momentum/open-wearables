@@ -25,7 +25,7 @@ SDK_ENVELOPE: dict[str, str] = {
 
 @pytest.fixture(autouse=True)
 def mock_sleep_redis() -> Any:
-    """Mock Redis client in sleep_service module to prevent connection errors."""
+    """Mock Redis client and Celery task in sleep_service to prevent connection errors."""
     mock_redis = MagicMock()
     mock_redis.get.return_value = None
     mock_redis.set.return_value = True
@@ -33,7 +33,11 @@ def mock_sleep_redis() -> Any:
     mock_redis.sadd.return_value = 1
     mock_redis.srem.return_value = 1
 
-    with patch("app.services.apple.healthkit.sleep_service.redis_client", mock_redis):
+    with (
+        patch("app.services.apple.healthkit.sleep_service.get_redis_client") as mock_get_redis,
+        patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps"),
+    ):
+        mock_get_redis.return_value = mock_redis
         yield mock_redis
 
 

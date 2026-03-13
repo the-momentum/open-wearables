@@ -23,7 +23,8 @@ def _make_connection(scope: str | None) -> MagicMock:
 
 @pytest.fixture
 def _patch_redis() -> Generator[MagicMock, None, None]:
-    with patch(f"{MODULE}.redis_client") as mock:
+    with patch(f"{MODULE}.get_redis_client") as mock_get:
+        mock = mock_get.return_value
         mock.get.return_value = None
         yield mock
 

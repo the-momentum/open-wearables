@@ -313,6 +313,7 @@ class EventRecordService(
                 if details and details.sleep_efficiency_score
                 else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
+                sleep_stage_intervals=details.sleep_stages if details else None,
                 stages=SleepStagesSummary(
                     deep_minutes=details.sleep_deep_minutes or 0 if details else 0,
                     light_minutes=details.sleep_light_minutes or 0 if details else 0,

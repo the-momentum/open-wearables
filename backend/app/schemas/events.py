@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.common_types import SourceMetadata
+from app.schemas.sleep import SleepStage
 from app.schemas.summaries import SleepStagesSummary
 from app.schemas.timeseries import TimeSeriesSample
 
@@ -69,4 +70,5 @@ class SleepSession(BaseModel):
     duration_seconds: int
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
+    sleep_stage_intervals: list[SleepStage] | None = None
     is_nap: bool = False

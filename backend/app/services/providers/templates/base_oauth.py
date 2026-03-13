@@ -10,6 +10,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import HTTPException
+from redis import Redis
 from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
 
 from app.database import DbSession
@@ -43,8 +44,12 @@ class BaseOAuthTemplate(ABC):
         self.connection_repo = connection_repo
         self.provider_name = provider_name
         self.api_base_url = api_base_url
-        self.redis_client = get_redis_client()
         self.state_ttl = 900  # 15 minutes
+
+    @property
+    def redis_client(self) -> Redis:
+        """Lazy-loaded Redis client."""
+        return get_redis_client()
 
     @property
     @abstractmethod
