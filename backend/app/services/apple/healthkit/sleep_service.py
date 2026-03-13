@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from logging import getLogger
 from uuid import UUID, uuid4
 
@@ -249,11 +249,24 @@ def handle_sleep_data(
         )
         save_sleep_state(user_id, current_state)
 
+    # Finalize the remaining session synchronously if it is already stale.
+    # With chronological sorting, the most recent night is always processed last
+    # and left in Redis. If it ended more than sleep_end_gap_minutes ago it can
+    # be persisted right away instead of waiting for the periodic Celery beat.
+    if current_state:
+        end_time = current_state.end_time
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
+            finish_sleep(db_session, user_id, current_state)
+            current_state = None
+
     # import not at module level in order to avoid circular import
     from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
-    # if we dont call the task, last sleep session in payload will stay
-    # in redis until celery beat task runs
+    # Dispatch async task for any other active users or if this session
+    # was too fresh to finalize synchronously above.
     finalize_stale_sleeps.delay()
 
 
