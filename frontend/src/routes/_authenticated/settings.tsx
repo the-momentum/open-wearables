@@ -5,6 +5,7 @@ import { CredentialsTab } from './settings/credentials-tab';
 import { ProvidersTab } from './settings/providers-tab';
 import { PrioritiesTab } from './settings/priorities-tab';
 import { TeamTab } from './settings/team-tab';
+import { SecurityTab } from './settings/security-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
   component: SettingsPage,
@@ -37,6 +38,11 @@ const tabs: TabConfig[] = [
     label: 'Team',
     component: TeamTab,
   },
+  {
+    id: 'security',
+    label: 'Security',
+    component: SecurityTab,
+  },
 ];
 
 function SettingsPage() {
@@ -52,7 +58,7 @@ function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="bg-zinc-900/50 border border-zinc-800">
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
@@ -61,7 +67,11 @@ function SettingsPage() {
         </TabsList>
 
         {tabs.map((tab) => (
-          <TabsContent key={tab.id} value={tab.id}>
+          <TabsContent
+            key={tab.id}
+            value={tab.id}
+            className="mt-6 focus-visible:outline-none"
+          >
             <tab.component />
           </TabsContent>
         ))}

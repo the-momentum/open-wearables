@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   me: '/api/v1/auth/me',
   forgotPassword: '/api/v1/auth/forgot-password',
   resetPassword: '/api/v1/auth/reset-password',
+  changePassword: '/api/v1/auth/change-password',
 
   // User endpoints
   users: '/api/v1/users',
