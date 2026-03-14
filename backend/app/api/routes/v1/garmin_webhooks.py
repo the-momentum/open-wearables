@@ -366,6 +366,7 @@ async def garmin_ping_notification(
         processed_count = 0
         errors: list[str] = []
         processed_activities: list[dict] = []
+        synced_user_ids: set[UUID] = set()
 
         # Process activities via callback URLs
         if "activities" in payload:
@@ -510,6 +511,19 @@ async def garmin_ping_notification(
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
 
+        # Extract user IDs from wellness results and update last_synced_at
+        for result in wellness_results.values():
+            if isinstance(result, dict):
+                for item in result.get("items", []):
+                    if item.get("saved", 0) > 0:
+                        synced_user_ids.add(UUID(item["internal_user_id"]))
+        if synced_user_ids:
+            user_connection_repo = UserConnectionRepository()
+            for uid in synced_user_ids:
+                connection = user_connection_repo.get_active_connection(db, uid, "garmin")
+                if connection:
+                    user_connection_repo.update_last_synced_at(db, connection)
+
         # Collect user IDs with new success transitions from wellness results
         users_with_new_success: set[str] = set()
         for result in wellness_results.values():
@@ -653,6 +667,7 @@ async def garmin_push_notification(
         saved_count = 0
         errors: list[str] = []
         processed_activities: list[dict] = []
+        synced_user_ids: set[UUID] = set()
 
         # Get Garmin workouts service via factory
         factory = ProviderFactory()
@@ -756,6 +771,8 @@ async def garmin_push_notification(
                         },
                     )
                     processed_count += 1
+                    if created_ids:
+                        synced_user_ids.add(internal_user_id)
                     log_structured(
                         logger,
                         "info",
@@ -866,8 +883,11 @@ async def garmin_push_notification(
             for uid, items in user_items.items():
                 trace_id = get_trace_id(uid) or request_trace_id
                 try:
-                    type_count += garmin_247.process_items_batch(db, uid, data_type, items)
+                    count = garmin_247.process_items_batch(db, uid, data_type, items)
+                    type_count += count
                     type_users.add(str(uid))
+                    if count > 0:
+                        synced_user_ids.add(uid)
                 except Exception as e:
                     log_structured(
                         logger,
@@ -900,6 +920,12 @@ async def garmin_push_notification(
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
+
+        # Update last_synced_at for all users that received data via push
+        for uid in synced_user_ids:
+            connection = user_connection_repo.get_active_connection(db, uid, "garmin")
+            if connection:
+                user_connection_repo.update_last_synced_at(db, connection)
 
         # Also add users from activity processing (only if newly succeeded)
         for act in processed_activities:
