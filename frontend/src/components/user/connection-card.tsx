@@ -10,7 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { UserConnection } from '@/lib/api/types';
+import { UserConnection, SyncProgress } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,10 +28,15 @@ import {
   useGarminCancelBackfill,
   useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
+import { SyncProgressOverlay } from '@/components/user/sync-progress-overlay';
 
 interface ConnectionCardProps {
   connection: UserConnection;
   className?: string;
+  /** Real-time sync progress from SSE (passed from parent ProfileSection) */
+  syncProgress?: SyncProgress;
+  /** Callback to start SSE listening when a sync is triggered */
+  onSyncStarted?: () => void;
 }
 
 // Format data type name for display (e.g., "bodyComps" -> "Body Comps")
@@ -48,7 +53,12 @@ function parseScopeString(scope: string): string[] {
   return scope.split(/[,\s]+/).filter(Boolean);
 }
 
-export function ConnectionCard({ connection, className }: ConnectionCardProps) {
+export function ConnectionCard({
+  connection,
+  className,
+  syncProgress,
+  onSyncStarted,
+}: ConnectionCardProps) {
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
 
@@ -336,26 +346,38 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
         {/* Sync button - only for non-Garmin providers */}
         {connection.provider !== 'garmin' && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => synchronizeDataFromProvider()}
-              disabled={isSynchronizing}
-            >
-              {isSynchronizing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Now
-                </>
+          <div className="space-y-3">
+            {/* Show SSE sync progress for this provider */}
+            {syncProgress &&
+              (syncProgress.active || syncProgress.events.length > 0) &&
+              syncProgress.providers.includes(connection.provider) && (
+                <SyncProgressOverlay progress={syncProgress} />
               )}
-            </Button>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  onSyncStarted?.();
+                  synchronizeDataFromProvider();
+                }}
+                disabled={isSynchronizing || syncProgress?.active}
+              >
+                {isSynchronizing || syncProgress?.active ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Sync Now
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         )}
       </CardContent>

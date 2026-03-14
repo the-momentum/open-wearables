@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link as LinkIcon, Check, Copy, Pencil } from 'lucide-react';
 import { useUserConnections } from '@/hooks/api/use-health';
+import { useSyncEvents } from '@/hooks/api/use-sync-events';
 import { useUser, useUpdateUser } from '@/hooks/api/use-users';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +27,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
+  const { progress: syncProgress, startListening } = useSyncEvents(userId);
 
   const [copied, setCopied] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
@@ -193,7 +195,12 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
             ) : connections && connections.length > 0 ? (
               <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
                 {connections.map((connection) => (
-                  <ConnectionCard key={connection.id} connection={connection} />
+                  <ConnectionCard
+                    key={connection.id}
+                    connection={connection}
+                    syncProgress={syncProgress}
+                    onSyncStarted={startListening}
+                  />
                 ))}
               </div>
             ) : (
