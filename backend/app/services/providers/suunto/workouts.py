@@ -154,7 +154,9 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = int(raw_workout.totalTime)
 
-        zone_offset = offset_to_iso(raw_workout.timeOffsetInMinutes * 60)
+        zone_offset = None
+        if raw_workout.timeOffsetInMinutes is not None:
+            zone_offset = offset_to_iso(raw_workout.timeOffsetInMinutes * 60)
 
         # Source name: prefer displayName, then name, fallback to "Suunto"
         if raw_workout.gear:
