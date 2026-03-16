@@ -49,6 +49,7 @@ class EventRecordBase(BaseModel):
     end_datetime: datetime
     zone_offset: str | None = None
 
+
 class EventRecordCreate(EventRecordBase):
     id: UUID
     external_id: str | None = None
