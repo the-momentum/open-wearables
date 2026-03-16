@@ -65,6 +65,11 @@ export function SecuritySettings() {
               type="button"
               onClick={() => setShowCurrentPassword(!showCurrentPassword)}
               className="absolute inset-y-0 right-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+              aria-label={
+                showCurrentPassword
+                  ? 'Hide current password'
+                  : 'Show current password'
+              }
             >
               {showCurrentPassword ? (
                 <EyeOff className="w-4 h-4" />
@@ -97,6 +102,9 @@ export function SecuritySettings() {
               type="button"
               onClick={() => setShowNewPassword(!showNewPassword)}
               className="absolute inset-y-0 right-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+              aria-label={
+                showNewPassword ? 'Hide new password' : 'Show new password'
+              }
             >
               {showNewPassword ? (
                 <EyeOff className="w-4 h-4" />
@@ -129,6 +137,11 @@ export function SecuritySettings() {
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               className="absolute inset-y-0 right-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors"
+              aria-label={
+                showConfirmPassword
+                  ? 'Hide confirm password'
+                  : 'Show confirm password'
+              }
             >
               {showConfirmPassword ? (
                 <EyeOff className="w-4 h-4" />
