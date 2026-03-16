@@ -102,6 +102,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in your environment}
     container_name: frontend__open-wearables
     image: open-wearables-frontend:latest
     pull_policy: never
