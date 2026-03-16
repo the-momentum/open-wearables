@@ -1,9 +1,10 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDeveloper, PrimaryKey, Unique, datetime_tz, str_64, str_100
+from app.mappings import FKDeveloper, PrimaryKey, Unique, str_64, str_100
 
 
 class Application(BaseDbModel):
@@ -14,5 +15,5 @@ class Application(BaseDbModel):
     app_secret_hash: Mapped[str]  # bcrypt hashed secret
     name: Mapped[str_100]  # Display name
     developer_id: Mapped[FKDeveloper]  # Owner developer
-    created_at: Mapped[datetime_tz]
-    updated_at: Mapped[datetime_tz]
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]

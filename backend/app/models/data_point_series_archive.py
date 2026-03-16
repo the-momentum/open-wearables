@@ -1,4 +1,5 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
@@ -9,7 +10,6 @@ from app.mappings import (
     FKSeriesTypeDefinition,
     PrimaryKey,
     Indexed,
-    datetime_tz,
     numeric_10_3,
 )
 from app.schemas.series_types import AggregationMethod
@@ -36,7 +36,7 @@ class DataPointSeriesArchive(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     data_source_id: Mapped[FKDataSource]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
-    bucket_start_at: Mapped[Indexed[datetime_tz]]
+    bucket_start_at: Mapped[Indexed[datetime]]
     aggregation_type: Mapped[AggregationMethod]
     value: Mapped[numeric_10_3]
     sample_count: Mapped[int]

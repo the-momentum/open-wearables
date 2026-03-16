@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, datetime_tz, str_64
+from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, str_64
 from app.schemas.token_type import TokenType
 
 
@@ -24,6 +26,6 @@ class RefreshToken(BaseDbModel):
     # For Developer tokens
     developer_id: Mapped[Indexed[FKDeveloper] | None]
 
-    created_at: Mapped[datetime_tz]
-    last_used_at: Mapped[datetime_tz | None]
-    revoked_at: Mapped[datetime_tz | None]
+    created_at: Mapped[datetime]
+    last_used_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]

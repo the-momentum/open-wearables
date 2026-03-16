@@ -1,4 +1,5 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
@@ -8,7 +9,6 @@ from app.mappings import (
     FKDataSource,
     FKSeriesTypeDefinition,
     PrimaryKey,
-    datetime_tz,
     numeric_10_3,
     str_100,
 )
@@ -30,6 +30,6 @@ class DataPointSeries(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     external_id: Mapped[str_100 | None]
     data_source_id: Mapped[FKDataSource]
-    recorded_at: Mapped[datetime_tz]
+    recorded_at: Mapped[datetime]
     value: Mapped[numeric_10_3]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]

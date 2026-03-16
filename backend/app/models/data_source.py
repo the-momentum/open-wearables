@@ -22,7 +22,7 @@ class DataSource(BaseDbModel):
 
     __tablename__ = "data_source"
     __table_args__ = (
-        Index("idx_data_source_user_provider", "user_id", "provider"),
+        Index("ix_data_source_user_provider", "user_id", "provider"),
         Index(
             "uq_data_source_identity",
             "user_id",
