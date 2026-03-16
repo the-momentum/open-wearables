@@ -84,6 +84,7 @@ class TestSuuntoOAuth:
         test_payload = {
             "sub": "suunto_user_12345",
             "user": "test_suunto_user",
+            "aud": "test_client_id",
             "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
         }
         access_token = jwt.encode(test_payload, test_secret, algorithm="HS256")
@@ -111,6 +112,7 @@ class TestSuuntoOAuth:
         # Arrange
         test_payload = {
             "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
+            "aud": "test_client_id",
             # Missing 'sub' and 'user' fields
         }
         access_token = jwt.encode(test_payload, test_secret, algorithm="HS256")
