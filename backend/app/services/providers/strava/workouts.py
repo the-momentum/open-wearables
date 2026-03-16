@@ -15,6 +15,7 @@ from app.schemas import (
 from app.schemas.workout_types import WorkoutType
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 
@@ -194,6 +195,10 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         duration_seconds = raw_workout.elapsed_time
         start_date, end_date = self._extract_dates_from_iso(raw_workout.start_date, duration_seconds)
 
+        zone_offset = None
+        if raw_workout.utc_offset is not None:
+            zone_offset = offset_to_iso(int(raw_workout.utc_offset))
+
         metrics = self._build_metrics(raw_workout)
 
         source_name = raw_workout.device_name or "Strava"
@@ -207,6 +212,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=str(raw_workout.id),
             source="strava",
