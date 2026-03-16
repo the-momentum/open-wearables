@@ -76,7 +76,13 @@ class TimeSeriesSampleBase(BaseModel):
         description="Existing data source identifier if already created upstream.",
     )
     recorded_at: datetime
-    zone_offset: str | None = None
+    zone_offset: str | None = Field(
+        None,
+        description="Timezone offset in the format '+01:00' or '-05:30'",
+        pattern=r"^[+-]\d{2}:\d{2}$",
+        examples=["+01:00", "-05:30"],
+        max_length=10,
+    )
     value: Decimal | float | int
     series_type: SeriesType
 
