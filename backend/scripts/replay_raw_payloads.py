@@ -106,7 +106,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def build_s3_prefix(base_prefix: str, provider: str | None, source: str | None, user_id: str) -> str:
+def build_s3_prefix(base_prefix: str, provider: str | None, source: str | None) -> str:
     """Build the S3 key prefix for listing objects.
 
     Key format: {prefix}/{provider}/{source}/{YYYY-MM-DD}/{user_id}/{uuid}.json
@@ -225,7 +225,7 @@ def main() -> None:
     s3_client = boto3.client("s3", **s3_kwargs)
 
     # Build prefix and list payloads
-    prefix = build_s3_prefix(args.s3_prefix, args.provider, args.source, args.user_id)
+    prefix = build_s3_prefix(args.s3_prefix, args.provider, args.source)
     print(f"Listing payloads in s3://{args.s3_bucket}/{prefix}")
     print(f"  Source user ID: {args.user_id}")
     if args.target_user_id != args.user_id:
