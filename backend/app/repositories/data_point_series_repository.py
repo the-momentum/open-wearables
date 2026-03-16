@@ -35,7 +35,7 @@ class DataPointSeriesRepository(
 
     # PostgreSQL/psycopg limit: 65535 params per query. With 6 params per row, max ~10922 rows.
     # Use 10000 as a safe chunk size.
-    BATCH_INSERT_CHUNK_SIZE = 10_000
+    BATCH_INSERT_CHUNK_SIZE = 9_000
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)

@@ -47,7 +47,13 @@ class EventRecordBase(BaseModel):
     duration_seconds: int | None = None
     start_datetime: datetime
     end_datetime: datetime
-    zone_offset: str | None = None
+    zone_offset: str | None = Field(
+        None,
+        description="Timezone offset in the format '+01:00' or '-05:30'",
+        pattern=r"^[+-]\d{2}:\d{2}$",
+        examples=["+01:00", "-05:30"],
+        max_length=10,
+    )
 
 
 class EventRecordCreate(EventRecordBase):
