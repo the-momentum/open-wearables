@@ -216,6 +216,11 @@ uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
 | `--api-url` | `http://localhost:8000` | Backend API base URL |
 | `--api-key` | `OPEN_WEARABLES_API_KEY` env var | API key for authentication |
 | `--s3-bucket` | `RAW_PAYLOAD_S3_BUCKET` or `AWS_BUCKET_NAME` env var | S3 bucket name |
+| `--s3-prefix` | `raw-payloads` | S3 key prefix |
+| `--s3-endpoint-url` | `RAW_PAYLOAD_S3_ENDPOINT_URL` env var | Custom S3 endpoint for compatible providers |
+| `--aws-region` | `AWS_REGION` env var or `eu-north-1` | AWS region |
+| `--aws-access-key-id` | `AWS_ACCESS_KEY_ID` env var | AWS access key ID |
+| `--aws-secret-access-key` | `AWS_SECRET_ACCESS_KEY` env var | AWS secret access key |
 | `--provider` | all | Filter by provider (`apple`, `samsung`, etc.) |
 | `--source` | all | Filter by source (`sdk`, `webhook`) |
 | `--date-from` | none | Start date filter (YYYY-MM-DD) |
