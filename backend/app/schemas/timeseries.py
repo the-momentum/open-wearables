@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.common_types import SourceMetadata
 from app.schemas.series_types import SeriesType
@@ -24,6 +24,13 @@ class TimeSeriesSample(BaseModel):
     value: float | int
     unit: str
     source: SourceMetadata | None = None
+
+    @field_validator("zone_offset", mode="before")
+    @classmethod
+    def normalize_zone_offset(cls, v: str | None) -> str | None:
+        if v == "Z":
+            return "+00:00"
+        return v
 
 
 class ActivityAggregateResult(TypedDict):
@@ -85,6 +92,13 @@ class TimeSeriesSampleBase(BaseModel):
     )
     value: Decimal | float | int
     series_type: SeriesType
+
+    @field_validator("zone_offset", mode="before")
+    @classmethod
+    def normalize_zone_offset(cls, v: str | None) -> str | None:
+        if v == "Z":
+            return "+00:00"
+        return v
 
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):
