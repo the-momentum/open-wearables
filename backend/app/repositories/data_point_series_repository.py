@@ -145,6 +145,7 @@ class DataPointSeriesRepository(
                     "external_id": creator.external_id,
                     "data_source_id": source_id,
                     "recorded_at": creator.recorded_at,
+                    "zone_offset": creator.zone_offset,
                     "value": creator.value,
                     "series_type_definition_id": get_series_type_id(creator.series_type),
                 }
@@ -167,6 +168,7 @@ class DataPointSeriesRepository(
                     set_={
                         "value": stmt.excluded.value,
                         "external_id": stmt.excluded.external_id,
+                        "zone_offset": stmt.excluded.zone_offset,
                     },
                 )
                 db_session.execute(stmt)

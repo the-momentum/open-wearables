@@ -132,6 +132,7 @@ class EventRecordRepository(
                     "duration_seconds": creator.duration_seconds,
                     "start_datetime": creator.start_datetime,
                     "end_datetime": creator.end_datetime,
+                    "zone_offset": creator.zone_offset,
                 }
             )
 
