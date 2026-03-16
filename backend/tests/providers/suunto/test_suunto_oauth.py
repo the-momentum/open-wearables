@@ -12,7 +12,7 @@ Tests cover:
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 import pytest
@@ -80,13 +80,13 @@ class TestSuuntoOAuth:
     def test_extract_user_info_from_jwt_success(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should extract user info from JWT access token."""
         # Arrange
+        test_secret = "test_secret"
         test_payload = {
             "sub": "suunto_user_12345",
             "user": "test_suunto_user",
             "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
         }
-        # Create JWT without signature verification
-        access_token = jwt.encode(test_payload, "secret", algorithm="HS256")
+        access_token = jwt.encode(test_payload, test_secret, algorithm="HS256")
 
         token_response = OAuthTokenResponse(
             access_token=access_token,
@@ -96,20 +96,24 @@ class TestSuuntoOAuth:
         )
 
         # Act
-        user_info = suunto_oauth._get_provider_user_info(token_response, "test_user_id")
+        with patch.object(type(suunto_oauth), "credentials", new_callable=PropertyMock) as mock_credentials:
+            mock_credentials.return_value.client_secret = test_secret
+            mock_credentials.return_value.client_id = "test_client_id"
+            user_info = suunto_oauth._get_provider_user_info(token_response, "test_user_id")
 
         # Assert
         assert user_info["user_id"] == "suunto_user_12345"
         assert user_info["username"] == "test_suunto_user"
 
     def test_extract_user_info_from_jwt_missing_fields(self, suunto_oauth: SuuntoOAuth) -> None:
-        """Should handle JWT with missing user fields."""
+        """Should raise ValueError when JWT has missing user fields."""
+        test_secret = "test_secret"
         # Arrange
         test_payload = {
             "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
             # Missing 'sub' and 'user' fields
         }
-        access_token = jwt.encode(test_payload, "secret", algorithm="HS256")
+        access_token = jwt.encode(test_payload, test_secret, algorithm="HS256")
 
         token_response = OAuthTokenResponse(
             access_token=access_token,
@@ -119,14 +123,14 @@ class TestSuuntoOAuth:
         )
 
         # Act
-        user_info = suunto_oauth._get_provider_user_info(token_response, "test_user_id")
-
-        # Assert
-        assert user_info["user_id"] is None
-        assert user_info["username"] is None
+        with patch.object(type(suunto_oauth), "credentials", new_callable=PropertyMock) as mock_credentials:
+            mock_credentials.return_value.client_secret = test_secret
+            mock_credentials.return_value.client_id = "test_client_id"
+            with pytest.raises(ValueError, match="JWT signature verification failed"):
+                suunto_oauth._get_provider_user_info(token_response, "test_user_id")
 
     def test_extract_user_info_from_invalid_jwt(self, suunto_oauth: SuuntoOAuth) -> None:
-        """Should handle invalid JWT gracefully."""
+        """Should raise ValueError for invalid JWT."""
         # Arrange
         token_response = OAuthTokenResponse(
             access_token="invalid.jwt.token",
@@ -136,11 +140,8 @@ class TestSuuntoOAuth:
         )
 
         # Act
-        user_info = suunto_oauth._get_provider_user_info(token_response, "test_user_id")
-
-        # Assert
-        assert user_info["user_id"] is None
-        assert user_info["username"] is None
+        with pytest.raises(ValueError, match="JWT signature verification failed"):
+            suunto_oauth._get_provider_user_info(token_response, "test_user_id")
 
     @patch("httpx.post")
     def test_exchange_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:

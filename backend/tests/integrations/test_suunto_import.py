@@ -9,9 +9,10 @@ Tests cover:
 - Workout type mapping
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from jose import jwt
@@ -98,14 +99,16 @@ class TestSuuntoImport:
         """Should exchange OAuth code and decode JWT for user info."""
         # Arrange
         user = UserFactory()
+        test_secret = "test_secret"
 
         # Create JWT access token
         test_payload = {
             "sub": "suunto_user_12345",
             "user": "test_suunto_athlete",
+            "aud": "test_client_id",
             "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
         }
-        access_token = jwt.encode(test_payload, "secret", algorithm="HS256")
+        access_token = jwt.encode(test_payload, test_secret, algorithm="HS256")
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -126,16 +129,19 @@ class TestSuuntoImport:
             "provider": "suunto",
             "redirect_uri": None,
         }
-        import json
 
         # Create a mock redis client
         mock_redis = MagicMock()
         mock_redis.get.return_value = json.dumps(state_data).encode("utf-8")
 
-        # Patch get_redis_client to return our mock
-        with patch("app.services.providers.templates.base_oauth.get_redis_client", return_value=mock_redis):
+        with (
+            patch("app.services.providers.templates.base_oauth.get_redis_client", return_value=mock_redis),
+            patch.object(type(suunto_strategy.oauth), "credentials", new_callable=PropertyMock) as mock_credentials,
+        ):
+            mock_credentials.return_value.client_secret = test_secret
+            mock_credentials.return_value.client_id = "test_client_id"
+
             # Act
-            assert suunto_strategy.oauth is not None
             oauth_state = suunto_strategy.oauth.handle_callback(db, "test_code", "test_state")
 
             # Assert

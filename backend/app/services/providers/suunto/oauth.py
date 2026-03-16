@@ -1,4 +1,5 @@
 from jose import jwt
+from jose.exceptions import JWTError
 
 from app.config import settings
 from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
@@ -28,16 +29,25 @@ class SuuntoOAuth(BaseOAuthTemplate):
         )
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
-        """Extracts Suunto user info from JWT access token."""
+        """Extracts and verifies Suunto user info from JWT access token."""
+        credentials = self.credentials
+        if not credentials.client_secret or not credentials.client_id:
+            return {"user_id": None, "username": None}
         try:
-            # jwt.decode requires a key parameter, but we're not verifying signature
             decoded = jwt.decode(
                 token_response.access_token,
-                key="",  # Empty key since we're not verifying
-                options={"verify_signature": False},
+                credentials.client_secret,
+                algorithms=["HS256"],
+                audience=credentials.client_id,
             )
-            provider_username = decoded.get("user")
-            provider_user_id = decoded.get("sub")
-            return {"user_id": provider_user_id, "username": provider_username}
-        except Exception:
-            return {"user_id": None, "username": None}
+
+            if not decoded.get("sub"):
+                raise ValueError("JWT signature verification failed")
+
+            return {
+                "user_id": decoded.get("sub"),
+                "username": decoded.get("user"),
+            }
+
+        except JWTError:
+            raise ValueError("JWT signature verification failed")
