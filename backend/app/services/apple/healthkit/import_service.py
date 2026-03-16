@@ -82,7 +82,6 @@ class ImportService:
             if wjson.zoneOffset:
                 end_date = end_date.astimezone(self._parse_zone_offset(wjson.zoneOffset))
 
-
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
                 user_uuid,
@@ -212,8 +211,6 @@ class ImportService:
 
             # series type conversion only happens for metrics that are not in EventRecordMetrics
             series_type = get_series_type_from_workout_statistic_type(stat.type)
-
-            
 
             if series_type:
                 sample = TimeSeriesSampleCreate(
