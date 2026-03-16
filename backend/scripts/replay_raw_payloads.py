@@ -103,6 +103,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--api-key is required (or set OPEN_WEARABLES_API_KEY env var)")
     if not args.s3_bucket:
         parser.error("--s3-bucket is required (or set RAW_PAYLOAD_S3_BUCKET env var)")
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be a positive integer")
     if not args.target_user_id:
         args.target_user_id = args.user_id
 
@@ -158,8 +160,10 @@ def matches_filters(
         return False
 
     # Date range filtering
-    key_date = parse_key_date(key)
-    if key_date:
+    if date_from or date_to:
+        key_date = parse_key_date(key)
+        if key_date is None:
+            return False
         if date_from and key_date < date_from:
             return False
         if date_to and key_date > date_to:
@@ -184,7 +188,7 @@ def list_payloads(s3_client: Any, bucket: str, prefix: str, args: argparse.Names
     # Sort by upload timestamp (original arrival order)
     entries.sort(key=lambda e: e[1])
 
-    if args.limit:
+    if args.limit is not None:
         entries = entries[: args.limit]
 
     return entries
