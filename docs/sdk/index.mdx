@@ -61,16 +61,16 @@ Unlike cloud-based providers (Garmin, Polar, Suunto) that use webhooks and OAuth
 
 ## Security Model
 
-The SDK uses a secure token-based authentication flow that keeps your API keys safe:
+The SDK uses a secure token-based authentication flow that keeps your App credentials safe:
 
-1. **API Keys stay on your backend** - Never exposed to mobile apps
-2. **Short-lived access tokens** - Generated server-to-server, used by mobile SDK
+1. **App credentials stay on your backend** - `app_id` and `app_secret` are never exposed to mobile apps
+2. **Short-lived access tokens** - Generated server-to-server via `POST /api/v1/users/{user_id}/token`, forwarded to the mobile SDK
 3. **Secure credential storage** - iOS Keychain / Android EncryptedSharedPreferences
-4. **Optional token refresh** - SDK can automatically refresh expired tokens
+4. **Automatic token refresh** - SDK can automatically refresh expired tokens using the `refresh_token`
 5. **API key auth** - Alternative for internal tools (not recommended for production)
 
 <Warning>
-  **Never embed your Open Wearables API Key in your mobile app.** Always generate access tokens on your backend and pass only the token to the mobile SDK.
+  **Never embed your `app_id` / `app_secret` in your mobile app.** Always generate access tokens on your backend and pass only the tokens to the mobile SDK.
 </Warning>
 
 ## Next Steps
