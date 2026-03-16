@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from decimal import Decimal
 from logging import Logger, getLogger
 from typing import Iterable
@@ -44,6 +44,19 @@ class ImportService:
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
 
+    @staticmethod
+    def _parse_zone_offset(offset: str) -> tzinfo:
+        """Parse a zone offset string like '+01:00' or '-05:30' into a timezone."""
+        if not offset or offset[0] not in ("+", "-"):
+            return timezone.utc
+        try:
+            sign = -1 if offset.startswith("-") else 1
+            hours, minutes = offset[1:].split(":")
+            return timezone(timedelta(hours=sign * int(hours), minutes=sign * int(minutes)))
+        except Exception:
+            log_structured(getLogger(__name__), "error", "Failed to parse zone offset", offset=offset)
+            return timezone.utc
+
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
 
@@ -65,9 +78,10 @@ class ImportService:
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
-            end_date = datetime.fromisoformat(wjson.endDate)
+            end_date = wjson.endDate
             if wjson.zoneOffset:
-                end_date = end_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
+                end_date = end_date.astimezone(self._parse_zone_offset(wjson.zoneOffset))
+
 
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
@@ -85,11 +99,12 @@ class ImportService:
             workout_type = wjson.type.lower() if wjson.type else None
             type = get_unified_apple_workout_type_sdk(workout_type).value if workout_type else None
 
-            start_date = datetime.fromisoformat(wjson.startDate)
-            end_date = datetime.fromisoformat(wjson.endDate)
+            start_date = wjson.startDate
+            end_date = wjson.endDate
             if wjson.zoneOffset:
-                start_date = start_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
-                end_date = end_date.replace(tzinfo=timezone.fromisoformat(wjson.zoneOffset))
+                tz = self._parse_zone_offset(wjson.zoneOffset)
+                start_date = start_date.astimezone(tz)
+                end_date = end_date.astimezone(tz)
 
             record = EventRecordCreate(
                 category="workout",
