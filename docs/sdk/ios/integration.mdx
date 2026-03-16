@@ -22,11 +22,7 @@ The SDK supports two authentication modes: **token-based** (recommended) and **A
 
 <Steps>
   <Step title="Your Backend generates token" icon="server">
-    Your backend calls the Open Wearables API with your **App credentials** (`app_id` + `app_secret`) to generate a user-scoped token (server-to-server, HTTPS).
-    ```
-    POST {OPEN_WEARABLES_HOST}/api/v1/users/{user_id}/token
-    ```
-    Open Wearables returns `access_token` + `refresh_token`.
+    Your backend calls the Open Wearables API with your **App credentials** (`app_id` + `app_secret`) to generate a user-scoped token (server-to-server, HTTPS) via [Create User Token](/api-reference/mobile-sdk/create-user-token) endpoint. Open Wearables returns `access_token` + `refresh_token`.
   </Step>
   <Step title="Your Backend returns tokens to the app" icon="key">
     Your backend exposes its own custom endpoint that forwards the `access_token` and `refresh_token` to the mobile app. **Never expose `app_id` or `app_secret` to the client.**
@@ -62,7 +58,7 @@ Your backend needs a single endpoint that generates access tokens for your users
 When a user wants to connect their health data, your backend should:
 
 1. Authenticate the user (your own auth system)
-2. Call Open Wearables API at `POST /api/v1/users/{user_id}/token` with your App credentials
+2. Call Open Wearables API at [`POST /api/v1/users/{user_id}/token`](/api-reference/mobile-sdk/create-user-token) with your App credentials
 3. Return the `access_token` and `refresh_token` to the mobile app
 
 <Tabs>
@@ -182,7 +178,7 @@ end
 </Tabs>
 
 <Note>
-  The `user_id` in the URL is the Open Wearables User ID (UUID). You should store this mapping in your database when you first create the user via the Open Wearables API.
+  The `user_id` in the URL is the Open Wearables User ID (UUID). You should store this mapping in your database when you first create the user via the Open Wearables API. Use [API Reference](/api-reference/mobile-sdk/create-user-token) for full endpoint details.
 </Note>
 
 ## Step 2: SDK Configuration
