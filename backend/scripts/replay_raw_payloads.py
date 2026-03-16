@@ -34,6 +34,9 @@ import time
 from datetime import date, datetime
 from typing import Any
 
+import boto3
+import httpx
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -211,9 +214,6 @@ def format_size(size_bytes: int) -> str:
 
 def main() -> None:
     args = parse_args()
-
-    import boto3
-    import httpx
 
     # Create S3 client
     s3_kwargs: dict = {"region_name": args.aws_region}
