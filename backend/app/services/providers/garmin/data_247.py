@@ -1091,9 +1091,10 @@ class Garmin247Data(Base247DataTemplate):
             return samples
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
-        zone_offset = offset_to_iso(
-            raw_bp.get("measurementTimeOffsetInSeconds") or raw_bp.get("startTimeOffsetInSeconds")
-        )
+        
+        meas = raw_bp.get("measurementTimeOffsetInSeconds")
+        start = raw_bp.get("startTimeOffsetInSeconds")
+        zone_offset = offset_to_iso(meas if meas is not None else start)
 
         # Systolic blood pressure
         systolic = raw_bp.get("systolic")
