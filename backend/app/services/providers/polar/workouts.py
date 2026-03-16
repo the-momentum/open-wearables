@@ -117,7 +117,8 @@ class PolarWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
-        zone_offset = offset_to_iso(raw_workout.start_time_utc_offset, unit="minutes")
+        # convert from offset minutes to seconds first
+        zone_offset = offset_to_iso(raw_workout.start_time_utc_offset * 60)
 
         record = EventRecordCreate(
             category="workout",

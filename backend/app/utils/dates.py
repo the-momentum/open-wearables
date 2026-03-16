@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Literal
 
 from app.utils.exceptions import DatetimeParseError
 
@@ -62,21 +61,12 @@ def parse_datetime_or_default(
     return value
 
 
-def offset_to_iso(offset: int | None, unit: Literal["seconds", "minutes"] = "seconds") -> str | None:
-    """Convert a numeric timezone offset to ISO 8601 format (e.g. '+01:00', '-05:30').
-
-    Args:
-        offset: Timezone offset as an integer (or None).
-        unit: Whether the offset is in 'seconds' (Garmin) or 'minutes' (Polar).
-
-    Returns:
-        ISO 8601 offset string like '+01:00', or None if offset is None.
-    """
-    if offset is None:
+def offset_to_iso(offset_seconds: int | None) -> str | None:
+    """Convert a timezone offset in seconds to ISO 8601 format (e.g. 3600 -> '+01:00')."""
+    if offset_seconds is None:
         return None
-    total_seconds = offset if unit == "seconds" else offset * 60
-    sign = "+" if total_seconds >= 0 else "-"
-    abs_seconds = abs(total_seconds)
-    hours, remainder = divmod(abs_seconds, 3600)
+    sign = "+" if offset_seconds >= 0 else "-"
+    total = abs(offset_seconds)
+    hours, remainder = divmod(total, 3600)
     minutes = remainder // 60
     return f"{sign}{hours:02d}:{minutes:02d}"
