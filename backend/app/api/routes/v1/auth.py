@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config import settings
 from app.database import DbSession
-from app.schemas import DeveloperRead, DeveloperUpdate
+from app.schemas import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.schemas.token import TokenResponse
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.security import create_access_token, verify_password
@@ -59,7 +59,26 @@ async def logout(_developer: DeveloperDep):
     return {"message": "Successfully logged out"}
 
 
-# TODO: Implement /forgot-password and /reset-password
+@router.post("/change-password")
+async def change_password(
+    payload: PasswordChange,
+    db: DbSession,
+    developer: DeveloperDep,
+):
+    """Change password for the current authenticated developer."""
+    # Verify the current password
+    if not verify_password(payload.current_password, developer.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password",
+        )
+
+    # Update using existing developer_service logic
+    developer_service.update_developer_info(
+        db, developer.id, DeveloperUpdate(password=payload.new_password), raise_404=True
+    )
+
+    return {"message": "Password updated successfully"}
 
 
 @router.get("/me", response_model=DeveloperRead)

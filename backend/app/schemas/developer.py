@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class DeveloperRead(BaseModel):
@@ -45,3 +45,15 @@ class DeveloperUpdateInternal(BaseModel):
     email: EmailStr | None = None
     hashed_password: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+    @model_validator(mode="after")
+    def check_passwords_match(self) -> "PasswordChange":
+        if self.new_password != self.confirm_password:
+            raise ValueError("The confirmation password does not match the new password")
+        return self

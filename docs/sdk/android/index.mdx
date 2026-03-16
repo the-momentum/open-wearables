@@ -54,7 +54,7 @@ Then add the dependency in your app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.the-momentum:open-wearables-android-sdk:0.2.0")
+    implementation("com.github.the-momentum:open-wearables-android-sdk:0.5.0")
 }
 ```
 
@@ -131,15 +131,18 @@ class HealthService(private val context: Context) {
             Log.d("HealthSDK", message)
         }
 
-        // 3. Handle auth errors (optional)
+        // 3. Set log level (optional — default is OWLogLevel.DEBUG)
+        sdk.logLevel = OWLogLevel.ALWAYS
+
+        // 4. Handle auth errors (optional)
         sdk.authErrorListener = { error ->
             Log.e("HealthSDK", "Auth error: $error")
         }
 
-        // 4. Configure with your backend host
+        // 5. Configure with your backend host
         sdk.configure(host = "https://api.openwearables.io")
 
-        // 5. Check if already signed in
+        // 6. Check if already signed in
         if (sdk.isSessionValid()) {
             Log.d("HealthSDK", "Session restored")
             return
@@ -147,7 +150,7 @@ class HealthService(private val context: Context) {
     }
 
     suspend fun connect(userId: String, accessToken: String, refreshToken: String?) {
-        // 6. Sign in
+        // 7. Sign in
         sdk.signIn(
             userId = userId,
             accessToken = accessToken,
@@ -155,10 +158,10 @@ class HealthService(private val context: Context) {
             apiKey = null
         )
 
-        // 7. Set provider
+        // 8. Set provider
         sdk.setProvider("google") // or "samsung"
 
-        // 8. Request permissions
+        // 9. Request permissions
         val authorized = sdk.requestAuthorization(
             types = listOf("steps", "heartRate", "sleep", "workout")
         )
@@ -168,8 +171,8 @@ class HealthService(private val context: Context) {
             return
         }
 
-        // 9. Start background sync
-        sdk.startBackgroundSync()
+        // 10. Start background sync (sync last 90 days of data)
+        sdk.startBackgroundSync(syncDaysBack = 90)
     }
 }
 ```

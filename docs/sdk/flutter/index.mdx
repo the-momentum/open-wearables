@@ -69,7 +69,7 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
 
     ```yaml
     dependencies:
-      open_wearables_health_sdk: ^0.0.11
+      open_wearables_health_sdk: ^0.0.14
     ```
 
     Then run:
@@ -166,8 +166,8 @@ class HealthService {
       ],
     );
 
-    // 6. Start background sync
-    await OpenWearablesHealthSdk.startBackgroundSync();
+    // 6. Start background sync (sync last 90 days of data)
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: 90);
   }
 }
 ```
@@ -194,6 +194,24 @@ if (Platform.isAndroid) {
 <Note>
   `AndroidHealthProvider.samsungHealth` maps to Samsung Health, and `AndroidHealthProvider.healthConnect` maps to Google Health Connect. Use `getAvailableProviders()` to check which are installed on the device.
 </Note>
+
+## Log Level
+
+Control SDK log output with `setLogLevel`. The default is `OWLogLevel.debug` (logs only in debug builds):
+
+```dart
+// Always show logs (useful for troubleshooting in production)
+await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.always);
+
+// Disable all logs
+await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.none);
+```
+
+| Level | Description |
+|-------|-------------|
+| `OWLogLevel.none` | No logs at all |
+| `OWLogLevel.always` | Logs are always printed regardless of build mode |
+| `OWLogLevel.debug` | Logs are printed only in debug builds (default) |
 
 ## Listening to Events
 

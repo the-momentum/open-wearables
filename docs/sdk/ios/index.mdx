@@ -45,7 +45,7 @@ This is the **core native implementation** that powers health data sync on iOS. 
 
     ```swift
     dependencies: [
-        .package(url: "https://github.com/the-momentum/OpenWearablesHealthSDK.git", from: "0.6.0")
+        .package(url: "https://github.com/the-momentum/OpenWearablesHealthSDK.git", from: "0.8.0")
     ]
     ```
 
@@ -56,7 +56,7 @@ This is the **core native implementation** that powers health data sync on iOS. 
     Add to your `Podfile`:
 
     ```ruby
-    pod 'OpenWearablesHealthSDK', '~> 0.6.0'
+    pod 'OpenWearablesHealthSDK', '~> 0.8.0'
     ```
 
     Then run:
@@ -114,21 +114,24 @@ class HealthService {
             print("[Health] \(message)")
         }
 
-        // 2. Handle auth errors (optional)
+        // 2. Set log level (optional — default is .debug)
+        sdk.setLogLevel(.always)
+
+        // 3. Handle auth errors (optional)
         sdk.onAuthError = { statusCode, message in
             print("Auth error: \(statusCode) - \(message)")
         }
 
-        // 3. Configure the SDK with your host
+        // 4. Configure the SDK with your host
         sdk.configure(host: "https://api.openwearables.io")
 
-        // 4. Check if already signed in (session restored from Keychain)
+        // 5. Check if already signed in (session restored from Keychain)
         if sdk.isSessionValid {
             print("Session restored")
             return
         }
 
-        // 5. Get credentials from YOUR backend, then sign in
+        // 6. Get credentials from YOUR backend, then sign in
         let credentials = yourBackend.getHealthCredentials()
 
         sdk.signIn(
@@ -138,11 +141,11 @@ class HealthService {
             apiKey: nil
         )
 
-        // 6. Request health permissions
+        // 7. Request health permissions
         sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { granted in
             if granted {
-                // 7. Start background sync
-                sdk.startBackgroundSync { started in
+                // 8. Start background sync (sync last 90 days of data)
+                sdk.startBackgroundSync(syncDaysBack: 90) { started in
                     print("Sync started: \(started)")
                 }
             }
