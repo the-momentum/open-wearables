@@ -44,19 +44,6 @@ class ImportService:
         self.timeseries_service = timeseries_service
         self.user_connection_repo = UserConnectionRepository()
 
-    @staticmethod
-    def _parse_zone_offset(offset: str) -> tzinfo:
-        """Parse a zone offset string like '+01:00' or '-05:30' into a timezone."""
-        if not offset or offset[0] not in ("+", "-"):
-            return timezone.utc
-        try:
-            sign = -1 if offset.startswith("-") else 1
-            hours, minutes = offset[1:].split(":")
-            return timezone(timedelta(hours=sign * int(hours), minutes=sign * int(minutes)))
-        except Exception:
-            log_structured(getLogger(__name__), "error", "Failed to parse zone offset", offset=offset)
-            return timezone.utc
-
     def _dec(self, value: float | int | Decimal | None) -> Decimal | None:
         return None if value is None else Decimal(str(value))
 
@@ -78,16 +65,13 @@ class ImportService:
 
             device_model, software_version, original_source_name = extract_device_info(wjson.source)
 
-            end_date = wjson.endDate
-            if wjson.zoneOffset:
-                end_date = end_date.astimezone(self._parse_zone_offset(wjson.zoneOffset))
-
             metrics, time_series_samples, duration = self._extract_metrics_from_workout_stats(
                 wjson.values,
                 user_uuid,
                 device_model,
                 software_version,
-                end_date,
+                wjson.endDate,
+                wjson.zoneOffset,
                 provider,
                 original_source_name,
             )
@@ -98,21 +82,15 @@ class ImportService:
             workout_type = wjson.type.lower() if wjson.type else None
             type = get_unified_apple_workout_type_sdk(workout_type).value if workout_type else None
 
-            start_date = wjson.startDate
-            end_date = wjson.endDate
-            if wjson.zoneOffset:
-                tz = self._parse_zone_offset(wjson.zoneOffset)
-                start_date = start_date.astimezone(tz)
-                end_date = end_date.astimezone(tz)
-
             record = EventRecordCreate(
                 category="workout",
                 type=type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
                 duration_seconds=int(duration),
-                start_datetime=start_date,
-                end_datetime=end_date,
+                start_datetime=wjson.startDate,
+                end_datetime=wjson.endDate,
+                zone_offset=wjson.zoneOffset,
                 id=workout_id,
                 external_id=external_id,
                 source=provider,
@@ -161,6 +139,7 @@ class ImportService:
                 software_version=software_version,
                 provider=provider,
                 recorded_at=rjson.startDate,
+                zone_offset=rjson.zoneOffset,
                 value=value,
                 series_type=series_type,
             )
@@ -190,6 +169,7 @@ class ImportService:
         device_model: str | None,
         software_version: str | None,
         end_date: datetime,
+        zone_offset: str | None,
         provider: str,
         source_name: str | None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
@@ -222,6 +202,7 @@ class ImportService:
                     software_version=software_version,
                     provider=provider,
                     recorded_at=end_date,
+                    zone_offset=zone_offset,
                     value=value,
                     series_type=series_type,
                 )

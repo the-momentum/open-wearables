@@ -13,6 +13,7 @@ from app.schemas.series_types import SeriesType
 
 class TimeSeriesSample(BaseModel):
     timestamp: datetime
+    zone_offset: str | None = None
     type: SeriesType
     value: float | int
     unit: str
@@ -69,6 +70,7 @@ class TimeSeriesSampleBase(BaseModel):
         description="Existing data source identifier if already created upstream.",
     )
     recorded_at: datetime
+    zone_offset: str | None = None
     value: Decimal | float | int
     series_type: SeriesType
 

@@ -10,6 +10,7 @@ from app.mappings import (
     FKSeriesTypeDefinition,
     PrimaryKey,
     numeric_10_3,
+    str_10,
     str_100,
 )
 
@@ -31,5 +32,6 @@ class DataPointSeries(BaseDbModel):
     external_id: Mapped[str_100 | None]
     data_source_id: Mapped[FKDataSource]
     recorded_at: Mapped[datetime]
+    zone_offset: Mapped[str_10 | None]
     value: Mapped[numeric_10_3]
     series_type_definition_id: Mapped[FKSeriesTypeDefinition]
