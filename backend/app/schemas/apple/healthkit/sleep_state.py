@@ -19,6 +19,7 @@ class SleepState(BaseModel):
     source_name: str | None = None
     device_model: str | None = None
     provider: str | None = None
+    zone_offset: str | None = None
 
     start_time: datetime
     end_time: datetime

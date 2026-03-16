@@ -81,12 +81,14 @@ def _create_new_sleep_state(
     provider: str | None = None,
     source_name: str | None = None,
     device_model: str | None = None,
+    zone_offset: str | None = None,
 ) -> SleepState:
     return SleepState(
         uuid=id or str(uuid4()),
         source_name=source_name or "unknown",
         device_model=device_model,
         provider=provider,
+        zone_offset=zone_offset,
         start_time=start_time,
         end_time=end_time,
         last_start_timestamp=start_time,
@@ -112,6 +114,7 @@ def _apply_transition(
     uuid: str | None = None,
     source_name: str | None = None,
     device_model: str | None = None,
+    zone_offset: str | None = None,
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
@@ -124,7 +127,10 @@ def _apply_transition(
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
-        state = _create_new_sleep_state(start_time, end_time, uuid, provider, source_name, device_model)
+        state = _create_new_sleep_state(start_time, end_time, uuid, provider, source_name, device_model, zone_offset)
+
+    if zone_offset and not state.zone_offset:
+        state.zone_offset = zone_offset
 
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -231,10 +237,9 @@ def handle_sleep_data(
                 continue
 
             current_state = _create_new_sleep_state(
-                sjson.startDate, sjson.endDate, sjson.id, provider, original_source_name, device_model
+                sjson.startDate, sjson.endDate, sjson.id, provider, original_source_name, device_model, sjson.zoneOffset
             )
 
-        # Check if there's a gap between the last record's end and this record's start
         current_state = _apply_transition(
             db_session,
             user_id,
@@ -246,6 +251,7 @@ def handle_sleep_data(
             sjson.id,
             original_source_name,
             device_model,
+            sjson.zoneOffset,
         )
         save_sleep_state(user_id, current_state)
 
@@ -395,6 +401,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         user_id=UUID(user_id),
         start_datetime=start_time,
         end_datetime=end_time,
+        zone_offset=state.zone_offset,
         duration_seconds=int(total_duration),
         category="sleep",
         type="sleep_session",
