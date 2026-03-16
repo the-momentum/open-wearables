@@ -55,6 +55,7 @@ class EventRecordService(
             duration_seconds=record.duration_seconds,
             start_datetime=record.start_datetime,
             end_datetime=record.end_datetime,
+            zone_offset=record.zone_offset,
             data_source_id=record.data_source_id,
             user_id=data_source.user_id,
             source=data_source.source,

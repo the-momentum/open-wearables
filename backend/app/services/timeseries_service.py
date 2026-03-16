@@ -120,6 +120,7 @@ class TimeSeriesService(
 
             item = TimeSeriesSample(
                 timestamp=sample.recorded_at,
+                zone_offset=sample.zone_offset,
                 type=series_type,
                 value=float(sample.value),
                 unit=unit,
