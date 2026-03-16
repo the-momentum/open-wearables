@@ -178,6 +178,7 @@ class EventRecordService(
                 name=None,  # Not in EventRecord currently
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
+                zone_offset=record.zone_offset,
                 duration_seconds=record.duration_seconds,
                 source=self._map_source(data_source),
                 calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
@@ -241,6 +242,7 @@ class EventRecordService(
             name=None,
             start_time=record.start_datetime,
             end_time=record.end_datetime,
+            zone_offset=record.zone_offset,
             duration_seconds=record.duration_seconds,
             source=self._map_source(data_source),
             calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
@@ -308,6 +310,7 @@ class EventRecordService(
                 id=record.id,
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
+                zone_offset=record.zone_offset,
                 source=self._map_source(data_source),
                 duration_seconds=record.duration_seconds or 0,
                 efficiency_percent=float(details.sleep_efficiency_score)
