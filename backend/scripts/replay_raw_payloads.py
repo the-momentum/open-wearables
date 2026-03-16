@@ -31,7 +31,7 @@ import json
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 
@@ -165,9 +165,9 @@ def matches_filters(
     return True
 
 
-def list_payloads(s3_client: Any, bucket: str, prefix: str, args: argparse.Namespace) -> list[str]:
-    """List and filter S3 keys matching the given criteria."""
-    keys: list[str] = []
+def list_payloads(s3_client: Any, bucket: str, prefix: str, args: argparse.Namespace) -> list[tuple[str, datetime]]:
+    """List and filter S3 keys matching the given criteria. Returns (key, last_modified) tuples."""
+    entries: list[tuple[str, datetime]] = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -176,15 +176,15 @@ def list_payloads(s3_client: Any, bucket: str, prefix: str, args: argparse.Names
             if not key.endswith(".json"):
                 continue
             if matches_filters(key, args.user_id, args.provider, args.source, args.date_from, args.date_to):
-                keys.append(key)
+                entries.append((key, obj["LastModified"]))
 
-    # Sort chronologically by date in path, then by key name
-    keys.sort(key=lambda k: (parse_key_date(k) or date.min, k))
+    # Sort by upload timestamp (original arrival order)
+    entries.sort(key=lambda e: e[1])
 
     if args.limit:
-        keys = keys[: args.limit]
+        entries = entries[: args.limit]
 
-    return keys
+    return entries
 
 
 def replay_payload(http_client: Any, api_url: str, api_key: str, user_id: str, payload_bytes: bytes) -> tuple[int, str]:
@@ -239,19 +239,20 @@ def main() -> None:
     if args.date_to:
         print(f"  To: {args.date_to}")
 
-    keys = list_payloads(s3_client, args.s3_bucket, prefix, args)
+    entries = list_payloads(s3_client, args.s3_bucket, prefix, args)
 
-    if not keys:
+    if not entries:
         print("\nNo payloads found matching the filters.")
         sys.exit(0)
 
-    print(f"\nFound {len(keys)} payload(s)")
+    total = len(entries)
+    print(f"\nFound {total} payload(s)")
 
     if args.dry_run:
         print("\n[DRY RUN] Payloads that would be replayed:")
-        for i, key in enumerate(keys, 1):
-            key_date = parse_key_date(key) or "unknown"
-            print(f"  {i}. {key} (date: {key_date})")
+        for i, (key, last_modified) in enumerate(entries, 1):
+            ts = last_modified.strftime("%Y-%m-%d %H:%M:%S")
+            print(f"  {i}. {key} (uploaded: {ts})")
         sys.exit(0)
 
     # Replay payloads
@@ -263,7 +264,8 @@ def main() -> None:
     total_bytes = 0
 
     with httpx.Client(timeout=30.0) as http_client:
-        for i, key in enumerate(keys, 1):
+        for i, (key, last_modified) in enumerate(entries, 1):
+            ts = last_modified.strftime("%Y-%m-%d %H:%M:%S")
             try:
                 obj = s3_client.get_object(Bucket=args.s3_bucket, Key=key)
                 payload_bytes = obj["Body"].read()
@@ -277,23 +279,22 @@ def main() -> None:
                     http_client, args.api_url, args.api_key, args.target_user_id, payload_bytes
                 )
 
-                key_date = parse_key_date(key) or "unknown"
                 if 200 <= status_code < 300:
                     success += 1
-                    print(f"  [{i}/{len(keys)}] OK {status_code} - {key_date} - {format_size(size)}")
+                    print(f"  [{i}/{total}] OK {status_code} - {ts} - {format_size(size)}")
                 else:
                     failed += 1
                     detail = response_text[:200]
-                    print(f"  [{i}/{len(keys)}] FAIL {status_code} - {key_date} - {format_size(size)} - {detail}")
+                    print(f"  [{i}/{total}] FAIL {status_code} - {ts} - {format_size(size)} - {detail}")
 
             except json.JSONDecodeError:
                 failed += 1
-                print(f"  [{i}/{len(keys)}] SKIP - invalid JSON: {key}")
+                print(f"  [{i}/{total}] SKIP - invalid JSON: {key}")
             except Exception as e:
                 failed += 1
-                print(f"  [{i}/{len(keys)}] ERROR - {key}: {e}")
+                print(f"  [{i}/{total}] ERROR - {key}: {e}")
 
-            if i < len(keys) and args.delay > 0:
+            if i < total and args.delay > 0:
                 time.sleep(args.delay)
 
     # Summary
