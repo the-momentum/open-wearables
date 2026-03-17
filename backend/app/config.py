@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
+    SENTRY_SERVER_NAME: str | None = None
 
     # AUTH SETTINGS
     secret_key: str
