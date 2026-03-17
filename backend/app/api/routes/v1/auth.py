@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/login")
-async def login(
+def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DbSession,
 ) -> TokenResponse:
@@ -54,13 +54,13 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(_developer: DeveloperDep):
+def logout(_developer: DeveloperDep):
     """Logout developer (token invalidation should be handled client-side)."""
     return {"message": "Successfully logged out"}
 
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     payload: PasswordChange,
     db: DbSession,
     developer: DeveloperDep,
@@ -82,13 +82,13 @@ async def change_password(
 
 
 @router.get("/me", response_model=DeveloperRead)
-async def get_current_developer_info(db: DbSession, developer: DeveloperDep):
+def get_current_developer_info(db: DbSession, developer: DeveloperDep):
     """Get current authenticated developer."""
     return developer
 
 
 @router.patch("/me", response_model=DeveloperRead)
-async def update_current_developer(
+def update_current_developer(
     payload: DeveloperUpdate,
     db: DbSession,
     developer: DeveloperDep,

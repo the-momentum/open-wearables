@@ -18,7 +18,7 @@ router = APIRouter()
     "/users/{user_id}/invitation-code",
     status_code=status.HTTP_201_CREATED,
 )
-async def generate_invitation_code(
+def generate_invitation_code(
     user_id: UUID,
     db: DbSession,
     developer: DeveloperDep,
@@ -38,7 +38,7 @@ async def generate_invitation_code(
 @router.post(
     "/invitation-code/redeem",
 )
-async def redeem_invitation_code(
+def redeem_invitation_code(
     payload: UserInvitationCodeRedeem,
     db: DbSession,
 ) -> InvitationCodeRedeemResponse:

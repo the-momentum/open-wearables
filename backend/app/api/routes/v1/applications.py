@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/applications")
-async def list_applications(db: DbSession, developer: DeveloperDep) -> list[ApplicationRead]:
+def list_applications(db: DbSession, developer: DeveloperDep) -> list[ApplicationRead]:
     """List all applications for current developer."""
     applications = application_service.list_applications(db, developer.id)
     return [
@@ -30,7 +30,7 @@ async def list_applications(db: DbSession, developer: DeveloperDep) -> list[Appl
     "/applications",
     status_code=status.HTTP_201_CREATED,
 )
-async def create_application(
+def create_application(
     payload: ApplicationCreate,
     db: DbSession,
     developer: DeveloperDep,
@@ -50,7 +50,7 @@ async def create_application(
 
 
 @router.delete("/applications/{app_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_application(
+def delete_application(
     app_id: str,
     db: DbSession,
     developer: DeveloperDep,
@@ -62,7 +62,7 @@ async def delete_application(
 @router.post(
     "/applications/{app_id}/rotate-secret",
 )
-async def rotate_application_secret(
+def rotate_application_secret(
     app_id: str,
     db: DbSession,
     developer: DeveloperDep,

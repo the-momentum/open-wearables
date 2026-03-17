@@ -3,7 +3,7 @@
 from logging import getLogger
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query
 
 from app.database import DbSession
 from app.services.providers.strava.handlers.webhook_helpers import (
@@ -16,7 +16,7 @@ logger = getLogger(__name__)
 
 
 @router.get("/webhook")
-async def strava_webhook_verification(
+def strava_webhook_verification(
     hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
     hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
     hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",
@@ -27,12 +27,12 @@ async def strava_webhook_verification(
     with hub.mode, hub.challenge, and hub.verify_token parameters.
     We must echo back hub.challenge if the verify_token matches.
     """
-    return await handle_webhook_verification(hub_mode, hub_challenge, hub_verify_token)
+    return handle_webhook_verification(hub_mode, hub_challenge, hub_verify_token)
 
 
 @router.post("/webhook")
-async def strava_webhook_event(
-    request: Request,
+def strava_webhook_event(
+    payload: dict,
     db: DbSession,
 ) -> dict:
     """Strava webhook event handler (POST).
@@ -51,10 +51,10 @@ async def strava_webhook_event(
 
     Must always return 200 to prevent Strava from retrying.
     """
-    return await handle_webhook_event(request, db)
+    return handle_webhook_event(payload, db)
 
 
 @router.get("/health")
-async def strava_webhook_health() -> dict:
+def strava_webhook_health() -> dict:
     """Health check endpoint for Strava webhook configuration."""
     return {"status": "ok", "service": "strava-webhooks"}

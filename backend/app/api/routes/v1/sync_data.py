@@ -35,7 +35,7 @@ class SyncDataType(str, Enum):
 
 
 @router.post("/{provider}/users/{user_id}/sync")
-async def sync_user_data(
+def sync_user_data(
     provider: Annotated[ProviderName, Path(description="Data provider")],
     user_id: UUID,
     db: DbSession,
@@ -203,7 +203,7 @@ async def sync_user_data(
 
 
 @router.get("/garmin/users/{user_id}/backfill/status")
-async def get_garmin_backfill_status_endpoint(
+def get_garmin_backfill_status_endpoint(
     user_id: UUID,
     _api_key: ApiKeyDep,
 ) -> dict[str, Any]:
@@ -242,7 +242,7 @@ async def get_garmin_backfill_status_endpoint(
 
 
 @router.post("/garmin/users/{user_id}/backfill/cancel")
-async def cancel_garmin_backfill(
+def cancel_garmin_backfill(
     user_id: UUID,
     _api_key: ApiKeyDep,
 ) -> dict[str, Any]:
@@ -271,7 +271,7 @@ async def cancel_garmin_backfill(
 
 
 @router.post("/garmin/users/{user_id}/backfill/{type_name}/retry")
-async def retry_garmin_backfill_type(
+def retry_garmin_backfill_type(
     user_id: UUID,
     type_name: str,
     _api_key: ApiKeyDep,

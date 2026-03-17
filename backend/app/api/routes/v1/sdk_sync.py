@@ -14,7 +14,7 @@ logger = getLogger(__name__)
 
 
 @router.post("/sdk/users/{user_id}/sync")
-async def sync_sdk_data(
+def sync_sdk_data(
     user_id: str,
     body: SDKSyncRequest,
     auth: SDKAuthDep,

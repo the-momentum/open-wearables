@@ -24,7 +24,7 @@ logger = getLogger(__name__)
     summary="Get data lifecycle settings",
     description="Returns current archival/retention configuration and storage size estimates.",
 )
-async def get_archival_settings(
+def get_archival_settings(
     db: DbSession,
     _developer: DeveloperDep,
 ) -> ArchivalSettingWithEstimate:
@@ -41,7 +41,7 @@ async def get_archival_settings(
         "Set to null to disable."
     ),
 )
-async def update_archival_settings(
+def update_archival_settings(
     db: DbSession,
     _developer: DeveloperDep,
     update: ArchivalSettingUpdate,
@@ -55,7 +55,7 @@ async def update_archival_settings(
     summary="Trigger archival job manually",
     description="Dispatches the daily archival + retention job via Celery. Returns immediately with the task ID.",
 )
-async def trigger_archival(
+def trigger_archival(
     _developer: DeveloperDep,
 ) -> dict[str, str]:
     result = run_daily_archival.delay()

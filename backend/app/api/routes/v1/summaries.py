@@ -19,7 +19,7 @@ router = APIRouter()
 
 
 @router.get("/users/{user_id}/summaries/activity")
-async def get_activity_summary(
+def get_activity_summary(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -35,13 +35,13 @@ async def get_activity_summary(
     """
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
-    return await summaries_service.get_activity_summaries(
+    return summaries_service.get_activity_summaries(
         db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
     )
 
 
 @router.get("/users/{user_id}/summaries/sleep")
-async def get_sleep_summary(
+def get_sleep_summary(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -53,11 +53,11 @@ async def get_sleep_summary(
     """Returns daily sleep metrics."""
     start_datetime = parse_query_datetime(start_date)
     end_datetime = parse_query_datetime(end_date)
-    return await summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
+    return summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/recovery")
-async def get_recovery_summary(
+def get_recovery_summary(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -71,7 +71,7 @@ async def get_recovery_summary(
 
 
 @router.get("/users/{user_id}/summaries/body")
-async def get_body_summary(
+def get_body_summary(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -92,4 +92,4 @@ async def get_body_summary(
 
     Returns null if no body data exists for the user.
     """
-    return await summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)
+    return summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)

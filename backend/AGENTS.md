@@ -44,12 +44,12 @@ from app.services import ApiKeyDep, user_service
 router = APIRouter()
 
 @router.get("/users", response_model=list[UserRead])
-async def list_users(db: DbSession, _api_key: ApiKeyDep):
+def list_users(db: DbSession, _api_key: ApiKeyDep):
     """List all users."""
     return db.query(user_service.crud.model).all()
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserRead)
-async def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
+def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
     """Create a new user."""
     return user_service.create(db, payload)
 ```

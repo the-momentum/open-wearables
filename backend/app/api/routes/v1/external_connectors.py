@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.post("/users/{user_id}/import/apple/auto-health-export")
-async def sync_data_auto_health_export(
+def sync_data_auto_health_export(
     user_id: str,
     body: dict,
     auth: SDKAuthDep,

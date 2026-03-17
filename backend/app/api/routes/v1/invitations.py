@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=InvitationRead)
-async def create_invitation(
+def create_invitation(
     payload: InvitationCreate,
     db: DbSession,
     developer: DeveloperDep,
@@ -25,19 +25,19 @@ async def create_invitation(
 
 
 @router.get("", response_model=list[InvitationRead])
-async def list_invitations(db: DbSession, _auth: DeveloperDep):
+def list_invitations(db: DbSession, _auth: DeveloperDep):
     """List all pending invitations."""
     return invitation_service.get_active_invitations(db)
 
 
 @router.delete("/{invitation_id}", response_model=InvitationRead)
-async def revoke_invitation(invitation_id: UUID, db: DbSession, _auth: DeveloperDep):
+def revoke_invitation(invitation_id: UUID, db: DbSession, _auth: DeveloperDep):
     """Revoke a pending invitation."""
     return invitation_service.revoke_invitation(db, invitation_id)
 
 
 @router.post("/{invitation_id}/resend", response_model=InvitationRead)
-async def resend_invitation(invitation_id: UUID, db: DbSession, _auth: DeveloperDep):
+def resend_invitation(invitation_id: UUID, db: DbSession, _auth: DeveloperDep):
     """Resend an invitation email."""
     return invitation_service.resend_invitation(db, invitation_id)
 
@@ -46,7 +46,7 @@ async def resend_invitation(invitation_id: UUID, db: DbSession, _auth: Developer
 
 
 @router.post("/accept", status_code=status.HTTP_201_CREATED, response_model=DeveloperRead)
-async def accept_invitation(payload: InvitationAccept, db: DbSession):
+def accept_invitation(payload: InvitationAccept, db: DbSession):
     """Accept an invitation and create a developer account (public endpoint)."""
     return invitation_service.accept_invitation(
         db,

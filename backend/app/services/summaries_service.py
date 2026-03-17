@@ -239,7 +239,7 @@ class SummariesService:
         return merged
 
     @handle_exceptions
-    async def get_sleep_summaries(
+    def get_sleep_summaries(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -359,7 +359,7 @@ class SummariesService:
         )
 
     @handle_exceptions
-    async def get_activity_summaries(
+    def get_activity_summaries(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -615,7 +615,7 @@ class SummariesService:
         return round(bmi, 1)
 
     @handle_exceptions
-    async def get_body_summary(
+    def get_body_summary(
         self,
         db_session: DbSession,
         user_id: UUID,

@@ -61,7 +61,7 @@ class TimeSeriesService(
         return self.crud.get_count_by_source(db_session)
 
     @handle_exceptions
-    async def get_timeseries(
+    def get_timeseries(
         self,
         db_session: DbSession,
         user_id: UUID,
