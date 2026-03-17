@@ -41,6 +41,7 @@ export const API_ENDPOINTS = {
   // Provider workouts endpoints
   providerSynchronization: (provider: string, userId: string) =>
     `/api/v1/providers/${provider}/users/${userId}/sync`,
+  syncEvents: (userId: string) => `/api/v1/users/${userId}/sync/events`,
   providerWorkouts: (provider: string, userId: string) =>
     `/api/v1/providers/${provider}/users/${userId}/workouts`,
   providerWorkoutDetail: (

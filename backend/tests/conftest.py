@@ -21,6 +21,9 @@ from sqlalchemy.orm import Session, sessionmaker
 os.environ["ENV"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
+# Ensure tests running locally (make test) connect to localhost services (forwarded by docker)
+# This overrides config/.env which sets REDIS_HOST=redis for internal docker networking
+os.environ["REDIS_HOST"] = "localhost"
 
 from app.database import BaseDbModel, _get_db_dependency
 from app.main import api
