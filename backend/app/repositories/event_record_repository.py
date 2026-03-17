@@ -144,7 +144,11 @@ class EventRecordRepository(
         inserted_ids: set[UUID] = set()
         for i in range(0, len(values_list), chunk_size):
             chunk = values_list[i : i + chunk_size]
-            stmt = insert(self.model).values(chunk).on_conflict_do_nothing(constraint="uq_event_record_datetime")
+            stmt = (
+                insert(self.model)
+                .values(chunk)
+                .on_conflict_do_nothing(index_elements=["data_source_id", "start_datetime", "end_datetime"])
+            )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
         # NOTE: Caller should commit - allows batching multiple operations
