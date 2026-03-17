@@ -220,18 +220,15 @@ class MyApplication : Application() {
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `host` | `String` | **Required.** The Open Wearables API URL |
-| `customSyncUrl` | `String?` | Optional custom sync endpoint URL |
+| `host` | `String` | **Required.** The Open Wearables API base URL (host only, without path suffix) |
+
+<Info>
+  Provide only the base host URL, e.g. `https://your-domain.com`. Do **not** append `/api/v1/` or any other path — the SDK adds the required path prefix automatically.
+</Info>
 
 ```kotlin
 // For self-hosted Open Wearables
 sdk.configure(host = "https://your-domain.com")
-
-// With custom sync URL
-sdk.configure(
-    host = "https://your-domain.com",
-    customSyncUrl = "https://custom-endpoint.com/sync"
-)
 ```
 
 ### Session Restoration
@@ -252,6 +249,10 @@ if (sdk.isSessionValid()) {
 ## Step 3: Sign In
 
 After getting credentials from your backend, sign in with the SDK.
+
+<Info>
+  The `userId` parameter is the **Open Wearables User ID** (UUID) — the `id` returned by the [Create User](/api-reference/users/create-user) endpoint. Do **not** pass your own `external_user_id` here.
+</Info>
 
 ### Token-Based Authentication (Recommended)
 

@@ -204,7 +204,11 @@ Future<void> main() async {
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `host` | `String` | **Required.** The Open Wearables API URL (e.g. `https://api.openwearables.io`) |
+| `host` | `String` | **Required.** The Open Wearables API base URL — host only, without path suffix (e.g. `https://api.openwearables.io`) |
+
+<Info>
+  Provide only the base host URL, e.g. `https://your-domain.com`. Do **not** append `/api/v1/` or any other path — the SDK adds the required path prefix automatically.
+</Info>
 
 ```dart
 // For self-hosted Open Wearables
@@ -232,6 +236,10 @@ if (OpenWearablesHealthSdk.isSignedIn) {
 ## Step 3: Sign In
 
 After getting credentials from your backend, sign in with the SDK:
+
+<Info>
+  The `userId` parameter is the **Open Wearables User ID** (UUID) — the `id` returned by the [Create User](/api-reference/users/create-user) endpoint. Do **not** pass your own `external_user_id` here.
+</Info>
 
 ### Token-Based Authentication (Recommended)
 
