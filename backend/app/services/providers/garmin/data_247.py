@@ -1091,7 +1091,7 @@ class Garmin247Data(Base247DataTemplate):
             return samples
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
-        
+
         meas = raw_bp.get("measurementTimeOffsetInSeconds")
         start = raw_bp.get("startTimeOffsetInSeconds")
         zone_offset = offset_to_iso(meas if meas is not None else start)
