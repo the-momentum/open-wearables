@@ -9,6 +9,7 @@ import type {
   RegisterRequest,
   ForgotPasswordRequest,
   ResetPasswordRequest,
+  ChangePasswordRequest,
 } from '../lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
@@ -119,17 +120,32 @@ export function useAuth() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: (data: ChangePasswordRequest) =>
+      authService.changePassword(data),
+    onSuccess: () => {
+      toast.success('Password updated successfully');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to update password';
+      toast.error(message);
+    },
+  });
+
   return {
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     logout: logoutMutation.mutate,
     forgotPassword: forgotPasswordMutation.mutate,
     resetPassword: resetPasswordMutation.mutate,
+    changePassword: changePasswordMutation.mutate,
     isLoggingIn: loginMutation.isPending,
     isRegistering: registerMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
     isForgotPasswordPending: forgotPasswordMutation.isPending,
     isResetPasswordPending: resetPasswordMutation.isPending,
+    isChangePasswordPending: changePasswordMutation.isPending,
     isAuthenticated: isAuthenticated(),
     me: meQuery.data,
     isMeLoading: meQuery.isLoading,

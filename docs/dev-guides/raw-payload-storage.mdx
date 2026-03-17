@@ -155,6 +155,80 @@ Raw payloads storage is designed to never break your data ingestion pipeline:
   </Tab>
 </Tabs>
 
+## Replaying Stored Payloads
+
+Use the `replay_raw_payloads.py` script to re-send S3-stored payloads through the SDK sync endpoint. This is useful for reproducing issues, re-processing data after a fix, or load testing.
+
+```bash
+cd backend
+set -a && source config/.env && set +a
+
+uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
+    --user-id <source-user-uuid> \
+    --api-url http://localhost:8000 \
+    --api-key sk-...
+```
+
+The script reads AWS/S3 credentials from environment variables automatically.
+
+### Filtering
+
+Narrow down which payloads to replay:
+
+```bash
+uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
+    --user-id <uuid> \
+    --provider apple \
+    --source sdk \
+    --date-from 2025-01-01 \
+    --date-to 2025-01-31 \
+    --limit 10
+```
+
+### Replaying to a different user
+
+Use `--target-user-id` to send one user's payloads to a different user account:
+
+```bash
+uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
+    --user-id <source-uuid> \
+    --target-user-id <destination-uuid> \
+    --api-url https://api.openwearables.io \
+    --api-key sk-...
+```
+
+### Dry run
+
+Preview which payloads would be sent without making any requests:
+
+```bash
+uv run --with boto3,httpx python scripts/replay_raw_payloads.py \
+    --user-id <uuid> \
+    --dry-run
+```
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--user-id` | required | S3 user ID whose payloads to read |
+| `--target-user-id` | same as `--user-id` | User ID to send payloads to |
+| `--api-url` | `http://localhost:8000` | Backend API base URL |
+| `--api-key` | `OPEN_WEARABLES_API_KEY` env var | API key for authentication |
+| `--s3-bucket` | `RAW_PAYLOAD_S3_BUCKET` or `AWS_BUCKET_NAME` env var | S3 bucket name |
+| `--s3-prefix` | `raw-payloads` | S3 key prefix |
+| `--s3-endpoint-url` | `RAW_PAYLOAD_S3_ENDPOINT_URL` env var | Custom S3 endpoint for compatible providers |
+| `--aws-region` | `AWS_REGION` env var or `eu-north-1` | AWS region |
+| `--aws-access-key-id` | `AWS_ACCESS_KEY_ID` env var | AWS access key ID |
+| `--aws-secret-access-key` | `AWS_SECRET_ACCESS_KEY` env var | AWS secret access key |
+| `--provider` | all | Filter by provider (`apple`, `samsung`, etc.) |
+| `--source` | all | Filter by source (`sdk`, `webhook`) |
+| `--date-from` | none | Start date filter (YYYY-MM-DD) |
+| `--date-to` | none | End date filter (YYYY-MM-DD) |
+| `--delay` | `1.0` | Seconds between requests |
+| `--limit` | unlimited | Maximum number of payloads to replay |
+| `--dry-run` | off | List payloads without sending |
+
 ## Related Guides
 
 - [AWS Setup](/dev-guides/aws-setup) - Configure AWS credentials and S3 buckets

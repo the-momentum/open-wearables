@@ -3,5 +3,211 @@ title: "Polar API Integration"
 description: "Setup guide for Polar integration"
 ---
 
-TODO
+<Note>
+**Need help with your Polar integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
 
+## Overview
+
+Polar provides access to exercise, daily activity, sleep, and heart rate data from Polar devices through the [AccessLink API](https://www.polar.com/accesslink-api). The integration uses OAuth 2.0 for authentication and pull-based syncing to fetch data.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts / Exercises | Yes (with optional HR samples, zones, route) |
+| Sleep (with stages) | Available via API - not yet implemented |
+| Daily activity | Available via API - not yet implemented |
+| Continuous heart rate (5-min intervals) | Available via API - not yet implemented |
+| Nightly Recharge / Recovery | Available via API - not yet implemented |
+
+<Info>
+Open Wearables currently syncs **exercise/workout data** from Polar. The AccessLink API also exposes sleep, daily activity, continuous HR, and Nightly Recharge data - support for these types is planned for a future release.
+</Info>
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches exercise data via the Polar AccessLink API (via Celery Beat) |
+
+<Info>
+**Webhooks:** Polar supports webhooks for event notifications, but Open Wearables does not yet implement a Polar webhook handler. Data is synced via periodic polling only. Webhook support is planned for a future release.
+</Info>
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret from the Polar AccessLink admin panel
+- **Redirect URI** registered in your Polar application
+
+## Prerequisites
+
+- A [Polar Flow](https://flow.polar.com) account
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Create a Polar Flow account">
+    If you don't have one yet, create a free account at [flow.polar.com](https://flow.polar.com).
+
+    This is the same account used by Polar device owners - no separate developer account is needed.
+  </Step>
+
+  <Step title="Register your application at Polar AccessLink">
+    Go to the [Polar AccessLink Admin](https://admin.polaraccesslink.com) and sign in with your Polar Flow credentials.
+
+    Click **Create client** to start the registration process. You'll go through four tabs:
+
+    **1. Contractual Information**
+    - Fill in your organization details (name, address, country)
+    - Toggle "I intend to integrate on behalf of a client or third-party organization" if applicable
+    - Accept the AccessLink Limited License Agreement
+
+    **2. Application Information**
+    - **Application Name**: Your app name (e.g. "Open Wearables")
+    - **Business contact (email)**: Your contact email
+    - **Description**: Brief description of your application
+    - **Application Web site**: Your app's website (optional)
+    - **Authorization redirect URL**: Your OAuth callback URL - for local development use `http://localhost:8000/api/v1/oauth/polar/callback`
+    - **Available data types**: Enable all three - **Exercise data**, **Daily activity data**, **Physical information data**
+
+    **3. Check Information**
+
+    Review the summary of your organization and application details, then click **Confirm**.
+
+    **4. Credentials**
+
+    After confirmation, you'll see your:
+    - **Client ID**
+    - **Client Secret**
+
+    <Warning>
+    The Client ID and Client Secret are **shown only once**. Copy and store them immediately. If you lose them, you'll need to create new credentials from the Admin tool.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+#--- Polar ---#
+POLAR_CLIENT_ID=your-polar-client-id
+POLAR_CLIENT_SECRET=your-polar-client-secret
+POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|-------------|
+    | `POLAR_CLIENT_ID` | Client ID from the Polar AccessLink Admin panel |
+    | `POLAR_CLIENT_SECRET` | Client Secret from the Polar AccessLink Admin panel |
+    | `POLAR_REDIRECT_URI` | Must match the Authorization redirect URL registered in your Polar application. For local dev: `http://localhost:8000/api/v1/oauth/polar/callback` |
+
+    <Note>
+    The OAuth scope is hardcoded to `accesslink.read_all` which grants full read access to the AccessLink API. No additional scope configuration is needed.
+    </Note>
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow to connect a user's Polar account.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/polar/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://flow.polar.com/oauth2/authorization?client_id=...&redirect_uri=...&response_type=code&scope=accesslink.read_all&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Polar Flow and authorize your app.
+
+    **3. Polar redirects back** to the callback URI configured in your `.env` (`POLAR_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access tokens and registers the user with the Polar API.
+
+    **4. Verify the connection** was created:
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "polar"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `POLAR_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Polar sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually sync or fetch data:
+
+    ```bash
+    # Sync all data types
+    curl -X POST "http://localhost:8000/api/v1/providers/polar/users/{user_id}/sync?data_type=all" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    <Note>
+    Polar only returns exercises uploaded within the last 30 days. Older data is not accessible via the AccessLink API.
+    </Note>
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch workouts
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You can also fetch raw Polar exercise data with optional samples, zones, and route data:
+
+    ```bash
+    # Fetch Polar exercises with HR samples and route
+    curl -X GET "http://localhost:8000/api/v1/vendor-workouts/polar/users/{user_id}/workouts?samples=true&zones=true&route=true" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Polar integration is working end-to-end.
+  </Step>
+</Steps>
+
+## Rate Limits
+
+Polar AccessLink API uses dynamic rate limits that scale with your registered user count:
+
+| Limit | Formula |
+|-------|---------|
+| Per 15 minutes | 500 + (registered users x 20) |
+| Per 24 hours | 5,000 + (registered users x 100) |
+
+Rate limit headers are included in every response: `RateLimit-Usage`, `RateLimit-Limit`, `RateLimit-Reset`.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Architecture" icon="diagram" href="/architecture/system-overview">
+    Understand the overall system architecture.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Polar AccessLink API Documentation](https://www.polar.com/accesslink-api).
+- Contact Polar developer support: b2bhelpdesk@polar.com
+</Note>

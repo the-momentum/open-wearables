@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
 from .applications import router as applications_router
+from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
@@ -56,6 +57,9 @@ v1_router.include_router(priorities_router, tags=["priorities"])
 v1_router.include_router(summaries_router, tags=["Summaries"])
 v1_router.include_router(timeseries_router, tags=["Timeseries"])
 v1_router.include_router(events_router, tags=["Events"])
+
+# Data lifecycle / archival settings
+v1_router.include_router(archival_router, tags=["Data Lifecycle"])
 
 # Token refresh endpoint
 v1_router.include_router(token_router, tags=["token"])

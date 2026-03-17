@@ -7,6 +7,7 @@ import type {
   RegisterResponse,
   ForgotPasswordRequest,
   ResetPasswordRequest,
+  ChangePasswordRequest,
   Developer,
 } from '../types';
 
@@ -37,5 +38,9 @@ export const authService = {
 
   async resetPassword(data: ResetPasswordRequest): Promise<void> {
     return apiClient.post<void>(API_ENDPOINTS.resetPassword, data);
+  },
+
+  async changePassword(data: ChangePasswordRequest): Promise<void> {
+    return apiClient.post<void>(API_ENDPOINTS.changePassword, data);
   },
 };

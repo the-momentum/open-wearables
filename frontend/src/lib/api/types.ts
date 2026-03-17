@@ -144,6 +144,12 @@ export interface ResetPasswordRequest {
   password: string;
 }
 
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 export interface CountWithGrowth {
   count: number;
   weekly_growth: number;

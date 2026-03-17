@@ -1,9 +1,10 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, Unique, datetime_tz, str_10
+from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, Unique, str_10
 
 
 class UserInvitationCode(BaseDbModel):
@@ -19,7 +20,7 @@ class UserInvitationCode(BaseDbModel):
     code: Mapped[Unique[str_10]]
     user_id: Mapped[Indexed[FKUser]]
     created_by_id: Mapped[FKDeveloper]
-    expires_at: Mapped[datetime_tz]
-    redeemed_at: Mapped[datetime_tz | None]
-    revoked_at: Mapped[datetime_tz | None]
-    created_at: Mapped[datetime_tz]
+    expires_at: Mapped[datetime]
+    redeemed_at: Mapped[datetime | None]
+    revoked_at: Mapped[datetime | None]
+    created_at: Mapped[datetime]
