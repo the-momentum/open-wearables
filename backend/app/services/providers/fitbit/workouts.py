@@ -144,16 +144,19 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         activities = self.get_workouts(db, user_id, start_date, end_date)
 
         for raw in activities:
+            savepoint = db.begin_nested()
             try:
                 record, detail = self._normalize_workout(raw, user_id)
                 created_record = event_record_service.create(db, record)
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
                 event_record_service.create_detail(db, detail_for_record)
+                savepoint.commit()
             except Exception as e:
+                savepoint.rollback()
                 log_and_capture_error(
                     e,
                     logger,
-                    f"Failed to normalize Fitbit activity {raw.get('logId', 'unknown')}: {e}",
+                    f"Failed to save Fitbit activity {raw.get('logId', 'unknown')}: {e}",
                     extra={"user_id": str(user_id), "activity": raw.get("logId")},
                 )
                 continue
