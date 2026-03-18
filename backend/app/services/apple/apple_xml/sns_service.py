@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.x509 import load_pem_x509_certificate
 from fastapi import status
 
+from app.config import settings
 from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
 from app.schemas import UploadDataResponse
 from app.schemas.apple.apple_xml.aws import SNSNotification
@@ -89,6 +90,11 @@ class SNSService:
 
         return True
 
+    def _verify_topic_arn(self, notification: SNSNotification) -> bool:
+        if not settings.aws_sns_topic_arn:
+            return True
+        return notification.topic_arn == settings.aws_sns_topic_arn.get_secret_value()
+
     def _confirm_subscription(self, notification: SNSNotification) -> UploadDataResponse:
         try:
             self.sns_client.confirm_subscription(
@@ -162,6 +168,13 @@ class SNSService:
             return UploadDataResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 response="invalid SNS signature",
+                user_id=None,
+            )
+
+        if not self._verify_topic_arn(notification):
+            return UploadDataResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                response="invalid SNS topic ARN",
                 user_id=None,
             )
 
