@@ -16,3 +16,23 @@ def test_unknown_id_falls_back_to_name() -> None:
 
 def test_unknown_id_and_name_returns_other() -> None:
     assert get_unified_workout_type(99999, "Unknown Activity XYZ") == WorkoutType.OTHER
+
+
+def test_none_name_with_unknown_id_returns_other():
+    assert get_unified_workout_type(99999) == WorkoutType.OTHER
+
+
+def test_name_fallback_is_case_insensitive():
+    assert get_unified_workout_type(99999, "YOGA") == WorkoutType.YOGA
+
+
+def test_name_fallback_strips_whitespace():
+    assert get_unified_workout_type(99999, "  walking  ") == WorkoutType.WALKING
+
+
+def test_cycling_id_maps_correctly():
+    assert get_unified_workout_type(90001, "Bike") == WorkoutType.CYCLING
+
+
+def test_swimming_id_maps_correctly():
+    assert get_unified_workout_type(82, "Swim") == WorkoutType.SWIMMING

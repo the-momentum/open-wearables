@@ -5,7 +5,7 @@ from app.schemas.workout_types import WorkoutType
 FITBIT_ID_TO_WORKOUT_TYPE: dict[int, WorkoutType] = {
     # Running
     90009: WorkoutType.RUNNING,
-    2131: WorkoutType.RUNNING,  # Indoor Running / Treadmill (some devices)
+    2131: WorkoutType.RUNNING,  # Indoor Running on some Fitbit devices
     91: WorkoutType.TREADMILL,
     # Walking
     90013: WorkoutType.WALKING,
