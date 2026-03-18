@@ -8,7 +8,6 @@ from app.utils.structured_logging import log_structured
 
 AWS_BUCKET_NAME = settings.aws_bucket_name
 AWS_REGION = settings.aws_region
-AWS_SNS_TOPIC_ARN = settings.aws_sns_topic_arn
 logger = getLogger(__name__)
 
 
