@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -8,6 +9,9 @@ from app.database import DbSession
 from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.sentry_helpers import log_and_capture_error
+
+logger = logging.getLogger(__name__)
 
 
 class FitbitWorkouts(BaseWorkoutsTemplate):
@@ -121,6 +125,12 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
 
         return all_activities
 
+    def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
+        """Fetch workouts from Fitbit API with optional date range."""
+        start_date = kwargs.get("start_date") or (datetime.now(timezone.utc) - timedelta(days=30))
+        end_date = kwargs.get("end_date") or datetime.now(timezone.utc)
+        return self.get_workouts(db, user_id, start_date, end_date)
+
     def load_data(
         self,
         db: DbSession,
@@ -134,9 +144,18 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         activities = self.get_workouts(db, user_id, start_date, end_date)
 
         for raw in activities:
-            record, detail = self._normalize_workout(raw, user_id)
-            created_record = event_record_service.create(db, record)
-            detail_for_record = detail.model_copy(update={"record_id": created_record.id})
-            event_record_service.create_detail(db, detail_for_record)
+            try:
+                record, detail = self._normalize_workout(raw, user_id)
+                created_record = event_record_service.create(db, record)
+                detail_for_record = detail.model_copy(update={"record_id": created_record.id})
+                event_record_service.create_detail(db, detail_for_record)
+            except Exception as e:
+                log_and_capture_error(
+                    e,
+                    logger,
+                    f"Failed to normalize Fitbit activity {raw.get('logId', 'unknown')}: {e}",
+                    extra={"user_id": str(user_id), "activity": raw.get("logId")},
+                )
+                continue
 
         return True
