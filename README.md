@@ -154,7 +154,8 @@ Simplified connection process for end users:
 Native SDKs for push-based health data sync from on-device health stores:
 - **[iOS SDK](https://github.com/the-momentum/open_wearables_ios_sdk)** (Swift) - Apple HealthKit
 - **[Android SDK](https://github.com/the-momentum/open_wearables_android_sdk)** (Kotlin) - Samsung Health & Google Health Connect
-- **[Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk)** (Dart) - Cross-platform wrapper around native SDKs
+- **[Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk)** (Dart) - Cross-platform Flutter wrapper around native SDKs
+- **[React Native SDK](https://github.com/the-momentum/open-wearables-react-native-sdk)** (TypeScript) - Cross-platform React Native wrapper around native SDKs
 
 ### Widgets (coming soon)
 - 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
