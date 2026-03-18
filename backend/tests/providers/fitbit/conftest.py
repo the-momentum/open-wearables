@@ -19,4 +19,4 @@ def engine() -> MagicMock:
 @pytest.fixture(autouse=True)
 def set_factory_session() -> Generator[None, None, None]:
     """Override autouse DB fixture — fitbit unit tests don't use factory-boy."""
-    return  # override: suppress DB fixture for unit tests
+    yield  # override: suppress DB fixture for unit tests
