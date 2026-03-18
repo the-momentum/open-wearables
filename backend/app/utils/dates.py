@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from typing import Annotated
+
+from pydantic import BeforeValidator, Field
 
 from app.utils.exceptions import DatetimeParseError
 
@@ -70,3 +73,22 @@ def offset_to_iso(offset_seconds: int | None) -> str | None:
     hours, remainder = divmod(total, 3600)
     minutes = remainder // 60
     return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def _normalize_zone_offset(v: str | None) -> str | None:
+    if v == "Z":
+        return "+00:00"
+    return v
+
+
+ZoneOffset = Annotated[
+    str | None,
+    Field(
+        None,
+        description="Timezone offset in the format '+01:00' or '-05:30'",
+        pattern=r"^[+-]\d{2}:\d{2}$",
+        examples=["+01:00", "-05:30"],
+        max_length=10,
+    ),
+    BeforeValidator(_normalize_zone_offset),
+]

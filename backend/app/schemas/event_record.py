@@ -3,7 +3,9 @@ from decimal import Decimal
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
+
+from app.utils.dates import ZoneOffset
 
 
 class EventRecordMetrics(TypedDict, total=False):
@@ -47,20 +49,7 @@ class EventRecordBase(BaseModel):
     duration_seconds: int | None = None
     start_datetime: datetime
     end_datetime: datetime
-    zone_offset: str | None = Field(
-        None,
-        description="Timezone offset in the format '+01:00' or '-05:30'",
-        pattern=r"^[+-]\d{2}:\d{2}$",
-        examples=["+01:00", "-05:30"],
-        max_length=10,
-    )
-
-    @field_validator("zone_offset", mode="before")
-    @classmethod
-    def normalize_zone_offset(cls, v: str | None) -> str | None:
-        if v == "Z":
-            return "+00:00"
-        return v
+    zone_offset: ZoneOffset = None
 
 
 class EventRecordCreate(EventRecordBase):

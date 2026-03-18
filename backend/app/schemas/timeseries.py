@@ -3,34 +3,22 @@ from decimal import Decimal
 from typing import Literal, TypedDict
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from app.schemas.common_types import SourceMetadata
 from app.schemas.series_types import SeriesType
+from app.utils.dates import ZoneOffset
 
 # --- API Response Models (Unified) ---
 
 
 class TimeSeriesSample(BaseModel):
     timestamp: datetime
-    zone_offset: str | None = Field(
-        None,
-        description="Timezone offset in the format '+01:00' or '-05:30'",
-        pattern=r"^[+-]\d{2}:\d{2}$",
-        examples=["+01:00", "-05:30"],
-        max_length=10,
-    )
+    zone_offset: ZoneOffset = None
     type: SeriesType
     value: float | int
     unit: str
     source: SourceMetadata | None = None
-
-    @field_validator("zone_offset", mode="before")
-    @classmethod
-    def normalize_zone_offset(cls, v: str | None) -> str | None:
-        if v == "Z":
-            return "+00:00"
-        return v
 
 
 class ActivityAggregateResult(TypedDict):
@@ -83,22 +71,9 @@ class TimeSeriesSampleBase(BaseModel):
         description="Existing data source identifier if already created upstream.",
     )
     recorded_at: datetime
-    zone_offset: str | None = Field(
-        None,
-        description="Timezone offset in the format '+01:00' or '-05:30'",
-        pattern=r"^[+-]\d{2}:\d{2}$",
-        examples=["+01:00", "-05:30"],
-        max_length=10,
-    )
+    zone_offset: ZoneOffset = None
     value: Decimal | float | int
     series_type: SeriesType
-
-    @field_validator("zone_offset", mode="before")
-    @classmethod
-    def normalize_zone_offset(cls, v: str | None) -> str | None:
-        if v == "Z":
-            return "+00:00"
-        return v
 
 
 class TimeSeriesSampleCreate(TimeSeriesSampleBase):
