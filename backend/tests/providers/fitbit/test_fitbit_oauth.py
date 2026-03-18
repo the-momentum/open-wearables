@@ -37,3 +37,11 @@ def test_get_provider_user_info_extracts_user_id(fitbit_oauth):
     result = fitbit_oauth._get_provider_user_info(token_response, "some-internal-user-id")
     assert result["user_id"] == "ABC123"
     assert result["username"] is None
+
+
+def test_get_provider_user_info_handles_none_user_id(fitbit_oauth):
+    token_response = MagicMock()
+    token_response.fitbit_user_id = None
+    result = fitbit_oauth._get_provider_user_info(token_response, "some-internal-user-id")
+    assert result["user_id"] is None
+    assert result["username"] is None

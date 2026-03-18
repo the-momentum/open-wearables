@@ -126,13 +126,15 @@ class UserConnectionRead(UserConnectionBase):
 class OAuthTokenResponse(BaseModel):
     """OAuth token response from provider."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     access_token: str
     token_type: str
     refresh_token: str | None = None
     expires_in: int
     scope: str | None = None
     x_user_id: int | None = None  # Polar-specific: user ID in Polar ecosystem
-    fitbit_user_id: str | None = None  # Fitbit: user ID returned in token response
+    fitbit_user_id: str | None = Field(default=None, alias="user_id")  # Fitbit: user ID returned in token response
 
 
 # Provider config
