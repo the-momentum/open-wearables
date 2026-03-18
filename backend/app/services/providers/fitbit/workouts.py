@@ -17,7 +17,11 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
     them to EventRecord. Duration is in milliseconds; timestamps are ISO 8601.
     """
 
-    def _extract_dates(
+    def _extract_dates(self, start_timestamp: Any, end_timestamp: Any) -> tuple[datetime, datetime]:
+        """Not used by Fitbit — use _parse_fitbit_dates instead."""
+        raise NotImplementedError("Use _parse_fitbit_dates for Fitbit workouts")
+
+    def _parse_fitbit_dates(
         self,
         start_time: str,
         duration_ms: int,
@@ -54,11 +58,11 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
             raw_workout.get("activityName"),
         )
 
-        start_date, end_date = self._extract_dates(
+        duration_seconds = raw_workout["duration"] // 1000  # ms → seconds
+        start_date, end_date = self._parse_fitbit_dates(
             raw_workout["startTime"],
             raw_workout["duration"],
         )
-        duration_seconds = int((end_date - start_date).total_seconds())
 
         source_dict = raw_workout.get("source")
         source_name = source_dict.get("name", "Fitbit") if source_dict else "Fitbit"
@@ -91,17 +95,33 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         start_date: datetime,
         end_date: datetime,
     ) -> list[Any]:
-        """Fetch activities from Fitbit API between start and end dates."""
+        """Fetch all activities from Fitbit API between start and end dates, handling pagination."""
         params = {
             "afterDate": start_date.strftime("%Y-%m-%d"),
+            "beforeDate": end_date.strftime("%Y-%m-%d"),
             "sort": "asc",
             "limit": "100",
             "offset": "0",
         }
-        response = self._make_api_request(
-            db, user_id, "/1/user/-/activities/list.json", params=params
-        )
-        return response.get("activities", []) if response else []
+        all_activities: list[Any] = []
+        offset = 0
+
+        while True:
+            params["offset"] = str(offset)
+            response = self._make_api_request(
+                db, user_id, "/1/user/-/activities/list.json", params=params
+            )
+            if not response:
+                break
+            activities = response.get("activities", [])
+            all_activities.extend(activities)
+            # Check for next page
+            next_page = response.get("pagination", {}).get("next", "")
+            if not next_page or not activities:
+                break
+            offset += len(activities)
+
+        return all_activities
 
     def load_data(
         self,

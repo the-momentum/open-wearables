@@ -72,7 +72,7 @@ def test_normalize_workout_missing_source(fitbit_workouts):
 
 
 def test_extract_dates(fitbit_workouts):
-    start, end = fitbit_workouts._extract_dates(
+    start, end = fitbit_workouts._parse_fitbit_dates(
         "2024-01-15T07:30:00.000+00:00",
         3600000,
     )

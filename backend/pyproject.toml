@@ -78,6 +78,7 @@ ignore = [
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
 "app/schemas/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/suunto/*.py" = ["N815"]  # mixedCase from external API
+"tests/**/*.py" = ["ANN"]
 
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
