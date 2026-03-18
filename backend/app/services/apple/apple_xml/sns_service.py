@@ -9,7 +9,6 @@ from app.schemas.apple.apple_xml.aws import SNSNotification
 from app.services.apple.apple_xml.aws_service import get_sns_client
 from app.utils.structured_logging import log_structured
 
-
 logger = getLogger(__name__)
 
 
