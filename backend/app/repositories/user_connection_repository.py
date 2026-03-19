@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
+from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func
+from sqlalchemy import CursorResult, and_, func, update
 
 from app.database import DbSession
 from app.models import UserConnection
@@ -126,6 +127,31 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             )
             .all()
         )
+
+    def disconnect(self, db_session: DbSession, user_id: UUID, provider: str) -> int:
+        """Disconnect a provider in a single UPDATE query. Returns number of rows updated."""
+        result = cast(
+            CursorResult[tuple[()]],
+            db_session.execute(
+                update(UserConnection)
+                .where(
+                    and_(
+                        UserConnection.user_id == user_id,
+                        UserConnection.provider == provider,
+                        UserConnection.status != ConnectionStatus.REVOKED,
+                    ),
+                )
+                .values(
+                    status=ConnectionStatus.REVOKED,
+                    access_token=None,
+                    refresh_token=None,
+                    token_expires_at=None,
+                    updated_at=datetime.now(timezone.utc),
+                ),
+            ),
+        )
+        db_session.commit()
+        return result.rowcount
 
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Mark connection as revoked (when refresh token fails)."""

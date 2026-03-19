@@ -14,6 +14,27 @@ import { toast } from 'sonner';
 import { queryClient } from '@/lib/query/client';
 
 /**
+ * Disconnect a user from a provider
+ * Uses DELETE /api/v1/users/{user_id}/connections/{provider}
+ */
+export function useDisconnectProvider(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: () => healthService.disconnectProvider(userId, provider),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      toast.success(`Disconnected from ${provider}`);
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to disconnect';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections
  */
