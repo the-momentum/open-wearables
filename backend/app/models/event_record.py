@@ -8,6 +8,7 @@ from app.database import BaseDbModel
 from app.mappings import (
     FKDataSource,
     PrimaryKey,
+    str_10,
     str_32,
     str_64,
     str_100,
@@ -33,6 +34,7 @@ class EventRecord(BaseDbModel):
 
     start_datetime: Mapped[datetime]
     end_datetime: Mapped[datetime]
+    zone_offset: Mapped[str_10 | None]
 
     detail: Mapped["EventRecordDetail | None"] = relationship(
         "EventRecordDetail",

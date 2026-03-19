@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.utils.dates import ZoneOffset
+
 
 class EventRecordMetrics(TypedDict, total=False):
     """Optional workout or sleep metrics collected from providers."""
@@ -47,6 +49,7 @@ class EventRecordBase(BaseModel):
     duration_seconds: int | None = None
     start_datetime: datetime
     end_datetime: datetime
+    zone_offset: ZoneOffset = None
 
 
 class EventRecordCreate(EventRecordBase):

@@ -9,7 +9,6 @@ Tests cover:
 
 from decimal import Decimal
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.schemas.event_record import EventRecordQueryParams
@@ -104,8 +103,7 @@ class TestEventRecordServiceCreateDetail:
 class TestEventRecordServiceGetRecordsResponse:
     """Test getting formatted event records."""
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_basic(self, db: Session) -> None:
+    def test_get_records_response_basic(self, db: Session) -> None:
         """Should return formatted event records."""
         # Arrange
         user = UserFactory()
@@ -119,7 +117,7 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         assert len(records) >= 1
@@ -130,8 +128,7 @@ class TestEventRecordServiceGetRecordsResponse:
         assert matching_record.category == "workout"
         assert matching_record.type == "running"
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_category(self, db: Session) -> None:
+    def test_get_records_response_filters_by_category(self, db: Session) -> None:
         """Should filter records by category."""
         # Arrange
         user = UserFactory()
@@ -143,15 +140,14 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         record_ids = [r.id for r in records]
         assert workout_record.id in record_ids
         assert sleep_record.id not in record_ids
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_type(self, db: Session) -> None:
+    def test_get_records_response_filters_by_type(self, db: Session) -> None:
         """Should filter records by type."""
         # Arrange
         user = UserFactory()
@@ -163,15 +159,14 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout", record_type="running")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         record_ids = [r.id for r in records]
         assert running_record.id in record_ids
         assert cycling_record.id not in record_ids
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_device_id(self, db: Session) -> None:
+    def test_get_records_response_filters_by_device_id(self, db: Session) -> None:
         """Should filter records by device_id."""
         # Arrange
         user = UserFactory()
@@ -184,15 +179,14 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout", device_model="device_1")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         record_ids = [r.id for r in records]
         assert record1.id in record_ids
         assert record2.id not in record_ids
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_filters_by_provider(self, db: Session) -> None:
+    def test_get_records_response_filters_by_provider(self, db: Session) -> None:
         """Should filter records by provider_name."""
         # Arrange
         user = UserFactory()
@@ -205,15 +199,14 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout", source="apple")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         record_ids = [r.id for r in records]
         assert apple_record.id in record_ids
         assert garmin_record.id not in record_ids
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_user_isolation(self, db: Session) -> None:
+    def test_get_records_response_user_isolation(self, db: Session) -> None:
         """Should only return records for specified user."""
         # Arrange
         user1 = UserFactory(email="user1@example.com")
@@ -228,22 +221,21 @@ class TestEventRecordServiceGetRecordsResponse:
         query_params = EventRecordQueryParams(category="workout")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user1.id))
+        records = event_record_service.get_records_response(db, query_params, str(user1.id))
 
         # Assert
         record_ids = [r.id for r in records]
         assert record1.id in record_ids
         assert record2.id not in record_ids
 
-    @pytest.mark.asyncio
-    async def test_get_records_response_empty_result(self, db: Session) -> None:
+    def test_get_records_response_empty_result(self, db: Session) -> None:
         """Should return empty list when no records match."""
         # Arrange
         user = UserFactory()
         query_params = EventRecordQueryParams(category="workout")
 
         # Act
-        records = await event_record_service.get_records_response(db, query_params, str(user.id))
+        records = event_record_service.get_records_response(db, query_params, str(user.id))
 
         # Assert
         assert records == []

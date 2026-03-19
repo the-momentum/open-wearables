@@ -70,7 +70,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """Apple Health does not support cloud API - data is push-only."""
         raise NotImplementedError("Apple Health does not support API-based workout detail fetching")
 
-    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> int:
         """Apple Health uses push-based data ingestion via process_payload."""
         raise NotImplementedError("Apple Health uses process_payload for data ingestion, not load_data")
 

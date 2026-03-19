@@ -14,7 +14,7 @@ from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -37,7 +37,7 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-async def _process_wellness_notification(
+def _process_wellness_notification(
     db: DbSession,
     summary_type: str,
     notifications: list[dict[str, Any]],
@@ -123,10 +123,9 @@ async def _process_wellness_notification(
 
         try:
             # Fetch data from callback URL
-            async with httpx.AsyncClient() as client:
-                response = await client.get(callback_url, timeout=30.0)
-                response.raise_for_status()
-                data = response.json()
+            response = httpx.get(callback_url, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
 
             if not isinstance(data, list):
                 data = [data]
@@ -319,8 +318,8 @@ def _process_deregistrations(
 
 
 @router.post("/ping")
-async def garmin_ping_notification(
-    request: Request,
+def garmin_ping_notification(
+    payload: dict,
     db: DbSession,
     garmin_client_id: Annotated[str | None, Header(alias="garmin-client-id")] = None,
 ) -> dict:
@@ -350,7 +349,6 @@ async def garmin_ping_notification(
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
-        payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
@@ -417,10 +415,9 @@ async def garmin_ping_notification(
 
                     # Fetch activity data from callback URL
                     try:
-                        async with httpx.AsyncClient() as client:
-                            response = await client.get(callback_url, timeout=30.0)
-                            response.raise_for_status()
-                            activities_data = response.json()
+                        response = httpx.get(callback_url, timeout=30.0)
+                        response.raise_for_status()
+                        activities_data = response.json()
 
                         activities_count = len(activities_data) if isinstance(activities_data, list) else 1
                         log_structured(
@@ -503,7 +500,7 @@ async def garmin_ping_notification(
                     summary_type=summary_type,
                     count=len(payload[summary_type]),
                 )
-                wellness_results[summary_type] = await _process_wellness_notification(
+                wellness_results[summary_type] = _process_wellness_notification(
                     db, summary_type, payload[summary_type], garmin_247, request_trace_id
                 )
 
@@ -577,8 +574,8 @@ async def garmin_ping_notification(
 
 
 @router.post("/push")
-async def garmin_push_notification(
-    request: Request,
+def garmin_push_notification(
+    payload: dict,
     db: DbSession,
     garmin_client_id: Annotated[str | None, Header(alias="garmin-client-id")] = None,
 ) -> dict:
@@ -620,7 +617,6 @@ async def garmin_push_notification(
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
-        payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         garmin_user_ids = list(
@@ -976,6 +972,6 @@ async def garmin_push_notification(
 
 
 @router.get("/health")
-async def garmin_webhook_health() -> dict:
+def garmin_webhook_health() -> dict:
     """Health check endpoint for Garmin webhook configuration."""
     return {"status": "ok", "service": "garmin-webhooks"}

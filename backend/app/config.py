@@ -45,12 +45,16 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
+    SENTRY_SERVER_NAME: str | None = None
 
     # AUTH SETTINGS
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
+
+    # VALIDATION SETTINGS
+    min_password_length: int = 8
 
     # REDIS SETTINGS
     redis_host: str = "localhost"
@@ -103,6 +107,12 @@ class Settings(BaseSettings):
     fitbit_client_secret: SecretStr | None = None
     fitbit_redirect_uri: str = "http://localhost:8000/api/v1/oauth/fitbit/callback"
     fitbit_default_scope: str = "activity heartrate sleep profile"
+    # OURA OAUTH SETTINGS
+    oura_client_id: str | None = None
+    oura_client_secret: SecretStr | None = None
+    oura_redirect_uri: str = "http://localhost:8000/api/v1/oauth/oura/callback"
+    oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration"
+    oura_webhook_verification_token: SecretStr | None = None
 
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None

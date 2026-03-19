@@ -14,6 +14,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -215,6 +216,8 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         # Use device name if available, otherwise fallback to "Garmin"
         device_name = raw_workout.deviceName or "Garmin"
 
+        zone_offset = offset_to_iso(raw_workout.startTimeOffsetInSeconds)
+
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
@@ -223,6 +226,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=str(raw_workout.activityId),  # Convert to str (push sends int)
             source="garmin",
@@ -250,14 +254,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """No-op: Garmin activity data arrives via webhooks.
 
         REST/summary endpoints are not used. Historical data is fetched
         via the backfill API which delivers data through webhooks.
         """
         self.logger.info(f"Garmin activities for user {user_id} arrive via webhooks (no REST fetch)")
-        return True
+        return 0
 
     def get_activity_detail(
         self,

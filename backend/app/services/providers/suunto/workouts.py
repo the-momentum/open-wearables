@@ -16,6 +16,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.dates import offset_to_iso
 
 
 class SuuntoWorkouts(BaseWorkoutsTemplate):
@@ -153,6 +154,10 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
         duration_seconds = int(raw_workout.totalTime)
 
+        zone_offset = None
+        if raw_workout.timeOffsetInMinutes is not None:
+            zone_offset = offset_to_iso(raw_workout.timeOffsetInMinutes * 60)
+
         # Source name: prefer displayName, then name, fallback to "Suunto"
         if raw_workout.gear:
             source_name = raw_workout.gear.displayName or raw_workout.gear.name or "Suunto"
@@ -177,6 +182,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=str(raw_workout.workoutId),
             source=self.provider_name,  # Provider name for mapping (e.g., "suunto")
@@ -208,7 +214,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """Load data from Suunto API."""
         # Handle generic start_date/end_date
         start_date = kwargs.get("start_date")
@@ -249,12 +255,14 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
                     source=self.provider_name,
                 )
 
+        count = 0
         for record, details in self._build_bundles(workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = details.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count
 
     def get_workout_detail(
         self,

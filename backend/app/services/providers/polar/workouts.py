@@ -15,6 +15,7 @@ from app.schemas import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.dates import offset_to_iso
 
 
 class PolarWorkouts(BaseWorkoutsTemplate):
@@ -116,6 +117,9 @@ class PolarWorkouts(BaseWorkoutsTemplate):
 
         metrics = self._build_metrics(raw_workout)
 
+        # convert from offset minutes to seconds first
+        zone_offset = offset_to_iso(raw_workout.start_time_utc_offset * 60)
+
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
@@ -124,6 +128,7 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=zone_offset,
             id=workout_id,
             external_id=raw_workout.id,
             source="polar",
@@ -151,17 +156,19 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """Load data from Polar API."""
         workouts_data = self.get_workouts_from_api(db, user_id, **kwargs)
         workouts = [PolarExerciseJSON(**w) for w in workouts_data]
 
+        count = 0
         for record, detail in self._build_bundles(workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count
 
     def get_exercise_detail(
         self,

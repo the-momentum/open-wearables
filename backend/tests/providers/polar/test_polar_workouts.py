@@ -523,7 +523,7 @@ class TestPolarWorkoutsDataLoading:
         result = workouts.load_data(db, user.id)
 
         # Assert
-        assert result is True
+        assert result == 1
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
 
@@ -563,4 +563,4 @@ class TestPolarWorkoutsDataLoading:
         result = workouts.load_data(db, user.id)
 
         # Assert
-        assert result is True
+        assert result == 0

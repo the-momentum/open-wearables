@@ -22,6 +22,7 @@ class Workout(BaseModel):
     name: str | None = Field(None, example="Morning Run")
     start_time: datetime
     end_time: datetime
+    zone_offset: str | None = None
     duration_seconds: int | None = None
     source: SourceMetadata
     calories_kcal: float | None = None
@@ -66,6 +67,7 @@ class SleepSession(BaseModel):
     id: UUID
     start_time: datetime
     end_time: datetime
+    zone_offset: str | None = None
     source: SourceMetadata
     duration_seconds: int
     efficiency_percent: float | None = None

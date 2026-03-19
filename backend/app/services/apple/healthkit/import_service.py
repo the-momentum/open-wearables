@@ -71,6 +71,7 @@ class ImportService:
                 device_model,
                 software_version,
                 wjson.endDate,
+                wjson.zoneOffset,
                 provider,
                 original_source_name,
             )
@@ -89,6 +90,7 @@ class ImportService:
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,
+                zone_offset=wjson.zoneOffset,
                 id=workout_id,
                 external_id=external_id,
                 source=provider,
@@ -137,6 +139,7 @@ class ImportService:
                 software_version=software_version,
                 provider=provider,
                 recorded_at=rjson.startDate,
+                zone_offset=rjson.zoneOffset,
                 value=value,
                 series_type=series_type,
             )
@@ -166,6 +169,7 @@ class ImportService:
         device_model: str | None,
         software_version: str | None,
         end_date: datetime,
+        zone_offset: str | None,
         provider: str,
         source_name: str | None,
     ) -> tuple[EventRecordMetrics, list[TimeSeriesSampleCreate], int | float | None]:
@@ -198,6 +202,7 @@ class ImportService:
                     software_version=software_version,
                     provider=provider,
                     recorded_at=end_date,
+                    zone_offset=zone_offset,
                     value=value,
                     series_type=series_type,
                 )

@@ -32,81 +32,81 @@ priority_service = PriorityService(log=getLogger(__name__))
     "/priorities/providers",
     summary="Get global provider priorities",
 )
-async def get_provider_priorities(
+def get_provider_priorities(
     db: DbSession,
     _developer: DeveloperDep,
 ) -> ProviderPriorityListResponse:
-    return await priority_service.get_provider_priorities(db)
+    return priority_service.get_provider_priorities(db)
 
 
 @router.put(
     "/priorities/providers/{provider}",
     summary="Update provider priority",
 )
-async def update_provider_priority(
+def update_provider_priority(
     db: DbSession,
     _developer: DeveloperDep,
     provider: Annotated[ProviderName, Path(description="Provider name enum")],
     update: ProviderPriorityUpdate,
 ) -> ProviderPriorityResponse:
-    return await priority_service.update_provider_priority(db, provider, update.priority)
+    return priority_service.update_provider_priority(db, provider, update.priority)
 
 
 @router.put(
     "/priorities/providers",
     summary="Bulk update provider priorities",
 )
-async def bulk_update_provider_priorities(
+def bulk_update_provider_priorities(
     db: DbSession,
     _developer: DeveloperDep,
     update: ProviderPriorityBulkUpdate,
 ) -> ProviderPriorityListResponse:
-    return await priority_service.bulk_update_priorities(db, update)
+    return priority_service.bulk_update_priorities(db, update)
 
 
 @router.get(
     "/users/{user_id}/data-sources",
     summary="Get user data sources",
 )
-async def get_user_data_sources(
+def get_user_data_sources(
     db: DbSession,
     _api_key: ApiKeyDep,
     user_id: Annotated[UUID, Path(description="User ID")],
 ) -> DataSourceListResponse:
-    return await priority_service.get_user_data_sources(db, user_id)
+    return priority_service.get_user_data_sources(db, user_id)
 
 
 @router.get(
     "/priorities/device-types",
     summary="Get device type priorities",
 )
-async def get_device_type_priorities(
+def get_device_type_priorities(
     db: DbSession,
     _developer: DeveloperDep,
 ) -> DeviceTypePriorityListResponse:
-    return await priority_service.get_device_type_priorities(db)
+    return priority_service.get_device_type_priorities(db)
 
 
 @router.put(
     "/priorities/device-types/{device_type}",
     summary="Update device type priority",
 )
-async def update_device_type_priority(
+def update_device_type_priority(
     db: DbSession,
     _developer: DeveloperDep,
     device_type: Annotated[DeviceType, Path(description="Device type enum")],
     update: DeviceTypePriorityUpdate,
 ) -> DeviceTypePriorityResponse:
-    return await priority_service.update_device_type_priority(db, device_type, update.priority)
+    return priority_service.update_device_type_priority(db, device_type, update.priority)
 
 
 @router.put(
     "/priorities/device-types",
     summary="Bulk update device type priorities",
 )
-async def bulk_update_device_type_priorities(
+def bulk_update_device_type_priorities(
     db: DbSession,
     _developer: DeveloperDep,
     update: DeviceTypePriorityBulkUpdate,
 ) -> DeviceTypePriorityListResponse:
-    return await priority_service.bulk_update_device_type_priorities(db, update)
+    return priority_service.bulk_update_device_type_priorities(db, update)

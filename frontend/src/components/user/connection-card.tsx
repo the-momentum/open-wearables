@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   CheckCircle2,
   EllipsisVertical,
@@ -20,9 +21,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
+import {
+  useDisconnectProvider,
   useSynchronizeDataFromProvider,
   useGarminBackfillStatus,
   useGarminCancelBackfill,
@@ -49,6 +60,11 @@ function parseScopeString(scope: string): string[] {
 }
 
 export function ConnectionCard({ connection, className }: ConnectionCardProps) {
+  const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+
+  const { mutate: disconnectProvider, isPending: isDisconnecting } =
+    useDisconnectProvider(connection.provider, connection.user_id);
+
   const { mutate: synchronizeDataFromProvider, isPending: isSynchronizing } =
     useSynchronizeDataFromProvider(connection.provider, connection.user_id);
 
@@ -162,17 +178,40 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive cursor-pointer"
-                  onClick={() => {
-                    toast.error('Disconnecting not implemented yet'); // TODO: Implement disconnect
-                  }}
-                >
-                  <Unlink className="mr-2 h-4 w-4" />
-                  Disconnect
-                </DropdownMenuItem>
+                {connection.status !== 'revoked' && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive cursor-pointer"
+                    disabled={isDisconnecting}
+                    onClick={() => setShowDisconnectDialog(true)}
+                  >
+                    <Unlink className="mr-2 h-4 w-4" />
+                    Disconnect
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+            <AlertDialog
+              open={showDisconnectDialog}
+              onOpenChange={setShowDisconnectDialog}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Disconnect {connection.provider}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will revoke the connection. The user will need to
+                    reconnect to {connection.provider} to resume data syncing.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => disconnectProvider()}>
+                    Disconnect
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       </CardHeader>

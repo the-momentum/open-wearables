@@ -36,7 +36,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
 
 
 @router.get("/{provider}/authorize", response_model=AuthorizationURLResponse)
-async def authorize_provider(
+def authorize_provider(
     provider: ProviderName,
     user_id: Annotated[UUID, Query(description="User ID to connect")],
     redirect_uri: Annotated[str | None, Query(description="Optional redirect URI after authorization")] = None,
@@ -54,7 +54,7 @@ async def authorize_provider(
 
 
 @router.get("/{provider}/callback")
-async def oauth_callback(
+def oauth_callback(
     provider: ProviderName,
     db: DbSession,
     code: Annotated[str | None, Query(description="Authorization code from provider")] = None,
@@ -108,7 +108,7 @@ async def oauth_callback(
 
 
 @router.get("/success")
-async def oauth_success(
+def oauth_success(
     provider: Annotated[str, Query()],
     user_id: Annotated[str, Query()],
 ) -> dict:
@@ -122,7 +122,7 @@ async def oauth_success(
 
 
 @router.get("/error")
-async def oauth_error(
+def oauth_error(
     message: Annotated[str, Query()] = "OAuth authentication failed",
 ) -> dict:
     """OAuth error page."""
@@ -133,7 +133,7 @@ async def oauth_error(
 
 
 @router.get("/providers", response_model=list[ProviderSettingRead])
-async def get_providers(
+def get_providers(
     db: DbSession,
     enabled_only: Annotated[bool, Query(description="Return only enabled providers")] = False,
     cloud_only: Annotated[bool, Query(description="Return only cloud (OAuth) providers")] = False,
@@ -153,7 +153,7 @@ async def get_providers(
 
 
 @router.put("/providers/{provider}", response_model=ProviderSettingRead)
-async def update_provider_status(
+def update_provider_status(
     provider: str,
     update: ProviderSettingUpdate,
     db: DbSession,
@@ -169,7 +169,7 @@ async def update_provider_status(
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead])
-async def bulk_update_providers(
+def bulk_update_providers(
     updates: BulkProviderSettingsUpdate,
     db: DbSession,
     _developer: DeveloperDep,

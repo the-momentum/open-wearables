@@ -7,12 +7,14 @@ from pydantic import BaseModel, Field
 
 from app.schemas.common_types import SourceMetadata
 from app.schemas.series_types import SeriesType
+from app.utils.dates import ZoneOffset
 
 # --- API Response Models (Unified) ---
 
 
 class TimeSeriesSample(BaseModel):
     timestamp: datetime
+    zone_offset: ZoneOffset = None
     type: SeriesType
     value: float | int
     unit: str
@@ -69,6 +71,7 @@ class TimeSeriesSampleBase(BaseModel):
         description="Existing data source identifier if already created upstream.",
     )
     recorded_at: datetime
+    zone_offset: ZoneOffset = None
     value: Decimal | float | int
     series_type: SeriesType
 

@@ -347,7 +347,7 @@ class TestSuuntoWorkouts:
         result = suunto_workouts.load_data(db, user.id, since=0, limit=10)
 
         # Assert
-        assert result is True
+        assert result == 1
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
         # Verify data source creation was attempted

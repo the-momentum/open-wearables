@@ -31,22 +31,20 @@ def priority_service() -> PriorityService:
 class TestPriorityServiceGetProviderPriorities:
     """Test getting provider priorities."""
 
-    @pytest.mark.asyncio
-    async def test_get_provider_priorities_empty(self, db: Session, priority_service: PriorityService) -> None:
+    def test_get_provider_priorities_empty(self, db: Session, priority_service: PriorityService) -> None:
         """Should return empty list when no priorities exist."""
-        result = await priority_service.get_provider_priorities(db)
+        result = priority_service.get_provider_priorities(db)
         assert result.items == []
 
-    @pytest.mark.asyncio
-    async def test_get_provider_priorities_ordered(self, db: Session, priority_service: PriorityService) -> None:
+    def test_get_provider_priorities_ordered(self, db: Session, priority_service: PriorityService) -> None:
         """Should return priorities ordered by priority value."""
         # Arrange - create priorities in non-sequential order
-        await priority_service.update_provider_priority(db, ProviderName.GARMIN, 2)
-        await priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
-        await priority_service.update_provider_priority(db, ProviderName.POLAR, 3)
+        priority_service.update_provider_priority(db, ProviderName.GARMIN, 2)
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        priority_service.update_provider_priority(db, ProviderName.POLAR, 3)
 
         # Act
-        result = await priority_service.get_provider_priorities(db)
+        result = priority_service.get_provider_priorities(db)
 
         # Assert
         assert len(result.items) == 3
@@ -61,24 +59,20 @@ class TestPriorityServiceGetProviderPriorities:
 class TestPriorityServiceUpdateProviderPriority:
     """Test updating individual provider priority."""
 
-    @pytest.mark.asyncio
-    async def test_update_provider_priority_creates_new(self, db: Session, priority_service: PriorityService) -> None:
+    def test_update_provider_priority_creates_new(self, db: Session, priority_service: PriorityService) -> None:
         """Should create new priority if it doesn't exist."""
-        result = await priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        result = priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
 
         assert result.provider == ProviderName.APPLE
         assert result.priority == 1
 
-    @pytest.mark.asyncio
-    async def test_update_provider_priority_updates_existing(
-        self, db: Session, priority_service: PriorityService
-    ) -> None:
+    def test_update_provider_priority_updates_existing(self, db: Session, priority_service: PriorityService) -> None:
         """Should update existing priority."""
         # Arrange
-        await priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
+        priority_service.update_provider_priority(db, ProviderName.APPLE, 1)
 
         # Act
-        result = await priority_service.update_provider_priority(db, ProviderName.APPLE, 5)
+        result = priority_service.update_provider_priority(db, ProviderName.APPLE, 5)
 
         # Assert
         assert result.provider == ProviderName.APPLE
@@ -88,8 +82,7 @@ class TestPriorityServiceUpdateProviderPriority:
 class TestPriorityServiceBulkUpdateProviderPriorities:
     """Test bulk updating provider priorities."""
 
-    @pytest.mark.asyncio
-    async def test_bulk_update_creates_new_priorities(self, db: Session, priority_service: PriorityService) -> None:
+    def test_bulk_update_creates_new_priorities(self, db: Session, priority_service: PriorityService) -> None:
         """Should create new priorities for all items."""
         update = ProviderPriorityBulkUpdate(
             priorities=[
@@ -99,12 +92,11 @@ class TestPriorityServiceBulkUpdateProviderPriorities:
             ]
         )
 
-        result = await priority_service.bulk_update_priorities(db, update)
+        result = priority_service.bulk_update_priorities(db, update)
 
         assert len(result.items) == 3
 
-    @pytest.mark.asyncio
-    async def test_bulk_update_persists_to_database(self, db: Session, priority_service: PriorityService) -> None:
+    def test_bulk_update_persists_to_database(self, db: Session, priority_service: PriorityService) -> None:
         """Should update existing priorities and persist changes to database."""
         # Arrange - create initial priorities
         initial_update = ProviderPriorityBulkUpdate(
@@ -113,7 +105,7 @@ class TestPriorityServiceBulkUpdateProviderPriorities:
                 ProviderPriorityBase(provider=ProviderName.GARMIN, priority=2),
             ]
         )
-        await priority_service.bulk_update_priorities(db, initial_update)
+        priority_service.bulk_update_priorities(db, initial_update)
 
         # Act - swap priorities
         swap_update = ProviderPriorityBulkUpdate(
@@ -122,13 +114,13 @@ class TestPriorityServiceBulkUpdateProviderPriorities:
                 ProviderPriorityBase(provider=ProviderName.GARMIN, priority=1),
             ]
         )
-        await priority_service.bulk_update_priorities(db, swap_update)
+        priority_service.bulk_update_priorities(db, swap_update)
 
         # Clear session cache to force re-fetch from database
         db.expire_all()
 
         # Assert - verify updated data persisted correctly
-        result = await priority_service.get_provider_priorities(db)
+        result = priority_service.get_provider_priorities(db)
         assert len(result.items) == 2
         assert result.items[0].provider == ProviderName.GARMIN
         assert result.items[0].priority == 1
@@ -139,22 +131,20 @@ class TestPriorityServiceBulkUpdateProviderPriorities:
 class TestPriorityServiceGetDeviceTypePriorities:
     """Test getting device type priorities."""
 
-    @pytest.mark.asyncio
-    async def test_get_device_type_priorities_empty(self, db: Session, priority_service: PriorityService) -> None:
+    def test_get_device_type_priorities_empty(self, db: Session, priority_service: PriorityService) -> None:
         """Should return empty list when no priorities exist."""
-        result = await priority_service.get_device_type_priorities(db)
+        result = priority_service.get_device_type_priorities(db)
         assert result.items == []
 
-    @pytest.mark.asyncio
-    async def test_get_device_type_priorities_ordered(self, db: Session, priority_service: PriorityService) -> None:
+    def test_get_device_type_priorities_ordered(self, db: Session, priority_service: PriorityService) -> None:
         """Should return priorities ordered by priority value."""
         # Arrange
-        await priority_service.update_device_type_priority(db, DeviceType.BAND, 2)
-        await priority_service.update_device_type_priority(db, DeviceType.WATCH, 1)
-        await priority_service.update_device_type_priority(db, DeviceType.RING, 3)
+        priority_service.update_device_type_priority(db, DeviceType.BAND, 2)
+        priority_service.update_device_type_priority(db, DeviceType.WATCH, 1)
+        priority_service.update_device_type_priority(db, DeviceType.RING, 3)
 
         # Act
-        result = await priority_service.get_device_type_priorities(db)
+        result = priority_service.get_device_type_priorities(db)
 
         # Assert
         assert len(result.items) == 3
@@ -169,12 +159,9 @@ class TestPriorityServiceGetDeviceTypePriorities:
 class TestPriorityServiceUpdateDeviceTypePriority:
     """Test updating individual device type priority."""
 
-    @pytest.mark.asyncio
-    async def test_update_device_type_priority_creates_new(
-        self, db: Session, priority_service: PriorityService
-    ) -> None:
+    def test_update_device_type_priority_creates_new(self, db: Session, priority_service: PriorityService) -> None:
         """Should create new priority if it doesn't exist."""
-        result = await priority_service.update_device_type_priority(db, DeviceType.WATCH, 1)
+        result = priority_service.update_device_type_priority(db, DeviceType.WATCH, 1)
 
         assert result.device_type == DeviceType.WATCH
         assert result.priority == 1
@@ -183,8 +170,7 @@ class TestPriorityServiceUpdateDeviceTypePriority:
 class TestPriorityServiceBulkUpdateDeviceTypePriorities:
     """Test bulk updating device type priorities."""
 
-    @pytest.mark.asyncio
-    async def test_bulk_update_device_types_creates_new(self, db: Session, priority_service: PriorityService) -> None:
+    def test_bulk_update_device_types_creates_new(self, db: Session, priority_service: PriorityService) -> None:
         """Should create new priorities for all items."""
         update = DeviceTypePriorityBulkUpdate(
             priorities=[
@@ -194,12 +180,11 @@ class TestPriorityServiceBulkUpdateDeviceTypePriorities:
             ]
         )
 
-        result = await priority_service.bulk_update_device_type_priorities(db, update)
+        result = priority_service.bulk_update_device_type_priorities(db, update)
 
         assert len(result.items) == 3
 
-    @pytest.mark.asyncio
-    async def test_bulk_update_device_types_persists_to_database(
+    def test_bulk_update_device_types_persists_to_database(
         self, db: Session, priority_service: PriorityService
     ) -> None:
         """Should update existing priorities and persist changes to database."""
@@ -210,7 +195,7 @@ class TestPriorityServiceBulkUpdateDeviceTypePriorities:
                 DeviceTypePriorityBase(device_type=DeviceType.RING, priority=2),
             ]
         )
-        await priority_service.bulk_update_device_type_priorities(db, initial_update)
+        priority_service.bulk_update_device_type_priorities(db, initial_update)
 
         # Act - swap priorities
         swap_update = DeviceTypePriorityBulkUpdate(
@@ -219,13 +204,13 @@ class TestPriorityServiceBulkUpdateDeviceTypePriorities:
                 DeviceTypePriorityBase(device_type=DeviceType.RING, priority=1),
             ]
         )
-        await priority_service.bulk_update_device_type_priorities(db, swap_update)
+        priority_service.bulk_update_device_type_priorities(db, swap_update)
 
         # Clear session cache
         db.expire_all()
 
         # Verify updated data persisted
-        result = await priority_service.get_device_type_priorities(db)
+        result = priority_service.get_device_type_priorities(db)
         assert len(result.items) == 2
         assert result.items[0].device_type == DeviceType.RING
         assert result.items[0].priority == 1

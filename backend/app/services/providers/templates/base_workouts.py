@@ -98,7 +98,7 @@ class BaseWorkoutsTemplate(ABC):
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout detail fetching")
 
-    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> int:
         """Load data from provider API.
 
         Override this method in subclasses that support cloud API access.

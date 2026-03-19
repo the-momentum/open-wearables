@@ -192,6 +192,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=raw_workout.timezone_offset,
             id=workout_id,
             external_id=raw_workout.id,  # Whoop workout UUID
             source=self.provider_name,
@@ -223,7 +224,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """Load data from Whoop API with pagination."""
         all_workouts = []
         next_token = None
@@ -309,9 +310,11 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 raise
 
         # Process and save all workouts
+        count = 0
         for record, details in self._build_bundles(all_workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = details.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count
