@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
+    min_password_length: int = 8
 
     # REDIS SETTINGS
     redis_host: str = "localhost"

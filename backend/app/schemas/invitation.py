@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from app.schemas.developer import MIN_PASSWORD_LENGTH
+from app.config import settings
 
 
 class InvitationStatus(StrEnum):
@@ -61,4 +61,4 @@ class InvitationAccept(BaseModel):
     token: str
     first_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
     last_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
-    password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
+    password: str = Field(..., min_length=settings.min_password_length)

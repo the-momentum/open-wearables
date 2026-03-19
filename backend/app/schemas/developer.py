@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-MIN_PASSWORD_LENGTH = 8
+from app.config import settings
 
 
 class DeveloperRead(BaseModel):
@@ -21,7 +21,7 @@ class DeveloperCreate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr
-    password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
+    password: str = Field(..., min_length=settings.min_password_length)
 
 
 class DeveloperCreateInternal(BaseModel):
@@ -38,7 +38,7 @@ class DeveloperUpdate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr | None = None
-    password: str | None = Field(None, min_length=MIN_PASSWORD_LENGTH)
+    password: str | None = Field(None, min_length=settings.min_password_length)
 
 
 class DeveloperUpdateInternal(BaseModel):
@@ -50,9 +50,9 @@ class DeveloperUpdateInternal(BaseModel):
 
 
 class PasswordChange(BaseModel):
-    current_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
-    new_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
-    confirm_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
+    current_password: str
+    new_password: str = Field(..., min_length=settings.min_password_length)
+    confirm_password: str = Field(..., min_length=settings.min_password_length)
 
     @model_validator(mode="after")
     def check_passwords_match(self) -> "PasswordChange":
