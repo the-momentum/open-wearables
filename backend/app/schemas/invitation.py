@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.schemas.developer import MIN_PASSWORD_LENGTH
+
 
 class InvitationStatus(StrEnum):
     PENDING = "pending"  # Email queued, delivery in progress
@@ -59,4 +61,4 @@ class InvitationAccept(BaseModel):
     token: str
     first_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
     last_name: str = Field(..., min_length=1, max_length=100, strip_whitespace=True)
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
