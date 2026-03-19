@@ -201,7 +201,7 @@ class TestSuuntoImport:
         result = suunto_strategy.workouts.load_data(db, user.id, since=0, limit=50)
 
         # Assert
-        assert result is True
+        assert result == 2
         assert mock_create.call_count == 2  # Two workouts
         assert mock_create_detail.call_count == 2  # Two workout details
         # Verify data source creation was attempted

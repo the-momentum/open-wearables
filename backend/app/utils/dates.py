@@ -64,6 +64,20 @@ def parse_datetime_or_default(
     return value
 
 
+def parse_webhook_data_timestamp(data_timestamp: str | None) -> datetime:
+    """Parse a webhook data_timestamp to a UTC datetime.
+
+    Tries ISO 8601 parsing; falls back to ``datetime.now(timezone.utc)``
+    when the value is ``None`` or unparseable.
+    """
+    if data_timestamp:
+        try:
+            return datetime.fromisoformat(data_timestamp.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            pass
+    return datetime.now(timezone.utc)
+
+
 def offset_to_iso(offset_seconds: int | None) -> str | None:
     """Convert a timezone offset in seconds to ISO 8601 format (e.g. 3600 -> '+01:00')."""
     if offset_seconds is None:

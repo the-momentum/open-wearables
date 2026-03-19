@@ -254,14 +254,14 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """No-op: Garmin activity data arrives via webhooks.
 
         REST/summary endpoints are not used. Historical data is fetched
         via the backfill API which delivers data through webhooks.
         """
         self.logger.info(f"Garmin activities for user {user_id} arrive via webhooks (no REST fetch)")
-        return True
+        return 0
 
     def get_activity_detail(
         self,

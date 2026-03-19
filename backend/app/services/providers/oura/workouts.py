@@ -174,8 +174,12 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
-        """Load data from Oura API with pagination."""
+    ) -> int:
+        """Load data from Oura API with pagination.
+
+        Returns:
+            Number of workout records saved.
+        """
         start = kwargs.get("start") or kwargs.get("start_date")
         end = kwargs.get("end") or kwargs.get("end_date")
 
@@ -199,9 +203,11 @@ class OuraWorkouts(BaseWorkoutsTemplate):
 
         all_workouts = self.get_workouts(db, user_id, start_dt, end_dt)
 
+        count = 0
         for record, details in self._build_bundles(all_workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = details.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count

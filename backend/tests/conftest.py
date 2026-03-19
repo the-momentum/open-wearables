@@ -226,6 +226,9 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         patch("app.services.apple.apple_xml.aws_service.get_s3_client", return_value=mock_s3),
         patch("app.services.apple.apple_xml.presigned_url_service.get_s3_client", return_value=mock_s3),
         patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
+        patch(
+            "app.services.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client", mock_s3, create=True
+        ),
         patch(f"{webhook_module}.get_trace_id", return_value=None),
         patch(f"{webhook_module}.mark_type_success", return_value=False),
         patch(

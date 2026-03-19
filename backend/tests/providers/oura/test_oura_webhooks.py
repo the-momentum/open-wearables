@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from freezegun import freeze_time
 from pydantic import ValidationError
 
 from app.schemas.oura.imports import OuraWebhookNotification
@@ -110,6 +111,7 @@ class TestOuraWebhookServiceTimestampParsing:
         assert start.month == 3
         assert end.day == 21
 
+    @freeze_time("2024-06-15T12:00:00+00:00")
     def test_parse_data_timestamp_missing_falls_back_to_utc_now(self) -> None:
         notification = OuraWebhookNotification(
             event_type="create",
@@ -118,10 +120,10 @@ class TestOuraWebhookServiceTimestampParsing:
         )
         start, end = OuraWebhookService._parse_data_timestamp(notification)
 
-        now = datetime.now(timezone.utc)
-        assert start.day == now.day
-        assert start.hour == 0
+        assert start == datetime(2024, 6, 15, 0, 0, tzinfo=timezone.utc)
+        assert end == datetime(2024, 6, 16, 0, 0, tzinfo=timezone.utc)
 
+    @freeze_time("2024-06-15T12:00:00+00:00")
     def test_parse_data_timestamp_invalid_falls_back_to_utc_now(self) -> None:
         notification = OuraWebhookNotification(
             event_type="create",
@@ -131,5 +133,5 @@ class TestOuraWebhookServiceTimestampParsing:
         )
         start, end = OuraWebhookService._parse_data_timestamp(notification)
 
-        now = datetime.now(timezone.utc)
-        assert start.day == now.day
+        assert start == datetime(2024, 6, 15, 0, 0, tzinfo=timezone.utc)
+        assert end == datetime(2024, 6, 16, 0, 0, tzinfo=timezone.utc)

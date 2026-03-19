@@ -233,7 +233,7 @@ class TestGarminWorkouts:
 
         result = garmin_workouts.load_data(db, user.id)
 
-        assert result is True
+        assert result == 0
 
     def test_get_activity_detail(self, garmin_workouts: GarminWorkouts, db: Session) -> None:
         """Test getting activity detail from API."""

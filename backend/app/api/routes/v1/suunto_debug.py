@@ -258,7 +258,7 @@ def sync_all_suunto_data(
         try:
             since_ms = int(from_time.timestamp() * 1000)
             success = strategy.workouts.load_data(db, user_id, since=since_ms)
-            results["workouts_synced"] = 1 if success else 0
+            results["workouts_synced"] = success
         except Exception as e:
             if isinstance(results["errors"], list):
                 results["errors"].append(f"Workouts: {str(e)}")
@@ -313,7 +313,7 @@ def sync_suunto_workouts(
     _api_key: ApiKeyDep,
     since: Annotated[int, Query(description="Unix timestamp in milliseconds")] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> dict[str, bool]:
+) -> dict[str, int]:
     """Synchronize only workouts from Suunto."""
     strategy = _get_suunto_strategy()
     if not strategy.workouts:

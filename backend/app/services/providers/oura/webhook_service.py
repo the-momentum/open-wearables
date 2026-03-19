@@ -1,6 +1,6 @@
 """Service for processing Oura Ring webhook notifications and managing subscriptions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any, cast
 from uuid import UUID
@@ -15,6 +15,7 @@ from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.workouts import OuraWorkouts
+from app.utils.dates import parse_webhook_data_timestamp
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -57,13 +58,7 @@ class OuraWebhookService:
         notification: OuraWebhookNotification,
     ) -> tuple[datetime, datetime]:
         """Parse notification timestamp into a start/end date range."""
-        if notification.data_timestamp:
-            try:
-                data_date = datetime.fromisoformat(notification.data_timestamp.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                data_date = datetime.now(timezone.utc)
-        else:
-            data_date = datetime.now(timezone.utc)
+        data_date = parse_webhook_data_timestamp(notification.data_timestamp)
 
         start_time = data_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end_time = start_time + timedelta(days=1)
@@ -194,8 +189,7 @@ class OuraWebhookService:
 
         if notification.data_type == "workout" and oura_strategy.workouts:
             oura_workouts = cast(OuraWorkouts, oura_strategy.workouts)
-            oura_workouts.load_data(db, user_id, start_date=start_time, end_date=end_time)
-            return 1
+            return oura_workouts.load_data(db, user_id, start_date=start_time, end_date=end_time)
 
         return None
 
@@ -217,6 +211,9 @@ class OuraWebhookService:
             else ""
         )
 
+        if not callback_url:
+            raise ValueError("callback_url is required to create webhook subscriptions")
+
         results: list[dict[str, Any]] = []
 
         async with httpx.AsyncClient() as client:
@@ -227,7 +224,7 @@ class OuraWebhookService:
                             OURA_WEBHOOK_API_URL,
                             headers=headers,
                             json={
-                                "callback_url": callback_url or "",
+                                "callback_url": callback_url,
                                 "verification_token": verification_token,
                                 "event_type": event_type,
                                 "data_type": data_type,

@@ -62,7 +62,7 @@ class TestGarminWorkoutImport:
         assert strategy.workouts is not None
 
         result = strategy.workouts.load_data(db, user.id)
-        assert result is True
+        assert result == 0
 
     def test_load_data_with_params_is_noop(self, db: Session) -> None:
         """Test load_data with date params is still a no-op."""
@@ -78,7 +78,7 @@ class TestGarminWorkoutImport:
             summary_start_time="1705309200",
             summary_end_time="1705482000",
         )
-        assert result is True
+        assert result == 0
 
     def test_import_garmin_activities_with_date_range(
         self,

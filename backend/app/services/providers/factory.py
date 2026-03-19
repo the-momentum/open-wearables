@@ -2,11 +2,8 @@ from app.schemas.oauth import ProviderName
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
-<<<<<<< 227-add-oura-provider
-from app.services.providers.oura.strategy import OuraStrategy
-=======
 from app.services.providers.google.strategy import GoogleStrategy
->>>>>>> main
+from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.samsung.strategy import SamsungStrategy
 from app.services.providers.strava.strategy import StravaStrategy

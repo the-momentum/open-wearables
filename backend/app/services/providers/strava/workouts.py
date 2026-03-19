@@ -240,7 +240,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """Load data from Strava API (historical backfill).
 
         Fetches all activities in a date range using page-based pagination.
@@ -288,12 +288,14 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                     error=str(e),
                 )
 
+        count = 0
         for record, detail in self._build_bundles(parsed_activities, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count
 
     def process_push_activity(
         self,
