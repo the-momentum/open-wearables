@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.config import settings
+
+
 class DeveloperRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
