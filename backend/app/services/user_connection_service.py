@@ -25,6 +25,7 @@ class UserConnectionService(
         """Get count of active connections created within a date range."""
         return self.crud.get_active_count_in_range(db_session, start_date, end_date)
 
+    @handle_exceptions
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnectionRead]:
         """Get all connections for a user."""
         connections = self.crud.get_by_user_id(db_session, user_id)
