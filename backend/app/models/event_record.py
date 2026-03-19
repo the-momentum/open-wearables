@@ -1,13 +1,14 @@
 from uuid import UUID
+from datetime import datetime
 
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import Index
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
 from app.mappings import (
     FKDataSource,
     PrimaryKey,
-    datetime_tz,
+    str_10,
     str_32,
     str_64,
     str_100,
@@ -17,14 +18,8 @@ from app.mappings import (
 class EventRecord(BaseDbModel):
     __tablename__ = "event_record"
     __table_args__ = (
-        Index("idx_event_record_source_category", "data_source_id", "category"),
-        Index("idx_event_record_source_time", "data_source_id", "start_datetime", "end_datetime"),
-        UniqueConstraint(
-            "data_source_id",
-            "start_datetime",
-            "end_datetime",
-            name="uq_event_record_datetime",
-        ),
+        Index("ix_event_record_source_category", "data_source_id", "category"),
+        Index("ix_event_record_source_time", "data_source_id", "start_datetime", "end_datetime", unique=True),
     )
 
     id: Mapped[PrimaryKey[UUID]]
@@ -37,8 +32,9 @@ class EventRecord(BaseDbModel):
 
     duration_seconds: Mapped[int | None]
 
-    start_datetime: Mapped[datetime_tz]
-    end_datetime: Mapped[datetime_tz]
+    start_datetime: Mapped[datetime]
+    end_datetime: Mapped[datetime]
+    zone_offset: Mapped[str_10 | None]
 
     detail: Mapped["EventRecordDetail | None"] = relationship(
         "EventRecordDetail",

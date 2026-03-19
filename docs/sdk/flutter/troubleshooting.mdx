@@ -1,13 +1,13 @@
 ---
 title: "Troubleshooting"
 sidebarTitle: "Troubleshooting"
-description: "Common issues and solutions for the Flutter SDK on iOS"
+description: "Common issues and solutions for the Flutter SDK on iOS and Android"
 ---
 
 ## Common Issues
 
 <AccordionGroup>
-  <Accordion title="HealthKit permissions not showing">
+  <Accordion title="HealthKit permissions not showing (iOS)">
     **Symptoms:** The health permissions dialog doesn't appear when calling `requestAuthorization()`.
 
     **Solutions:**
@@ -30,7 +30,37 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
        Your Apple Developer account must have HealthKit capability enabled for the App ID.
   </Accordion>
 
-  <Accordion title="Background sync not working">
+  <Accordion title="Health Connect permissions not showing (Android)">
+    **Symptoms:** Permission dialog doesn't appear on Android.
+
+    **Solutions:**
+
+    1. **Ensure Health Connect is installed:**
+       Health Connect must be installed on the device. It's pre-installed on Android 14+ but may need to be installed from Play Store on older versions.
+
+    2. **Set provider before requesting authorization:**
+       ```dart
+       await OpenWearablesHealthSdk.setProvider(AndroidHealthProvider.healthConnect);
+       final authorized = await OpenWearablesHealthSdk.requestAuthorization(
+         types: [
+           HealthDataType.steps,
+           HealthDataType.heartRate,
+           HealthDataType.sleep,
+         ],
+       );
+       // authorized == true  → permissions dialog was shown and accepted
+       // authorized == false → user denied or dialog failed to appear
+       print('Permissions granted: $authorized');
+       ```
+
+    3. **Check minSdk version:**
+       Your `android/app/build.gradle` must have `minSdk 29` or higher.
+
+    4. **Verify the Activity is set (if using native Android directly):**
+       The Flutter plugin handles this automatically, but if you see permission launcher issues, try rebuilding the app.
+  </Accordion>
+
+  <Accordion title="Background sync not working (iOS)">
     **Symptoms:** Data only syncs when the app is in the foreground.
 
     **Solutions:**
@@ -45,8 +75,8 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
 
        <key>BGTaskSchedulerPermittedIdentifiers</key>
        <array>
-           <string>com.healthbgsync.task.refresh</string>
-           <string>com.healthbgsync.task.process</string>
+           <string>com.openwearables.healthsdk.task.refresh</string>
+           <string>com.openwearables.healthsdk.task.process</string>
        </array>
        ```
 
@@ -61,29 +91,67 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
        iOS controls when background tasks run. Initial syncs may take 15+ minutes to trigger.
   </Accordion>
 
-  <Accordion title="Sign-in fails with 'Invalid token'">
-    **Symptoms:** `SignInException` with message about invalid or expired token.
+  <Accordion title="Background sync not working (Android)">
+    **Symptoms:** Data only syncs when the app is in the foreground on Android.
+
+    **Solutions:**
+
+    1. **Check battery optimization:**
+       Some Android manufacturers aggressively kill background services. Ask users to disable battery optimization for your app in Settings.
+
+    2. **Verify notification permissions:**
+       On Android 13+, the SDK uses a foreground service notification during sync. Ensure `POST_NOTIFICATIONS` permission is granted.
+
+    3. **Check provider connection:**
+       Verify the health provider is properly connected:
+       ```dart
+       final providers = await OpenWearablesHealthSdk.getAvailableProviders();
+       print(providers);
+       ```
+  </Accordion>
+
+  <Accordion title="Sign-in fails with error">
+    **Symptoms:** `SignInException` when calling `signIn()`.
 
     **Solutions:**
 
     1. **Check token expiration:**
        Access tokens expire. Ensure your backend generates fresh tokens.
 
-    2. **Verify API Key:**
-       Double-check your API Key on the backend is correct and active.
-
-    3. **Check network connectivity:**
-       Ensure the device can reach `api.openwearables.io`.
-
-    4. **Enable token refresh:**
+    2. **Verify credentials:**
+       Ensure you're providing either (`accessToken` + `refreshToken`) or `apiKey`:
        ```dart
-       await HealthBgSync.signIn(
+       // Token-based (recommended)
+       await OpenWearablesHealthSdk.signIn(
          userId: userId,
          accessToken: accessToken,
-         appId: 'your-app-id',
-         appSecret: 'your-app-secret',
-         baseUrl: 'https://api.openwearables.io',
+         refreshToken: refreshToken,
        );
+       
+       // OR API key-based
+       await OpenWearablesHealthSdk.signIn(
+         userId: userId,
+         apiKey: apiKey,
+       );
+       ```
+
+    3. **Check network connectivity:**
+       Ensure the device can reach your Open Wearables host.
+
+    4. **Check SignInException details:**
+       ```dart
+       try {
+         final user = await OpenWearablesHealthSdk.signIn(
+           userId: 'usr_abc123',
+           accessToken: accessToken,
+           refreshToken: refreshToken,
+         );
+         print('Signed in as ${user.userId}');
+       } on SignInException catch (e) {
+         // Example output: "Message: Unauthorized" / "Status code: 401"
+         print('Message: ${e.message}');
+         print('Status code: ${e.statusCode}');
+       }
        ```
   </Accordion>
 
@@ -94,7 +162,7 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
 
     1. **Check sync status:**
        ```dart
-       final status = await HealthBgSync.getSyncStatus();
+       final status = await OpenWearablesHealthSdk.getSyncStatus();
        print('Sent count: ${status['sentCount']}');
        ```
 
@@ -106,8 +174,8 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
 
     4. **Reset anchors for full sync:**
        ```dart
-       await HealthBgSync.resetAnchors();
-       await HealthBgSync.syncNow();
+       await OpenWearablesHealthSdk.resetAnchors();
+       await OpenWearablesHealthSdk.syncNow();
        ```
 
     5. **Check permissions:**
@@ -122,12 +190,20 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
 
     ```dart
     // ✅ Correct order
-    await HealthBgSync.configure();
-    await HealthBgSync.signIn(...);
-    await HealthBgSync.startBackgroundSync();
+    await OpenWearablesHealthSdk.configure(host: 'https://api.openwearables.io');
+    await OpenWearablesHealthSdk.signIn(
+      userId: 'usr_abc123',
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
+    await OpenWearablesHealthSdk.startBackgroundSync();
 
     // ❌ Wrong - signIn before configure
-    await HealthBgSync.signIn(...); // Throws NotConfiguredException
+    await OpenWearablesHealthSdk.signIn(
+      userId: 'usr_abc123',
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    ); // Throws NotConfiguredException
     ```
   </Accordion>
 
@@ -138,15 +214,32 @@ description: "Common issues and solutions for the Flutter SDK on iOS"
     Check sign-in status before sync operations:
 
     ```dart
-    if (!HealthBgSync.isSignedIn) {
-      await HealthBgSync.signIn(...);
+    if (!OpenWearablesHealthSdk.isSignedIn) {
+      await OpenWearablesHealthSdk.signIn(
+        userId: 'usr_abc123',
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
     }
-    await HealthBgSync.startBackgroundSync();
+    await OpenWearablesHealthSdk.startBackgroundSync();
     ```
+  </Accordion>
+
+  <Accordion title="Samsung Health not available">
+    **Symptoms:** Samsung Health provider not found on `getAvailableProviders()`.
+
+    **Solutions:**
+
+    1. **Samsung Health must be installed** on the device.
+    2. **Samsung devices only** - Samsung Health is typically only available on Samsung devices.
+    3. **Try Health Connect instead** as it works on all Android 10+ devices:
+       ```dart
+       await OpenWearablesHealthSdk.setProvider(AndroidHealthProvider.healthConnect);
+       ```
   </Accordion>
 </AccordionGroup>
 
-## HealthKit Entitlement Issues
+## HealthKit Entitlement Issues (iOS)
 
 If you see "Missing HealthKit entitlement" errors:
 
@@ -160,7 +253,7 @@ If you see "Missing HealthKit entitlement" errors:
 
 3. **Regenerate provisioning profiles** after making changes
 
-### Background Delivery Limitations
+### Background Delivery Limitations (iOS)
 
 iOS has strict limits on background execution:
 
@@ -177,6 +270,8 @@ iOS has strict limits on background execution:
 
 ## Testing Background Sync
 
+### iOS
+
 To test background sync during development:
 
 1. Run app on device
@@ -187,29 +282,48 @@ To test background sync during development:
 In Xcode, you can simulate background fetch:
 - Debug → Simulate Background Fetch
 
+### Android
+
+1. Run app on device or emulator
+2. Minimize the app
+3. The SDK uses WorkManager which should trigger relatively quickly
+4. Check logs via `MethodChannelOpenWearablesHealthSdk.logStream`
+
 ## Debugging Tips
 
 ### Enable Debug Logging
 
 ```dart
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
+
+// Listen to SDK logs
+MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {
+  print('[HealthSDK] $message');
+});
+
+// Listen to auth errors
+MethodChannelOpenWearablesHealthSdk.authErrorStream.listen((error) {
+  print('[HealthSDK] Auth error: ${error['statusCode']} - ${error['message']}');
+});
+
 // Log current state
-print('Status: ${HealthBgSync.status}');
-print('Is signed in: ${HealthBgSync.isSignedIn}');
-print('Is sync active: ${HealthBgSync.isSyncActive}');
-print('User: ${HealthBgSync.currentUser?.userId}');
+print('Status: ${OpenWearablesHealthSdk.status}');
+print('Is signed in: ${OpenWearablesHealthSdk.isSignedIn}');
+print('Is sync active: ${OpenWearablesHealthSdk.isSyncActive}');
+print('User: ${OpenWearablesHealthSdk.currentUser?.userId}');
 ```
 
 ### Check Stored Credentials
 
 ```dart
-final creds = await HealthBgSync.getStoredCredentials();
+final creds = await OpenWearablesHealthSdk.getStoredCredentials();
 print('Stored credentials: $creds');
 ```
 
 ### Monitor Sync Progress
 
 ```dart
-final status = await HealthBgSync.getSyncStatus();
+final status = await OpenWearablesHealthSdk.getSyncStatus();
 print('Has resumable session: ${status['hasResumableSession']}');
 print('Sent count: ${status['sentCount']}');
 print('Is full export: ${status['isFullExport']}');
@@ -222,13 +336,13 @@ If things are in a bad state:
 
 ```dart
 // Clear everything and start fresh
-await HealthBgSync.stopBackgroundSync();
-await HealthBgSync.signOut();
-await HealthBgSync.clearSyncSession();
-await HealthBgSync.resetAnchors();
+await OpenWearablesHealthSdk.stopBackgroundSync();
+await OpenWearablesHealthSdk.signOut();
+await OpenWearablesHealthSdk.clearSyncSession();
+await OpenWearablesHealthSdk.resetAnchors();
 
 // Re-initialize
-await HealthBgSync.configure();
+await OpenWearablesHealthSdk.configure(host: 'https://api.openwearables.io');
 ```
 
 ## Getting Help
@@ -247,6 +361,7 @@ If you're still experiencing issues:
 When reporting issues, please include:
 - Flutter version (`flutter --version`)
 - SDK version (from `pubspec.lock`)
-- Device model and OS version
+- Platform (iOS/Android) and OS version
+- Device model
 - Relevant logs and error messages
 - Steps to reproduce

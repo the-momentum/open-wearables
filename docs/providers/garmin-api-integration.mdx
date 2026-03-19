@@ -101,12 +101,31 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
 
     **Enable endpoints**
     - Open [API Endpoints](https://apis.garmin.com/tools/endpoints)
-    - Enable the endpoints you need (activities, dailies, epochs, sleep, body composition, etc.)
+    - For **every** endpoint, set the URL to your Open Wearables webhook push endpoint:
+
+    ```
+    https://<your-domain>/api/v1/garmin/webhooks/push
+    ```
+
+    For local development with ngrok:
+    ```
+    https://<your-ngrok-id>.ngrok-free.app/api/v1/garmin/webhooks/push
+    ```
+
+    - Set delivery type to **push** (dropdown on the right)
+    - Check **enabled** for each endpoint you want to activate
+    - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint
+
+    **Which endpoints to enable:**
+
+    Enable **all** endpoints listed on the page. Open Wearables accepts data from all Garmin data types (activities, dailies, sleeps, epochs, HRV, body compositions, stress, respiration, pulse ox, and more).
+
+    A subset of these types is actively requested during historical backfill — which ones is determined by `BACKFILL_DATA_TYPES` in `backend/app/services/providers/garmin/backfill_config.py`. All other enabled endpoints will passively receive data whenever Garmin pushes new updates.
 
     <Warning>
-    **Backfill requirement**: backfill only works once the relevant endpoints are enabled on the Endpoints page.
-    
-    Once backfill is enabled and data is ready, Garmin will deliver notifications (for now we support only push option) and Open Wearables can ingest the backfilled data.
+    **Backfill requirement**: backfill only works once the relevant endpoints are enabled on this page.
+
+    Once backfill is enabled and data is ready, Garmin will deliver notifications via push and Open Wearables can ingest the backfilled data.
     </Warning>
 
     <Note>

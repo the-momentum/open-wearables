@@ -1,51 +1,75 @@
 ---
 title: "Flutter SDK"
 sidebarTitle: "Overview"
-description: "Background health data sync for Flutter apps using Apple HealthKit"
+description: "Background health data sync for Flutter apps from Apple HealthKit, Samsung Health, and Health Connect"
 ---
 
 ## Introduction
 
-The Open Wearables Flutter SDK (`health_bg_sync`) enables secure background synchronization of health data from Apple HealthKit (iOS) to the Open Wearables platform.
+The Open Wearables Flutter SDK (`open_wearables_health_sdk`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
 
-On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). This means all the core sync logic — background execution, streaming uploads, Keychain storage, and retry mechanisms — is handled by the native Swift implementation under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
+On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`OpenWearablesHealthSDK`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open-wearables-android-sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The Flutter layer provides a convenient Dart API for cross-platform apps.
 
-<CardGroup cols={2}>
+<CardGroup cols={3}>
   <Card title="Flutter SDK Repository" icon="github" href="https://github.com/the-momentum/open_wearables_health_sdk">
     View source code, report issues, and contribute to the Flutter SDK.
   </Card>
   <Card title="Native iOS SDK" icon="apple" href="/sdk/ios">
-    See the native iOS SDK documentation for details on the underlying implementation.
+    See the native iOS SDK documentation for the underlying iOS implementation.
+  </Card>
+  <Card title="Native Android SDK" icon="android" href="/sdk/android">
+    See the native Android SDK documentation for the underlying Android implementation.
   </Card>
 </CardGroup>
 
 ## Features
 
+- **Cross-Platform** - Single Dart API for iOS (HealthKit) and Android (Samsung Health, Health Connect)
 - **Background Sync** - Health data syncs even when your app is in the background
 - **Incremental Updates** - Only syncs new data using anchored queries
-- **Secure Storage** - Credentials stored in iOS Keychain
-- **Simple Authentication** - Token-based auth with optional auto-refresh
+- **Secure Storage** - Credentials stored in iOS Keychain / Android EncryptedSharedPreferences
+- **Dual Authentication** - Token-based auth with auto-refresh or API key authentication
+- **Resumable Sessions** - Sync sessions survive app restarts
 - **Wide Data Support** - Steps, heart rate, workouts, sleep, and 40+ data types
+- **Provider Selection** - Choose between Samsung Health and Health Connect on Android
 
 ## Requirements
 
-| Requirement | Details |
-|-------------|---------|
-| iOS Version | iOS 13.0+ |
-| Xcode | Xcode 14+ |
-| Apple Developer Account | Required for HealthKit entitlement |
-| HealthKit Capability | Must be enabled in Xcode |
-| Physical Device | HealthKit doesn't work in iOS Simulator |
+<Tabs>
+  <Tab title="iOS">
+    | Requirement | Details |
+    |-------------|---------|
+    | iOS Version | iOS 15.0+ |
+    | Xcode | Xcode 14+ |
+    | Apple Developer Account | Required for HealthKit entitlement |
+    | HealthKit Capability | Must be enabled in Xcode |
+    | Physical Device | HealthKit doesn't work in iOS Simulator |
+  </Tab>
+  <Tab title="Android">
+    | Requirement | Details |
+    |-------------|---------|
+    | Min SDK | Android 10 (API 29+) |
+    | Samsung Health SDK | For Samsung Health provider |
+    | Health Connect | For Health Connect provider |
+    | Permissions | See Android configuration below |
+  </Tab>
+  <Tab title="Flutter">
+    | Requirement | Details |
+    |-------------|---------|
+    | Flutter | 3.3.0+ |
+    | Dart SDK | 3.9.2+ |
+  </Tab>
+</Tabs>
 
 ## Installation
 
 <Steps>
   <Step title="Add the dependency">
-    Add `health_bg_sync` to your `pubspec.yaml`:
+    Add `open_wearables_health_sdk` to your `pubspec.yaml`:
 
     ```yaml
     dependencies:
-      health_bg_sync: ^0.1.0
+      open_wearables_health_sdk: ^0.0.14
     ```
 
     Then run:
@@ -73,8 +97,8 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
     <!-- Background task identifiers -->
     <key>BGTaskSchedulerPermittedIdentifiers</key>
     <array>
-        <string>com.healthbgsync.task.refresh</string>
-        <string>com.healthbgsync.task.process</string>
+        <string>com.openwearables.healthsdk.task.refresh</string>
+        <string>com.openwearables.healthsdk.task.process</string>
     </array>
     ```
 
@@ -85,6 +109,21 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
     3. Click **+ Capability** → Add **HealthKit**
     4. Check **Background Delivery** if you want updates while app is closed
   </Step>
+
+  <Step title="Android Configuration">
+    The SDK's Android module handles most configuration automatically. Make sure your `android/app/build.gradle` has:
+
+    ```groovy
+    android {
+        compileSdk 36
+        defaultConfig {
+            minSdk 29
+        }
+    }
+    ```
+
+    No additional permissions or manifest entries are needed — the SDK's `AndroidManifest.xml` merges automatically.
+  </Step>
 </Steps>
 
 ## Quick Start
@@ -92,18 +131,18 @@ On iOS, the Flutter SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (
 Here's the minimal code to get health sync working:
 
 ```dart
-import 'package:health_bg_sync/health_bg_sync.dart';
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 
 class HealthService {
   Future<void> initialize() async {
-    // 1. Configure the SDK
-    await HealthBgSync.configure(
-      environment: HealthBgSyncEnvironment.production,
+    // 1. Configure the SDK with your backend host
+    await OpenWearablesHealthSdk.configure(
+      host: 'https://api.openwearables.io',
     );
 
-    // 2. Check if already signed in (session restored from Keychain)
-    if (HealthBgSync.isSignedIn) {
-      print('Session restored for ${HealthBgSync.currentUser?.userId}');
+    // 2. Check if already signed in (session restored from secure storage)
+    if (OpenWearablesHealthSdk.isSignedIn) {
+      print('Session restored for ${OpenWearablesHealthSdk.currentUser?.userId}');
       return;
     }
 
@@ -111,13 +150,14 @@ class HealthService {
     final credentials = await yourBackend.getHealthCredentials();
 
     // 4. Sign in with the SDK
-    await HealthBgSync.signIn(
+    await OpenWearablesHealthSdk.signIn(
       userId: credentials.userId,
       accessToken: credentials.accessToken,
+      refreshToken: credentials.refreshToken,
     );
 
     // 5. Request health permissions
-    await HealthBgSync.requestAuthorization(
+    await OpenWearablesHealthSdk.requestAuthorization(
       types: [
         HealthDataType.steps,
         HealthDataType.heartRate,
@@ -126,10 +166,69 @@ class HealthService {
       ],
     );
 
-    // 6. Start background sync
-    await HealthBgSync.startBackgroundSync();
+    // 6. Start background sync (sync last 90 days of data)
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: 90);
   }
 }
+```
+
+## Android Provider Selection
+
+On Android, you need to select a health data provider before requesting permissions:
+
+```dart
+import 'dart:io';
+
+if (Platform.isAndroid) {
+  // Check available providers
+  final providers = await OpenWearablesHealthSdk.getAvailableProviders();
+  for (final p in providers) {
+    print('${p.displayName} (${p.id})');
+  }
+
+  // Set the provider (samsung or google/Health Connect)
+  await OpenWearablesHealthSdk.setProvider(AndroidHealthProvider.healthConnect);
+}
+```
+
+<Note>
+  `AndroidHealthProvider.samsungHealth` maps to Samsung Health, and `AndroidHealthProvider.healthConnect` maps to Google Health Connect. Use `getAvailableProviders()` to check which are installed on the device.
+</Note>
+
+## Log Level
+
+Control SDK log output with `setLogLevel`. The default is `OWLogLevel.debug` (logs only in debug builds):
+
+```dart
+// Always show logs (useful for troubleshooting in production)
+await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.always);
+
+// Disable all logs
+await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.none);
+```
+
+| Level | Description |
+|-------|-------------|
+| `OWLogLevel.none` | No logs at all |
+| `OWLogLevel.always` | Logs are always printed regardless of build mode |
+| `OWLogLevel.debug` | Logs are printed only in debug builds (default) |
+
+## Listening to Events
+
+The SDK exposes streams for logging and auth errors:
+
+```dart
+import 'package:open_wearables_health_sdk/open_wearables_health_sdk_method_channel.dart';
+
+// Log stream from native SDK
+MethodChannelOpenWearablesHealthSdk.logStream.listen((message) {
+  print('[HealthSDK] $message');
+});
+
+// Auth error stream (e.g. 401 responses)
+MethodChannelOpenWearablesHealthSdk.authErrorStream.listen((error) {
+  print('Auth error: ${error['statusCode']} - ${error['message']}');
+});
 ```
 
 ## Documentation
@@ -157,7 +256,11 @@ The SDK supports 40+ health data types across multiple categories:
     | `flightsClimbed` | Floors climbed |
     | `walkingSpeed` | Average walking speed |
     | `walkingStepLength` | Step length |
+    | `walkingAsymmetryPercentage` | Walking asymmetry percentage |
+    | `walkingDoubleSupportPercentage` | Walking double support percentage |
     | `sixMinuteWalkTestDistance` | 6-minute walk test |
+    | `activeEnergy` | Active energy burned |
+    | `basalEnergy` | Basal (resting) energy burned |
   </Accordion>
 
   <Accordion title="Heart & Vitals">
@@ -169,7 +272,6 @@ The SDK supports 40+ health data types across multiple categories:
     | `vo2Max` | VO2 max |
     | `oxygenSaturation` | Blood oxygen |
     | `respiratoryRate` | Breathing rate |
-    | `bloodPressure` | Blood pressure readings |
   </Accordion>
 
   <Accordion title="Body Measurements">
@@ -180,8 +282,18 @@ The SDK supports 40+ health data types across multiple categories:
     | `bmi` | Body Mass Index |
     | `bodyFatPercentage` | Body fat % |
     | `leanBodyMass` | Lean body mass |
-    | `waistCircumference` | Waist circumference (iOS 16+) |
+    | `waistCircumference` | Waist circumference |
     | `bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Blood & Metabolic">
+    | Type | Description |
+    |------|-------------|
+    | `bloodGlucose` | Blood glucose level |
+    | `insulinDelivery` | Insulin delivery |
+    | `bloodPressureSystolic` | Systolic blood pressure |
+    | `bloodPressureDiastolic` | Diastolic blood pressure |
+    | `bloodPressure` | Blood pressure (correlation type) |
   </Accordion>
 
   <Accordion title="Sleep & Mindfulness">
@@ -189,6 +301,15 @@ The SDK supports 40+ health data types across multiple categories:
     |------|-------------|
     | `sleep` | Sleep sessions and stages |
     | `mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Reproductive Health">
+    | Type | Description |
+    |------|-------------|
+    | `menstrualFlow` | Menstrual flow |
+    | `cervicalMucusQuality` | Cervical mucus quality |
+    | `ovulationTestResult` | Ovulation test result |
+    | `sexualActivity` | Sexual activity |
   </Accordion>
 
   <Accordion title="Nutrition">
@@ -208,13 +329,17 @@ The SDK supports 40+ health data types across multiple categories:
   </Accordion>
 </AccordionGroup>
 
+<Note>
+  Not all data types are available on all providers. Samsung Health supports a subset of types compared to Health Connect and HealthKit. See the [Android SDK docs](/sdk/android) for provider-specific availability.
+</Note>
+
 ## Next Steps
 
 <CardGroup cols={2}>
   <Card title="Integration Guide" icon="arrow-right" href="/sdk/flutter/integration">
     Complete step-by-step integration guide.
   </Card>
-  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open_wearables_health_sdk#api-reference">
+  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open_wearables_health_sdk">
     Full API documentation on GitHub.
   </Card>
 </CardGroup>

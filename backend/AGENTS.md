@@ -44,12 +44,12 @@ from app.services import ApiKeyDep, user_service
 router = APIRouter()
 
 @router.get("/users", response_model=list[UserRead])
-async def list_users(db: DbSession, _api_key: ApiKeyDep):
+def list_users(db: DbSession, _api_key: ApiKeyDep):
     """List all users."""
     return db.query(user_service.crud.model).all()
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=UserRead)
-async def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
+def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
     """Create a new user."""
     return user_service.create(db, payload)
 ```
@@ -210,6 +210,7 @@ make downgrade                             # Rollback
 - Line length: 120 characters
 - Type hints required on all functions
 - Imports sorted by isort
+- All imports at module level — never inside functions or methods
 - PEP 8 naming conventions
 
 ## Commands
@@ -343,6 +344,7 @@ app/api/routes/
 - Define functions as `async` by default
 - Use **kebab-case** for paths: `/heart-rate`, `/import-data`
 - Keep route code minimal, delegate to services
+- **Never call repositories directly from routes** - always go through a service layer
 - **No trailing slashes:** Use `""` (empty string) instead of `"/"` for root routes on prefixed routers. A `"/"` path creates a trailing-slash canonical URL, causing FastAPI 307 redirects that break behind HTTPS reverse proxies.
 
 **Flow:**

@@ -61,7 +61,7 @@ class TimeSeriesService(
         return self.crud.get_count_by_source(db_session)
 
     @handle_exceptions
-    async def get_timeseries(
+    def get_timeseries(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -120,6 +120,7 @@ class TimeSeriesService(
 
             item = TimeSeriesSample(
                 timestamp=sample.recorded_at,
+                zone_offset=sample.zone_offset,
                 type=series_type,
                 value=float(sample.value),
                 unit=unit,

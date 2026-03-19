@@ -3,12 +3,14 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.schemas.sleep import SleepStage
+
 
 class EventRecordDetailBase(BaseModel):
     """Base schema for event record detail."""
 
-    heart_rate_min: int | None = None
-    heart_rate_max: int | None = None
+    heart_rate_min: Decimal | int | None = None
+    heart_rate_max: Decimal | int | None = None
     heart_rate_avg: Decimal | None = None
 
     steps_count: int | None = None
@@ -37,7 +39,7 @@ class EventRecordDetailBase(BaseModel):
     sleep_awake_minutes: int | None = None
     is_nap: bool | None = None
 
-    is_nap: bool | None = None
+    sleep_stages: list[SleepStage] | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

@@ -17,6 +17,14 @@ uv run python scripts/init_device_priorities.py
 echo 'Seeding admin account...'
 uv run python scripts/init/seed_admin.py
 
+# Initialize series type definitions
+echo 'Initializing series type definitions...'
+uv run python scripts/init/seed_series_types.py
+
+# Initialize archival settings
+echo 'Initializing archival settings...'
+uv run python scripts/init/seed_archival_settings.py
+
 # Init app
 echo "Starting the FastAPI application..."
 if [ "$ENVIRONMENT" = "local" ]; then

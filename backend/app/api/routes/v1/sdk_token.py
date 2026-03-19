@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/users/{user_id}/token")
-async def create_user_token(
+def create_user_token(
     user_id: UUID,
     db: DbSession,
     payload: Annotated[SDKTokenRequest | None, Body()] = None,

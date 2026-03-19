@@ -37,17 +37,23 @@ User management is available both through the developer portal UI and via the RE
 
 ---
 
-### OAuth Flow for Garmin, Polar, and Suunto
+### Provider Integrations
 
-OAuth Flows are available both through the developer portal UI and via the REST API. 
+The platform supports the following wearable providers:
 
-The platform supports OAuth-based authentication for cloud-based wearable providers:
+**Cloud-based (OAuth):**
+- **Garmin** - OAuth + automatic webhook sync
+- **Polar** - OAuth + data sync
+- **Suunto** - OAuth + data sync
+- **Whoop** - OAuth + data sync
+- **Strava** - OAuth + webhook sync
 
-- **Garmin**
-- **Polar**
-- **Suunto**
+**Device/SDK-based:**
+- **Apple Health** - HealthKit integration and XML export support
+- **Samsung Health** - SDK-based data sync
+- **Google Health Connect** - SDK-based data sync
 
-Users can connect their devices through a simplified flow:
+Users can connect their cloud-based devices through a simplified OAuth flow:
 1. Generate a connection link for your user
 2. User authenticates with their wearable provider
 3. Data automatically syncs to your platform
@@ -57,9 +63,7 @@ Users can connect their devices through a simplified flow:
 
 ### Workout Data Sync and API Access
 
-**Status**: ✅ Available
-
-Workout data synchronization is currently available for Garmin, Polar, and Suunto:
+Workout data synchronization is available across all supported providers:
 
 - Automatic background synchronization of workout data
 - Normalized data format across all supported providers
@@ -68,33 +72,93 @@ Workout data synchronization is currently available for Garmin, Polar, and Suunt
 
 ---
 
-## In Development
-
-These features are actively being worked on and will be available in upcoming releases:
-
 ### Core Health Data Endpoints
 
-We're expanding the API to include comprehensive health data endpoints beyond workouts:
+The API provides comprehensive health data endpoints beyond workouts, with normalized access across supported providers:
 
-- Heart rate data (resting, active, zones)
-- Sleep metrics (duration, quality, stages)
-- Activity summaries (steps, calories, distance)
-- Body metrics (weight, body fat, etc.)
-- Stress and recovery metrics
+- **[Heart rate data](/architecture/data-types#heart--cardiovascular)** - resting, active, and heart rate zones
+- **[Sleep metrics](/architecture/unified-data-model#sleepdetails)** - duration, quality, and sleep stages
+- **[Activity summaries](/architecture/data-types#activity---basic)** - steps, calories, distance, intensity minutes
+- **[Body metrics](/architecture/data-types#body-composition)** - weight, body fat, muscle mass, BMI
 
-These endpoints will provide normalized access to health data across all supported providers, making it easier to build comprehensive health applications.
+See the [data types](/architecture/data-types) and [unified data model](/architecture/unified-data-model) pages for full details on available fields.
 
 ---
 
-### Mobile SDK (Flutter) 
+### MCP Server (AI Assistant)
 
-A Flutter SDK is being developed to simplify mobile app integration:
+An MCP (Model Context Protocol) server that enables AI-powered health data interactions. This feature can work for both developers and end-users in the applications you build, allowing you to plug it directly into chat interfaces within your product.
+
+- **MCP Server Integration**: Plug the AI assistant into your existing chat interface or build new conversational experiences
+- **Natural Language Queries**: Enable users to ask questions about health metrics and recent workouts
+- **Customizable AI Models**: Swap models to match your needs and use case
+- **Data Exploration**: Debug and explore user data through conversation, useful for both development and end-user support
+
+<Tip>Imagine a scenario where you're building an application for personal trainers. Thanks to Open Wearables and MCP integration, you'll be able to easily implement a chat through which the trainer will be able to query in natural language about the latest data from their athletes' wearables.</Tip>
+
+---
+
+### Raw Payload Storage
+
+Optional storage of raw incoming payloads from wearable providers for debugging and data auditing purposes. Supports multiple storage backends including log-based and S3.
+
+---
+
+### Mobile SDK (Flutter)
+
+A Flutter SDK for simplified mobile app integration:
 
 - **HealthKit Integration**: Native iOS HealthKit permissions and data access
 - **Seamless User Registration and Data Sync**: Streamlined onboarding process that automatically creates users in Open Wearables and syncs their health data
 - **Background Sync**: Automatic data synchronization in the background
 
-This SDK will make it easier for mobile developers to integrate data from Apple Health into their Flutter applications.
+---
+
+## In Development
+
+These features are actively being worked on and will be available in upcoming releases:
+
+### Connection Widget
+
+An embeddable widget that allows users to connect their wearables directly from your application, without being redirected to the Open Wearables UI.
+
+---
+
+### Mobile SDK (React Native)
+
+A React Native SDK is being developed to bring the same capabilities as the Flutter SDK to the React Native ecosystem:
+
+- **HealthKit & Health Connect Integration**: Native iOS and Android health data access
+- **Seamless User Registration and Data Sync**: Streamlined onboarding that automatically creates users in Open Wearables and syncs their health data
+- **Background Sync**: Automatic data synchronization in the background
+
+---
+
+### Webhooks - Real-Time Data Delivery
+
+Webhook support for receiving real-time data pushes instead of polling API endpoints:
+
+- **Registration**: Register webhook endpoints via dashboard or API, choosing which event types to subscribe to
+- **Automatic Delivery**: When new data arrives, a POST request is sent to your registered URL with the event payload
+- **Retry Logic**: Automatic retries with exponential backoff on delivery failure
+- **Dashboard**: View delivery history, logs, and success rates
+- **Security**: Signature verification for payload authenticity (Svix standard), HTTPS requirement
+
+See [GitHub issue #99](https://github.com/the-momentum/open-wearables/issues/99) for details.
+
+---
+
+### Health Scores
+
+Platform-generated health scores that provide unified, provider-independent interpretations of health data. Instead of relying on manufacturer-specific (often black-box) scores, Open Wearables will calculate its own default scores based on raw data.
+
+- **Sleep Score** - a unified score based on sleep duration, number of awakenings, and sleep stage composition (light, deep, REM)
+- **Stress Score** - stress level assessment based on available biometric data
+- **Readiness Score** - recovery and readiness estimation
+
+Health Scores will be fully customizable - developers will be able to adjust parameters and thresholds to match their application's needs.
+
+<Tip>Sleep Score is the first Health Score being developed and will serve as the foundation for the broader Health Scores system. See [GitHub issue #382](https://github.com/the-momentum/open-wearables/issues/382) for details.</Tip>
 
 ---
 
@@ -116,33 +180,20 @@ This feature will enable developers to build intelligent health monitoring syste
 
 ---
 
-### MCP Server (AI Assistant)
+### AI Health Assistant Widget
 
-We're building an MCP (Model Context Protocol) server that enables AI-powered health data interactions. This feature can work for both developers and end-users in the applications you build, allowing you to plug it directly into chat interfaces within your product.
+An embeddable AI chat widget for user health queries, built on top of the MCP Server:
 
-- **MCP Server Integration**: Plug the AI assistant into your existing chat interface or build new conversational experiences 
-- **Natural Language Queries**: Enable users to ask questions about health metrics and recent workouts
-- **Customizable AI Models**: Swap models to match your needs and use case
-- **Data Exploration**: Debug and explore user data through conversation, useful for both development and end-user support
-<Tip>Imagine a scenario where you're building an application for personal trainers. Thanks to Open Wearables and MCP integration, you'll be able to easily implement a chat through which the trainer will be able to query in natural language about the latest data from their athletes' wearables.</Tip>
+- **Embed in Your App**: Drop the AI chat interface directly into your web application
+- **Customizable Styling**: Match the widget to your app's design system
 
-### Enhanced Widget Integration
+---
 
-We're building embeddable widgets that can be easily integrated into any web application:
+### Additional Provider Support
 
-- **Connection Widget**: Allow users to connect their wearables directly from your app (currently users are taken to Open Wearables UI)
-- **AI Health Assistant Widget**: Embed the AI chat interface for user health queries
-- **Customizable Styling**: Match widgets to your app's design system
-
-These widgets will reduce integration time and provide a consistent user experience across different applications.
-
-### Provider Support
-
-- **Additional provider support** (Fitbit, Oura, Whoop, Strava, etc.)
-
-### API Enhancements
-
-- **Webhook events** - Health data is pushed directly to your backend via webhooks, enabling real-time notifications and event-driven architectures 
+- **Fitbit**
+- **Oura**
+- **Coros**
 
 ---
 
@@ -150,9 +201,9 @@ These widgets will reduce integration time and provide a consistent user experie
 
 Have ideas or want to help build these features? We'd love your input!
 
-- 💬 [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions) - Share your ideas and feedback
-- 🐛 [GitHub Issues](https://github.com/the-momentum/open-wearables/issues) - Report bugs or request features
-- 💬 [Discord](https://discord.gg/qrcfFnNE6H) - Discuss roadmap priorities and share feature ideas with the community
+- [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions) - Share your ideas and feedback
+- [GitHub Issues](https://github.com/the-momentum/open-wearables/issues) - Report bugs or request features
+- [Discord](https://discord.gg/qrcfFnNE6H) - Discuss roadmap priorities and share feature ideas with the community
 
 
 ---
@@ -160,4 +211,3 @@ Have ideas or want to help build these features? We'd love your input!
 <Note>
 **Note**: This roadmap is subject to change based on community feedback and development priorities. Features marked as "In Development" don't have fixed release dates, but we're actively working on them.
 </Note>
-

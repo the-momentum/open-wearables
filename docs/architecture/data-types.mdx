@@ -20,8 +20,10 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `heart_rate` | bpm | Heart rate |
 | `resting_heart_rate` | bpm | Resting heart rate |
 | `heart_rate_variability_sdnn` | ms | HRV (SDNN method) |
+| `heart_rate_variability_rmssd` | ms | HRV (RMSSD method) |
 | `heart_rate_recovery_one_minute` | bpm | HR recovery after 1 minute |
 | `walking_heart_rate_average` | bpm | Average HR while walking |
+| `recovery_score` | score | Recovery score |
 
 ### Blood & Respiratory
 
@@ -33,6 +35,11 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `blood_pressure_diastolic` | mmHg | Diastolic blood pressure |
 | `respiratory_rate` | brpm | Breathing rate |
 | `sleeping_breathing_disturbances` | count | Sleep breathing disturbances |
+| `blood_alcohol_content` | mg/dL | Blood alcohol content |
+| `peripheral_perfusion_index` | score | Peripheral perfusion index |
+| `forced_vital_capacity` | liters | Forced vital capacity |
+| `forced_expiratory_volume_1` | liters | Forced expiratory volume (1s) |
+| `peak_expiratory_flow_rate` | liters | Peak expiratory flow rate |
 
 ### Body Composition
 
@@ -44,6 +51,10 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `body_mass_index` | kg/m² | BMI |
 | `lean_body_mass` | kg | Lean body mass |
 | `body_temperature` | °C | Body temperature |
+| `skin_temperature` | °C | Skin temperature |
+| `waist_circumference` | cm | Waist circumference |
+| `body_fat_mass` | kg | Body fat mass |
+| `skeletal_muscle_mass` | kg | Skeletal muscle mass |
 
 ### Fitness Metrics
 
@@ -63,6 +74,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `exercise_time` | minutes | Exercise duration |
 | `physical_effort` | score | Physical effort score |
 | `flights_climbed` | count | Floors/flights climbed |
+| `average_met` | MET | Average metabolic equivalent |
 
 ### Activity - Distance
 
@@ -72,6 +84,7 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `distance_cycling` | meters | Cycling distance |
 | `distance_swimming` | meters | Swimming distance |
 | `distance_downhill_snow_sports` | meters | Skiing/snowboarding distance |
+| `distance_other` | meters | Other distance |
 
 ### Activity - Walking Metrics
 
@@ -95,13 +108,22 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `running_ground_contact_time` | ms | Ground contact time |
 | `running_stride_length` | cm | Stride length |
 
-### Activity - Other
+### Activity - Swimming
 
 | Type | Unit | Description |
 |------|------|-------------|
 | `swimming_stroke_count` | count | Swimming strokes |
+| `underwater_depth` | meters | Underwater depth |
+
+### Activity - Generic
+
+| Type | Unit | Description |
+|------|------|-------------|
 | `cadence` | rpm | Cadence (cycling, etc.) |
 | `power` | watts | Power output |
+| `speed` | m/s | Speed |
+| `workout_effort_score` | score | Workout effort score |
+| `estimated_workout_effort_score` | score | Estimated workout effort score |
 
 ### Environmental
 
@@ -109,32 +131,80 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 |------|------|-------------|
 | `environmental_audio_exposure` | dB | Environmental noise |
 | `headphone_audio_exposure` | dB | Headphone volume |
+| `uv_exposure` | count | UV exposure |
+| `inhaler_usage` | count | Inhaler usage |
+| `weather_temperature` | °C | Weather temperature |
+| `weather_humidity` | % | Weather humidity |
 
 <Note>
   Additional environmental types (`environmental_sound_reduction`, `time_in_daylight`, `water_temperature`) are defined but not currently supported by any provider.
 </Note>
 
+### Garmin-Specific
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `garmin_stress_level` | score | Stress score (1-100) |
+| `garmin_skin_temperature` | °C | Skin temperature deviation from baseline |
+| `garmin_fitness_age` | years | Fitness age estimate |
+| `garmin_body_battery` | % | Body battery (0-100) |
+
+### Other
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `electrodermal_activity` | count | Electrodermal activity |
+| `push_count` | count | Push count (wheelchair) |
+| `atrial_fibrillation_burden` | count | Atrial fibrillation burden |
+| `insulin_delivery` | count | Insulin delivery |
+| `number_of_times_fallen` | count | Fall count |
+| `number_of_alcoholic_beverages` | count | Alcoholic beverages |
+| `nike_fuel` | count | Nike Fuel |
+| `hydration` | mL | Hydration |
+
 ---
 
 ## Workout Types
 
-Common workout types returned by the events/workouts endpoint. This is not an exhaustive list—the API supports 70+ workout types:
+Common workout types returned by the events/workouts endpoint. This is not an exhaustive list - the API supports 80+ workout types:
 
 | Type | Description |
 |------|-------------|
 | `running` | Running/jogging |
+| `trail_running` | Trail running |
+| `treadmill` | Treadmill running |
 | `cycling` | Cycling/biking |
-| `swimming` | Swimming (pool or open water) |
+| `mountain_biking` | Mountain biking |
+| `indoor_cycling` | Indoor/stationary cycling |
+| `swimming` | Swimming (generic) |
+| `pool_swimming` | Pool swimming |
+| `open_water_swimming` | Open water swimming |
 | `walking` | Walking |
 | `hiking` | Hiking |
+| `mountaineering` | Mountaineering |
 | `strength_training` | Weight/resistance training |
+| `cardio_training` | Cardio training |
 | `yoga` | Yoga |
 | `pilates` | Pilates |
+| `meditation` | Meditation |
 | `elliptical` | Elliptical trainer |
 | `rowing` | Rowing |
 | `cross_country_skiing` | Cross-country skiing |
-| `downhill_skiing` | Downhill/alpine skiing |
+| `alpine_skiing` | Alpine skiing |
+| `downhill_skiing` | Downhill skiing |
 | `snowboarding` | Snowboarding |
+| `soccer` | Soccer |
+| `basketball` | Basketball |
+| `tennis` | Tennis |
+| `golf` | Golf |
+| `boxing` | Boxing |
+| `martial_arts` | Martial arts |
+| `rock_climbing` | Rock climbing |
+| `surfing` | Surfing |
+| `kayaking` | Kayaking |
+| `triathlon` | Triathlon |
+| `e_biking` | E-biking |
+| `dance` | Dance |
 | `other` | Other/unknown activity |
 
 <Note>

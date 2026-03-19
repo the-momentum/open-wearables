@@ -5,6 +5,7 @@ from logging import Formatter, StreamHandler, getLogger
 from app.config import settings
 from celery import Celery, signals
 from celery import current_app as current_celery_app
+from celery.schedules import crontab
 
 
 @signals.setup_logging.connect
@@ -46,21 +47,17 @@ def create_celery() -> Celery:
         task_serializer="json",
         accept_content=["json"],
         result_serializer="json",
-        timezone="Europe/Warsaw",
+        timezone="UTC",
         enable_utc=True,
         task_default_queue="default",
         task_default_exchange="default",
         result_expires=3 * 24 * 3600,
         task_queues={
             "default": {},
-            "apple_sync": {},
-            "samsung_sync": {},
+            "sdk_sync": {},
         },
         task_routes={
-            "app.integrations.celery.tasks.process_apple_upload_task.process_apple_upload": {"queue": "apple_sync"},
-            "app.integrations.celery.tasks.process_samsung_upload_task.process_samsung_upload": {
-                "queue": "samsung_sync"
-            },
+            "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
         },
     )
 
@@ -76,6 +73,18 @@ def create_celery() -> Celery:
         "finalize-stale-sleeps-periodic": {
             "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
             "schedule": float(settings.sleep_sync_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
+        "gc-stuck-garmin-backfills": {
+            "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
+            "schedule": 180.0,  # Every 3 minutes
+            "args": (),
+            "kwargs": {},
+        },
+        "run-daily-archival": {
+            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
+            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
             "args": (),
             "kwargs": {},
         },

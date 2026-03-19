@@ -38,6 +38,7 @@ class WorkoutJSON(BaseModel):
     stopTime: int
     # Seconds
     totalTime: float
+    timeOffsetInMinutes: int | None = None
 
     # Metrics (all optional)
     totalDistance: int | None = None

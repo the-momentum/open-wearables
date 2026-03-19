@@ -192,6 +192,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=raw_workout.timezone_offset,
             id=workout_id,
             external_id=raw_workout.id,  # Whoop workout UUID
             source=self.provider_name,

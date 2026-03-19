@@ -2,12 +2,14 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { authService } from '../lib/api';
+import { ApiError } from '@/lib/errors/api-error';
 import { setSession, clearSession, isAuthenticated } from '../lib/auth/session';
 import type {
   LoginRequest,
   RegisterRequest,
   ForgotPasswordRequest,
   ResetPasswordRequest,
+  ChangePasswordRequest,
 } from '../lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { DEFAULT_REDIRECTS } from '@/lib/constants/routes';
@@ -23,8 +25,28 @@ export function useAuth() {
       navigate({ to: DEFAULT_REDIRECTS.authenticated });
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : 'Login failed';
-      toast.error(message);
+      if (error instanceof ApiError) {
+        switch (error.code) {
+          case 'UNAUTHORIZED':
+            toast.error('Incorrect email or password');
+            break;
+          case 'NETWORK_ERROR':
+            toast.error(
+              'Unable to connect to the server. Please check your connection.'
+            );
+            break;
+          case 'TIMEOUT':
+            toast.error('Request timed out. Please try again.');
+            break;
+          case 'SERVER_ERROR':
+            toast.error('Server error. Please try again later.');
+            break;
+          default:
+            toast.error('Login failed. Please try again.');
+        }
+      } else {
+        toast.error('Login failed. Please try again.');
+      }
     },
   });
 
@@ -98,17 +120,32 @@ export function useAuth() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: (data: ChangePasswordRequest) =>
+      authService.changePassword(data),
+    onSuccess: () => {
+      toast.success('Password updated successfully');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to update password';
+      toast.error(message);
+    },
+  });
+
   return {
     login: loginMutation.mutate,
     register: registerMutation.mutate,
     logout: logoutMutation.mutate,
     forgotPassword: forgotPasswordMutation.mutate,
     resetPassword: resetPasswordMutation.mutate,
+    changePassword: changePasswordMutation.mutate,
     isLoggingIn: loginMutation.isPending,
     isRegistering: registerMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
     isForgotPasswordPending: forgotPasswordMutation.isPending,
     isResetPasswordPending: resetPasswordMutation.isPending,
+    isChangePasswordPending: changePasswordMutation.isPending,
     isAuthenticated: isAuthenticated(),
     me: meQuery.data,
     isMeLoading: meQuery.isLoading,

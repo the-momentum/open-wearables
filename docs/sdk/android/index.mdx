@@ -1,0 +1,300 @@
+---
+title: "Android SDK"
+sidebarTitle: "Overview"
+description: "Native Android SDK for background health data sync from Samsung Health and Health Connect"
+---
+
+## Introduction
+
+The Open Wearables Android SDK (`open-wearables-android-sdk`) is a native Kotlin SDK for secure background synchronization of health data from **Samsung Health** and **Health Connect** to the Open Wearables platform.
+
+This is the **core native implementation** that powers health data sync on Android. The [Flutter SDK](/sdk/flutter) uses this SDK under the hood as a wrapper.
+
+<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open-wearables-android-sdk">
+  View source code, report issues, and contribute to the Android SDK.
+</Card>
+
+## Features
+
+- **Dual Provider Support** - Samsung Health and Health Connect in a single SDK
+- **Background Sync** - Health data syncs via WorkManager with foreground service for reliability
+- **Resumable Sessions** - Sync sessions survive app restarts
+- **Dual Authentication** - Token-based auth with auto-refresh on 401, or API key authentication
+- **Secure Storage** - Credentials stored in Android EncryptedSharedPreferences
+- **Incremental Updates** - Only syncs new data using anchored queries
+- **Unified Payload** - Consistent data format regardless of provider
+- **Wide Data Support** - Steps, heart rate, workouts, sleep, and more
+
+## Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| Min SDK | Android 10 (API 29+) |
+| Compile SDK | 36 |
+| Java | 17 |
+| Kotlin | 2.1.0+ |
+| Samsung Health SDK | For Samsung Health provider |
+| Health Connect | For Health Connect provider |
+
+## Installation
+
+Add the SDK via JitPack. In your root `build.gradle.kts` (or `settings.gradle.kts`):
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+Then add the dependency in your app's `build.gradle.kts`:
+
+```kotlin
+dependencies {
+    implementation("com.github.the-momentum:open-wearables-android-sdk:0.5.0")
+}
+```
+
+### Android Configuration
+
+The SDK's `AndroidManifest.xml` automatically merges the required permissions and services. However, ensure your app's `build.gradle.kts` has the correct SDK versions:
+
+```kotlin
+android {
+    compileSdk = 36
+    defaultConfig {
+        minSdk = 29
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+```
+
+### Permissions
+
+The SDK declares these permissions automatically (merged via manifest):
+
+<Accordion title="Declared permissions">
+  | Permission | Purpose |
+  |------------|---------|
+  | `FOREGROUND_SERVICE` | Foreground service during sync |
+  | `FOREGROUND_SERVICE_DATA_SYNC` | Data sync foreground service type |
+  | `POST_NOTIFICATIONS` | Sync notification (Android 13+) |
+  | `INTERNET` | Network access |
+  | `ACCESS_NETWORK_STATE` | Network monitoring |
+  | `health.READ_HEALTH_DATA_IN_BACKGROUND` | Background health data access |
+  | `health.READ_STEPS` | Step count |
+  | `health.READ_HEART_RATE` | Heart rate |
+  | `health.READ_RESTING_HEART_RATE` | Resting heart rate |
+  | `health.READ_HEART_RATE_VARIABILITY` | HRV |
+  | `health.READ_OXYGEN_SATURATION` | Blood oxygen |
+  | `health.READ_BLOOD_PRESSURE` | Blood pressure |
+  | `health.READ_BLOOD_GLUCOSE` | Blood glucose |
+  | `health.READ_ACTIVE_CALORIES_BURNED` | Active energy |
+  | `health.READ_BASAL_METABOLIC_RATE` | Basal energy |
+  | `health.READ_BODY_TEMPERATURE` | Body temperature |
+  | `health.READ_WEIGHT` | Body mass |
+  | `health.READ_HEIGHT` | Height |
+  | `health.READ_BODY_FAT` | Body fat percentage |
+  | `health.READ_LEAN_BODY_MASS` | Lean body mass |
+  | `health.READ_FLOORS_CLIMBED` | Flights climbed |
+  | `health.READ_DISTANCE` | Walking/running distance |
+  | `health.READ_HYDRATION` | Water intake |
+  | `health.READ_VO2_MAX` | VO2 max |
+  | `health.READ_RESPIRATORY_RATE` | Respiratory rate |
+  | `health.READ_EXERCISE` | Workouts |
+  | `health.READ_SLEEP` | Sleep data |
+</Accordion>
+
+## Quick Start
+
+Here's the minimal code to get health sync working:
+
+```kotlin
+import com.openwearables.health.sdk.OpenWearablesHealthSDK
+
+class HealthService(private val context: Context) {
+
+    private lateinit var sdk: OpenWearablesHealthSDK
+
+    fun initialize() {
+        // 1. Initialize the SDK
+        sdk = OpenWearablesHealthSDK.initialize(context)
+
+        // 2. Set up logging (optional)
+        sdk.logListener = { message ->
+            Log.d("HealthSDK", message)
+        }
+
+        // 3. Set log level (optional — default is OWLogLevel.DEBUG)
+        sdk.logLevel = OWLogLevel.ALWAYS
+
+        // 4. Handle auth errors (optional)
+        sdk.authErrorListener = { error ->
+            Log.e("HealthSDK", "Auth error: $error")
+        }
+
+        // 5. Configure with your backend host
+        sdk.configure(host = "https://api.openwearables.io")
+
+        // 6. Check if already signed in
+        if (sdk.isSessionValid()) {
+            Log.d("HealthSDK", "Session restored")
+            return
+        }
+    }
+
+    suspend fun connect(userId: String, accessToken: String, refreshToken: String?) {
+        // 7. Sign in
+        sdk.signIn(
+            userId = userId,
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            apiKey = null
+        )
+
+        // 8. Set provider
+        sdk.setProvider("google") // or "samsung"
+
+        // 9. Request permissions
+        val authorized = sdk.requestAuthorization(
+            types = listOf("steps", "heartRate", "sleep", "workout")
+        )
+
+        if (!authorized) {
+            Log.w("HealthSDK", "Health permissions were denied")
+            return
+        }
+
+        // 10. Start background sync (sync last 90 days of data)
+        sdk.startBackgroundSync(syncDaysBack = 90)
+    }
+}
+```
+
+## Activity Setup
+
+The SDK needs a reference to the current `Activity` for permission dialogs (especially Health Connect):
+
+```kotlin
+class MainActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val sdk = OpenWearablesHealthSDK.getInstance()
+        sdk.setActivity(this)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        OpenWearablesHealthSDK.getInstance().setActivity(null)
+    }
+}
+```
+
+## Documentation
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="book" href="/sdk/android/integration">
+    Complete guide to integrating the SDK including authentication flow, backend setup, and best practices.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/android/troubleshooting">
+    Common issues and their solutions for Android.
+  </Card>
+</CardGroup>
+
+## Provider Selection
+
+The SDK supports two health data providers on Android:
+
+| Provider | ID | Description |
+|----------|----|-------------|
+| **Health Connect** | `"google"` | Google's Health Connect API. Works on all Android 10+ devices. |
+| **Samsung Health** | `"samsung"` | Samsung Health SDK. Works on Samsung devices with Samsung Health installed. |
+
+```kotlin
+val sdk = OpenWearablesHealthSDK.getInstance()
+
+// Check which providers are available
+val providers = sdk.getAvailableProviders()
+for (p in providers) {
+    println("${p["displayName"]} (${p["id"]}) - available: ${p["isAvailable"]}")
+}
+
+// Set the active provider
+val selected = sdk.setProvider("google") // or "samsung"
+if (!selected) {
+    Log.e("HealthSDK", "Selected provider is unavailable on this device")
+}
+```
+
+## Supported Health Data Types
+
+<Tabs>
+  <Tab title="Health Connect">
+    | Type ID | Description |
+    |---------|-------------|
+    | `steps` | Step count |
+    | `heartRate` | Heart rate |
+    | `restingHeartRate` | Resting heart rate |
+    | `heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `oxygenSaturation` | Blood oxygen |
+    | `vo2Max` | VO2 max |
+    | `respiratoryRate` | Respiratory rate |
+    | `bloodPressure` | Blood pressure (systolic + diastolic) |
+    | `bloodGlucose` | Blood glucose |
+    | `activeEnergy` | Active calories burned |
+    | `basalEnergy` | Basal metabolic rate |
+    | `bodyTemperature` | Body temperature |
+    | `bodyMass` | Weight |
+    | `height` | Height |
+    | `bodyFatPercentage` | Body fat % |
+    | `leanBodyMass` | Lean body mass |
+    | `flightsClimbed` | Floors climbed |
+    | `distanceWalkingRunning` | Walking/running distance |
+    | `distanceCycling` | Cycling distance |
+    | `water` / `dietaryWater` | Water intake |
+    | `workout` | All workout types with segments, laps, route, samples |
+    | `sleep` | Sleep sessions with stages (awake, light, deep, REM) |
+  </Tab>
+  <Tab title="Samsung Health">
+    | Type ID | Description |
+    |---------|-------------|
+    | `steps` | Step count |
+    | `heartRate` | Heart rate |
+    | `oxygenSaturation` | Blood oxygen |
+    | `bloodGlucose` | Blood glucose |
+    | `bloodPressure` | Blood pressure |
+    | `activeEnergy` | Active calories |
+    | `bodyTemperature` | Body temperature |
+    | `bodyMass` | Weight |
+    | `bodyFatPercentage` | Body fat % |
+    | `leanBodyMass` | Lean body mass |
+    | `height` | Height |
+    | `bmi` | Body Mass Index |
+    | `flightsClimbed` | Floors climbed |
+    | `water` | Water intake |
+    | `workout` | Workouts |
+    | `sleep` | Sleep with stages |
+  </Tab>
+</Tabs>
+
+<Note>
+  Health Connect generally supports more data types than Samsung Health. If both are available, Health Connect is recommended for the widest data coverage.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="arrow-right" href="/sdk/android/integration">
+    Complete step-by-step integration guide.
+  </Card>
+  <Card title="Flutter SDK" icon="mobile" href="/sdk/flutter">
+    Using Flutter? The Flutter SDK wraps this native SDK for cross-platform apps.
+  </Card>
+</CardGroup>

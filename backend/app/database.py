@@ -1,10 +1,11 @@
 from collections.abc import AsyncGenerator, Iterator
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Engine, String, Text, create_engine, inspect
+from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -19,9 +20,9 @@ from sqlalchemy.orm import (
 )
 
 from app.config import settings
-from app.mappings import email, str_10, str_32, str_50, str_64, str_100, str_255
 from app.schemas.invitation import InvitationStatus
 from app.schemas.oauth import ConnectionStatus, ProviderName
+from app.schemas.series_types import AggregationMethod
 from app.schemas.token_type import TokenType
 from app.utils.mappings_meta import AutoRelMeta
 
@@ -60,18 +61,14 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
 
     type_annotation_map = {
         str: Text,
-        email: String,
         UUID: SQL_UUID,
-        str_10: String(10),
-        str_32: String(32),
-        str_50: String(50),
-        str_64: String(64),
-        str_100: String(100),
-        str_255: String(255),
+        date: Date,
+        datetime: DateTime(timezone=True),
         ConnectionStatus: String(64),
         InvitationStatus: String(50),
         ProviderName: String(50),
         TokenType: String(64),
+        AggregationMethod: String(32),
     }
 
 

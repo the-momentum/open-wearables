@@ -33,7 +33,9 @@
             "group": "Providers",
             "pages": [
               "providers/supported",
-              "providers/coverage"
+              "providers/coverage",
+              "providers/garmin-api-integration",
+              "providers/garmin-data-pipeline"
             ]
           },
           {
@@ -46,6 +48,14 @@
                   "sdk/ios/index",
                   "sdk/ios/integration",
                   "sdk/ios/troubleshooting"
+                ]
+              },
+              {
+                "group": "Android (Kotlin)",
+                "pages": [
+                  "sdk/android/index",
+                  "sdk/android/integration",
+                  "sdk/android/troubleshooting"
                 ]
               },
               {
@@ -72,8 +82,14 @@
             "pages": [
               "dev-guides/backend-e2e-integration",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/aws-setup",
               "dev-guides/ngrok-setup"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "dev-guides/aws-setup",
+              "dev-guides/raw-payload-storage"
             ]
           },
           {
@@ -121,6 +137,11 @@
           "icon": "github"
         },
         {
+          "anchor": "Discord",
+          "href": "https://discord.gg/qrcfFnNE6H",
+          "icon": "discord"
+        },
+        {
           "anchor": "Discussions",
           "href": "https://github.com/the-momentum/open-wearables/discussions",
           "icon": "comments"
@@ -154,7 +175,8 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/the-momentum/open-wearables"
+      "github": "https://github.com/the-momentum/open-wearables",
+      "discord": "https://discord.gg/qrcfFnNE6H"
     }
   }
 }

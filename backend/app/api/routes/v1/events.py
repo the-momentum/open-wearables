@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/users/{user_id}/events/workouts")
-async def list_workouts(
+def list_workouts(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -36,11 +36,11 @@ async def list_workouts(
         limit=limit,
         record_type=record_type,
     )
-    return await event_record_service.get_workouts(db, user_id, params)
+    return event_record_service.get_workouts(db, user_id, params)
 
 
 @router.get("/users/{user_id}/events/sleep")
-async def list_sleep_sessions(
+def list_sleep_sessions(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -56,4 +56,4 @@ async def list_sleep_sessions(
         cursor=cursor,
         limit=limit,
     )
-    return await event_record_service.get_sleep_sessions(db, user_id, params)
+    return event_record_service.get_sleep_sessions(db, user_id, params)

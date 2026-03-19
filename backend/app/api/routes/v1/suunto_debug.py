@@ -44,7 +44,7 @@ def _get_suunto_strategy() -> SuuntoStrategy:
 
 
 @router.get("/users/{user_id}/raw/sleep")
-async def get_raw_sleep_data(
+def get_raw_sleep_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -64,7 +64,7 @@ async def get_raw_sleep_data(
 
 
 @router.get("/users/{user_id}/raw/recovery")
-async def get_raw_recovery_data(
+def get_raw_recovery_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -84,7 +84,7 @@ async def get_raw_recovery_data(
 
 
 @router.get("/users/{user_id}/raw/activity")
-async def get_raw_activity_samples(
+def get_raw_activity_samples(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -104,7 +104,7 @@ async def get_raw_activity_samples(
 
 
 @router.get("/users/{user_id}/raw/daily-statistics")
-async def get_raw_daily_statistics(
+def get_raw_daily_statistics(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -124,7 +124,7 @@ async def get_raw_daily_statistics(
 
 
 @router.get("/users/{user_id}/raw/workouts")
-async def get_raw_workouts(
+def get_raw_workouts(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -140,7 +140,7 @@ async def get_raw_workouts(
 
 
 @router.get("/users/{user_id}/raw/workouts/{workout_key}")
-async def get_raw_workout_detail(
+def get_raw_workout_detail(
     user_id: UUID,
     workout_key: str,
     db: DbSession,
@@ -159,7 +159,7 @@ async def get_raw_workout_detail(
 
 
 @router.get("/users/{user_id}/normalized/sleep")
-async def get_normalized_sleep_data(
+def get_normalized_sleep_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -179,7 +179,7 @@ async def get_normalized_sleep_data(
 
 
 @router.get("/users/{user_id}/normalized/recovery")
-async def get_normalized_recovery_data(
+def get_normalized_recovery_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -199,7 +199,7 @@ async def get_normalized_recovery_data(
 
 
 @router.get("/users/{user_id}/normalized/activity")
-async def get_normalized_activity_samples(
+def get_normalized_activity_samples(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -224,7 +224,7 @@ async def get_normalized_activity_samples(
 
 
 @router.post("/users/{user_id}/sync/all")
-async def sync_all_suunto_data(
+def sync_all_suunto_data(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -280,7 +280,7 @@ async def sync_all_suunto_data(
 
 
 @router.post("/users/{user_id}/sync/sleep")
-async def sync_suunto_sleep(
+def sync_suunto_sleep(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
@@ -307,7 +307,7 @@ async def sync_suunto_sleep(
 
 
 @router.post("/users/{user_id}/sync/workouts")
-async def sync_suunto_workouts(
+def sync_suunto_workouts(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,

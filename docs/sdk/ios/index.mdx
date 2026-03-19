@@ -10,7 +10,7 @@ The Open Wearables iOS SDK (`OpenWearablesHealthSDK`) is a native Swift SDK for 
 
 This is the **core native implementation** that powers health data sync on iOS. The [Flutter SDK](/sdk/flutter) uses this SDK under the hood as a wrapper.
 
-<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/open_wearables_ios_sdk">
+<Card title="GitHub Repository" icon="github" href="https://github.com/the-momentum/OpenWearablesHealthSDK">
   View source code, report issues, and contribute to the iOS SDK.
 </Card>
 
@@ -30,9 +30,9 @@ This is the **core native implementation** that powers health data sync on iOS. 
 
 | Requirement | Details |
 |-------------|---------|
-| iOS Version | iOS 14.0+ |
-| Swift | Swift 5.0+ |
-| Xcode | Xcode 14+ |
+| iOS Version | iOS 15.0+ |
+| Swift | Swift 5.0+ (Swift tools 5.9) |
+| Xcode | Xcode 15+ |
 | Apple Developer Account | Required for HealthKit entitlement |
 | HealthKit Capability | Must be enabled in Xcode |
 | Physical Device | HealthKit doesn't work in iOS Simulator |
@@ -45,7 +45,7 @@ This is the **core native implementation** that powers health data sync on iOS. 
 
     ```swift
     dependencies: [
-        .package(url: "https://github.com/the-momentum/open_wearables_ios_sdk.git", from: "0.1.0")
+        .package(url: "https://github.com/the-momentum/OpenWearablesHealthSDK.git", from: "0.8.0")
     ]
     ```
 
@@ -56,7 +56,7 @@ This is the **core native implementation** that powers health data sync on iOS. 
     Add to your `Podfile`:
 
     ```ruby
-    pod 'OpenWearablesHealthSDK', '~> 0.1.0'
+    pod 'OpenWearablesHealthSDK', '~> 0.8.0'
     ```
 
     Then run:
@@ -114,21 +114,24 @@ class HealthService {
             print("[Health] \(message)")
         }
 
-        // 2. Handle auth errors (optional)
+        // 2. Set log level (optional — default is .debug)
+        sdk.setLogLevel(.always)
+
+        // 3. Handle auth errors (optional)
         sdk.onAuthError = { statusCode, message in
             print("Auth error: \(statusCode) - \(message)")
         }
 
-        // 3. Configure the SDK with your host
+        // 4. Configure the SDK with your host
         sdk.configure(host: "https://api.openwearables.io")
 
-        // 4. Check if already signed in (session restored from Keychain)
-        if sdk.restoreSession() {
+        // 5. Check if already signed in (session restored from Keychain)
+        if sdk.isSessionValid {
             print("Session restored")
             return
         }
 
-        // 5. Get credentials from YOUR backend, then sign in
+        // 6. Get credentials from YOUR backend, then sign in
         let credentials = yourBackend.getHealthCredentials()
 
         sdk.signIn(
@@ -138,11 +141,11 @@ class HealthService {
             apiKey: nil
         )
 
-        // 6. Request health permissions
-        sdk.requestAuthorization(types: ["steps", "heartRate", "sleep", "workout"]) { granted in
+        // 7. Request health permissions
+        sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { granted in
             if granted {
-                // 7. Start background sync
-                sdk.startBackgroundSync { started in
+                // 8. Start background sync (sync last 90 days of data)
+                sdk.startBackgroundSync(syncDaysBack: 90) { started in
                     print("Sync started: \(started)")
                 }
             }
@@ -178,66 +181,101 @@ func application(
 
 ## Supported Health Data Types
 
-The SDK supports 40+ health data types across multiple categories:
+The SDK supports 40+ health data types via the `HealthDataType` enum. Pass these as enum values to `requestAuthorization(types:completion:)`:
+
+```swift
+sdk.requestAuthorization(types: [.steps, .heartRate, .sleep, .workout]) { granted in
+    // ...
+}
+```
 
 <AccordionGroup>
   <Accordion title="Activity & Fitness">
-    | Type | Description |
-    |------|-------------|
-    | `steps` | Step count |
-    | `distanceWalkingRunning` | Walking/running distance |
-    | `distanceCycling` | Cycling distance |
-    | `flightsClimbed` | Floors climbed |
-    | `walkingSpeed` | Average walking speed |
-    | `walkingStepLength` | Step length |
-    | `sixMinuteWalkTestDistance` | 6-minute walk test |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.steps` | Step count |
+    | `.distanceWalkingRunning` | Walking/running distance |
+    | `.distanceCycling` | Cycling distance |
+    | `.flightsClimbed` | Floors climbed |
+    | `.walkingSpeed` | Average walking speed |
+    | `.walkingStepLength` | Step length |
+    | `.walkingAsymmetryPercentage` | Walking asymmetry percentage |
+    | `.walkingDoubleSupportPercentage` | Walking double support percentage |
+    | `.sixMinuteWalkTestDistance` | 6-minute walk test |
+    | `.activeEnergy` | Active energy burned |
+    | `.basalEnergy` | Basal (resting) energy burned |
   </Accordion>
 
   <Accordion title="Heart & Vitals">
-    | Type | Description |
-    |------|-------------|
-    | `heartRate` | Heart rate measurements |
-    | `restingHeartRate` | Resting heart rate |
-    | `heartRateVariabilitySDNN` | HRV (SDNN) |
-    | `vo2Max` | VO2 max |
-    | `oxygenSaturation` | Blood oxygen |
-    | `respiratoryRate` | Breathing rate |
-    | `bloodPressure` | Blood pressure readings |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.heartRate` | Heart rate measurements |
+    | `.restingHeartRate` | Resting heart rate |
+    | `.heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `.vo2Max` | VO2 max |
+    | `.oxygenSaturation` | Blood oxygen |
+    | `.respiratoryRate` | Breathing rate |
   </Accordion>
 
   <Accordion title="Body Measurements">
-    | Type | Description |
-    |------|-------------|
-    | `bodyMass` | Weight |
-    | `height` | Height |
-    | `bmi` | Body Mass Index |
-    | `bodyFatPercentage` | Body fat % |
-    | `leanBodyMass` | Lean body mass |
-    | `waistCircumference` | Waist circumference (iOS 16+) |
-    | `bodyTemperature` | Body temperature |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.bodyMass` | Weight |
+    | `.height` | Height |
+    | `.bmi` | Body Mass Index |
+    | `.bodyFatPercentage` | Body fat % |
+    | `.leanBodyMass` | Lean body mass |
+    | `.waistCircumference` | Waist circumference (iOS 16+) |
+    | `.bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Blood & Metabolic">
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.bloodGlucose` | Blood glucose level |
+    | `.insulinDelivery` | Insulin delivery (iOS 16+) |
+    | `.bloodPressureSystolic` | Systolic blood pressure |
+    | `.bloodPressureDiastolic` | Diastolic blood pressure |
+    | `.bloodPressure` | Blood pressure (correlation type) |
   </Accordion>
 
   <Accordion title="Sleep & Mindfulness">
-    | Type | Description |
-    |------|-------------|
-    | `sleep` | Sleep sessions and stages |
-    | `mindfulSession` | Meditation/mindfulness sessions |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.sleep` | Sleep sessions and stages |
+    | `.mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Reproductive Health">
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.menstrualFlow` | Menstrual flow |
+    | `.cervicalMucusQuality` | Cervical mucus quality |
+    | `.ovulationTestResult` | Ovulation test result |
+    | `.sexualActivity` | Sexual activity |
   </Accordion>
 
   <Accordion title="Nutrition">
-    | Type | Description |
-    |------|-------------|
-    | `dietaryEnergyConsumed` | Calories consumed |
-    | `dietaryCarbohydrates` | Carbs |
-    | `dietaryProtein` | Protein |
-    | `dietaryFatTotal` | Total fat |
-    | `dietaryWater` | Water intake |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.dietaryEnergyConsumed` | Calories consumed |
+    | `.dietaryCarbohydrates` | Carbs |
+    | `.dietaryProtein` | Protein |
+    | `.dietaryFatTotal` | Total fat |
+    | `.dietaryWater` | Water intake |
   </Accordion>
 
   <Accordion title="Workouts">
-    | Type | Description |
-    |------|-------------|
-    | `workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+    | Enum Case | Description |
+    |-----------|-------------|
+    | `.workout` | All workout types with metadata (distance, energy, heart rate, running metrics, elevation, weather, swimming) |
+  </Accordion>
+
+  <Accordion title="Aliases">
+    | Enum Case | Alias For |
+    |-----------|-----------|
+    | `.restingEnergy` | `.basalEnergy` |
+    | `.bloodOxygen` | `.oxygenSaturation` |
   </Accordion>
 </AccordionGroup>
 
@@ -247,7 +285,7 @@ The SDK supports 40+ health data types across multiple categories:
   <Card title="Integration Guide" icon="arrow-right" href="/sdk/ios/integration">
     Complete step-by-step integration guide.
   </Card>
-  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open_wearables_ios_sdk">
+  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/OpenWearablesHealthSDK">
     Full API documentation on GitHub.
   </Card>
 </CardGroup>

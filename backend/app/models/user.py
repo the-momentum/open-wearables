@@ -1,16 +1,17 @@
 from uuid import UUID
+from datetime import datetime
 
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, Unique, datetime_tz, email, str_100, str_255
+from app.mappings import PrimaryKey, Unique, email, str_100, str_255
 
 
 class User(BaseDbModel):
     """Data owner model"""
 
     id: Mapped[PrimaryKey[UUID]]
-    created_at: Mapped[datetime_tz]
+    created_at: Mapped[datetime]
 
     first_name: Mapped[str_100 | None]
     last_name: Mapped[str_100 | None]

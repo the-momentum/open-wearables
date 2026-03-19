@@ -7,6 +7,8 @@ Tests the /api/v1/garmin/webhooks endpoints including:
 - GET /api/v1/garmin/webhooks/health - test health check
 - Authentication and authorization
 - Error cases
+- userPermissions webhooks
+- deregistrations webhooks
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -14,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 
@@ -768,3 +771,283 @@ class TestGarminWebhookHealth:
         assert isinstance(data, dict)
         assert "status" in data
         assert "service" in data
+
+
+class TestGarminUserPermissionsWebhook:
+    """Test suite for Garmin userPermissionsChange webhook handling."""
+
+    def test_push_webhook_permissions_scope_expanded(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that scope is expanded when user grants more permissions."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="ACTIVITY_EXPORT",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissionsChange": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["ACTIVITY_EXPORT", "HEALTH_EXPORT", "WELLNESS_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissionsChange" in data
+        assert data["userPermissionsChange"]["updated"] == 1
+        assert len(data["userPermissionsChange"]["errors"]) == 0
+
+        # Verify DB was updated - scope expanded
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT HEALTH_EXPORT WELLNESS_EXPORT"
+
+    def test_push_webhook_permissions_scope_reduced(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that scope is reduced when user revokes permissions."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="ACTIVITY_EXPORT HEALTH_EXPORT WELLNESS_EXPORT",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissionsChange": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["ACTIVITY_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissionsChange" in data
+        assert data["userPermissionsChange"]["updated"] == 1
+        assert len(data["userPermissionsChange"]["errors"]) == 0
+
+        # Verify DB was updated - scope reduced
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT"
+
+    def test_push_webhook_permissions_scope_unchanged(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that scope remains the same when permissions haven't changed."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="ACTIVITY_EXPORT HEALTH_EXPORT",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissionsChange": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["HEALTH_EXPORT", "ACTIVITY_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissionsChange" in data
+        assert data["userPermissionsChange"]["updated"] == 1
+
+        # Verify DB scope unchanged (sorted order matches)
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT HEALTH_EXPORT"
+
+    def test_push_webhook_user_permissions_unknown_user(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test userPermissionsChange webhook with unknown user returns 200 with error info."""
+        # Arrange
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissionsChange": [
+                {
+                    "userId": "unknown_garmin_user",
+                    "permissions": ["ACTIVITY_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissionsChange" in data
+        assert data["userPermissionsChange"]["updated"] == 0
+        assert len(data["userPermissionsChange"]["errors"]) == 1
+
+    def test_ping_webhook_user_permissions_updates_scope(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that userPermissionsChange in ping webhook also updates scope."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+            scope="OLD_SCOPE",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "userPermissionsChange": [
+                {
+                    "userId": "garmin_user_123",
+                    "permissions": ["ACTIVITY_EXPORT", "WELLNESS_EXPORT"],
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/ping",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "userPermissionsChange" in data
+        assert data["userPermissionsChange"]["updated"] == 1
+
+        # Verify DB was updated
+        db.refresh(connection)
+        assert connection.scope == "ACTIVITY_EXPORT WELLNESS_EXPORT"
+
+
+class TestGarminDeregistrationWebhook:
+    """Test suite for Garmin deregistration webhook handling."""
+
+    def test_push_webhook_deregistration_revokes_connection(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test that deregistration webhook revokes the connection."""
+        # Arrange
+        user = UserFactory()
+        connection = UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
+        assert connection.status == ConnectionStatus.ACTIVE
+
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "deregistrations": [
+                {"userId": "garmin_user_123"},
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "deregistrations" in data
+        assert data["deregistrations"]["revoked"] == 1
+        assert len(data["deregistrations"]["errors"]) == 0
+
+        # Verify DB was updated
+        db.refresh(connection)
+        assert connection.status == ConnectionStatus.REVOKED
+
+    def test_push_webhook_deregistration_unknown_user(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test deregistration webhook with unknown user returns 200 with error info."""
+        # Arrange
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "deregistrations": [
+                {"userId": "unknown_garmin_user"},
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "deregistrations" in data
+        assert data["deregistrations"]["revoked"] == 0
+        assert len(data["deregistrations"]["errors"]) == 1

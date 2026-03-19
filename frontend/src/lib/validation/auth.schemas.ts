@@ -54,7 +54,19 @@ export const acceptInvitationSchema = z
     path: ['confirmPassword'],
   });
 
+export const changePasswordSchema = z
+  .object({
+    current_password: z.string().min(1, 'Current password is required'),
+    new_password: passwordSchema,
+    confirm_password: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
 export type RegisterFormData = z.infer<typeof registerSchema>;
 export type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 export type AcceptInvitationFormData = z.infer<typeof acceptInvitationSchema>;
+export type ChangePasswordFormData = z.infer<typeof changePasswordSchema>;

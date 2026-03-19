@@ -147,8 +147,31 @@ export function useGarminBackfillStatus(userId: string, enabled: boolean) {
     enabled,
     refetchInterval: (query) => {
       const status = query.state.data?.overall_status;
-      // Poll while in_progress
-      return status === 'in_progress' ? 10000 : false;
+      // Poll while in_progress OR retry_in_progress
+      return status === 'in_progress' || status === 'retry_in_progress'
+        ? 10000
+        : false;
+    },
+  });
+}
+
+/**
+ * Cancel an in-progress Garmin backfill
+ * Sets cancellation flag; backfill stops after current type completes
+ */
+export function useGarminCancelBackfill(userId: string) {
+  return useMutation({
+    mutationFn: () => healthService.cancelGarminBackfill(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.garmin.backfillStatus(userId),
+      });
+      toast.info('Backfill cancellation requested');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to cancel backfill';
+      toast.error(message);
     },
   });
 }

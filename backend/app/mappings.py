@@ -1,10 +1,9 @@
-from datetime import date as date_type
-from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, NewType, TypeVar
+from typing import Annotated, TypeVar
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric
+from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import mapped_column
 
 T = TypeVar("T")
@@ -24,18 +23,14 @@ type ManyToOne[T] = T
 type OneToOne[T] = T
 
 # Custom types
-datetime_tz = Annotated[datetime, mapped_column(DateTime(timezone=True))]
-date_col = Annotated[date_type, mapped_column(Date)]
-
-# it's mapped in database.py, because it didn't work with PrimaryKey/Unique
-email = NewType("email", str)
-str_10 = NewType("str_10", str)
-str_32 = NewType("str_32", str)
-str_50 = NewType("str_50", str)
-str_64 = NewType("str_64", str)
-str_100 = NewType("str_100", str)
-str_255 = NewType("str_255", str)
-
+json_binary = Annotated[list[dict], mapped_column(JSONB)]
+email = Annotated[str, mapped_column(String)]
+str_10 = Annotated[str, mapped_column(String(10))]
+str_32 = Annotated[str, mapped_column(String(32))]
+str_50 = Annotated[str, mapped_column(String(50))]
+str_64 = Annotated[str, mapped_column(String(64))]
+str_100 = Annotated[str, mapped_column(String(100))]
+str_255 = Annotated[str, mapped_column(String(255))]
 numeric_5_2 = Annotated[Decimal, mapped_column(Numeric(5, 2))]
 numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]
@@ -44,7 +39,6 @@ numeric_15_5 = Annotated[Decimal, mapped_column(Numeric(15, 5))]
 # Custom foreign keys
 FKDeveloper = Annotated[UUID, mapped_column(ForeignKey("developer.id", ondelete="SET NULL"))]
 FKUser = Annotated[UUID, mapped_column(ForeignKey("user.id", ondelete="CASCADE"))]
-UniqueFkUser = Annotated[UUID, mapped_column(ForeignKey("user.id", ondelete="CASCADE"), unique=True)]
 FKEventRecord = Annotated[
     UUID,
     mapped_column(ForeignKey("event_record.id", ondelete="CASCADE"), primary_key=True),

@@ -145,6 +145,72 @@ class TestLogout:
         assert response.status_code == 401
 
 
+class TestChangePassword:
+    """Tests for POST /api/v1/auth/change-password."""
+
+    def test_change_password_success(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test successful password change with valid data."""
+        # Arrange
+        developer = DeveloperFactory(password="OldPassword123")
+        headers = developer_auth_headers(developer.id)
+        payload = {
+            "current_password": "OldPassword123",
+            "new_password": "NewPassword456",
+            "confirm_password": "NewPassword456",
+        }
+
+        # Act
+        response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        assert response.json()["message"] == "Password updated successfully"
+
+    def test_change_password_invalid_current(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test failure when the current password is wrong."""
+        developer = DeveloperFactory(password="CorrectOld123")
+        headers = developer_auth_headers(developer.id)
+        payload = {
+            "current_password": "WrongOld123",
+            "new_password": "NewPassword789",
+            "confirm_password": "NewPassword789",
+        }
+
+        response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Incorrect current password"
+
+    def test_change_password_mismatch(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test failure when new_password and confirm_password do not match."""
+        developer = DeveloperFactory(password="OldPassword123")
+        headers = developer_auth_headers(developer.id)
+        payload = {
+            "current_password": "OldPassword123",
+            "new_password": "NewPassword123",
+            "confirm_password": "DifferentPassword123",
+        }
+
+        response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
+
+        assert response.status_code == 400
+        assert "The confirmation password does not match" in str(response.json())
+
+    def test_change_password_too_short(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test failure when new_password is too short."""
+        developer = DeveloperFactory(password="OldPassword123")
+        headers = developer_auth_headers(developer.id)
+        payload = {
+            "current_password": "OldPassword123",
+            "new_password": "short",
+            "confirm_password": "short",
+        }
+
+        response = client.post(f"{api_v1_prefix}/auth/change-password", json=payload, headers=headers)
+
+        assert response.status_code == 400
+
+
 class TestGetCurrentDeveloper:
     """Tests for GET /api/v1/me."""
 

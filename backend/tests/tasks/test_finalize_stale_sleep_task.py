@@ -12,6 +12,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.schemas.apple.healthkit.sleep_state import SleepState
 
 
 class TestFinalizeStaleSleepsTask:
@@ -69,18 +70,22 @@ class TestFinalizeStaleSleepsTask:
         mock_redis_client_func.return_value = mock_redis
 
         # Mock sleep state with old timestamp
-        mock_sleep_state = {
-            "uuid": str(uuid4()),
-            "source_name": "Apple Watch",
-            "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,  # ASLEEP_CORE
-            "in_bed": 900,
-            "awake": 300,
-            "light": 3600,
-            "deep": 1800,
-            "rem": 1200,
-        }
+        mock_sleep_state = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model=None,
+            provider=None,
+            start_time=stale_timestamp,
+            end_time=stale_timestamp,
+            last_start_timestamp=stale_timestamp,
+            last_end_timestamp=stale_timestamp,
+            in_bed_seconds=900,
+            awake_seconds=300,
+            light_seconds=3600,
+            deep_seconds=1800,
+            rem_seconds=1200,
+            stages=[],
+        )
         mock_load_state.return_value = mock_sleep_state
 
         # Act
@@ -117,18 +122,22 @@ class TestFinalizeStaleSleepsTask:
         mock_redis_client_func.return_value = mock_redis
 
         # Mock recent sleep state
-        mock_sleep_state = {
-            "uuid": str(uuid4()),
-            "source_name": "Apple Watch",
-            "start_time": recent_timestamp.isoformat(),
-            "last_timestamp": recent_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 900,
-            "deep": 0,
-            "rem": 0,
-        }
+        mock_sleep_state = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model=None,
+            provider=None,
+            start_time=recent_timestamp,
+            end_time=recent_timestamp,
+            last_start_timestamp=recent_timestamp,
+            last_end_timestamp=recent_timestamp,
+            in_bed_seconds=900,
+            awake_seconds=0,
+            light_seconds=900,
+            deep_seconds=0,
+            rem_seconds=0,
+            stages=[],
+        )
         mock_load_state.return_value = mock_sleep_state
 
         # Act
@@ -198,35 +207,43 @@ class TestFinalizeStaleSleepsTask:
         mock_redis_client_func.return_value = mock_redis
 
         # User 1: Stale session (should finalize)
-        state_1 = {
-            "uuid": str(uuid4()),
-            "source_name": "Apple Watch",
-            "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 1800,
-            "rem": 1200,
-        }
+        state_1 = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model=None,
+            provider=None,
+            start_time=stale_timestamp,
+            end_time=stale_timestamp,
+            last_start_timestamp=stale_timestamp,
+            last_end_timestamp=stale_timestamp,
+            in_bed_seconds=900,
+            awake_seconds=0,
+            light_seconds=3600,
+            deep_seconds=1800,
+            rem_seconds=1200,
+            stages=[],
+        )
 
         # User 2: No state (should skip)
         state_2 = None
 
         # User 3: Stale session (should finalize)
-        state_3 = {
-            "uuid": str(uuid4()),
-            "source_name": "iPhone",
-            "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 2,
-            "in_bed": 600,
-            "awake": 600,
-            "light": 0,
-            "deep": 0,
-            "rem": 0,
-        }
+        state_3 = SleepState(
+            uuid=str(uuid4()),
+            source_name="iPhone",
+            device_model=None,
+            provider=None,
+            start_time=stale_timestamp,
+            end_time=stale_timestamp,
+            last_start_timestamp=stale_timestamp,
+            last_end_timestamp=stale_timestamp,
+            in_bed_seconds=600,
+            awake_seconds=600,
+            light_seconds=0,
+            deep_seconds=0,
+            rem_seconds=0,
+            stages=[],
+        )
 
         mock_load_state.side_effect = [state_1, state_2, state_3]
 
@@ -269,31 +286,39 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.return_value = [user_id_1, user_id_2]
         mock_redis_client_func.return_value = mock_redis
 
-        state_1 = {
-            "uuid": str(uuid4()),
-            "source_name": "Apple Watch",
-            "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 0,
-            "rem": 0,
-        }
+        state_1 = SleepState(
+            uuid=str(uuid4()),
+            source_name="Apple Watch",
+            device_model=None,
+            provider=None,
+            start_time=stale_timestamp,
+            end_time=stale_timestamp,
+            last_start_timestamp=stale_timestamp,
+            last_end_timestamp=stale_timestamp,
+            in_bed_seconds=900,
+            awake_seconds=0,
+            light_seconds=3600,
+            deep_seconds=0,
+            rem_seconds=0,
+            stages=[],
+        )
 
-        state_2 = {
-            "uuid": str(uuid4()),
-            "source_name": "iPhone",
-            "start_time": stale_timestamp.isoformat(),
-            "last_timestamp": stale_timestamp.isoformat(),
-            "last_type": 5,
-            "in_bed": 0,
-            "awake": 0,
-            "light": 0,
-            "deep": 0,
-            "rem": 1800,
-        }
+        state_2 = SleepState(
+            uuid=str(uuid4()),
+            source_name="iPhone",
+            device_model=None,
+            provider=None,
+            start_time=stale_timestamp,
+            end_time=stale_timestamp,
+            last_start_timestamp=stale_timestamp,
+            last_end_timestamp=stale_timestamp,
+            in_bed_seconds=0,
+            awake_seconds=0,
+            light_seconds=0,
+            deep_seconds=0,
+            rem_seconds=1800,
+            stages=[],
+        )
 
         mock_load_state.side_effect = [state_1, state_2]
 
@@ -313,7 +338,7 @@ class TestFinalizeStaleSleepsTask:
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.load_sleep_state")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.get_redis_client")
     @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.SessionLocal")
-    def test_finalize_stale_sleeps_handles_invalid_timestamp(
+    def test_finalize_stale_sleeps_handles_malformed_state(
         self,
         mock_session_local: MagicMock,
         mock_redis_client_func: MagicMock,
@@ -321,7 +346,7 @@ class TestFinalizeStaleSleepsTask:
         db: Session,
         mock_celery_app: MagicMock,
     ) -> None:
-        """Verify task handles malformed timestamp in sleep state."""
+        """Verify task skips users whose sleep state cannot be parsed from Redis."""
         # Arrange
         user_id = str(uuid4())
 
@@ -332,23 +357,12 @@ class TestFinalizeStaleSleepsTask:
         mock_redis.smembers.return_value = [user_id]
         mock_redis_client_func.return_value = mock_redis
 
-        # Invalid timestamp format
-        mock_sleep_state = {
-            "uuid": str(uuid4()),
-            "source_name": "Apple Watch",
-            "start_time": "2026-01-01T00:00:00Z",
-            "last_timestamp": "invalid-timestamp",
-            "last_type": 3,
-            "in_bed": 900,
-            "awake": 0,
-            "light": 3600,
-            "deep": 0,
-            "rem": 0,
-        }
-        mock_load_state.return_value = mock_sleep_state
+        # Simulate load_sleep_state returning None (as it does when state is malformed/unparseable)
+        mock_load_state.return_value = None
 
         # Act - should not crash
         result = finalize_stale_sleeps()
 
         # Assert
-        assert result is None  # Task completes despite error
+        assert result is None  # Task completes and skips the malformed user
+        mock_load_state.assert_called_once_with(user_id)

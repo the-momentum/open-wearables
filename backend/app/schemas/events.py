@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, RootModel
 
 from app.schemas.common_types import SourceMetadata
+from app.schemas.sleep import SleepStage
 from app.schemas.summaries import SleepStagesSummary
 from app.schemas.timeseries import TimeSeriesSample
 
@@ -21,6 +22,7 @@ class Workout(BaseModel):
     name: str | None = Field(None, example="Morning Run")
     start_time: datetime
     end_time: datetime
+    zone_offset: str | None = None
     duration_seconds: int | None = None
     source: SourceMetadata
     calories_kcal: float | None = None
@@ -65,8 +67,10 @@ class SleepSession(BaseModel):
     id: UUID
     start_time: datetime
     end_time: datetime
+    zone_offset: str | None = None
     source: SourceMetadata
     duration_seconds: int
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
+    sleep_stage_intervals: list[SleepStage] | None = None
     is_nap: bool = False

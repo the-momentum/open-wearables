@@ -91,21 +91,22 @@ Get Open Wearables up and running in minutes.
    
    For local development setup without Docker take a look at [docs](https://docs.openwearables.io/quickstart#local-development-setup)
 
-4. **Seed sample data** (optional but recommended):
-   If you're using Docker, seed the database with sample data including an admin account:
-   ```bash
-   make init
-   ```
-   
-   This will create:
-   - An admin user account (`admin@admin.com` / `secret123`)
-   - 10 test users
-   - Sample activity data for test users
+4. **Log in to the developer portal:**
 
-
-5. **Access the developer portal:**
+   An admin account is automatically created on startup using the `ADMIN_EMAIL` and `ADMIN_PASSWORD` environment variables (defaults: `admin@admin.com` / `your-secure-password`).
 
    Open http://localhost:3000 to access the developer portal and create API keys.
+
+5. **Seed sample data** (optional):
+   If you want test users and sample activity data:
+   ```bash
+   make seed
+   ```
+
+   This will create:
+   - Test users
+   - Sample activity data for test users
+
 
 6. **View API documentation:**
 
@@ -139,8 +140,8 @@ The platform's most powerful feature - define intelligent health insights using 
 Access health data through a consistent REST API regardless of the source device.
 
 ### Provider Support
-- ☁️ **Cloud-based**: Garmin, Suunto, Polar (more comming soon!)
-- 📱 **SDK-based**: Apple Health (via XML export and webhooks)
+- ☁️ **Cloud-based**: Garmin, Suunto, Polar (more coming soon!)
+- 📱 **SDK-based**: Apple HealthKit, Samsung Health, Google Health Connect
 
 ### OAuth Flow Management
 Simplified connection process for end users:
@@ -149,10 +150,16 @@ Simplified connection process for end users:
 3. Data automatically syncs to your platform
 4. Access via unified API
 
-### SDK & Widgets (coming soon)
+### Mobile Sync SDKs
+Native SDKs for push-based health data sync from on-device health stores:
+- **[iOS SDK](https://github.com/the-momentum/open_wearables_ios_sdk)** (Swift) - Apple HealthKit
+- **[Android SDK](https://github.com/the-momentum/open_wearables_android_sdk)** (Kotlin) - Samsung Health & Google Health Connect
+- **[Flutter SDK](https://github.com/the-momentum/open_wearables_health_sdk)** (Dart) - Cross-platform Flutter wrapper around native SDKs
+- **[React Native SDK](https://github.com/the-momentum/open-wearables-react-native-sdk)** (TypeScript) - Cross-platform React Native wrapper around native SDKs
+
+### Widgets (coming soon)
 - 🔌 **Connection Widget**: Allow users to connect their wearables directly from your app
 - 🤖 **AI Health Assistant Widget**: Embed the AI chat interface for user health queries
-- 🍏 **Flutter SDK**: Handles HealthKit permissions, background sync, and data normalization
 
 ## Architecture
 
@@ -173,12 +180,12 @@ The platform is designed for self-hosting, meaning each deployment serves a sing
 - User management (via API and developer portal)
 - OAuth flow for Garmin, Polar, and Suunto
 - Workout data sync and API access for Garmin, Polar, and Suunto
+- Mobile Sync SDKs (iOS, Android, Flutter)
 
 **In Development**:
 - Core health data endpoints
 - Health Insights automations
 - AI Health Assistant
-- Mobile SDK (Flutter)
 - Enhanced widget integration
 
 ## Join the Discord
@@ -211,3 +218,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 ---
 
 The backend part of this project was generated from the [Python AI Kit](https://github.com/the-momentum/python-ai-kit).
+
+Built with ❤️ by [Momentum](https://themomentum.ai/)

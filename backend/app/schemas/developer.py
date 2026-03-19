@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from app.config import settings
 
 
 class DeveloperRead(BaseModel):
@@ -19,7 +21,7 @@ class DeveloperCreate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=settings.min_password_length)
 
 
 class DeveloperCreateInternal(BaseModel):
@@ -36,7 +38,7 @@ class DeveloperUpdate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr | None = None
-    password: str | None = Field(None, min_length=8)
+    password: str | None = Field(None, min_length=settings.min_password_length)
 
 
 class DeveloperUpdateInternal(BaseModel):
@@ -45,3 +47,15 @@ class DeveloperUpdateInternal(BaseModel):
     email: EmailStr | None = None
     hashed_password: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=settings.min_password_length)
+    confirm_password: str = Field(..., min_length=settings.min_password_length)
+
+    @model_validator(mode="after")
+    def check_passwords_match(self) -> "PasswordChange":
+        if self.new_password != self.confirm_password:
+            raise ValueError("The confirmation password does not match the new password")
+        return self

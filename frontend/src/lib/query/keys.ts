@@ -134,6 +134,11 @@ export const queryKeys = {
       [...queryKeys.priorities.all, 'dataSources', userId] as const,
   },
 
+  archival: {
+    all: ['archival'] as const,
+    settings: () => [...queryKeys.archival.all, 'settings'] as const,
+  },
+
   developers: {
     all: ['developers'] as const,
     lists: () => [...queryKeys.developers.all, 'list'] as const,

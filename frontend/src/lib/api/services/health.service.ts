@@ -60,8 +60,8 @@ export const healthService = {
   },
 
   /**
-   * Get Garmin backfill status for all 16 data types
-   * Returns status for each type independently (webhook-based, 30-day sync)
+   * Get Garmin backfill status with per-window matrix
+   * Returns multi-window sequential sync progress (webhook-based)
    */
   async getGarminBackfillStatus(userId: string): Promise<GarminBackfillStatus> {
     return apiClient.get<GarminBackfillStatus>(
@@ -81,6 +81,20 @@ export const healthService = {
     return apiClient.post<{ success: boolean; type: string; status: string }>(
       `/api/v1/providers/garmin/users/${userId}/backfill/${typeName}/retry`
     );
+  },
+
+  /**
+   * Cancel an in-progress Garmin backfill
+   * @param userId - User UUID
+   */
+  async cancelGarminBackfill(
+    userId: string
+  ): Promise<{ success: boolean; user_id: string; message: string }> {
+    return apiClient.post<{
+      success: boolean;
+      user_id: string;
+      message: string;
+    }>(`/api/v1/providers/garmin/users/${userId}/backfill/cancel`);
   },
 
   /**

@@ -1,8 +1,8 @@
 from logging import getLogger
-from typing import Annotated
+from typing import Any
 from uuid import UUID
 
-from fastapi import HTTPException, Query, Request
+from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -16,10 +16,10 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
-async def handle_webhook_verification(
-    hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
-    hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
-    hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",
+def handle_webhook_verification(
+    hub_mode: str = "",
+    hub_challenge: str = "",
+    hub_verify_token: str = "",
 ) -> dict:
     """Handle Strava webhook subscription verification."""
     if hub_mode != "subscribe":
@@ -46,10 +46,9 @@ async def handle_webhook_verification(
     return {"hub.challenge": hub_challenge}
 
 
-async def handle_webhook_event(request: Request, db: DbSession) -> dict:
+def handle_webhook_event(payload: dict[str, Any], db: DbSession) -> dict:
     """Handle Strava webhook event."""
     try:
-        payload = await request.json()
         log_structured(
             logger,
             "info",

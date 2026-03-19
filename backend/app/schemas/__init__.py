@@ -16,7 +16,7 @@ from .apple.healthkit.sync_request import (
     SleepRecord as HKSleepRecordJSON,
 )
 from .apple.healthkit.sync_request import (
-    SyncRequest as AppleHealthDataRequest,
+    SyncRequest as SDKSyncRequest,
 )
 from .apple.healthkit.sync_request import (
     Workout as HKWorkoutJSON,
@@ -52,6 +52,7 @@ from .developer import (
     DeveloperRead,
     DeveloperUpdate,
     DeveloperUpdateInternal,
+    PasswordChange,
 )
 from .device_type import DeviceType
 from .device_type_priority import (
@@ -225,6 +226,7 @@ __all__ = [
     "DeveloperCreateInternal",
     "DeveloperUpdateInternal",
     "DeveloperUpdate",
+    "PasswordChange",
     "InvitationCreate",
     "InvitationRead",
     "InvitationAccept",
@@ -287,7 +289,7 @@ __all__ = [
     "HKSleepRecordJSON",
     "HKWorkoutJSON",
     "HKWorkoutStatisticJSON",
-    "AppleHealthDataRequest",
+    "SDKSyncRequest",
     "AEWorkoutJSON",
     "AEHeartRateEntryJSON",
     "AEActiveEnergyEntryJSON",

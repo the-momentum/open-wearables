@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 
 from app.config import settings
@@ -8,6 +10,9 @@ from app.schemas import (
     ProviderEndpoints,
 )
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.structured_logging import log_structured
+
+logger = logging.getLogger(__name__)
 
 
 class WhoopOAuth(BaseOAuthTemplate):
@@ -49,7 +54,23 @@ class WhoopOAuth(BaseOAuthTemplate):
             # Whoop API returns: user_id, email, first_name, last_name
             provider_user_id = user_data.get("user_id")
             provider_user_id = str(provider_user_id) if provider_user_id is not None else None
+
+            log_structured(
+                logger,
+                "info",
+                "Fetched Whoop user profile",
+                provider="whoop",
+                task="get_provider_user_info",
+                user_id=user_id,
+            )
             return {"user_id": provider_user_id, "username": None}
-        except Exception:
-            # If user info fetch fails, connection can still be saved without provider_user_id
+        except Exception as e:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to fetch Whoop user profile: {e}",
+                provider="whoop",
+                task="get_provider_user_info",
+                user_id=user_id,
+            )
             return {"user_id": None, "username": None}

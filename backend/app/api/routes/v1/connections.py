@@ -12,7 +12,7 @@ connection_repo = UserConnectionRepository()
 
 
 @router.get("/users/{user_id}/connections", response_model=list[UserConnectionRead])
-async def get_connections_endpoint(
+def get_connections_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,

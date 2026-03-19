@@ -144,6 +144,12 @@ export interface ResetPasswordRequest {
   password: string;
 }
 
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 export interface CountWithGrowth {
   count: number;
   weekly_growth: number;
@@ -213,14 +219,22 @@ export interface SleepStagesSummary {
   rem_minutes: number | null;
 }
 
+export interface SleepStage {
+  stage: 'in_bed' | 'sleeping' | 'light' | 'deep' | 'rem' | 'awake' | 'unknown';
+  start_time: string;
+  end_time: string;
+  duration_seconds?: number;
+}
+
 export interface SleepSession {
   id: string;
   start_time: string;
   end_time: string;
-  source: DataSource;
+  source: SourceMetadata;
   duration_seconds: number;
   efficiency_percent: number | null;
   stages: SleepStagesSummary | null;
+  sleep_stage_intervals: SleepStage[] | null;
   is_nap: boolean;
 }
 
@@ -570,25 +584,35 @@ export interface SyncResponse {
   message: string;
 }
 
-// Garmin Backfill Types (webhook-based, 30-day sync)
-export interface BackfillTypeStatus {
-  status: 'pending' | 'triggered' | 'success' | 'failed';
-  triggered_at?: string;
-  completed_at?: string;
-  error?: string;
+// Garmin Backfill Types (webhook-based, multi-window sequential sync)
+export interface BackfillWindowStatus {
+  [dataType: string]: 'done' | 'pending' | 'timed_out' | 'failed';
+}
+
+export interface BackfillTypeSummary {
+  done: number;
+  timed_out: number;
+  failed: number;
 }
 
 export interface GarminBackfillStatus {
-  overall_status: 'pending' | 'in_progress' | 'complete' | 'partial';
-  types: Record<string, BackfillTypeStatus>;
-  success_count: number;
-  failed_count: number;
-  pending_count: number;
-  triggered_count: number;
-  total_types: number;
-  current_window?: number;
-  total_windows?: number;
-  completed_windows?: number;
-  days_completed?: number;
-  target_days?: number;
+  overall_status:
+    | 'pending'
+    | 'in_progress'
+    | 'complete'
+    | 'cancelled'
+    | 'retry_in_progress'
+    | 'permanently_failed';
+  current_window: number;
+  total_windows: number;
+  windows: Record<string, BackfillWindowStatus>;
+  summary: Record<string, BackfillTypeSummary>;
+  in_progress: boolean;
+  // Phase 3: retry and GC state
+  retry_phase: boolean;
+  retry_type: string | null;
+  retry_window: number | null;
+  attempt_count: number;
+  max_attempts: number;
+  permanently_failed: boolean;
 }

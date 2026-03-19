@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/users/{user_id}/timeseries")
-async def get_timeseries(
+def get_timeseries(
     user_id: UUID,
     start_time: str,
     end_time: str,
@@ -35,4 +35,4 @@ async def get_timeseries(
         limit=limit,
         cursor=cursor,
     )
-    return await timeseries_service.get_timeseries(db, user_id, types, params)
+    return timeseries_service.get_timeseries(db, user_id, types, params)

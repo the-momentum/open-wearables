@@ -181,3 +181,69 @@ series_types:
     min_value: 15
     max_value: 30
     percentage: 1
+
+  # Generic
+  speed:
+    min_value: 1.0
+    max_value: 15.0
+    percentage: 5
+
+  distance_other:
+    min_value: 5
+    max_value: 100
+    percentage: 3
+
+  exercise_time:
+    min_value: 5
+    max_value: 60
+    percentage: 5
+
+  stand_time:
+    min_value: 0
+    max_value: 15
+    percentage: 3
+
+  distance_downhill_snow_sports:
+    min_value: 5
+    max_value: 50
+    percentage: 2
+
+  walking_step_length:
+    min_value: 60
+    max_value: 85
+    percentage: 3
+
+  walking_speed:
+    min_value: 1.0
+    max_value: 2.0
+    percentage: 3
+
+  stair_descent_speed:
+    min_value: 0.5
+    max_value: 2.0
+    percentage: 2
+
+  stair_ascent_speed:
+    min_value: 0.3
+    max_value: 1.5
+    percentage: 2
+
+  heart_rate_recovery_one_minute:
+    min_value: 10
+    max_value: 40
+    percentage: 2
+
+  blood_glucose:
+    min_value: 70
+    max_value: 200
+    percentage: 1
+
+  blood_pressure_systolic:
+    min_value: 100
+    max_value: 150
+    percentage: 2
+
+  blood_pressure_diastolic:
+    min_value: 60
+    max_value: 90
+    percentage: 2
