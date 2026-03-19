@@ -101,15 +101,17 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         end_date: datetime,
     ) -> list[Any]:
         """Fetch all activities from Fitbit API between start and end dates, handling pagination."""
+        # Fitbit only accepts exactly one of afterDate or beforeDate per request.
+        # Use afterDate + sort=asc and paginate forward, filtering out records past end_date.
         params = {
             "afterDate": start_date.strftime("%Y-%m-%d"),
-            "beforeDate": end_date.strftime("%Y-%m-%d"),
             "sort": "asc",
             "limit": "100",
             "offset": "0",
         }
         all_activities: list[Any] = []
         offset = 0
+        end_date_str = end_date.strftime("%Y-%m-%d")
 
         while True:
             params["offset"] = str(offset)
@@ -117,10 +119,12 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
             if not response:
                 break
             activities = response.get("activities", [])
-            all_activities.extend(activities)
-            # Check for next page
+            # Filter out activities beyond end_date
+            in_range = [a for a in activities if a.get("startTime", "")[:10] <= end_date_str]
+            all_activities.extend(in_range)
+            # Stop if we've passed end_date or there are no more pages
             next_page = response.get("pagination", {}).get("next", "")
-            if not next_page or not activities:
+            if not next_page or not activities or len(in_range) < len(activities):
                 break
             offset += len(activities)
 
@@ -145,15 +149,12 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         activities = self.get_workouts(db, user_id, start_date, end_date)
 
         for raw in activities:
-            savepoint = db.begin_nested()
             try:
                 record, detail = self._normalize_workout(raw, user_id)
                 created_record = event_record_service.create(db, record)
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
                 event_record_service.create_detail(db, detail_for_record)
-                savepoint.commit()
             except Exception as e:
-                savepoint.rollback()
                 log_and_capture_error(
                     e,
                     logger,
