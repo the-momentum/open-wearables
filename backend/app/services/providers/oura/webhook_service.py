@@ -241,6 +241,17 @@ class OuraWebhookService:
                             }
                         )
                     except httpx.HTTPError as e:
+                        log_structured(
+                            logger,
+                            "error",
+                            "Failed to create Oura webhook subscription",
+                            provider="oura",
+                            action="oura_webhook_subscription_create_error",
+                            data_type=data_type,
+                            event_type=event_type,
+                            error=str(e),
+                            status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+                        )
                         results.append(
                             {
                                 "data_type": data_type,
@@ -302,6 +313,16 @@ class OuraWebhookService:
                         }
                     )
                 except httpx.HTTPError as e:
+                    log_structured(
+                        logger,
+                        "error",
+                        "Failed to renew Oura webhook subscription",
+                        provider="oura",
+                        action="oura_webhook_subscription_renew_error",
+                        subscription_id=sub_id,
+                        error=str(e),
+                        status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+                    )
                     results.append({"id": sub_id, "status": "error", "error": str(e)})
 
         return results

@@ -72,7 +72,10 @@ def parse_webhook_data_timestamp(data_timestamp: str | None) -> datetime:
     """
     if data_timestamp:
         try:
-            return datetime.fromisoformat(data_timestamp.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(data_timestamp.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except (ValueError, AttributeError):
             pass
     return datetime.now(timezone.utc)

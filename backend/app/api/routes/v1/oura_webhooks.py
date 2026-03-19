@@ -143,7 +143,7 @@ async def create_webhook_subscriptions(
         results = await oura_webhook_service.create_subscriptions(callback_url)
         return {"subscriptions": results}
     except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/subscriptions")
@@ -155,7 +155,7 @@ async def list_webhook_subscriptions(
         subscriptions = await oura_webhook_service.list_subscriptions()
         return {"subscriptions": subscriptions}
     except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to list subscriptions: {str(e)}")
 
@@ -169,6 +169,6 @@ async def renew_webhook_subscriptions(
         results = await oura_webhook_service.renew_subscriptions()
         return {"renewed": results}
     except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to renew subscriptions: {str(e)}")
