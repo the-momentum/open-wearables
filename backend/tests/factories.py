@@ -379,6 +379,9 @@ class UserConnectionFactory(BaseFactory):
         user = kwargs.pop("user", None)
         # Remove any stale user_id that might have been set
         kwargs.pop("user_id", None)
+        # Handle common field name mistakes
+        if "provider_name" in kwargs:
+            kwargs["provider"] = kwargs.pop("provider_name")
         if user is None:
             user = UserFactory()
         kwargs["user_id"] = user.id
