@@ -347,7 +347,7 @@ class TestDisconnectEndpoint:
         assert response.status_code == 204
 
     def test_disconnect_nonexistent_connection(self, client: TestClient, db: Session) -> None:
-        """Test that disconnecting a nonexistent connection returns 204."""
+        """Test that disconnecting a nonexistent connection returns 404."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -357,7 +357,7 @@ class TestDisconnectEndpoint:
         response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
 
         # Assert
-        assert response.status_code == 204
+        assert response.status_code == 404
 
     def test_disconnect_expired_connection(self, client: TestClient, db: Session) -> None:
         """Test that an expired connection gets revoked."""
