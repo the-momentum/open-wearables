@@ -5,7 +5,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import UserConnectionCreate, UserConnectionRead, UserConnectionUpdate
+from app.schemas import UserConnectionCreate, UserConnectionUpdate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
@@ -26,10 +26,9 @@ class UserConnectionService(
         return self.crud.get_active_count_in_range(db_session, start_date, end_date)
 
     @handle_exceptions
-    def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnectionRead]:
+    def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
         """Get all connections for a user."""
-        connections = self.crud.get_by_user_id(db_session, user_id)
-        return [UserConnectionRead.model_validate(conn) for conn in connections]
+        return self.crud.get_by_user_id(db_session, user_id)
 
     @handle_exceptions
     def disconnect(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
