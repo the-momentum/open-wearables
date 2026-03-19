@@ -6,6 +6,7 @@ from app.database import DbSession
 from app.schemas import UserConnectionRead
 from app.schemas.oauth import ProviderName
 from app.services import ApiKeyDep, user_connection_service
+from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
 
@@ -28,5 +29,6 @@ def disconnect_provider_endpoint(
     _api_key: ApiKeyDep,
 ) -> Response:
     """Disconnect a user from a provider, revoking the connection and clearing tokens."""
-    user_connection_service.disconnect(db, UUID(user_id), provider.value)
+    strategy = ProviderFactory().get_provider(provider.value)
+    user_connection_service.disconnect(db, UUID(user_id), provider.value, oauth=strategy.oauth)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

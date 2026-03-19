@@ -6,8 +6,10 @@ from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import UserConnectionCreate, UserConnectionUpdate
+from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.sentry_helpers import log_and_capture_error
 
 
 class UserConnectionService(
@@ -31,8 +33,17 @@ class UserConnectionService(
         return self.crud.get_by_user_id(db_session, user_id)
 
     @handle_exceptions
-    def disconnect(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
-        """Disconnect a user from a provider. Raises 404 if connection not found."""
+    def disconnect(
+        self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate | None = None
+    ) -> None:
+        """Disconnect a user from a provider. Raises 404 if connection not found.
+
+        If oauth is provided, calls the provider's deregistration API before clearing tokens.
+        Deregistration failures are logged but do not block the disconnect.
+        """
+        if oauth:
+            self._deregister_from_provider(db_session, user_id, provider, oauth)
+
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
             self.logger.info("Disconnected user %s from provider %s", user_id, provider)
@@ -42,6 +53,25 @@ class UserConnectionService(
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
+
+    def _deregister_from_provider(
+        self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
+    ) -> None:
+        """Best-effort call to provider's deregistration API."""
+        connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
+        if not connection or not connection.access_token:
+            return
+
+        try:
+            oauth.deregister_user(connection.access_token)
+            self.logger.info("Deregistered user %s from provider %s API", user_id, provider)
+        except Exception as e:
+            log_and_capture_error(
+                e,
+                self.logger,
+                f"Failed to deregister user {user_id} from {provider} API: {e}",
+                extra={"user_id": str(user_id), "provider": provider},
+            )
 
 
 user_connection_service = UserConnectionService(log=getLogger(__name__))

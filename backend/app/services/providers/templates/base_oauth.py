@@ -332,6 +332,9 @@ class BaseOAuthTemplate(ABC):
             "Content-Type": "application/x-www-form-urlencoded",
         }
 
+    def deregister_user(self, access_token: str) -> None:
+        """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
+
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts provider user info. Default implementation returns None."""
         return {"user_id": None, "username": None}

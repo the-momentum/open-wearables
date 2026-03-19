@@ -10,6 +10,7 @@ Tests the /api/v1/users/{user_id}/connections endpoint including:
 """
 
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -460,3 +461,90 @@ class TestDisconnectEndpoint:
         conn2 = db.query(UserConnection).filter_by(user_id=user2.id, provider="garmin").one()
         assert conn1.status == ConnectionStatus.REVOKED
         assert conn2.status == ConnectionStatus.ACTIVE
+
+
+class TestDisconnectDeregistration:
+    """Test suite for provider deregistration during disconnect."""
+
+    @patch("httpx.delete")
+    def test_disconnect_calls_garmin_deregistration(
+        self, mock_httpx_delete: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """Test that disconnecting Garmin calls the deregistration API before revoking."""
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_httpx_delete.return_value = mock_response
+
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            access_token="garmin_access_token",
+        )
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        mock_httpx_delete.assert_called_once_with(
+            "https://apis.garmin.com/rest/user/registration",
+            headers={"Authorization": "Bearer garmin_access_token"},
+            timeout=30.0,
+        )
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
+        assert conn.status == ConnectionStatus.REVOKED
+        assert conn.access_token is None
+
+    @patch("httpx.delete")
+    def test_disconnect_succeeds_when_deregistration_fails(
+        self, mock_httpx_delete: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """Test that disconnect still works when the provider deregistration API fails."""
+        # Arrange
+        mock_httpx_delete.side_effect = Exception("Network error")
+
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            access_token="garmin_access_token",
+        )
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
+
+        # Assert - disconnect still succeeds
+        assert response.status_code == 204
+        conn = db.query(UserConnection).filter_by(user_id=user.id, provider="garmin").one()
+        assert conn.status == ConnectionStatus.REVOKED
+
+    @patch("httpx.delete")
+    def test_disconnect_skips_deregistration_when_no_token(
+        self, mock_httpx_delete: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        """Test that deregistration is skipped when connection has no access token."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            status=ConnectionStatus.ACTIVE,
+            access_token=None,
+        )
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.delete(f"/api/v1/users/{user.id}/connections/garmin", headers=headers)
+
+        # Assert
+        assert response.status_code == 204
+        mock_httpx_delete.assert_not_called()
