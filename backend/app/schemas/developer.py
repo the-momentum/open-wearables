@@ -50,7 +50,7 @@ class DeveloperUpdateInternal(BaseModel):
 
 
 class PasswordChange(BaseModel):
-    current_password: str = Field(..., min_length=1)
+    current_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
     new_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
     confirm_password: str = Field(..., min_length=MIN_PASSWORD_LENGTH)
 
