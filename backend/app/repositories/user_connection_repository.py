@@ -127,6 +127,18 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .all()
         )
 
+    def disconnect(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
+        """Disconnect a provider: revoke status and clear tokens."""
+        connection.status = ConnectionStatus.REVOKED
+        connection.access_token = None
+        connection.refresh_token = None
+        connection.token_expires_at = None
+        connection.updated_at = datetime.now(timezone.utc)
+        db_session.add(connection)
+        db_session.commit()
+        db_session.refresh(connection)
+        return connection
+
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Mark connection as revoked (when refresh token fails)."""
         connection.status = ConnectionStatus.REVOKED

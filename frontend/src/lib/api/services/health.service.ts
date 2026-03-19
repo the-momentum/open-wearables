@@ -98,6 +98,15 @@ export const healthService = {
   },
 
   /**
+   * Disconnect a user from a provider
+   */
+  async disconnectProvider(userId: string, provider: string): Promise<void> {
+    await apiClient.delete(
+      API_ENDPOINTS.userConnectionDisconnect(userId, provider)
+    );
+  },
+
+  /**
    * Get user connections for a user
    */
   async getUserConnections(userId: string): Promise<UserConnection[]> {
