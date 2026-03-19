@@ -151,7 +151,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             ),
         )
         db_session.commit()
-        return result.rowcount or 0
+        return result.rowcount
 
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
         """Mark connection as revoked (when refresh token fails)."""
