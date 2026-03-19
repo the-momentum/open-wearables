@@ -10,6 +10,7 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
 
 
 class UserConnectionService(
@@ -64,8 +65,23 @@ class UserConnectionService(
 
         try:
             oauth.deregister_user(connection.access_token)
-            self.logger.info("Deregistered user %s from provider %s API", user_id, provider)
+            log_structured(
+                self.logger,
+                "info",
+                "Deregistered user from provider API",
+                provider=provider,
+                task="deregister_user",
+                user_id=str(user_id),
+            )
         except Exception as e:
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to deregister user from provider API: {e}",
+                provider=provider,
+                task="deregister_user",
+                user_id=str(user_id),
+            )
             log_and_capture_error(
                 e,
                 self.logger,
