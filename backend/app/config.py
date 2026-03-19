@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     oura_redirect_uri: str = "http://localhost:8000/api/v1/oauth/oura/callback"
     oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration"
     oura_webhook_verification_token: SecretStr | None = None
+
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None
     strava_client_secret: SecretStr | None = None

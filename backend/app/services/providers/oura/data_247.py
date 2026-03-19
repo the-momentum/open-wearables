@@ -110,7 +110,7 @@ class Oura247Data(Base247DataTemplate):
         return all_data
 
     # -------------------------------------------------------------------------
-    # Sleep Data - /v2/usercollection/sleep
+    # Sleep Data
     # -------------------------------------------------------------------------
 
     def get_sleep_data(
@@ -291,7 +291,7 @@ class Oura247Data(Base247DataTemplate):
         return count
 
     # -------------------------------------------------------------------------
-    # Recovery / Readiness Data - /v2/usercollection/daily_readiness
+    # Recovery / Readiness Data
     # -------------------------------------------------------------------------
 
     def get_recovery_data(
@@ -413,7 +413,7 @@ class Oura247Data(Base247DataTemplate):
         return total_count
 
     # -------------------------------------------------------------------------
-    # Heart Rate Data - /v2/usercollection/heartrate
+    # Heart Rate Data
     # -------------------------------------------------------------------------
 
     def get_heart_rate_data(
@@ -558,7 +558,7 @@ class Oura247Data(Base247DataTemplate):
         return count
 
     # -------------------------------------------------------------------------
-    # Daily SpO2 Data - /v2/usercollection/daily_spo2
+    # Daily SpO2 Data
     # -------------------------------------------------------------------------
 
     def get_spo2_data(
