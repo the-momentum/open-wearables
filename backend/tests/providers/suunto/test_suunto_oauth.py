@@ -141,9 +141,11 @@ class TestSuuntoOAuth:
             token_type="Bearer",
         )
 
-        # Act
-        with pytest.raises(ValueError, match="JWT signature verification failed"):
-            suunto_oauth._get_provider_user_info(token_response, "test_user_id")
+        with patch.object(type(suunto_oauth), "credentials", new_callable=PropertyMock) as mock_credentials:
+            mock_credentials.return_value.client_secret = "test_secret"
+            mock_credentials.return_value.client_id = "test_client_id"
+            with pytest.raises(ValueError, match="JWT signature verification failed"):
+                suunto_oauth._get_provider_user_info(token_response, "test_user_id")
 
     @patch("httpx.post")
     def test_exchange_token_success(self, mock_post: MagicMock, suunto_oauth: SuuntoOAuth, db: Session) -> None:
