@@ -373,8 +373,10 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             </div>
           )}
 
-        {/* Sync button - only for non-Garmin providers */}
-        {connection.provider !== 'garmin' && (
+        {/* Sync button - only for cloud API-based providers (excludes SDK and Garmin) */}
+        {!['garmin', 'apple', 'samsung', 'google', 'auto-health-export'].includes(
+          connection.provider
+        ) && (
           <div className="flex gap-2">
             <Button
               variant="outline"
