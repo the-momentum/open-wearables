@@ -492,7 +492,7 @@ class TestDisconnectDeregistration:
         # Assert
         assert response.status_code == 204
         mock_httpx_delete.assert_called_once_with(
-            "https://apis.garmin.com/rest/user/registration",
+            "https://apis.garmin.com/partner-gateway/rest/user/registration",
             headers={"Authorization": "Bearer garmin_access_token"},
             timeout=30.0,
         )

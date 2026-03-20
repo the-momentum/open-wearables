@@ -339,7 +339,7 @@ class TestGarminOAuth:
 
         # Assert
         mock_httpx_delete.assert_called_once_with(
-            "https://apis.garmin.com/rest/user/registration",
+            "https://apis.garmin.com/partner-gateway/rest/user/registration",
             headers={"Authorization": "Bearer test_access_token"},
             timeout=30.0,
         )
