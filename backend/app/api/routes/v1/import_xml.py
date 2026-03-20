@@ -1,4 +1,5 @@
 import json
+from json import JSONDecodeError
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
@@ -42,7 +43,7 @@ def import_xml_file(
     }
 
 
-@router.post("/sns/notification")
+@router.post("/sns/notification", status_code=status.HTTP_202_ACCEPTED)
 async def receive_sns_notification(
     request: Request,
 ) -> UploadDataResponse:
@@ -50,6 +51,6 @@ async def receive_sns_notification(
     body = await request.body()
     try:
         notification = SNSNotification.model_validate(json.loads(body))
-    except ValidationError as e:
+    except (ValidationError, JSONDecodeError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return sns_service.handle_sns_notification(notification)

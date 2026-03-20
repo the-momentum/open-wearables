@@ -13,6 +13,7 @@ from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
+from app.utils.exceptions import ResourceNotFoundError
 from app.utils.sentry_helpers import log_and_capture_error
 from celery import shared_task
 
@@ -48,7 +49,19 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict[
             temp_xml_file = os.path.join(temp_dir, f"temp_import_{object_key.split('/')[-1]}")
 
             # Validate that the user exists before processing
-            _ = user_service.get(db, UUID(user_id), raise_404=True)
+            try:
+                _ = user_service.get(db, UUID(user_id), raise_404=True)
+            except ResourceNotFoundError as e:
+                log_and_capture_error(
+                    e,
+                    logger,
+                    "Skipping import for non-existent user",
+                    extra={"user_id": user_id},
+                )
+                return {
+                    "status": "skipped",
+                    "reason": str(e),
+                }
 
             s3_client.download_file(bucket_name, object_key, temp_xml_file)
 

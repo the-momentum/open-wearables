@@ -164,6 +164,18 @@ class SNSService:
         )
 
     def handle_sns_notification(self, notification: SNSNotification) -> UploadDataResponse:
+        if not self.sns_client:
+            log_structured(
+                logger,
+                "warning",
+                "SNS client not configured",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return UploadDataResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, response="SNS client not configured", user_id=None
+            )
+
         if not self._verify_signature(notification):
             return UploadDataResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
