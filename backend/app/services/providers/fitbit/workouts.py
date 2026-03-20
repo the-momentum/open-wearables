@@ -31,7 +31,10 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         duration_ms: int,
     ) -> tuple[datetime, datetime]:
         """Parse ISO 8601 start time and compute end time from duration in ms."""
-        start_dt = datetime.fromisoformat(start_time).astimezone(timezone.utc).replace(tzinfo=timezone.utc)
+        parsed_start = datetime.fromisoformat(start_time)
+        if parsed_start.tzinfo is None:
+            raise ValueError(f"Fitbit startTime is missing timezone offset: {start_time}")
+        start_dt = parsed_start.astimezone(timezone.utc)
         end_dt = start_dt + timedelta(milliseconds=duration_ms)
         return start_dt, end_dt
 

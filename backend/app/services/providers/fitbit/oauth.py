@@ -14,7 +14,7 @@ class FitbitOAuth(BaseOAuthTemplate):
         """OAuth endpoints for authorization and token exchange."""
         return ProviderEndpoints(
             authorize_url="https://www.fitbit.com/oauth2/authorize",
-            token_url="https://api.fitbit.com/oauth2/token",
+            token_url=f"{self.api_base_url}/oauth2/token",
         )
 
     @property
@@ -29,7 +29,8 @@ class FitbitOAuth(BaseOAuthTemplate):
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fitbit includes user_id directly in the token response."""
+        provider_user_id = token_response.model_extra.get("user_id") if token_response.model_extra else None
         return {
-            "user_id": token_response.fitbit_user_id,
+            "user_id": provider_user_id,
             "username": None,
         }

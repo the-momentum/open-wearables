@@ -124,17 +124,21 @@ class UserConnectionRead(UserConnectionBase):
 
 # OAuth Token Response
 class OAuthTokenResponse(BaseModel):
-    """OAuth token response from provider."""
+    """OAuth token response from provider.
 
-    model_config = ConfigDict(populate_by_name=True)
+    Standard OAuth 2.0 fields are declared explicitly. Provider-specific extras
+    (e.g. Polar's ``x_user_id``, Fitbit's ``user_id``) are captured automatically
+    in ``model_extra`` thanks to ``extra='allow'``, so the schema stays clean as
+    new providers are added.
+    """
+
+    model_config = ConfigDict(extra="allow")
 
     access_token: str
     token_type: str
     refresh_token: str | None = None
     expires_in: int
     scope: str | None = None
-    x_user_id: int | None = None  # Polar-specific: user ID in Polar ecosystem
-    fitbit_user_id: str | None = Field(default=None, alias="user_id")  # Fitbit: user ID returned in token response
 
 
 # Provider config
