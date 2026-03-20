@@ -50,7 +50,7 @@ def process_aws_upload(bucket_name: str, object_key: str, user_id: str) -> dict[
 
             # Validate that the user exists before processing
             try:
-                _ = user_service.get(db, UUID(user_id), raise_404=True)
+                _ = user_service.get(db, user_id, raise_404=True)
             except ResourceNotFoundError as e:
                 log_and_capture_error(
                     e,
