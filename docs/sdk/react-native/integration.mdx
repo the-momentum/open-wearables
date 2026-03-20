@@ -22,14 +22,9 @@ The SDK supports two authentication modes: **token-based** (recommended) and **A
 
 <Steps>
   <Step title="Your Backend generates token" icon="server">
-    Your backend calls Open Wearables API with your **app credentials** (server-to-server, HTTPS).
-    ```
-    POST https://api.openwearables.io/api/v1/users/{user_id}/token
-    Content-Type: application/json
-    { "app_id": "<APP_ID>", "app_secret": "<APP_SECRET>" }
-    ```
+      Your backend calls the Open Wearables API with your **App credentials** (`app_id` + `app_secret`) to generate a user-scoped token (server-to-server, HTTPS) via [Create User Token](/api-reference/mobile-sdk/create-user-token) endpoint. Open Wearables returns `access_token` + `refresh_token`.
   </Step>
-  <Step title="Backend returns credentials" icon="key">
+  <Step title="Your Backend returns tokens to the app" icon="key">
     Your backend exposes its own custom endpoint that forwards the `access_token` and `refresh_token` to the mobile app. **Never expose `app_id` or `app_secret` to the client.**
   </Step>
   <Step title="Mobile App calls SDK signIn" icon="mobile">
@@ -480,7 +475,7 @@ class HealthSyncService {
   /** Initialize the SDK and restore any existing session */
   async initialize(): Promise<void> {
     this._cleanupListeners()
-    
+
     // Set up event listeners
     const logSub = OpenWearablesHealthSDK.addListener("onLog", ({ message }) => {
       console.log(`[HealthSync] ${message}`);
