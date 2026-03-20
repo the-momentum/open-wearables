@@ -2,7 +2,6 @@ import os
 import tempfile
 from logging import getLogger
 from pathlib import Path
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 
