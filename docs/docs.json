@@ -104,7 +104,8 @@
           {
             "group": "Deployment",
             "pages": [
-              "deployment/railway"
+              "deployment/railway",
+              "deployment/google-cloud-run"
             ]
           },
           {
