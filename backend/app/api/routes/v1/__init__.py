@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.config import settings
+
 from .api_keys import router as api_keys_router
 from .applications import router as applications_router
 from .archival import router as archival_router
@@ -11,6 +13,7 @@ from .events import router as events_router
 from .external_connectors import router as external_connectors_router
 from .garmin_webhooks import router as garmin_webhooks_router
 from .import_xml import router as import_xml_router
+from .internal_tasks import router as internal_tasks_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
@@ -66,5 +69,8 @@ v1_router.include_router(archival_router, tags=["Data Lifecycle"])
 
 # Token refresh endpoint
 v1_router.include_router(token_router, tags=["token"])
+
+if settings.internal_task_api_enabled:
+    v1_router.include_router(internal_tasks_router, tags=["internal tasks"])
 
 __all__ = ["v1_router"]

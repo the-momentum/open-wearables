@@ -44,7 +44,9 @@ from .periodic_sync_task import sync_all_users
 from .poll_sqs_task import poll_sqs_task
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
+from .process_sdk_upload_reference_task import process_sdk_upload_reference
 from .process_xml_upload_task import process_xml_upload
+from .process_xml_upload_reference_task import process_xml_upload_reference
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
 
@@ -70,8 +72,10 @@ __all__ = [
     "finalize_stale_sleeps",
     "poll_sqs_task",
     "process_sdk_upload",
+    "process_sdk_upload_reference",
     "process_aws_upload",
     "process_xml_upload",
+    "process_xml_upload_reference",
     "sync_vendor_data",
     "sync_all_users",
     "send_invitation_email_task",
