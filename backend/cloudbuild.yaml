@@ -1,0 +1,29 @@
+steps:
+  # Build backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}', '-f', 'backend/Dockerfile', 'backend']
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}']
+
+  # Update Cloud Run services (API, Worker) and Job (Init)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run services update ${_API_SERVICE} --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA} --region ${_REGION}
+        gcloud run services update ${_WORKER_SERVICE} --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA} --region ${_REGION}
+        gcloud run jobs update ${_INIT_JOB} --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA} --region ${_REGION}
+
+substitutions:
+  _REGION: europe-west1
+  _REPOSITORY: open-wearables
+  _IMAGE_NAME: backend
+  _API_SERVICE: open-wearables-api
+  _WORKER_SERVICE: open-wearables-worker
+  _INIT_JOB: open-wearables-init
+
+options:
+  logging: CLOUD_LOGGING_ONLY

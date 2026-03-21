@@ -1,0 +1,25 @@
+steps:
+  # Build frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}', '-f', 'frontend/Dockerfile', 'frontend']
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA}']
+
+  # Update Cloud Run service
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run services update ${_SERVICE_NAME} --image ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPOSITORY}/${_IMAGE_NAME}:${SHORT_SHA} --region ${_REGION}
+
+substitutions:
+  _REGION: europe-west1
+  _REPOSITORY: open-wearables
+  _IMAGE_NAME: frontend
+  _SERVICE_NAME: open-wearables-frontend
+
+options:
+  logging: CLOUD_LOGGING_ONLY
