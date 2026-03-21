@@ -1,0 +1,161 @@
+project_id                      = "your-prod-project-id"
+region                          = "europe-west1"
+name_prefix                     = "open-wearables"
+labels = {
+  app         = "open-wearables"
+  environment = "prod"
+  managed_by  = "terraform"
+}
+
+artifact_registry_repository_id = "open-wearables-prod"
+
+create_secrets = true
+secret_names   = ["cloud_sql_db_password", "SECRET_KEY", "polar_client_id", "polar_client_secret", "oura_client_id", "oura_client_secret", "oura_webhook_verification_token"]
+secret_values = {
+  polar_client_id       = "replace-me"
+  polar_client_secret   = "replace-me"
+  oura_client_id        = "replace-me"
+  oura_client_secret    = "replace-me"
+  oura_webhook_verification_token = "replace-me"
+  SECRET_KEY            = "replace-me"
+  cloud_sql_db_password = "replace-me"
+}
+
+create_network   = true
+create_cloud_sql = true
+create_vpc_connector = true
+vpc_connector_name = "ow-prod-conn"
+cloud_sql_db_name = "open-wearables"
+cloud_sql_db_user = "open_wearables"
+cloud_sql_db_password = "replace-me"
+
+create_memorystore = true
+
+enable_backend_api_service      = true
+enable_worker_service           = true
+enable_backend_init_job         = true
+enable_frontend_service         = true
+enable_cloud_tasks_dispatch     = true
+create_default_scheduler_jobs   = false
+
+queue_configs = {
+  default = {
+    max_dispatches_per_second = 5
+    max_concurrent_dispatches = 20
+    max_attempts              = 10
+    min_backoff               = "0.1s"
+    max_backoff               = "3600s"
+  }
+  garmin_backfill = {
+    max_dispatches_per_second = 2
+    max_concurrent_dispatches = 5
+    max_attempts              = 20
+    min_backoff               = "1s"
+    max_backoff               = "3600s"
+  }
+  sdk_sync = {
+    max_dispatches_per_second = 10
+    max_concurrent_dispatches = 50
+    max_attempts              = 8
+    min_backoff               = "0.1s"
+    max_backoff               = "3600s"
+  }
+}
+
+worker_service_base_url         = "https://your-worker-service.run.app"
+backend_image                   = "europe-west1-docker.pkg.dev/your-prod-project-id/open-wearables-prod/backend:latest"
+frontend_image                  = "europe-west1-docker.pkg.dev/your-prod-project-id/open-wearables-prod/frontend:latest"
+
+backend_api_command             = ["/bin/bash", "scripts/start/cloud-run-api.sh"]
+backend_worker_command          = ["/root_project/.venv/bin/python", "-m", "fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+backend_init_command            = ["/bin/bash", "scripts/start/cloud-run-init.sh"]
+
+api_service_account_email       = "open-wearables-prod-api@your-prod-project-id.iam.gserviceaccount.com"
+worker_service_account_email    = "open-wearables-prod-worker@your-prod-project-id.iam.gserviceaccount.com"
+migrator_service_account_email  = "open-wearables-prod-migrator@your-prod-project-id.iam.gserviceaccount.com"
+scheduler_service_account_email = "open-wearables-prod-scheduler@your-prod-project-id.iam.gserviceaccount.com"
+frontend_service_account_email  = "open-wearables-prod-api@your-prod-project-id.iam.gserviceaccount.com"
+
+backend_api_env = {
+  ENVIRONMENT                = "production"
+  CORS_ORIGINS               = "[\"https://your-domain.com\"]"
+  AUTH_ALLOWED_REDIRECT_URLS = "yourapp://wearables/callback,https://your-domain.com"
+  POLAR_REDIRECT_URI         = "https://api.your-domain.com/api/v1/oauth/polar/callback"
+  OURA_REDIRECT_URI          = "https://api.your-domain.com/api/v1/oauth/oura/callback"
+}
+
+backend_api_secret_env = {
+  SECRET_KEY                      = { secret = "SECRET_KEY" }
+  POLAR_CLIENT_ID                 = { secret = "polar_client_id" }
+  POLAR_CLIENT_SECRET              = { secret = "polar_client_secret" }
+  OURA_CLIENT_ID                  = { secret = "oura_client_id" }
+  OURA_CLIENT_SECRET               = { secret = "oura_client_secret" }
+  OURA_WEBHOOK_VERIFICATION_TOKEN = { secret = "oura_webhook_verification_token" }
+}
+
+backend_worker_env = {
+  ENVIRONMENT                = "production"
+  AUTH_ALLOWED_REDIRECT_URLS = "yourapp://wearables/callback,https://your-domain.com"
+  POLAR_REDIRECT_URI         = "https://api.your-domain.com/api/v1/oauth/polar/callback"
+  OURA_REDIRECT_URI          = "https://api.your-domain.com/api/v1/oauth/oura/callback"
+}
+
+backend_worker_secret_env = {
+  SECRET_KEY                      = { secret = "SECRET_KEY" }
+  POLAR_CLIENT_ID                 = { secret = "polar_client_id" }
+  POLAR_CLIENT_SECRET              = { secret = "polar_client_secret" }
+  OURA_CLIENT_ID                  = { secret = "oura_client_id" }
+  OURA_CLIENT_SECRET               = { secret = "oura_client_secret" }
+  OURA_WEBHOOK_VERIFICATION_TOKEN = { secret = "oura_webhook_verification_token" }
+}
+
+backend_init_env = {
+  ENVIRONMENT                = "production"
+  AUTH_ALLOWED_REDIRECT_URLS = "yourapp://wearables/callback,https://your-domain.com"
+  POLAR_REDIRECT_URI         = "https://api.your-domain.com/api/v1/oauth/polar/callback"
+  OURA_REDIRECT_URI          = "https://api.your-domain.com/api/v1/oauth/oura/callback"
+}
+
+backend_init_secret_env = {
+  SECRET_KEY                      = { secret = "SECRET_KEY" }
+  POLAR_CLIENT_ID                 = { secret = "polar_client_id" }
+  POLAR_CLIENT_SECRET              = { secret = "polar_client_secret" }
+  OURA_CLIENT_ID                  = { secret = "oura_client_id" }
+  OURA_CLIENT_SECRET               = { secret = "oura_client_secret" }
+  OURA_WEBHOOK_VERIFICATION_TOKEN = { secret = "oura_webhook_verification_token" }
+}
+
+frontend_env = {
+  VITE_API_URL = "https://api.your-domain.com"
+}
+frontend_custom_domain          = "your-domain.com"
+backend_api_allow_unauthenticated = true
+frontend_allow_unauthenticated    = true
+
+backend_api_min_instances         = 1
+backend_vpc_egress                = "PRIVATE_RANGES_ONLY"
+
+scheduler_jobs = {
+  sync-all-users = {
+    description                = "Sync all users every 30 minutes"
+    schedule                   = "*/30 * * * *"
+    time_zone                  = "UTC"
+    target_url                 = "https://your-worker-service.run.app/api/v1/internal/tasks/sync_all_users"
+    http_method                = "POST"
+    headers                    = { "Content-Type" = "application/json" }
+    body                       = "{\"args\": [], \"kwargs\": {}}"
+    oidc_service_account_email = "open-wearables-prod-scheduler@your-prod-project-id.iam.gserviceaccount.com"
+    audience                   = "https://your-worker-service.run.app"
+  }
+  finalize-stale-sleeps = {
+    description                = "Finalize stale sleeps every hour"
+    schedule                   = "0 * * * *"
+    time_zone                  = "UTC"
+    target_url                 = "https://your-worker-service.run.app/api/v1/internal/tasks/finalize_stale_sleeps"
+    http_method                = "POST"
+    headers                    = { "Content-Type" = "application/json" }
+    body                       = "{\"args\": [], \"kwargs\": {}}"
+    oidc_service_account_email = "open-wearables-prod-scheduler@your-prod-project-id.iam.gserviceaccount.com"
+    audience                   = "https://your-worker-service.run.app"
+  }
+}
