@@ -4,7 +4,7 @@ from pydantic import SecretStr
 from app.config import settings
 
 
-def test_db_uri_prefers_database_url_override(monkeypatch: "pytest.MonkeyPatch") -> None:
+def test_db_uri_prefers_database_url_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "database_url", SecretStr("postgresql+psycopg://override"))
     monkeypatch.setattr(settings, "db_socket_path", None)
 

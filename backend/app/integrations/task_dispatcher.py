@@ -11,6 +11,7 @@ from celery import current_app as current_celery_app
 
 from app.config import settings
 from app.integrations.google_auth import get_google_access_token
+from app.services.task_payload_storage import store_task_payload
 
 _CLOUD_TASKS_API_BASE_URL = "https://cloudtasks.googleapis.com/v2"
 _BYTES_MARKER = "__open_wearables_bytes__"
@@ -167,8 +168,6 @@ def dispatch_task(
 
 def _maybe_offload_payload(task_key: RegisteredTask, kwargs: dict[str, Any]) -> tuple[RegisteredTask, dict[str, Any]]:
     """Automatically offload large payloads to storage and switch to reference tasks."""
-    from app.services.task_payload_storage import store_task_payload
-
     # Map of standard tasks to their reference-aware counterparts and the key to offload
     offload_map = {
         RegisteredTask.PROCESS_XML_UPLOAD: (
