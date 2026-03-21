@@ -20,14 +20,12 @@ module "open_wearables_stack" {
   subnetwork_name       = "ow-srvless-subnet"
   vpc_connector_name    = "ow-srvless-connector"
 
-  create_cloud_sql        = false # Set to true to create a new Cloud SQL instance
-  cloud_sql_instance_name = "ow-postgres"
+  create_cloud_sql        = var.create_cloud_sql
   cloud_sql_db_name       = var.cloud_sql_db_name
   cloud_sql_db_user       = var.cloud_sql_db_user
   cloud_sql_db_password   = var.cloud_sql_db_password
 
-  create_memorystore    = false # Set to true to create a new Redis instance
-  memorystore_name      = "ow-redis"
+  create_memorystore    = var.create_memorystore
 
   # Service Configuration
   enable_backend_api_service    = var.enable_backend_api_service

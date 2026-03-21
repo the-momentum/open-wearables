@@ -272,7 +272,7 @@ variable "frontend_custom_domain" {
 }
 
 variable "backend_api_allow_unauthenticated" {
-  description = "Whether to allow unauthenticated access to the backend API."
+  description = "Whether to allow unauthenticated access to the backend API. The API handles its own JWT authentication, so Cloud Run IAM auth should remain disabled (true) to avoid blocking all requests."
   type        = bool
   default     = true
 }

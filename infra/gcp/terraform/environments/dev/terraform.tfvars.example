@@ -41,7 +41,7 @@ frontend_image = "europe-west1-docker.pkg.dev/your-dev-project-id/open-wearables
 worker_service_base_url = "https://worker-dev.example.run.app"
 
 backend_api_env = {
-  ENVIRONMENT  = "production"
+  ENVIRONMENT  = "dev"
   CORS_ORIGINS = "https://frontend-dev.example.run.app"
 }
 
