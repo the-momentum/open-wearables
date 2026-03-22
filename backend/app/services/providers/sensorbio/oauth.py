@@ -29,17 +29,13 @@ class SensorBioOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.sensorbio_client_id or "",
             client_secret=(
-                settings.sensorbio_client_secret.get_secret_value()
-                if settings.sensorbio_client_secret
-                else ""
+                settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else ""
             ),
             redirect_uri=settings.sensorbio_redirect_uri,
             default_scope=settings.sensorbio_default_scope,
         )
 
-    def _get_provider_user_info(
-        self, token_response: OAuthTokenResponse, user_id: str
-    ) -> dict[str, Any]:
+    def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, Any]:
         """Fetches Sensor Bio user profile via /v1/user."""
         try:
             response = httpx.get(
