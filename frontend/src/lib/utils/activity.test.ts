@@ -81,6 +81,21 @@ describe('calculateActivityStats', () => {
     expect(Number.isNaN(stats?.avgHeartRate)).toBe(false);
   });
 
+  it('returns null avgHeartRate when every summary has avg_bpm null', () => {
+    const summaries = [
+      makeSummary({
+        heart_rate: { avg_bpm: null, max_bpm: 120, min_bpm: 55 },
+      }),
+      makeSummary({
+        heart_rate: { avg_bpm: null, max_bpm: 130, min_bpm: 60 },
+      }),
+    ];
+
+    const stats = calculateActivityStats(summaries);
+    expect(stats?.avgHeartRate).toBeNull();
+    expect(Number.isNaN(stats?.avgHeartRate)).toBe(false);
+  });
+
   it('sums steps and calculates average correctly', () => {
     const summaries = [
       makeSummary({ steps: 5000 }),
