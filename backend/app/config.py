@@ -134,6 +134,12 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # SENSORBIO OAUTH SETTINGS
+    sensorbio_client_id: str | None = None
+    sensorbio_client_secret: SecretStr | None = None
+    sensorbio_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
+    sensorbio_default_scope: str = ""
+
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None
     fitbit_client_secret: SecretStr | None = None

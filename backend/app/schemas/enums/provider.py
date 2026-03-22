@@ -15,6 +15,7 @@ class ProviderName(str, Enum):
     OURA = "oura"
     FITBIT = "fitbit"
     ULTRAHUMAN = "ultrahuman"
+    SENSORBIO = "sensorbio"
     UNKNOWN = "unknown"
     INTERNAL = "internal"
 
