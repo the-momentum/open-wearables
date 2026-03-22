@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { calculateActivityStats } from './activity';
 import type { ActivitySummary } from '@/lib/api/types';
 
+/** Create an ActivitySummary with all fields defaulting to null, overridable for specific test scenarios. */
 function makeSummary(
   overrides: Partial<ActivitySummary> = {}
 ): ActivitySummary {
