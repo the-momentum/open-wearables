@@ -1,6 +1,6 @@
 from app.schemas.workout_types import WorkoutType
 
-SENSR_NAME_TO_WORKOUT_TYPE: dict[str, WorkoutType] = {
+SENSORBIO_NAME_TO_WORKOUT_TYPE: dict[str, WorkoutType] = {
     "run": WorkoutType.RUNNING,
     "running": WorkoutType.RUNNING,
     "walk": WorkoutType.WALKING,
@@ -35,6 +35,6 @@ def get_unified_workout_type(likely_name: str | None = None, activity_type: str 
         if not candidate:
             continue
         normalized = candidate.lower().strip()
-        if normalized in SENSR_NAME_TO_WORKOUT_TYPE:
-            return SENSR_NAME_TO_WORKOUT_TYPE[normalized]
+        if normalized in SENSORBIO_NAME_TO_WORKOUT_TYPE:
+            return SENSORBIO_NAME_TO_WORKOUT_TYPE[normalized]
     return WorkoutType.OTHER

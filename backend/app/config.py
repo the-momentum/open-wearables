@@ -103,10 +103,10 @@ class Settings(BaseSettings):
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
     # SENSR OAUTH SETTINGS
-    sensr_client_id: str | None = None
-    sensr_client_secret: SecretStr | None = None
-    sensr_redirect_uri: str = "http://localhost:8000/api/v1/oauth/sensr/callback"
-    sensr_default_scope: str = ""
+    sensorbio_client_id: str | None = None
+    sensorbio_client_secret: SecretStr | None = None
+    sensorbio_redirect_uri: str = "http://localhost:8000/api/v1/oauth/sensorbio/callback"
+    sensorbio_default_scope: str = ""
 
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None

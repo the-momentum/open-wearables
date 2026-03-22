@@ -1,11 +1,11 @@
-"""Sensr workouts implementation."""
+"""Sensor Bio workouts implementation."""
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
 from uuid import UUID, uuid4
 
-from app.constants.workout_types.sensr import get_unified_workout_type
+from app.constants.workout_types.sensorbio import get_unified_workout_type
 from app.database import DbSession
 from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
 from app.services.event_record_service import event_record_service
@@ -13,8 +13,8 @@ from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured
 
 
-class SensrWorkouts(BaseWorkoutsTemplate):
-    """Sensr implementation of workout syncing."""
+class SensorBioWorkouts(BaseWorkoutsTemplate):
+    """Sensor Bio implementation of workout syncing."""
 
     @staticmethod
     def _from_epoch_seconds(timestamp: int | float | None) -> datetime | None:
@@ -50,8 +50,8 @@ class SensrWorkouts(BaseWorkoutsTemplate):
                 log_structured(
                     self.logger,
                     "error",
-                    f"Error fetching Sensr workout data: {e}",
-                    provider="sensr",
+                    f"Error fetching Sensor Bio workout data: {e}",
+                    provider="sensorbio",
                     task="get_workouts",
                 )
                 if all_workouts:
@@ -59,7 +59,7 @@ class SensrWorkouts(BaseWorkoutsTemplate):
                         self.logger,
                         "warning",
                         f"Returning partial workout data due to error: {e}",
-                        provider="sensr",
+                        provider="sensorbio",
                         task="get_workouts",
                     )
                     break
@@ -74,7 +74,7 @@ class SensrWorkouts(BaseWorkoutsTemplate):
         )
 
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
-        raise NotImplementedError("Sensr does not support API-based workout detail fetching")
+        raise NotImplementedError("Sensor Bio does not support API-based workout detail fetching")
 
     def _extract_dates(self, start_timestamp: int | float, end_timestamp: int | float) -> tuple[datetime, datetime]:
         start_date = self._from_epoch_seconds(start_timestamp)

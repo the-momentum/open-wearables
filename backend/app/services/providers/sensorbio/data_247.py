@@ -1,4 +1,4 @@
-"""Sensr 247 data implementation for sleep, recovery, and biometrics."""
+"""Sensor Bio 247 data implementation for sleep, recovery, and biometrics."""
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -19,8 +19,8 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
 
-class Sensr247Data(Base247DataTemplate):
-    """Sensr implementation for 247 data (sleep, recovery, biometrics)."""
+class SensorBio247Data(Base247DataTemplate):
+    """Sensor Bio implementation for 247 data (sleep, recovery, biometrics)."""
 
     def __init__(self, provider_name: str, api_base_url: str, oauth: BaseOAuthTemplate) -> None:
         super().__init__(provider_name, api_base_url, oauth)
@@ -73,8 +73,8 @@ class Sensr247Data(Base247DataTemplate):
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Error fetching Sensr sleep for {current_date}: {e}",
-                    provider="sensr",
+                    f"Error fetching Sensor Bio sleep for {current_date}: {e}",
+                    provider="sensorbio",
                     task="get_sleep_data",
                 )
             current_date += timedelta(days=1)
@@ -109,7 +109,7 @@ class Sensr247Data(Base247DataTemplate):
             "average_spo2": biometrics.get("spo2"),
             "resting_heart_rate": biometrics.get("resting_bpm"),
             "resting_hrv": biometrics.get("resting_hrv"),
-            "sensr_sleep_id": raw_sleep.get("id") or raw_sleep.get("start_timestamp"),
+            "sensorbio_sleep_id": raw_sleep.get("id") or raw_sleep.get("start_timestamp"),
             "raw": raw_sleep,
         }
 
@@ -122,7 +122,7 @@ class Sensr247Data(Base247DataTemplate):
                 self.logger,
                 "warning",
                 "Skipping sleep record: missing start/end time",
-                provider="sensr",
+                provider="sensorbio",
                 task="save_sleep_data",
                 sleep_id=str(sleep_id),
             )
@@ -137,7 +137,9 @@ class Sensr247Data(Base247DataTemplate):
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
-            external_id=str(normalized_sleep.get("sensr_sleep_id")) if normalized_sleep.get("sensr_sleep_id") else None,
+            external_id=str(normalized_sleep.get("sensorbio_sleep_id"))
+            if normalized_sleep.get("sensorbio_sleep_id")
+            else None,
             source=self.provider_name,
             user_id=user_id,
         )
@@ -169,7 +171,7 @@ class Sensr247Data(Base247DataTemplate):
                 self.logger,
                 "error",
                 f"Error saving sleep record {sleep_id}: {e}",
-                provider="sensr",
+                provider="sensorbio",
                 task="save_sleep_data",
             )
 
@@ -186,7 +188,7 @@ class Sensr247Data(Base247DataTemplate):
                     self.logger,
                     "warning",
                     f"Failed to save sleep data: {e}",
-                    provider="sensr",
+                    provider="sensorbio",
                     task="load_and_save_sleep",
                 )
         return count
@@ -209,8 +211,8 @@ class Sensr247Data(Base247DataTemplate):
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Error fetching Sensr scores for {current_date}: {e}",
-                    provider="sensr",
+                    f"Error fetching Sensor Bio scores for {current_date}: {e}",
+                    provider="sensorbio",
                     task="get_recovery_data",
                 )
             current_date += timedelta(days=1)
@@ -267,7 +269,7 @@ class Sensr247Data(Base247DataTemplate):
                     self.logger,
                     "warning",
                     f"Failed to save recovery {field_name}: {e}",
-                    provider="sensr",
+                    provider="sensorbio",
                     task="save_recovery_data",
                 )
         return count
@@ -284,7 +286,7 @@ class Sensr247Data(Base247DataTemplate):
                     self.logger,
                     "warning",
                     f"Failed to save recovery data: {e}",
-                    provider="sensr",
+                    provider="sensorbio",
                     task="load_and_save_recovery",
                 )
         return total_count
@@ -323,8 +325,8 @@ class Sensr247Data(Base247DataTemplate):
                 log_structured(
                     self.logger,
                     "error",
-                    f"Error fetching Sensr biometrics: {e}",
-                    provider="sensr",
+                    f"Error fetching Sensor Bio biometrics: {e}",
+                    provider="sensorbio",
                     task="get_activity_samples",
                 )
                 if all_samples:
@@ -378,8 +380,8 @@ class Sensr247Data(Base247DataTemplate):
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Error fetching Sensr step details for {current_date}: {e}",
-                    provider="sensr",
+                    f"Error fetching Sensor Bio step details for {current_date}: {e}",
+                    provider="sensorbio",
                     task="get_daily_activity_statistics",
                 )
             current_date += timedelta(days=1)
@@ -423,12 +425,16 @@ class Sensr247Data(Base247DataTemplate):
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
             log_structured(
-                self.logger, "error", f"Failed to sync sleep data: {e}", provider="sensr", task="load_and_save_all"
+                self.logger, "error", f"Failed to sync sleep data: {e}", provider="sensorbio", task="load_and_save_all"
             )
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
         except Exception as e:
             log_structured(
-                self.logger, "error", f"Failed to sync recovery data: {e}", provider="sensr", task="load_and_save_all"
+                self.logger,
+                "error",
+                f"Failed to sync recovery data: {e}",
+                provider="sensorbio",
+                task="load_and_save_all",
             )
         return results

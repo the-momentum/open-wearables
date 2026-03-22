@@ -1,17 +1,18 @@
+import logging
 from typing import Any
 
 import httpx
-from fastapi import HTTPException
-from starlette.status import HTTP_400_BAD_REQUEST
 
 from app.config import settings
 from app.schemas.oauth import AuthenticationMethod, OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.structured_logging import log_structured
 
+logger = logging.getLogger(__name__)
 
-class SensrOAuth(BaseOAuthTemplate):
-    """Sensr OAuth 2.0 implementation."""
+
+class SensorBioOAuth(BaseOAuthTemplate):
+    """Sensor Bio OAuth 2.0 implementation."""
 
     use_pkce = False
     auth_method = AuthenticationMethod.BODY
@@ -19,20 +20,27 @@ class SensrOAuth(BaseOAuthTemplate):
     @property
     def endpoints(self) -> ProviderEndpoints:
         return ProviderEndpoints(
-            authorize_url="https://auth.getsensr.io/authorize",
-            token_url="https://auth.getsensr.io/token",
+            authorize_url="https://auth.sensorbio.com/authorize",
+            token_url="https://auth.sensorbio.com/token",
         )
 
     @property
     def credentials(self) -> ProviderCredentials:
         return ProviderCredentials(
-            client_id=settings.sensr_client_id or "",
-            client_secret=settings.sensr_client_secret.get_secret_value() if settings.sensr_client_secret else "",
-            redirect_uri=settings.sensr_redirect_uri,
-            default_scope=settings.sensr_default_scope,
+            client_id=settings.sensorbio_client_id or "",
+            client_secret=(
+                settings.sensorbio_client_secret.get_secret_value()
+                if settings.sensorbio_client_secret
+                else ""
+            ),
+            redirect_uri=settings.sensorbio_redirect_uri,
+            default_scope=settings.sensorbio_default_scope,
         )
 
-    def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, Any]:
+    def _get_provider_user_info(
+        self, token_response: OAuthTokenResponse, user_id: str
+    ) -> dict[str, Any]:
+        """Fetches Sensor Bio user profile via /v1/user."""
         try:
             response = httpx.get(
                 f"{self.api_base_url}/v1/user",
@@ -42,21 +50,26 @@ class SensrOAuth(BaseOAuthTemplate):
             response.raise_for_status()
             payload = response.json()
             data = payload.get("data", payload) if isinstance(payload, dict) else {}
+
+            log_structured(
+                logger,
+                "info",
+                "Fetched Sensor Bio user profile",
+                provider="sensorbio",
+                task="get_provider_user_info",
+                user_id=user_id,
+            )
             return {
                 "user_id": str(data.get("id")) if data.get("id") is not None else None,
                 "username": data.get("name"),
             }
-        except httpx.HTTPStatusError as e:
+        except Exception as e:
             log_structured(
-                self.logger,
+                logger,
                 "error",
-                f"Failed to fetch Sensr user info: {e.response.text}",
-                provider=self.provider_name,
+                f"Failed to fetch Sensor Bio user profile: {e}",
+                provider="sensorbio",
                 task="get_provider_user_info",
                 user_id=user_id,
-                status_code=e.response.status_code,
             )
-            raise HTTPException(
-                status_code=HTTP_400_BAD_REQUEST,
-                detail=f"Failed to fetch user info: {e.response.text}",
-            )
+            return {"user_id": None, "username": None}
