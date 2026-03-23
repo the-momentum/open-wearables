@@ -13,7 +13,12 @@ from app.models import DataSource, EventRecord, SleepDetails
 from app.models.workout_details import WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate, ProviderName
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordQueryParams,
+    EventRecordUpdate,
+)
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 

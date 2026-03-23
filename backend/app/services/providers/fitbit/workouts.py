@@ -6,7 +6,11 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.fitbit import get_unified_workout_type
 from app.database import DbSession
-from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
+)
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.sentry_helpers import log_and_capture_error

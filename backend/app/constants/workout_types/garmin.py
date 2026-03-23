@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # Garmin Wellness/Health API activity types from official specification
 # Source: Garmin Health API Specification - Appendix A

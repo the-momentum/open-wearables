@@ -8,13 +8,8 @@ from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas.data_source import DataSourceCreate, DataSourceUpdate
-from app.schemas.device_type import (
-    DeviceType,
-    infer_device_type_from_model,
-    infer_device_type_from_source_name,
-)
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import DeviceType, ProviderName, infer_device_type_from_model, infer_device_type_from_source_name
+from app.schemas.model_crud.data_priority import DataSourceCreate, DataSourceUpdate
 
 
 class DataSourceRepository(

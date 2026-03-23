@@ -15,7 +15,7 @@ from app.integrations.celery.tasks import (
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_247_data import Base247DataTemplate

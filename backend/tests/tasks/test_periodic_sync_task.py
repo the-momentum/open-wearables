@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.periodic_sync_task import sync_all_users
-from app.schemas import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 

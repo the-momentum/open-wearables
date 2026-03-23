@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 

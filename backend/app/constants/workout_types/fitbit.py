@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # Fitbit activity type IDs → UnifiedWorkoutType
 # Source: https://dev.fitbit.com/build/reference/web-api/activity/get-activity-type/

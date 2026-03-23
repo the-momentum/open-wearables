@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas import AuthenticationMethod, OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
+from app.schemas.auth import AuthenticationMethod
+from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.garmin.oauth import GarminOAuth
 from tests.factories import UserConnectionFactory, UserFactory
 

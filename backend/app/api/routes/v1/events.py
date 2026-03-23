@@ -4,12 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.common_types import PaginatedResponse
-from app.schemas.event_record import EventRecordQueryParams
-from app.schemas.events import (
+from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.responses.activity import (
     SleepSession,
     Workout,
 )
+from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
 from app.utils.dates import parse_query_datetime

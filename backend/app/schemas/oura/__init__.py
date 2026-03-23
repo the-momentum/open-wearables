@@ -1,1 +1,0 @@
-# Oura Ring API schemas

@@ -10,7 +10,7 @@ from fastapi import APIRouter, status
 
 from app.database import DbSession
 from app.integrations.celery.tasks.archival_task import run_daily_archival
-from app.schemas.archival import ArchivalSettingUpdate, ArchivalSettingWithEstimate
+from app.schemas.utils import ArchivalSettingUpdate, ArchivalSettingWithEstimate
 from app.services import DeveloperDep
 from app.services.archival_service import archival_service
 

@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # Polar uses two fields: 'sport' (basic category) and 'detailed_sport_info' (specific activity)
 # Format: (polar_sport_value, polar_detailed_sport_info, unified_type)

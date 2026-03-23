@@ -17,8 +17,11 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
-from app.schemas.apple.healthkit.sleep_state import SleepState, SleepStateStage
-from app.schemas.apple.healthkit.sync_request import SyncRequest
+from app.schemas.providers.mobile_sdk import (
+    SleepState,
+    SleepStateStage,
+    SyncRequest,
+)
 from app.services.apple.healthkit.sleep_service import (
     _calculate_final_metrics,
     finish_sleep,

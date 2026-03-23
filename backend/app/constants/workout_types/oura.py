@@ -4,7 +4,7 @@ Oura uses lowercase activity strings (e.g. "running", "cycling").
 Reference: https://cloud.ouraring.com/v2/docs#tag/Workout
 """
 
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # (oura_activity_string, unified_type)
 OURA_WORKOUT_TYPE_MAPPINGS: list[tuple[str, WorkoutType]] = [

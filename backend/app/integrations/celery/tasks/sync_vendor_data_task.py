@@ -6,7 +6,7 @@ from uuid import UUID
 
 from app.database import SessionLocal
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import ProviderSyncResult, SyncVendorDataResult
+from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured

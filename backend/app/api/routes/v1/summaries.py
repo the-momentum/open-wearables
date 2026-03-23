@@ -4,13 +4,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query
 
 from app.database import DbSession
-from app.schemas.common_types import PaginatedResponse
-from app.schemas.summaries import (
+from app.schemas.responses.activity import (
     ActivitySummary,
     BodySummary,
     RecoverySummary,
     SleepSummary,
 )
+from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.summaries_service import summaries_service
 from app.utils.dates import parse_query_datetime

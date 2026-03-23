@@ -12,7 +12,7 @@ from app.mappings import (
     Indexed,
     numeric_10_3,
 )
-from app.schemas.series_types import AggregationMethod
+from app.schemas.enums import AggregationMethod
 
 class DataPointSeriesArchive(BaseDbModel):
     """Daily-aggregated archive of time-series data points.

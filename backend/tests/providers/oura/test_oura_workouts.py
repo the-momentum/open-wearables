@@ -5,8 +5,8 @@ from uuid import uuid4
 import pytest
 
 from app.constants.workout_types.oura import get_unified_workout_type
-from app.schemas.oura.imports import OuraWorkoutJSON
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
+from app.schemas.providers.oura import OuraWorkoutJSON
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.oura.workouts import OuraWorkouts
 

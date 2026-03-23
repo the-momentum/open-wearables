@@ -4,7 +4,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKDeveloper, FKUser, Indexed, PrimaryKey, str_64
-from app.schemas.token_type import TokenType
+from app.schemas.auth import TokenType
 
 
 class RefreshToken(BaseDbModel):
