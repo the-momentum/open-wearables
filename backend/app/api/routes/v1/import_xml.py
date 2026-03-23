@@ -56,6 +56,6 @@ async def receive_sns_notification(
 
     result = await sns_service.handle_sns_notification(notification)
 
-    if result.status_code != status.HTTP_202_ACCEPTED:
+    if result.status_code not in (status.HTTP_200_OK, status.HTTP_202_ACCEPTED):
         raise HTTPException(status_code=result.status_code, detail=result.response)
     return result
