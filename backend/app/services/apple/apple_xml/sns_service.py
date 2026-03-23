@@ -3,7 +3,7 @@ import json
 import re
 from logging import getLogger
 
-import requests
+import httpx
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -53,7 +53,7 @@ class SNSService:
 
         return "\n".join(pairs) + "\n"
 
-    def _verify_signature(self, notification: SNSNotification) -> bool:
+    async def _verify_signature(self, notification: SNSNotification) -> bool:
         cert_url = notification.signing_cert_url
         if not _SNS_CERT_URL_RE.match(cert_url):
             log_structured(
@@ -65,14 +65,33 @@ class SNSService:
             )
             return False
 
-        response = requests.get(cert_url, timeout=10)
-        response.raise_for_status()
-        cert = load_pem_x509_certificate(response.content)
-        public_key = cert.public_key()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(cert_url, timeout=10)
+                response.raise_for_status()
+            cert = load_pem_x509_certificate(response.content)
+            public_key = cert.public_key()
+            decoded_signature = base64.b64decode(notification.signature)
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to fetch SNS signing certificate: {e}",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return False
+        except Exception as e:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to parse SNS signing certificate or decode signature: {e}",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return False
 
         string_to_sign = self._build_string_to_sign(notification)
-        decoded_signature = base64.b64decode(notification.signature)
-
         hash_algo = hashes.SHA256() if notification.signature_version == "2" else hashes.SHA1()
 
         try:
@@ -163,7 +182,7 @@ class SNSService:
             status_code=status.HTTP_202_ACCEPTED, response=f"{dispatched} tasks dispatched", user_id=None
         )
 
-    def handle_sns_notification(self, notification: SNSNotification) -> UploadDataResponse:
+    async def handle_sns_notification(self, notification: SNSNotification) -> UploadDataResponse:
         if not self.sns_client:
             log_structured(
                 logger,
@@ -176,7 +195,7 @@ class SNSService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, response="SNS client not configured", user_id=None
             )
 
-        if not self._verify_signature(notification):
+        if not await self._verify_signature(notification):
             return UploadDataResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
                 response="invalid SNS signature",
