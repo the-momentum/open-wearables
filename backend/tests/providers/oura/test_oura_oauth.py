@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas import AuthenticationMethod
+from app.schemas.auth import AuthenticationMethod
 from app.services.providers.oura.oauth import OuraOAuth
 from app.services.providers.oura.strategy import OuraStrategy
 

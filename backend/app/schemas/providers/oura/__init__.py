@@ -1,8 +1,13 @@
 # Oura Ring API schemas
 
 from .imports import (
+    OuraActivityCollectionJSON,
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
+    OuraHeartRateCollectionJSON,
+    OuraHeartRateJSON,
+    OuraReadinessCollectionJSON,
+    OuraSleepCollectionJSON,
     OuraSleepJSON,
     OuraWebhookNotification,
     OuraWorkoutCollectionJSON,
@@ -10,8 +15,13 @@ from .imports import (
 )
 
 __all__ = [
+    "OuraActivityCollectionJSON",
     "OuraDailyActivityJSON",
     "OuraDailyReadinessJSON",
+    "OuraHeartRateCollectionJSON",
+    "OuraHeartRateJSON",
+    "OuraReadinessCollectionJSON",
+    "OuraSleepCollectionJSON",
     "OuraSleepJSON",
     "OuraWebhookNotification",
     "OuraWorkoutCollectionJSON",

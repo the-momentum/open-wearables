@@ -14,8 +14,11 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from app.schemas.apple.healthkit.sleep_state import SleepState, SleepStateStage
-from app.schemas.apple.healthkit.sync_request import SyncRequest
+from app.schemas.providers.mobile_sdk import (
+    SleepState,
+    SleepStateStage,
+    SyncRequest,
+)
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
