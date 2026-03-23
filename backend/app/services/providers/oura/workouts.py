@@ -12,7 +12,7 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordMetrics,
 )
-from app.schemas.oura.imports import OuraWorkoutCollectionJSON, OuraWorkoutJSON
+from app.schemas.providers.oura import OuraWorkoutCollectionJSON, OuraWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured

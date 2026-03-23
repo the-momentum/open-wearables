@@ -11,7 +11,7 @@ from app.repositories.archival_repository import (
     ArchivalSettingRepository,
     DataPointSeriesArchiveRepository,
 )
-from app.schemas.archival import (
+from app.schemas.utils import (
     ArchivalSettingRead,
     ArchivalSettingUpdate,
     ArchivalSettingWithEstimate,

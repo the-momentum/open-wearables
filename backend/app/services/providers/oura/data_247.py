@@ -15,7 +15,7 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     TimeSeriesSampleCreate,
 )
-from app.schemas.oura.imports import (
+from app.schemas.providers.oura import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
     OuraSleepJSON,

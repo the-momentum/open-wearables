@@ -27,6 +27,7 @@ from .personal_record import (
     PersonalRecordResponse,
     PersonalRecordUpdate,
 )
+from .sleep import SleepStage
 
 __all__ = [
     # DataPointSeries (rename from timeseries maybe)
@@ -54,4 +55,6 @@ __all__ = [
     "PersonalRecordCreate",
     "PersonalRecordUpdate",
     "PersonalRecordResponse",
+    # Sleep
+    "SleepStage",
 ]

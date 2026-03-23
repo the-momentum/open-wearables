@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.schemas.sleep import SleepStage
+from .sleep import SleepStage
 
 
 class EventRecordDetailBase(BaseModel):

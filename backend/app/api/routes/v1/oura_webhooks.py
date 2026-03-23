@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from app.config import settings
 from app.database import DbSession
 from app.models import Developer
-from app.schemas.oura.imports import OuraWebhookNotification
+from app.schemas.providers.oura import OuraWebhookNotification
 from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.auth import get_current_developer
 from app.utils.structured_logging import log_structured
