@@ -19,7 +19,7 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleCreate,
 )
 from app.schemas.providers.apple.apple_xml import XMLParseStats
-from app.schemas.providers.mobile_sdk.sync_request import (
+from app.schemas.providers.mobile_sdk import (
     SleepRecord,
     SourceInfo,
     SyncRequest,
