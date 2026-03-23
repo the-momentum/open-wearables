@@ -9,10 +9,10 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.schemas.providers.mobile_sdk import SleepState
 from sqlalchemy.orm import Session
 
 from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
+from app.schemas.providers.mobile_sdk import SleepState
 
 
 class TestFinalizeStaleSleepsTask:

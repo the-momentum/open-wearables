@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-from app.schemas.enums import ProviderName
 
+from app.schemas.enums import ProviderName
 from app.services.providers.fitbit.oauth import FitbitOAuth
 from app.services.providers.templates.base_oauth import AuthenticationMethod
 
