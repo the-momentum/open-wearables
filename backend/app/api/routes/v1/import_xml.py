@@ -5,8 +5,12 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
 
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
-from app.schemas import PresignedURLRequest, PresignedURLResponse, UploadDataResponse
-from app.schemas.providers.apple.apple_xml import SNSNotification
+from app.schemas.providers.apple.apple_xml import (
+    PresignedURLRequest,
+    PresignedURLResponse,
+    SNSNotification,
+)
+from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.apple.apple_xml.sns_service import sns_service
