@@ -18,7 +18,7 @@ from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import AuthenticationMethod
-from app.schemas.model_crud.credentials.oauth import (
+from app.schemas.model_crud.credentials import (
     OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,

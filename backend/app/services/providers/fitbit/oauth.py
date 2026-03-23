@@ -1,6 +1,6 @@
 from app.config import settings
 from app.schemas.auth import AuthenticationMethod
-from app.schemas.model_crud.credentials.oauth import (
+from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,
