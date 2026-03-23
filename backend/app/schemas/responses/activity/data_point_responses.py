@@ -1,13 +1,15 @@
 from datetime import date, datetime
 from typing import TypedDict
 
-from app.schemas.common_types import SourceMetadata
-from app.schemas.series_types import SeriesType
+from app.schemas.enums import SeriesType
+from app.schemas.utils import SourceMetadata
+from app.utils.dates import ZoneOffset
 from pydantic import BaseModel
 
 
 class TimeSeriesSample(BaseModel):
     timestamp: datetime
+    zone_offset: ZoneOffset = None
     type: SeriesType
     value: float | int
     unit: str

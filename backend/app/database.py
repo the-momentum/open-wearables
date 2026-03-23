@@ -20,7 +20,7 @@ from sqlalchemy.orm import (
 )
 
 from app.config import settings
-from app.schemas.series_types import AggregationMethod
+from app.schemas.enums import AggregationMethod
 from app.schemas.auth import ConnectionStatus, TokenType
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.user_management import InvitationStatus

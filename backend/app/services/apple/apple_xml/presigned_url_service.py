@@ -4,7 +4,10 @@ from logging import Logger, getLogger
 from botocore.exceptions import ClientError
 from fastapi import HTTPException, status
 
-from app.schemas.apple.apple_xml.aws import PresignedURLRequest, PresignedURLResponse
+from app.schemas.providers.apple.apple_xml import (
+    PresignedURLRequest,
+    PresignedURLResponse,
+)
 from app.services.apple.apple_xml.aws_service import AWS_BUCKET_NAME, get_s3_client
 
 

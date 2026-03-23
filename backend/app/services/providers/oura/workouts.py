@@ -7,7 +7,11 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.oura import get_unified_workout_type
 from app.database import DbSession
-from app.schemas import EventRecordCreate, EventRecordDetailCreate, EventRecordMetrics
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    EventRecordMetrics,
+)
 from app.schemas.oura.imports import OuraWorkoutCollectionJSON, OuraWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate

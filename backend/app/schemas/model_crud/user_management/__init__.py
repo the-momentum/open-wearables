@@ -4,6 +4,7 @@ from .developer import (
     DeveloperRead,
     DeveloperUpdate,
     DeveloperUpdateInternal,
+    PasswordChange,
 )
 from .invitation import (
     InvitationAccept,
@@ -35,6 +36,7 @@ __all__ = [
     "DeveloperCreateInternal",
     "DeveloperUpdate",
     "DeveloperUpdateInternal",
+    "PasswordChange",
     # Invitation
     "InvitationCreate",
     "InvitationCreateInternal",

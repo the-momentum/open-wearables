@@ -4,6 +4,10 @@ from .device_type import (
     infer_device_type_from_model,
     infer_device_type_from_source_name,
 )
+from .aggregation_method import (
+    AGGREGATION_METHOD_BY_TYPE,
+    AggregationMethod,
+)
 from .series_types import (
     SERIES_TYPE_DEFINITIONS,
     SERIES_TYPE_ID_BY_ENUM,
@@ -16,6 +20,10 @@ from .workout_types import (
     WORKOUTS_WITH_PACE,
     WorkoutType,
 )
+from .provider import (
+    ProviderName,
+    DEFAULT_PROVIDER_PRIORITY,
+)
 
 __all__ = [
     # DeviceType
@@ -23,6 +31,9 @@ __all__ = [
     "DEFAULT_DEVICE_TYPE_PRIORITY",
     "infer_device_type_from_model",
     "infer_device_type_from_source_name",
+    # AggregationMethod
+    "AggregationMethod",
+    "AGGREGATION_METHOD_BY_TYPE",
     # SeriesType
     "SeriesType",
     "SERIES_TYPE_DEFINITIONS",
@@ -33,4 +44,7 @@ __all__ = [
     # WorkoutType
     "WorkoutType",
     "WORKOUTS_WITH_PACE",
+    # Provider
+    "ProviderName",
+    "DEFAULT_PROVIDER_PRIORITY",
 ]

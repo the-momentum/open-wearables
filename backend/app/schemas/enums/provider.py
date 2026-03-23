@@ -13,6 +13,7 @@ class ProviderName(str, Enum):
     WHOOP = "whoop"
     STRAVA = "strava"
     OURA = "oura"
+    FITBIT = "fitbit"
     UNKNOWN = "unknown"
 
     @classmethod

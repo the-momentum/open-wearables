@@ -3,8 +3,10 @@ from logging import getLogger
 import httpx
 
 from app.config import settings
-from app.schemas import (
+from app.schemas.auth import (
     AuthenticationMethod,
+)
+from app.schemas.model_crud.credentials.oauth import (
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,

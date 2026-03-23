@@ -3,7 +3,7 @@ from fastapi import APIRouter, UploadFile
 from app.integrations.celery.tasks.poll_sqs_task import poll_sqs_task
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import PresignedURLRequest, PresignedURLResponse
-from app.services import ApiKeyDep, pre_url_service
+from app.services import ApiKeyDep, presigned_url_service
 
 router = APIRouter()
 

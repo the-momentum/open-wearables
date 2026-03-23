@@ -5,7 +5,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import UserConnectionCreate, UserConnectionUpdate
+from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions

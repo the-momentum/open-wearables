@@ -2,7 +2,7 @@
 
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas import ProviderName
+from app.schemas.enums import ProviderName
 
 
 def init_provider_settings() -> None:

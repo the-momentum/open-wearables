@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.schemas.device_type import DeviceType
+from app.schemas.enums import DeviceType
 from pydantic import BaseModel, Field
 
 

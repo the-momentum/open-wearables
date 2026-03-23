@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from pydantic import BaseModel, Field
 
 

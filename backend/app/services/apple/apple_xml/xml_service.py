@@ -18,8 +18,8 @@ from app.schemas.model_crud.activities import (
     StepSampleCreate,
     TimeSeriesSampleCreate,
 )
-from app.schemas.apple.apple_xml.stats import XMLParseStats
-from app.schemas.apple.healthkit.sync_request import (
+from app.schemas.providers.apple.apple_xml import XMLParseStats
+from app.schemas.providers.mobile_sdk.sync_request import (
     SleepRecord,
     SourceInfo,
     SyncRequest,

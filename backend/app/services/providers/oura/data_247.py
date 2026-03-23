@@ -9,14 +9,17 @@ from uuid import UUID, uuid4
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    TimeSeriesSampleCreate,
+)
 from app.schemas.oura.imports import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
     OuraSleepJSON,
 )
-from app.schemas.series_types import SeriesType
+from app.schemas.enums import SeriesType
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate

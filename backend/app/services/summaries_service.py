@@ -22,6 +22,7 @@ from app.schemas.enums import (
     ProviderName,
     SeriesType,
     infer_device_type_from_model,
+    get_series_type_id,
 )
 from app.schemas.responses.activity import (
     ActivitySummary,

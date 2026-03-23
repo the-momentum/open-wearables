@@ -18,11 +18,11 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.mobile_sdk import (
     SLEEP_START_STATES,
     SleepState,
+    SleepStateStage,
 )
 from app.schemas.providers.mobile_sdk import (
     SyncRequest as SDKSyncRequest,
 )
-from app.schemas.apple.healthkit.sleep_state import SLEEP_START_STATES, SleepState, SleepStateStage
 from app.schemas.sleep import SleepStage
 from app.services.apple.healthkit.device_resolution import extract_device_info
 from app.services.event_record_service import event_record_service

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.schemas.token import TokenResponse
+from app.schemas.auth import TokenResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 

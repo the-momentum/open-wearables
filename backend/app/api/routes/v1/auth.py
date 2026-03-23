@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.config import settings
 from app.database import DbSession
 from app.schemas.auth import TokenResponse
-from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate
+from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.security import create_access_token, verify_password
 

@@ -4,11 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common_types import SourceMetadata
-from app.schemas.sleep import SleepStage
-from app.schemas.summaries import SleepStagesSummary
-from app.schemas.timeseries import TimeSeriesSample
 from app.schemas.utils import SourceMetadata
+from app.schemas.sleep import SleepStage
 
 from .summaries import SleepStagesSummary
 from .data_point_responses import TimeSeriesSample

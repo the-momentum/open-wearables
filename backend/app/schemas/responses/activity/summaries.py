@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from app.schemas.common_types import SourceMetadata
+from app.schemas.utils import SourceMetadata
 from pydantic import BaseModel, Field
 
 

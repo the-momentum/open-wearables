@@ -2,6 +2,7 @@ from app.utils.auth import DeveloperDep, SDKAuthDep
 
 from .api_key_service import ApiKeyDep, api_key_service
 from .apple.auto_export.import_service import import_service as ae_import_service
+from .apple.apple_xml.presigned_url_service import presigned_url_service
 from .apple.healthkit.import_service import import_service as hk_import_service
 from .application_service import application_service
 from .archival_service import archival_service
@@ -41,4 +42,5 @@ __all__ = [
     "timeseries_service",
     "system_info_service",
     "PriorityService",
+    "presigned_url_service",
 ]
