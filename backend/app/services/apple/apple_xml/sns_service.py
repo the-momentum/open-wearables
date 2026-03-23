@@ -100,7 +100,7 @@ class SNSService:
         except InvalidSignature:
             log_structured(
                 logger,
-                "warning",
+                "error",
                 "SNS message signature verification failed",
                 provider="apple_xml",
                 task="sns_notification",
@@ -111,7 +111,14 @@ class SNSService:
 
     def _verify_topic_arn(self, notification: SNSNotification) -> bool:
         if not settings.aws_sns_topic_arn:
-            return True
+            log_structured(
+                logger,
+                "error",
+                "SNS topic ARN not configured",
+                provider="apple_xml",
+                task="sns_notification",
+            )
+            return False
         return notification.topic_arn == settings.aws_sns_topic_arn.get_secret_value()
 
     def _confirm_subscription(self, notification: SNSNotification) -> UploadDataResponse:
