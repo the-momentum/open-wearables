@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from app.schemas.enums import ProviderName
 from pydantic import BaseModel
+
+from app.schemas.enums import ProviderName
 
 
 class DataSourceBase(BaseModel):

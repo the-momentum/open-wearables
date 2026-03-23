@@ -1,6 +1,6 @@
 from .workout_import import (
-    WhoopWorkoutJSON,
     WhoopWorkoutCollectionJSON,
+    WhoopWorkoutJSON,
 )
 
 __all__ = [

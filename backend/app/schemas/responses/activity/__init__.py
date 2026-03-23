@@ -1,15 +1,15 @@
 from .data_point_responses import (
-    TimeSeriesSample,
-    ActivityAggregateResult,
     ActiveMinutesResult,
+    ActivityAggregateResult,
     IntensityMinutesResult,
+    TimeSeriesSample,
 )
 from .events import (
-    Workout,
-    WorkoutDetailed,
     Meal,
     Measurement,
     SleepSession,
+    Workout,
+    WorkoutDetailed,
 )
 from .summaries import (
     ActivitySummary,
@@ -21,10 +21,9 @@ from .summaries import (
     HeartRateStats,
     IntensityMinutes,
     RecoverySummary,
-    SleepSummary,
     SleepStagesSummary,
+    SleepSummary,
 )
-
 
 __all__ = [
     # Data point responses

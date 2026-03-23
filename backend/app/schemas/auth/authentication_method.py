@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+
 class AuthenticationMethod(StrEnum):
     """Method used for client authentication."""
 

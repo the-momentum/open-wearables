@@ -1,10 +1,11 @@
 from datetime import date, datetime
 from typing import TypedDict
 
+from pydantic import BaseModel
+
 from app.schemas.enums import SeriesType
 from app.schemas.utils import SourceMetadata
 from app.utils.dates import ZoneOffset
-from pydantic import BaseModel
 
 
 class TimeSeriesSample(BaseModel):

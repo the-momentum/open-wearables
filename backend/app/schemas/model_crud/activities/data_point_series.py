@@ -3,9 +3,10 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
+from pydantic import BaseModel, Field
+
 from app.schemas.enums import SeriesType
 from app.utils.dates import ZoneOffset
-from pydantic import BaseModel, Field
 
 
 class TimeSeriesSampleBase(BaseModel):

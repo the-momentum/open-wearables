@@ -1,17 +1,17 @@
+from .authentication_method import (
+    AuthenticationMethod,
+)
+from .connection_status import (
+    ConnectionStatus,
+)
 from .sdk_auth import (
     SDKAuthContext,
     SDKTokenRequest,
 )
 from .token import (
-    TokenResponse,
     RefreshTokenRequest,
+    TokenResponse,
     TokenType,
-)
-from .connection_status import (
-    ConnectionStatus,
-)
-from .authentication_method import (
-    AuthenticationMethod,
 )
 
 __all__ = [

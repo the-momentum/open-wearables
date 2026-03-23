@@ -1,8 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from app.schemas.enums import ProviderName
 from pydantic import BaseModel, Field
+
+from app.schemas.enums import ProviderName
 
 
 class ProviderPriorityBase(BaseModel):

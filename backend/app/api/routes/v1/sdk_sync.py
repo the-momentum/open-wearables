@@ -4,9 +4,9 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
-from app.services.raw_payload_storage import store_raw_payload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
 

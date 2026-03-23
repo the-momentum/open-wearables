@@ -1,7 +1,7 @@
 from .exercise_import import (
+    ExerciseJSON,
     HRSamplesJSON,
     HRZoneJSON,
-    ExerciseJSON,
 )
 
 __all__ = [

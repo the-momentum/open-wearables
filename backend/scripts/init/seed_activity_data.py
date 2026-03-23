@@ -15,18 +15,18 @@ from app.database import SessionLocal
 from app.models import EventRecordDetail, PersonalRecord, UserConnection
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
-from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.auth import ConnectionStatus
-from app.schemas.model_crud.user_management import (
-    UserConnectionCreate,
-    UserConnectionUpdate,
-    UserCreate,
-)
+from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     PersonalRecordCreate,
     TimeSeriesSampleCreate,
+)
+from app.schemas.model_crud.user_management import (
+    UserConnectionCreate,
+    UserConnectionUpdate,
+    UserCreate,
 )
 from app.services import event_record_service, timeseries_service, user_service
 from app.utils.structured_logging import log_structured
@@ -36,6 +36,7 @@ fake = Faker()
 
 # Workout types and sources for variety
 WORKOUT_TYPES = list(WorkoutType)
+
 
 class ProviderConfig(TypedDict):
     """Type definition for provider configuration."""
