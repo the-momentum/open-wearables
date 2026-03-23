@@ -4,15 +4,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from app.database import DbSession
-from app.schemas.common import PaginatedResponse
-from app.schemas.user import UserCreate, UserQueryParams, UserRead, UserUpdate
+from app.schemas.model_crud.user_management import (
+    UserCreate,
+    UserQueryParams,
+    UserRead,
+    UserUpdate,
+)
+from app.schemas.utils import OldPaginatedResponse
 from app.services import ApiKeyDep, DeveloperDep, user_service
 
 router = APIRouter()
 
 
-@router.get("/users", response_model=PaginatedResponse[UserRead])
-def list_users(
+@router.get("/users", response_model=OldPaginatedResponse[UserRead])
+async def list_users(
     db: DbSession,
     _api_key: ApiKeyDep,
     query_params: Annotated[UserQueryParams, Depends()],

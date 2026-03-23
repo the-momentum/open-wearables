@@ -9,8 +9,7 @@ from app.config import settings
 from app.database import DbSession
 from app.models import RefreshToken
 from app.repositories.refresh_token_repository import refresh_token_repository
-from app.schemas.token import TokenResponse
-from app.schemas.token_type import TokenType
+from app.schemas.auth import TokenResponse, TokenType
 from app.services.sdk_token_service import create_sdk_user_token
 from app.utils.security import create_access_token
 

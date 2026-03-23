@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 
 class TestProviderNameFromSourceString:
@@ -40,8 +40,12 @@ class TestProviderNameFromSourceString:
             ("oura_ring", ProviderName.OURA),
             ("Oura Gen 3", ProviderName.OURA),
             ("OURA", ProviderName.OURA),
+            # Fitbit variations
+            ("fitbit", ProviderName.FITBIT),
+            ("Fitbit", ProviderName.FITBIT),
+            ("FITBIT", ProviderName.FITBIT),
+            ("fitbit_sense", ProviderName.FITBIT),
             # Unknown cases
-            ("fitbit", ProviderName.UNKNOWN),
             ("unknown_device", ProviderName.UNKNOWN),
             ("", ProviderName.UNKNOWN),
         ],

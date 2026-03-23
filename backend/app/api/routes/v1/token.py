@@ -1,7 +1,7 @@
 from fastapi import APIRouter, status
 
 from app.database import DbSession
-from app.schemas.token import RefreshTokenRequest, TokenResponse
+from app.schemas.auth import RefreshTokenRequest, TokenResponse
 from app.services import refresh_token_service
 
 router = APIRouter()

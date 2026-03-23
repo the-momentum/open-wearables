@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.database import DbSession
 from app.models import Developer, Invitation
 from app.repositories.repositories import CrudRepository
-from app.schemas.invitation import (
+from app.schemas.model_crud.user_management import (
     InvitationCreateInternal,
     InvitationResend,
     InvitationStatus,

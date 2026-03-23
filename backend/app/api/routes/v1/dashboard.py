@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.database import DbSession
-from app.schemas.system_info import SystemInfoResponse
+from app.schemas.responses.upload import SystemInfoResponse
 from app.services import DeveloperDep, system_info_service
 
 router = APIRouter()

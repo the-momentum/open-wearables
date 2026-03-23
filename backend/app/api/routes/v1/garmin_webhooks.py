@@ -26,7 +26,7 @@ from app.integrations.celery.tasks.garmin_backfill_task import (
     trigger_next_pending_type,
 )
 from app.repositories import UserConnectionRepository
-from app.schemas import GarminActivityJSON
+from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.workouts import GarminWorkouts

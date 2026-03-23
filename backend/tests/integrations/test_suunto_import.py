@@ -17,7 +17,7 @@ import pytest
 from jose import jwt
 from sqlalchemy.orm import Session
 
-from app.schemas.oauth import ConnectionStatus
+from app.schemas.auth import ConnectionStatus
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
@@ -211,7 +211,7 @@ class TestSuuntoImport:
         """Should correctly map Suunto activity IDs to unified workout types."""
         # Arrange
         from app.constants.workout_types.suunto import get_unified_workout_type
-        from app.schemas.workout_types import WorkoutType
+        from app.schemas.enums import WorkoutType
 
         # Act & Assert
         assert get_unified_workout_type(1) == WorkoutType.RUNNING

@@ -6,7 +6,7 @@ import pytest
 from freezegun import freeze_time
 from pydantic import ValidationError
 
-from app.schemas.oura.imports import OuraWebhookNotification
+from app.schemas.providers.oura import OuraWebhookNotification
 from app.services.providers.oura.webhook_service import OuraWebhookService
 
 

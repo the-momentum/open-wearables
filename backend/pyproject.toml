@@ -76,8 +76,8 @@ ignore = [
 ]
 [tool.ruff.lint.per-file-ignores]
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
-"app/schemas/garmin/*.py" = ["N815"]  # mixedCase from external API
-"app/schemas/suunto/*.py" = ["N815"]  # mixedCase from external API
+"app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
+"app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
 
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]

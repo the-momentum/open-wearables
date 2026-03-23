@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import DataPointSeries, DataPointSeriesArchive, DataSource
 from app.models.archival_setting import ArchivalSetting
-from app.schemas.series_types import (
+from app.schemas.enums import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
     SeriesType,

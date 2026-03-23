@@ -7,7 +7,7 @@ from billiard.einfo import ExceptionInfo
 from app.config import settings
 from app.database import SessionLocal
 from app.models import Invitation
-from app.schemas.invitation import InvitationStatus
+from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.email_client import send_invitation_email
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured

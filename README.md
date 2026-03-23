@@ -180,7 +180,7 @@ The platform is designed for self-hosting, meaning each deployment serves a sing
 - User management (via API and developer portal)
 - OAuth flow for Garmin, Polar, and Suunto
 - Workout data sync and API access for Garmin, Polar, and Suunto
-- Mobile Sync SDKs (iOS, Android, Flutter)
+- Mobile Sync SDKs (iOS, Android, Flutter, React Native)
 
 **In Development**:
 - Core health data endpoints

@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, status
 
 from app.database import DbSession
-from app.schemas.api_key import ApiKeyRead, ApiKeyUpdate
+from app.schemas.model_crud.credentials import ApiKeyRead, ApiKeyUpdate
 from app.services import DeveloperDep, api_key_service
 
 router = APIRouter()

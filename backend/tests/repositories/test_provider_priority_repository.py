@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ProviderPriority
 from app.repositories.provider_priority_repository import ProviderPriorityRepository
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 
 class TestProviderPriorityRepository:

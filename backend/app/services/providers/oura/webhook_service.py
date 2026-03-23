@@ -10,7 +10,7 @@ import httpx
 from app.config import settings
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
-from app.schemas.oura.imports import OuraWebhookNotification
+from app.schemas.providers.oura import OuraWebhookNotification
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.oura.data_247 import Oura247Data

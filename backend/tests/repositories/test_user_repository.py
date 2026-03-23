@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.user import UserCreateInternal, UserUpdateInternal
+from app.schemas.model_crud.user_management import UserCreateInternal, UserUpdateInternal
 from tests.factories import UserFactory
 
 

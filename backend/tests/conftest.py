@@ -47,7 +47,7 @@ def engine() -> Any:
     from sqlalchemy.orm import Session as SessionClass
 
     from app.models import SeriesTypeDefinition
-    from app.schemas.series_types import SERIES_TYPE_DEFINITIONS
+    from app.schemas.enums import SERIES_TYPE_DEFINITIONS
 
     with SessionClass(bind=test_engine) as session:
         for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:

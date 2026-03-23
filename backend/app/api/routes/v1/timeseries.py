@@ -4,12 +4,10 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.common_types import PaginatedResponse
-from app.schemas.series_types import SeriesType
-from app.schemas.timeseries import (
-    TimeSeriesQueryParams,
-    TimeSeriesSample,
-)
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import TimeSeriesQueryParams
+from app.schemas.responses.activity import TimeSeriesSample
+from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, timeseries_service
 from app.utils.dates import parse_query_datetime
 

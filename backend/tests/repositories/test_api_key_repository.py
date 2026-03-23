@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ApiKey
 from app.repositories.api_key_repository import ApiKeyRepository
-from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
+from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from tests.factories import ApiKeyFactory, DeveloperFactory
 
 

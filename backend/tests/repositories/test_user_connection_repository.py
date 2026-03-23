@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.oauth import ConnectionStatus, UserConnectionCreate, UserConnectionUpdate
+from app.schemas.auth import ConnectionStatus
+from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
 from tests.factories import UserConnectionFactory, UserFactory
 
 

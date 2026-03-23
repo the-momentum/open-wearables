@@ -6,15 +6,19 @@ from typing import Iterable
 from uuid import UUID, uuid4
 
 from app.database import DbSession
-from app.schemas import (
-    AEWorkoutJSON,
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
     HeartRateSampleCreate,
-    RootJSON,
-    UploadDataResponse,
 )
+from app.schemas.providers.apple.auto_export import (
+    RootJSON,
+)
+from app.schemas.providers.apple.auto_export import (
+    WorkoutJSON as AEWorkoutJSON,
+)
+from app.schemas.responses.upload import UploadDataResponse
 from app.services.event_record_service import event_record_service
 from app.services.timeseries_service import timeseries_service
 from app.utils.exceptions import handle_exceptions
