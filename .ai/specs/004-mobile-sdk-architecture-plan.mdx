@@ -2,26 +2,25 @@
 
 ## Context
 
-Open Wearables needs to expand from its current Apple Health-only SDK to support **3 providers** (Apple Health, Google Health Connect, Samsung Health) across **2 cross-platform frameworks** (Flutter, React Native). The existing system works well: a Swift iOS SDK collects HealthKit data, sends it with native type identifiers (`HKQuantityTypeIdentifierHeartRate`), and the Python backend maps these to unified `SeriesType` values. The goal is to design an architecture that scales to multiple providers and frameworks while maintaining the quality and robustness of the current implementation.
+Open Wearables supports **3 providers** (Apple Health, Google Health Connect, Samsung Health) across **2 cross-platform frameworks** (Flutter, React Native). The system consists of standalone native SDKs (iOS Swift SDK, Android Kotlin SDK) consumed by thin Flutter and React Native plugins. Each SDK collects health data from its respective platform, normalizes it into a unified payload format, and syncs it to the Python backend. This document describes the architecture and design decisions behind the current implementation.
 
 ---
 
 ## 1. Architectural Decisions
 
-### 1.1 Type Mapping: Keep Server-Side (Current Approach)
+### 1.1 Type Mapping: Hybrid Approach (iOS Server-Side, Android Client-Side)
 
-**Recommendation**: SDK sends provider-native identifiers as strings. Backend maps to unified `SeriesType`.
+The type mapping strategy differs by platform:
 
-**Why this is the right choice for Open Wearables**:
-- **Already working**: `METRIC_TYPE_TO_SERIES_TYPE` in `backend/app/constants/series_types/apple.py` maps 35+ Apple metric types. Adding Google/Samsung is just new mapping dicts.
-- **Deploy once**: Fix a mapping bug or add a new metric type by deploying the backend. No SDK release needed, no waiting for app store review.
-- **Debuggability**: Logs show exactly what the device sent (`HKQuantityTypeIdentifierHeartRate`) AND what it mapped to (`SeriesType.heart_rate`). Client-side mapping loses the original identifier.
-- **Unit conversion stays client-side**: The iOS SDK already converts HealthKit values to standard units (bpm, meters, kg) via `_defaultUnit()` in `Types.swift:425`. This is correct -- the SDK knows the native unit system, the backend doesn't need to.
-- **Types are always strings**: Each SDK converts its native type objects to string identifiers before upload. Sometimes this requires SDK-side pre-mapping (e.g., Google Health Connect's `HeartRateRecord` class → `"HeartRateRecord"` string). The backend receives these strings and maps them to `SeriesType` per provider.
+- **iOS (Apple Health)**: The SDK sends HealthKit native identifiers as-is (e.g., `"HKQuantityTypeIdentifierHeartRate"`). The backend maps these to unified `SeriesType` values via `METRIC_TYPE_TO_SERIES_TYPE` in `backend/app/constants/series_types/apple.py`.
+- **Android (Health Connect & Samsung Health)**: Both providers normalize types to unified SCREAMING_SNAKE_CASE names on the client side (e.g., `"HEART_RATE"`, `"STEP_COUNT"`, `"OXYGEN_SATURATION"`). Health Connect's `HeartRateRecord` class and Samsung's `DataTypes.HEART_RATE` both map to the same `"HEART_RATE"` string before upload. The backend distinguishes providers via the `provider` field in the payload, not the type string.
 
-**What to add**: A lightweight allowlist on the SDK that skips unsupported types before uploading (reduces bandwidth, not a full mapping).
+**Why this hybrid approach**:
+- **iOS**: Server-side mapping is practical because HealthKit identifiers are stable, well-documented strings. Backend-side mapping lets us add new type support without an SDK release.
+- **Android**: Client-side normalization is necessary because Health Connect and Samsung Health have fundamentally different APIs (class-based vs string-based) that are easier to unify in the native SDK layer. Both providers share the same unified type names, simplifying the backend mapping to a single Android mapping module.
+- **Unit conversion stays client-side for all platforms**: The iOS SDK converts via `_defaultUnit()` in `Types.swift`. The Android SDK normalizes units during record conversion in `HealthConnectManager.kt` and `SamsungHealthManager.kt`.
 
-**Trade-off**: Backend grows one mapping module per provider (~150 lines each). At 3 providers this is trivially manageable.
+**Trade-off**: The backend needs two mapping paths - one for Apple's native identifiers, one for Android's unified identifiers. The `provider` field in the payload determines which mapping to use.
 
 ### 1.2 Payload Format: Unified Schema for All Providers
 
@@ -31,7 +30,7 @@ Open Wearables needs to expand from its current Apple Health-only SDK to support
 
 **Key design principles**:
 - **One schema, all providers**: Same JSON structure regardless of whether data comes from Apple Health, Google Health Connect, or Samsung Health. Field names and nesting are identical.
-- **Types remain provider-specific strings**: The `type` field carries the provider's native identifier (`"HKQuantityTypeIdentifierHeartRate"` for Apple, `"HeartRateRecord"` for Google HC). Backend interprets per provider.
+- **Types are strings, but differ by platform**: iOS sends HealthKit native identifiers (`"HKQuantityTypeIdentifierHeartRate"`). Android sends unified SCREAMING_SNAKE_CASE names (`"HEART_RATE"`) for both Health Connect and Samsung Health. Backend uses the `provider` field to select the correct mapping.
 - **Sleep supports optional `parentId`**: Providers with native sleep sessions (Google HC, Samsung) send a parent session record + child stage records linked via `parentId`. Providers without sessions (Apple) send flat phase records without `parentId` -- backend reconstructs sessions via existing Redis state machine.
 
 **Backend structure**:
@@ -65,6 +64,9 @@ backend/app/
 
 ```json
 {
+  "provider": "apple_health | samsung_health | health_connect",
+  "sdkVersion": "0.10.0",
+  "syncTimestamp": "2024-01-15T12:00:00Z",
   "data": {
     "records": [ ... ],
     "sleep": [ ... ],
@@ -73,7 +75,7 @@ backend/app/
 }
 ```
 
-All three arrays are optional -- a sync batch can contain any combination.
+All three arrays are optional -- a sync batch can contain any combination. The `provider` field determines which type mapping the backend applies.
 
 ---
 
@@ -83,110 +85,111 @@ All three arrays are optional -- a sync batch can contain any combination.
 {
   "id": "0F12CD84-80C1-45D2-A0CD-474C144602C4",
   "type": "HKQuantityTypeIdentifierHeartRate",
-  "value": 72,
-  "unit": "bpm",
   "startDate": "2024-01-01T03:54:07Z",
   "endDate": "2024-01-01T03:57:20Z",
+  "zoneOffset": null,
   "source": {
-    "name": "Apple Watch",
-    "deviceManufacturer": "Apple",
-    "deviceModel": "Watch",
-    "deviceHardwareVersion": "Watch5,2",
-    "deviceSoftwareVersion": "10.7.0",
-    "appId": "com.apple.health"
+    "appId": "com.apple.health",
+    "deviceId": null,
+    "deviceName": "Apple Watch",
+    "deviceManufacturer": "Apple Inc.",
+    "deviceModel": "Watch7,3",
+    "deviceType": "watch",
+    "recordingMethod": null
   },
-  "metadata": [{"key": "HKWasUserEntered", "value": "0"}]
+  "value": 72,
+  "unit": "bpm",
+  "parentId": null,
+  "metadata": { "HKMetadataKeyHeartRateMotionContext": "1" }
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | yes | Stable unique ID from provider (HealthKit UUID, HC `Record.metadata.id`) |
-| `type` | string | yes | Provider-specific type identifier |
-| `value` | number | yes | Measurement value in standardized units |
-| `unit` | string | yes | Standardized unit (bpm, m, kg, Cal, etc.) |
+| `type` | string | yes | Type identifier (Apple: HK native, Android: unified SCREAMING_SNAKE_CASE) |
 | `startDate` | ISO 8601 | yes | Sample start time |
 | `endDate` | ISO 8601 | yes | Sample end time |
-| `source` | object | no | Device/app info (all fields optional) |
-| `metadata` | list | no | Provider-specific key-value pairs |
+| `zoneOffset` | string | no | Timezone offset (e.g., `"+01:00"`). Null for Apple (always UTC). |
+| `source` | object | no | Device/app info (see source section) |
+| `value` | number | yes | Measurement value in standardized units |
+| `unit` | string | yes | Standardized unit (bpm, m, kg, kcal, etc.) |
+| `parentId` | string | no | Links split records back to parent (e.g., HR series samples, blood pressure components) |
+| `metadata` | object | no | Provider-specific key-value pairs |
 
 **`type` examples per provider**:
 - **Apple**: `"HKQuantityTypeIdentifierHeartRate"`, `"HKQuantityTypeIdentifierStepCount"`, `"HKQuantityTypeIdentifierBodyMass"`
-- **Google HC**: `"HeartRateRecord"`, `"StepsRecord"`, `"WeightRecord"`
-- **Samsung**: Same as Google HC if via Health Connect, or Samsung-specific strings if via Samsung Health SDK
+- **Google HC**: `"HEART_RATE"`, `"STEP_COUNT"`, `"OXYGEN_SATURATION"` (unified names, same as Samsung)
+- **Samsung**: `"HEART_RATE"`, `"STEP_COUNT"`, `"BLOOD_OXYGEN"` (unified names, same as Google HC)
 
 ---
 
-#### sleep (sessions and phases)
+#### sleep (stages with optional session grouping)
 
-Flat records with optional `parentId`. Sessions and phases coexist at the same level in the array.
+Each entry represents **one sleep stage** (not a session). The SDK flattens provider-specific nested structures into flat stage records. Sessions are grouped via `parentId`.
 
 **Why payloads differ per provider -- and why `parentId` is optional:**
 
-The difference stems from how each platform's health API models sleep:
+- **Apple HealthKit** has no concept of a "sleep session". It stores sleep as individual `HKCategorySample` records with `value` (0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=LIGHT, 4=DEEP, 5=REM). The iOS SDK maps these int values to unified stage strings (`"in_bed"`, `"sleeping"`, `"awake"`, `"light"`, `"deep"`, `"rem"`). No `parentId` -- backend reconstructs sessions via Redis-based gap analysis.
 
-- **Apple HealthKit** has no concept of a "sleep session". It stores sleep as individual `HKCategorySample` records, each representing a single phase transition (e.g., "deep sleep from 22:00 to 22:45"). All records share the same type (`HKCategoryTypeIdentifierSleepAnalysis`) and differ only by `value` (0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=LIGHT, 4=DEEP, 5=REM). There is no parent record linking them -- HealthKit simply returns a flat list of time-stamped phase samples. Our backend already reconstructs sessions from these flat phases using a Redis-based state machine (`sleep_service.py`) that groups consecutive phases and detects session boundaries via gap analysis (>1 hour gap = session end).
+- **Google Health Connect** natively models sleep as a `SleepSessionRecord` with `Stage` objects. The Android SDK flattens these into individual stage records with `parentId` linking back to the session ID.
 
-- **Google Health Connect** natively models sleep as a `SleepSessionRecord` that contains a list of `Stage` objects. The session is the parent, stages are children. This is a first-class relationship in the Health Connect API.
+- **Samsung Health SDK** follows a similar nested pattern. The SDK flattens `sessions[].stages[]` into individual records with `parentId`.
 
-- **Samsung Health SDK** follows a similar pattern to Google HC -- sessions with nested stage data.
-
-Because Apple's API fundamentally cannot provide a parent session ID, `parentId` must be optional. Providers that have native sessions (Google HC, Samsung) send both the session record and its child stages linked via `parentId`. Apple sends only flat phase records without `parentId`, and the backend continues to reconstruct sessions from them as it does today.
-
-**Google Health Connect example (structured with parentId):**
+**Google Health Connect / Samsung example (stages with parentId):**
 
 ```json
 [
   {
-    "id": "session-abc-123",
-    "type": "SleepSessionRecord",
-    "startDate": "2024-01-01T22:00:00Z",
-    "endDate": "2024-01-02T06:30:00Z",
-    "source": { "name": "Pixel Watch", "deviceManufacturer": "Google" }
-  },
-  {
-    "id": "stage-001",
-    "type": "STAGE_TYPE_DEEP",
+    "id": "session-abc-123-0",
+    "parentId": "session-abc-123",
+    "stage": "deep",
     "startDate": "2024-01-01T22:00:00Z",
     "endDate": "2024-01-01T22:45:00Z",
-    "parentId": "session-abc-123"
+    "zoneOffset": "+01:00",
+    "source": { "appId": "com.samsung.android.wear.shealth", "deviceId": null, "deviceName": null, "deviceManufacturer": "Samsung", "deviceModel": "SM-R960", "deviceType": "watch", "recordingMethod": "automatic" },
+    "values": [{ "type": "sleepScore", "value": 82, "unit": "score" }],
+    "metadata": null
   },
   {
-    "id": "stage-002",
-    "type": "STAGE_TYPE_REM",
+    "id": "session-abc-123-1",
+    "parentId": "session-abc-123",
+    "stage": "rem",
     "startDate": "2024-01-01T22:45:00Z",
     "endDate": "2024-01-01T23:30:00Z",
-    "parentId": "session-abc-123"
-  },
-  {
-    "id": "stage-003",
-    "type": "STAGE_TYPE_LIGHT",
-    "startDate": "2024-01-01T23:30:00Z",
-    "endDate": "2024-01-02T01:00:00Z",
-    "parentId": "session-abc-123"
+    "zoneOffset": "+01:00",
+    "source": { "appId": "com.samsung.android.wear.shealth", "deviceId": null, "deviceName": null, "deviceManufacturer": "Samsung", "deviceModel": "SM-R960", "deviceType": "watch", "recordingMethod": "automatic" },
+    "values": [{ "type": "sleepScore", "value": 82, "unit": "score" }],
+    "metadata": null
   }
 ]
 ```
 
-**Apple HealthKit example (flat phases, no parentId):**
+**Apple HealthKit example (flat stages, no parentId):**
 
 ```json
 [
   {
     "id": "apple-uuid-001",
-    "type": "HKCategoryTypeIdentifierSleepAnalysis",
-    "value": 4,
+    "parentId": null,
+    "stage": "deep",
     "startDate": "2024-01-01T22:00:00Z",
     "endDate": "2024-01-01T22:45:00Z",
-    "source": { "name": "Apple Watch" }
+    "zoneOffset": null,
+    "source": { "appId": "com.apple.health.81A3FE2B", "deviceId": null, "deviceName": "Apple Watch", "deviceManufacturer": "Apple Inc.", "deviceModel": "Watch7,3", "deviceType": "watch", "recordingMethod": "automatic" },
+    "values": null,
+    "metadata": null
   },
   {
     "id": "apple-uuid-002",
-    "type": "HKCategoryTypeIdentifierSleepAnalysis",
-    "value": 5,
+    "parentId": null,
+    "stage": "rem",
     "startDate": "2024-01-01T22:45:00Z",
     "endDate": "2024-01-01T23:30:00Z",
-    "source": { "name": "Apple Watch" }
+    "zoneOffset": null,
+    "source": { "appId": "com.apple.health.81A3FE2B", "deviceId": null, "deviceName": "Apple Watch", "deviceManufacturer": "Apple Inc.", "deviceModel": "Watch7,3", "deviceType": "watch", "recordingMethod": "automatic" },
+    "values": null,
+    "metadata": null
   }
 ]
 ```
@@ -194,19 +197,20 @@ Because Apple's API fundamentally cannot provide a parent session ID, `parentId`
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | yes | Stable unique ID from provider |
-| `type` | string | yes | Provider-specific (session type or stage type) |
+| `parentId` | string | no | Links stage to parent sleep session (null for Apple) |
+| `stage` | string | yes | Unified stage name: `"awake"`, `"light"`, `"deep"`, `"rem"`, `"in_bed"`, `"sleeping"`, `"unknown"` |
 | `startDate` | ISO 8601 | yes | Start time |
 | `endDate` | ISO 8601 | yes | End time |
-| `value` | number | no | Phase value (Apple: 0=IN_BED, 1=ASLEEP_UNSPECIFIED, 2=AWAKE, 3=LIGHT, 4=DEEP, 5=REM) |
-| `parentId` | string | no | Links stage to parent sleep session |
+| `zoneOffset` | string | no | Timezone offset |
 | `source` | object | no | Device/app info |
+| `values` | list | no | Additional metrics (e.g., `sleepScore` from Samsung) |
+| `metadata` | object | no | Provider-specific data |
 
 **Backend processing (two paths):**
 
 1. Build `parentId → children` map from all sleep records in batch
-2. Records **with parentId** → sleep stages, aggregated into parent session
-3. Records **without parentId but referenced as parent** → sleep sessions → create `EventRecord + SleepDetails` directly from aggregated child stages
-4. Records **without parentId and not a parent** (orphans) → existing Redis state machine path (current Apple logic)
+2. Records **with parentId** → sleep stages, aggregated into parent session → create `EventRecord + SleepDetails` directly
+3. Records **without parentId** (Apple) → existing Redis-based sleep state machine reconstructs sessions via gap analysis (>1 hour gap = new session)
 
 ---
 
@@ -215,26 +219,45 @@ Because Apple's API fundamentally cannot provide a parent session ID, `parentId`
 ```json
 {
   "id": "workout-uuid-789",
-  "type": "running",
+  "parentId": null,
+  "type": "HKWorkoutActivityTypeRunning",
   "startDate": "2024-01-01T06:00:00Z",
   "endDate": "2024-01-01T07:00:00Z",
-  "source": { "name": "Apple Watch" },
-  "statistics": [
-    { "type": "distance", "unit": "m", "value": 5000 },
-    { "type": "activeEnergyBurned", "unit": "Cal", "value": 450 },
-    { "type": "averageHeartRate", "unit": "bpm", "value": 150 }
-  ]
+  "zoneOffset": null,
+  "source": { "appId": "com.apple.health.81A3FE2B", "deviceId": null, "deviceName": "Apple Watch", "deviceManufacturer": "Apple Inc.", "deviceModel": "Watch7,3", "deviceType": "watch", "recordingMethod": "active" },
+  "title": null,
+  "notes": null,
+  "values": [
+    { "type": "duration", "value": 3600, "unit": "s" },
+    { "type": "distance", "value": 5000, "unit": "m" },
+    { "type": "activeEnergyBurned", "value": 450, "unit": "kcal" },
+    { "type": "averageHeartRate", "value": 150, "unit": "bpm" }
+  ],
+  "segments": null,
+  "laps": null,
+  "route": null,
+  "samples": null,
+  "metadata": null
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | yes | Stable unique ID |
+| `parentId` | string | no | Links sub-sessions to parent (Samsung sessions split into separate workouts) |
 | `type` | string | yes | Provider-specific workout type |
 | `startDate` | ISO 8601 | yes | Workout start |
 | `endDate` | ISO 8601 | yes | Workout end |
+| `zoneOffset` | string | no | Timezone offset |
 | `source` | object | no | Device/app info |
-| `statistics` | list | no | Workout metrics (distance, energy, heart rate, etc.) |
+| `title` | string | no | User-provided workout title |
+| `notes` | string | no | User-provided notes |
+| `values` | list | no | Workout metrics as `{ type, value, unit }` triples |
+| `segments` | list | no | Workout segments (e.g., warmup, intervals) |
+| `laps` | list | no | Lap data with distance |
+| `route` | list | no | GPS route points |
+| `samples` | list | no | Time-series samples (heartRate, cadence, speed, power) |
+| `metadata` | object | no | Provider-specific data (e.g., `exerciseType` for Samsung) |
 
 ---
 
@@ -242,27 +265,28 @@ Because Apple's API fundamentally cannot provide a parent session ID, `parentId`
 
 ```json
 {
-  "name": "Apple Watch",
-  "deviceManufacturer": "Apple",
-  "deviceModel": "Watch",
-  "deviceHardwareVersion": "Watch5,2",
-  "deviceSoftwareVersion": "10.7.0",
-  "appId": "com.apple.health"
+  "appId": "com.apple.health",
+  "deviceId": null,
+  "deviceName": "Apple Watch",
+  "deviceManufacturer": "Apple Inc.",
+  "deviceModel": "Watch7,3",
+  "deviceType": "watch",
+  "recordingMethod": null
 }
 ```
 
-All fields optional. Each provider fills what it can.
+All fields optional. Each provider fills what it can. `deviceType` is one of: `"watch"`, `"phone"`, `"ring"`, `"fitness_band"`, `"scale"`, `"chest_strap"`, `"head_mounted"`, `"smart_display"`, `"medical_device"`, `"unknown"`. `recordingMethod` is one of: `"active"`, `"automatic"`, `"manual"`, `"unknown"`.
 
 ### 1.4 Core Logic: Heavy Native, Thin Bridge
 
-**Recommendation**: All health data collection, background sync, serialization, upload, and outbox logic lives in standalone native SDKs. Flutter/RN are thin bridges (~200 lines each).
+All health data collection, background sync, serialization, upload, and outbox logic lives in standalone native SDKs. Flutter/RN are thin bridges (~200 lines each).
 
 **Architecture**:
 ```
-[iOS Swift Package]                    [Android Kotlin Library]
-OpenWearablesHealthSDK                 OpenWearablesHealthSDK
-(HealthKit, background delivery,       (Health Connect, WorkManager,
- anchor sync, outbox, keychain)         change tokens, Room outbox, Keystore)
+[iOS Swift SDK]                        [Android Kotlin SDK]
+open_wearables_ios_sdk                 open_wearables_android_sdk
+(HealthKit, BGTaskScheduler,           (Health Connect, Samsung Health,
+ anchor sync, outbox, keychain)         WorkManager, Room outbox, Keystore)
        |                    |                  |                    |
 [Flutter iOS Plugin]  [RN iOS Module]  [Flutter Android Plugin]  [RN Android Module]
 (~200 lines Swift)    (~200 lines Swift) (~200 lines Kotlin)    (~200 lines Kotlin)
@@ -270,85 +294,77 @@ OpenWearablesHealthSDK                 OpenWearablesHealthSDK
 [Flutter Dart API]    [RN TypeScript API]  [Flutter Dart API]   [RN TypeScript API]
 ```
 
-**This is already the pattern**: The existing iOS Swift SDK (`open_wearables_ios_sdk/`) is a standalone Swift Package. The Flutter plugin (`OpenWearablesHealthSdkPlugin.swift`, 207 lines) just delegates to `OpenWearablesHealthSDK.shared`. The same Swift Package can be consumed by a React Native native module.
+**iOS**: The Swift SDK (`open_wearables_ios_sdk/`) is a standalone CocoaPod (~> 0.10.0). The Flutter plugin (`OpenWearablesHealthSdkPlugin.swift`, ~200 lines) delegates to `OpenWearablesHealthSDK.shared`.
 
-**Biggest gap**: No Android native SDK exists yet. This is the largest piece of new work.
+**Android**: The Kotlin SDK (`open_wearables_android_sdk/`) is a standalone library with two provider implementations - `HealthConnectManager` for Google Health Connect and `SamsungHealthManager` for Samsung Health. On Samsung devices, the SDK auto-selects Samsung Health by default, but users can override via `setProvider()`. The Flutter plugin delegates to the native SDK.
 
 ---
 
-## 2. Flutter SDK Organization: Federated Plugin
+## 2. Flutter SDK Organization: Standard Plugin
 
-**Recommendation**: Split into federated packages.
+The Flutter SDK (`open_wearables_health_sdk`, pubspec version 0.0.17) is a standard (non-federated) Flutter plugin with iOS and Android platform code bundled together.
 
 ```
 open_wearables_health_sdk/
-  open_wearables_health_sdk/                    # App-facing package
-    lib/
-      open_wearables_health_sdk.dart            # Public API singleton
-      src/
-        health_data_type.dart
-        config.dart
-        user.dart
-        sync_status.dart
-  open_wearables_health_sdk_platform_interface/  # Shared contract
-    lib/
+  lib/
+    open_wearables_health_sdk.dart              # Public API singleton
+    src/
+      health_data_type.dart
       open_wearables_health_sdk_platform_interface.dart
-      src/
-        method_channel_impl.dart
-        types.dart
-  open_wearables_health_sdk_ios/                 # iOS implementation
-    ios/Classes/
-      OpenWearablesHealthSdkPlugin.swift         # existing, thin bridge
-    lib/
-      open_wearables_health_sdk_ios.dart
-  open_wearables_health_sdk_android/             # Android implementation (NEW)
-    android/src/main/kotlin/
-      OpenWearablesHealthSdkPlugin.kt            # thin bridge to Kotlin SDK
-    lib/
-      open_wearables_health_sdk_android.dart
+      open_wearables_health_sdk_method_channel.dart
+  ios/Classes/
+    OpenWearablesHealthSdkPlugin.swift          # Thin bridge to iOS Swift SDK
+  android/src/main/kotlin/
+    OpenWearablesHealthSdkPlugin.kt             # Thin bridge to Android Kotlin SDK
+  example/                                      # Example app
 ```
 
-**Migration**: The current code already follows PlatformInterface pattern. The main work is splitting into packages and adding the Android implementation.
+The plugin uses `MethodChannel` to communicate with native code. Both iOS and Android platform implementations delegate to their respective standalone native SDKs.
 
 ### React Native SDK
 
+A separate React Native SDK exists (`open-wearables-react-native-sdk`, npm package `open-wearables`, version 0.1.0). It uses the **Expo Module API** for native bridging and supports both Expo and bare React Native CLI projects. It wraps the same underlying iOS and Android native SDKs.
+
 ```
-open-wearables-health-rn/
+open-wearables-react-native-sdk/
   src/
     index.ts                           # Public API
-    types.ts                           # TypeScript types (mirror Dart enums)
-    NativeOpenWearablesHealth.ts        # TurboModule spec
+    OpenWearables.types.ts             # TypeScript types
   ios/
-    OpenWearablesHealthModule.swift     # Bridges to same iOS Swift Package
+    OpenWearablesModule.swift          # Bridges to iOS Swift SDK
   android/src/main/kotlin/
-    OpenWearablesHealthModule.kt        # Bridges to same Android Kotlin SDK
+    OpenWearablesModule.kt             # Bridges to Android Kotlin SDK
 ```
-
-Uses React Native New Architecture (TurboModules) for type-safe bridging.
 
 ---
 
-## 3. Android Native SDK Design
+## 3. Android Native SDK
 
-The Android Kotlin SDK mirrors the iOS Swift SDK structure:
+The Android Kotlin SDK (`open_wearables_android_sdk`) supports two providers via a `HealthDataProvider` interface:
 
 ```
 open_wearables_android_sdk/
-  src/main/kotlin/com/openwearables/sdk/
-    OpenWearablesHealthSDK.kt          # Main singleton (mirrors iOS)
-    internal/
-      HealthConnectProvider.kt         # Health Connect data collection
-      Anchors.kt                       # Change token management (like iOS HKQueryAnchor)
-      Background.kt                    # WorkManager periodic sync
-      Outbox.kt                        # Room-based failed upload queue
-      Session.kt                       # Resumable sync sessions
-      SecureStorage.kt                 # Android Keystore + EncryptedSharedPreferences
-      Types.kt                         # HealthDataType enum + HC type mapping
-      Serialization.kt                 # HC records -> JSON payload
+  sdk/src/main/kotlin/
+    OpenWearablesHealthSDK.kt          # Main singleton
+    HealthConnectManager.kt            # Google Health Connect provider
+    SamsungHealthManager.kt            # Samsung Health provider
+    SyncManager.kt                     # Orchestration, chunking, auth retry
+    UnifiedPayload.kt                  # Data models for unified payload
+    SecureStorage.kt                   # EncryptedSharedPreferences
+    HealthSyncWorker.kt                # WorkManager background sync
 ```
 
+**Key features**:
+- **Dual provider**: `HealthDataProvider` interface abstracts over `HealthConnectManager` and `SamsungHealthManager`. Auto-selects Samsung Health on Samsung devices, with `setProvider()` override.
+- **Round-robin sync**: `SyncManager` fetches one chunk from each data type, merges into a combined payload, sends in a single HTTP request. Chunk size is 2000 items total.
+- **Streaming JSON**: Uses `JsonWriter` to stream JSON directly to the network socket - O(depth) memory, not O(n).
+- **Background sync**: `WorkManager` with foreground service (type `health`), min 15-min interval.
+- **Incremental sync**: Health Connect `getChangesToken()` / `getChanges()`, Samsung Health timestamp-based anchoring.
+- **Auth**: Dual mode - Bearer token (with automatic refresh via `/api/v1/token/refresh`) or API key (`X-Open-Wearables-API-Key` header). Credentials stored in `EncryptedSharedPreferences`.
+- **Resumable sync**: Sync state persisted to disk. If interrupted, resumes from where it left off.
+
 **Key differences from iOS**:
-- **Background sync**: `WorkManager` with `PeriodicWorkRequest` (min 15-min interval) instead of `HKObserverQuery` + `BGTaskScheduler`
+- **Background sync**: `WorkManager` with `PeriodicWorkRequest` instead of `HKObserverQuery` + `BGTaskScheduler`
 - **Incremental sync**: Health Connect `getChangesToken()` / `getChanges()` instead of `HKAnchoredObjectQuery`
 - **Outbox**: Room database instead of file-based
 - **Secure storage**: Android Keystore + `EncryptedSharedPreferences` instead of iOS Keychain
@@ -418,27 +434,40 @@ SDK should implement backoff for failed uploads: 5s -> 30s -> 5min -> rely on pe
 
 ## 5. Critical Files Reference
 
-**Existing (to extend)**:
-- `open_wearables_ios_sdk/Sources/OpenWearablesHealthSDK/OpenWearablesHealthSDK.swift` -- iOS SDK singleton, pattern to mirror for Android
-- `open_wearables_ios_sdk/Sources/OpenWearablesHealthSDK/Internal/Types.swift` -- HealthDataType enum + serialization, pattern for Android types
-- `backend/app/constants/series_types/apple.py` -- Type mapping pattern to replicate for Google/Samsung
-- `backend/app/constants/workout_types/apple_sdk.py` -- Workout mapping pattern
-- `backend/app/schemas/apple/healthkit/sync_request.py` -- Current schema, basis for unified schema
-- `backend/app/services/apple/healthkit/import_service.py` -- Import service pattern
-- `backend/app/services/apple/healthkit/sleep_service.py` -- Redis-based sleep state machine (remains for Apple flat phases)
-- `backend/app/api/routes/v1/sdk_sync.py` -- Sync endpoint (extend provider list)
-- `open_wearables_health_sdk/lib/open_wearables_health_sdk_platform_interface.dart` -- Platform interface (extend for Android)
-- `open_wearables_health_sdk/ios/Classes/OpenWearablesHealthSdkPlugin.swift` -- Flutter bridge pattern
+**Native SDKs** (separate repos):
+- `the-momentum/open_wearables_ios_sdk` -- iOS Swift SDK (CocoaPod ~> 0.10.0)
+  - `Sources/OpenWearablesHealthSDK/OpenWearablesHealthSDK.swift` -- main singleton
+  - `Sources/OpenWearablesHealthSDK/Internal/Types.swift` -- HealthDataType enum, serialization, `_defaultUnit()`
+  - `Sources/OpenWearablesHealthSDK/Internal/Background.swift` -- BGTaskScheduler
+  - `Sources/OpenWearablesHealthSDK/Internal/Session.swift` -- resumable sync state
+  - `Sources/OpenWearablesHealthSDK/Internal/Outbox.swift` -- failed upload retry
+  - `Sources/OpenWearablesHealthSDK/Internal/Keychain.swift` -- secure credential storage
+- `the-momentum/open_wearables_android_sdk` -- Android Kotlin SDK (v0.8.0)
+  - `HealthConnectManager.kt` -- Google Health Connect provider
+  - `SamsungHealthManager.kt` -- Samsung Health provider
+  - `SyncManager.kt` -- orchestration, round-robin chunking
+  - `UnifiedPayload.kt` -- data models
+  - `HealthSyncWorker.kt` -- WorkManager background sync
+  - `SecureStorage.kt` -- EncryptedSharedPreferences
 
-**New (to create)**:
-- Android Kotlin SDK (standalone library) with `HealthConnectProvider` + `SamsungHealthProvider`
-- `backend/app/schemas/sdk/sync_request.py` -- Unified sync schema for all providers
-- `backend/app/constants/series_types/google.py` -- Health Connect type mapping
-- `backend/app/constants/series_types/samsung.py` -- Samsung Health type mapping (if separate from Google)
+**Flutter SDK** (`the-momentum/open_wearables_health_sdk`):
+- `lib/open_wearables_health_sdk.dart` -- public API
+- `ios/Classes/OpenWearablesHealthSdkPlugin.swift` -- thin iOS bridge
+- `android/src/main/kotlin/.../OpenWearablesHealthSdkPlugin.kt` -- thin Android bridge
+
+**React Native SDK** (`the-momentum/open-wearables-react-native-sdk`):
+- npm package `open-wearables` (v0.1.0), uses Expo Module API
+
+**Backend** (this repo):
+- `backend/app/constants/series_types/apple.py` -- Apple HK identifier → SeriesType mapping
+- `backend/app/constants/workout_types/apple_sdk.py` -- Apple workout type mapping
+- `backend/app/schemas/apple/healthkit/sync_request.py` -- sync request schema
+- `backend/app/services/apple/healthkit/import_service.py` -- import service
+- `backend/app/services/apple/healthkit/sleep_service.py` -- Redis-based sleep state machine
+- `backend/app/api/routes/v1/sdk_sync.py` -- sync endpoint
+
+**Backend (to create for Android providers)**:
+- `backend/app/constants/series_types/google.py` -- Health Connect / Samsung unified type → SeriesType mapping
 - `backend/app/constants/workout_types/google.py` -- Health Connect workout mapping
-- `backend/app/services/sdk/import_service.py` -- Unified import service with provider param
-- `backend/app/integrations/celery/tasks/process_google_upload_task.py`
-- `backend/app/integrations/celery/tasks/process_samsung_upload_task.py` (already exists, extend)
-- `open_wearables_health_sdk_android/` (Flutter federated package)
-- `open-wearables-health-rn/` (React Native package with TurboModules)
-- `backend/app/api/routes/v1/sdk_telemetry.py` (error telemetry endpoint)
+- `backend/app/schemas/sdk/sync_request.py` -- unified sync schema for all providers
+- `backend/app/services/sdk/import_service.py` -- unified import service with provider param

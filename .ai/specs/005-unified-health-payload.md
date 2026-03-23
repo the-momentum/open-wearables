@@ -155,31 +155,37 @@
 
 ### Record types
 
-| Record `type` | `unit` | Apple Health | Samsung Health | Health Connect |
+> **Note on `type` field in the payload**: The `type` value differs by platform:
+> - **Apple**: sends HealthKit native identifiers as-is (e.g., `"HKQuantityTypeIdentifierHeartRate"`)
+> - **Android (both Samsung Health & Health Connect)**: SDK normalizes to unified SCREAMING_SNAKE_CASE names (e.g., `"HEART_RATE"`, `"STEP_COUNT"`)
+>
+> The table below shows the raw provider API type/field (Apple/Samsung/HC columns) and how each SDK extracts the value. The first column shows the backend's internal `SeriesType` name used after mapping.
+
+| SeriesType | `unit` | Apple Health (raw API → payload `type`) | Samsung Health (raw API → payload `type`) | Health Connect (raw API → payload `type`) |
 |---|---|---|---|---|
-| `step_count` | `count` | `HKQuantityTypeIdentifierStepCount` → `value` | step tracker | `StepsRecord` → `count` |
-| `heart_rate` | `bpm` | `HKQuantityTypeIdentifierHeartRate` → `value` (single reading) | `HEART_RATE` → split `SERIES_DATA[]` into separate records | `HeartRateRecord` → split `samples[]` into separate records |
-| `resting_heart_rate` | `bpm` | `HKQuantityTypeIdentifierRestingHeartRate` | ❌ none | `RestingHeartRateRecord` |
-| `heart_rate_variability` | `ms` | `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`, metadata: `{ "method": "sdnn" }` | ❌ none | `HeartRateVariabilityRmssdRecord`, metadata: `{ "method": "rmssd" }` |
-| `oxygen_saturation` | `%` | `HKQuantityTypeIdentifierOxygenSaturation` — **×100!** (Apple returns 0–1) | `BLOOD_OXYGEN` → `OXYGEN_SATURATION` | `OxygenSaturationRecord` → `percentage` |
-| `blood_pressure_systolic` | `mmHg` | `HKQuantityTypeIdentifierBloodPressureSystolic` (already separate) | `BLOOD_PRESSURE` → split, `SYSTOLIC` | `BloodPressureRecord` → split, `systolic` |
-| `blood_pressure_diastolic` | `mmHg` | `HKQuantityTypeIdentifierBloodPressureDiastolic` (already separate) | `BLOOD_PRESSURE` → split, `DIASTOLIC` | `BloodPressureRecord` → split, `diastolic` |
-| `blood_glucose` | `mmol/L` | `HKQuantityTypeIdentifierBloodGlucose` | `BLOOD_GLUCOSE` → `LEVEL` — **÷18.0182** (Samsung returns mg/dL) | `BloodGlucoseRecord` → `level` |
-| `active_calories_burned` | `kcal` | `HKQuantityTypeIdentifierActiveEnergyBurned` | from activity summary | `ActiveCaloriesBurnedRecord` → `energy` |
-| `basal_calories_burned` | `kcal` | `HKQuantityTypeIdentifierBasalEnergyBurned` | from body composition | `BasalCaloriesBurnedRecord` |
-| `body_temperature` | `°C` | `HKQuantityTypeIdentifierBodyTemperature` | `BODY_TEMPERATURE` → `TEMPERATURE` | `BodyTemperatureRecord` → `temperature` |
-| `weight` | `kg` | `HKQuantityTypeIdentifierBodyMass` | `BODY_COMPOSITION` → split, `WEIGHT` | `WeightRecord` → `weight` |
-| `height` | `m` | `HKQuantityTypeIdentifierHeight` | `BODY_COMPOSITION` → split, `HEIGHT` — **÷100** (Samsung returns cm) | `HeightRecord` → `height` |
-| `body_fat` | `%` | `HKQuantityTypeIdentifierBodyFatPercentage` | `BODY_COMPOSITION` → split, `BODY_FAT` | `BodyFatRecord` → `percentage` |
-| `body_fat_mass` | `kg` | ❌ none | `BODY_COMPOSITION` → split, `BODY_FAT_MASS` | ❌ none |
-| `lean_body_mass` | `kg` | `HKQuantityTypeIdentifierLeanBodyMass` | `BODY_COMPOSITION` → split, `FAT_FREE_MASS` | `LeanBodyMassRecord` → `mass` |
-| `skeletal_muscle_mass` | `kg` | ❌ none | `BODY_COMPOSITION` → split, `SKELETAL_MUSCLE_MASS` | ❌ none |
-| `bmi` | `kg/m²` | `HKQuantityTypeIdentifierBodyMassIndex` | `BODY_COMPOSITION` → split, `BMI` | ❌ none |
-| `basal_metabolic_rate` | `kcal/day` | `HKQuantityTypeIdentifierBasalEnergyBurned` | `BODY_COMPOSITION` → split, `BASAL_METABOLIC_RATE` | `BasalMetabolicRateRecord` → `basalMetabolicRate` |
-| `floors_climbed` | `count` | `HKQuantityTypeIdentifierFlightsClimbed` | `FLOORS_CLIMBED` → `FLOORS` | `FloorsClimbedRecord` → `floors` |
-| `distance` | `m` | `HKQuantityTypeIdentifierDistanceWalkingRunning` | from exercise/tracker | `DistanceRecord` → `distance` |
-| `hydration` | `mL` | `HKQuantityTypeIdentifierDietaryWater` | `WATER_INTAKE` → `VOLUME` (already mL) | `HydrationRecord` → `volume` — **×1000** (HC returns liters) |
-| `vo2_max` | `mL/kg/min` | `HKQuantityTypeIdentifierVO2Max` | from workout session | `Vo2MaxRecord` |
+| `step_count` | `count` | `HKQuantityTypeIdentifierStepCount` → `value` | step tracker → `STEP_COUNT` | `StepsRecord` → `STEP_COUNT` |
+| `heart_rate` | `bpm` | `HKQuantityTypeIdentifierHeartRate` → `value` (single reading) | `HEART_RATE` → split `SERIES_DATA[]` into separate records → `HEART_RATE` | `HeartRateRecord` → split `samples[]` into separate records → `HEART_RATE` |
+| `resting_heart_rate` | `bpm` | `HKQuantityTypeIdentifierRestingHeartRate` | ❌ none | `RestingHeartRateRecord` → `RESTING_HEART_RATE` |
+| `heart_rate_variability` | `ms` | `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`, metadata: `{ "method": "sdnn" }` | ❌ none | `HeartRateVariabilityRmssdRecord` → `HEART_RATE_VARIABILITY`, metadata: `{ "method": "rmssd" }` |
+| `oxygen_saturation` | `%` | `HKQuantityTypeIdentifierOxygenSaturation` — **×100!** (Apple returns 0-1) | `BLOOD_OXYGEN` → `OXYGEN_SATURATION` → `OXYGEN_SATURATION` | `OxygenSaturationRecord` → `OXYGEN_SATURATION` |
+| `blood_pressure_systolic` | `mmHg` | `HKQuantityTypeIdentifierBloodPressureSystolic` (already separate) | `BLOOD_PRESSURE` → split, `SYSTOLIC` → `BLOOD_PRESSURE` | `BloodPressureRecord` → split, `systolic` → `BLOOD_PRESSURE` |
+| `blood_pressure_diastolic` | `mmHg` | `HKQuantityTypeIdentifierBloodPressureDiastolic` (already separate) | `BLOOD_PRESSURE` → split, `DIASTOLIC` → `BLOOD_PRESSURE` | `BloodPressureRecord` → split, `diastolic` → `BLOOD_PRESSURE` |
+| `blood_glucose` | `mmol/L` | `HKQuantityTypeIdentifierBloodGlucose` | `BLOOD_GLUCOSE` → `LEVEL` — **÷18.0182** (Samsung returns mg/dL) → `BLOOD_GLUCOSE` | `BloodGlucoseRecord` → `level` → `BLOOD_GLUCOSE` |
+| `active_calories_burned` | `kcal` | `HKQuantityTypeIdentifierActiveEnergyBurned` | from activity summary → `ACTIVE_CALORIES_BURNED` | `ActiveCaloriesBurnedRecord` → `ACTIVE_CALORIES_BURNED` |
+| `basal_calories_burned` | `kcal` | `HKQuantityTypeIdentifierBasalEnergyBurned` | from body composition → `BASAL_CALORIES_BURNED` | `BasalCaloriesBurnedRecord` → `BASAL_CALORIES_BURNED` |
+| `body_temperature` | `°C` | `HKQuantityTypeIdentifierBodyTemperature` | `BODY_TEMPERATURE` → `TEMPERATURE` → `BODY_TEMPERATURE` | `BodyTemperatureRecord` → `temperature` → `BODY_TEMPERATURE` |
+| `weight` | `kg` | `HKQuantityTypeIdentifierBodyMass` | `BODY_COMPOSITION` → split, `WEIGHT` → `BODY_COMPOSITION` | `WeightRecord` → `weight` → `WEIGHT` |
+| `height` | `m` | `HKQuantityTypeIdentifierHeight` | `BODY_COMPOSITION` → split, `HEIGHT` — **÷100** (Samsung returns cm) → `BODY_COMPOSITION` | `HeightRecord` → `height` → `HEIGHT` |
+| `body_fat` | `%` | `HKQuantityTypeIdentifierBodyFatPercentage` | `BODY_COMPOSITION` → split, `BODY_FAT` → `BODY_COMPOSITION` | `BodyFatRecord` → `percentage` → `BODY_FAT` |
+| `body_fat_mass` | `kg` | ❌ none | `BODY_COMPOSITION` → split, `BODY_FAT_MASS` → `BODY_COMPOSITION` | ❌ none |
+| `lean_body_mass` | `kg` | `HKQuantityTypeIdentifierLeanBodyMass` | `BODY_COMPOSITION` → split, `FAT_FREE_MASS` → `BODY_COMPOSITION` | `LeanBodyMassRecord` → `mass` → `LEAN_BODY_MASS` |
+| `skeletal_muscle_mass` | `kg` | ❌ none | `BODY_COMPOSITION` → split, `SKELETAL_MUSCLE_MASS` → `BODY_COMPOSITION` | ❌ none |
+| `bmi` | `kg/m²` | `HKQuantityTypeIdentifierBodyMassIndex` | `BODY_COMPOSITION` → split, `BMI` → `BODY_COMPOSITION` | ❌ none |
+| `basal_metabolic_rate` | `kcal/day` | `HKQuantityTypeIdentifierBasalEnergyBurned` | `BODY_COMPOSITION` → split, `BASAL_METABOLIC_RATE` → `BODY_COMPOSITION` | `BasalMetabolicRateRecord` → `basalMetabolicRate` → `BASAL_METABOLIC_RATE` |
+| `floors_climbed` | `count` | `HKQuantityTypeIdentifierFlightsClimbed` | `FLOORS_CLIMBED` → `FLOORS` → `FLOORS_CLIMBED` | `FloorsClimbedRecord` → `floors` → `FLOORS_CLIMBED` |
+| `distance` | `m` | `HKQuantityTypeIdentifierDistanceWalkingRunning` | from exercise/tracker → `DISTANCE` | `DistanceRecord` → `distance` → `DISTANCE` |
+| `hydration` | `mL` | `HKQuantityTypeIdentifierDietaryWater` | `WATER_INTAKE` → `VOLUME` (already mL) → `WATER_INTAKE` | `HydrationRecord` → `volume` — **×1000** (HC returns liters) → `HYDRATION` |
+| `vo2_max` | `mL/kg/min` | `HKQuantityTypeIdentifierVO2Max` | from workout session → `VO2_MAX` | `Vo2MaxRecord` → `VO2_MAX` |
 
 ### Metadata per record type
 
@@ -408,8 +414,11 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
 
 ## 7. Full payload example
 
-> **`type` = native name from the SDK provider.** The backend maps by `provider` + `type`.
-> For records split from composite (Samsung body_composition, blood_pressure) → `metadata.component` indicates which value.
+> **`type` naming differs by platform:**
+> - **Apple**: HealthKit native identifiers as-is (e.g., `"HKQuantityTypeIdentifierHeartRate"`)
+> - **Android (both Samsung Health & Health Connect)**: SDK normalizes to unified SCREAMING_SNAKE_CASE names (e.g., `"HEART_RATE"`, `"STEP_COUNT"`)
+>
+> The backend uses the `provider` field to select the correct type mapping. For records split from composite (Samsung body_composition, blood_pressure) → `metadata.component` indicates which value.
 
 ### 7.1 Example — Apple Health
 
@@ -855,7 +864,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
     "records": [
       {
         "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        "type": "StepsRecord",
+        "type": "STEP_COUNT",
         "startDate": "2026-02-18T06:00:00Z",
         "endDate": "2026-02-18T06:30:00Z",
         "zoneOffset": "+01:00",
@@ -867,7 +876,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901-s0",
-        "type": "HeartRateRecord",
+        "type": "HEART_RATE",
         "startDate": "2026-02-18T08:00:00Z",
         "endDate": "2026-02-18T08:00:00Z",
         "zoneOffset": "+01:00",
@@ -879,7 +888,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901-s1",
-        "type": "HeartRateRecord",
+        "type": "HEART_RATE",
         "startDate": "2026-02-18T08:01:00Z",
         "endDate": "2026-02-18T08:01:00Z",
         "zoneOffset": "+01:00",
@@ -891,7 +900,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-        "type": "OxygenSaturationRecord",
+        "type": "OXYGEN_SATURATION",
         "startDate": "2026-02-18T07:30:00Z",
         "endDate": "2026-02-18T07:30:00Z",
         "zoneOffset": "+01:00",
@@ -903,7 +912,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "d4e5f6a7-b8c9-0123-defa-234567890123-sys",
-        "type": "BloodPressureRecord",
+        "type": "BLOOD_PRESSURE",
         "startDate": "2026-02-18T07:00:00Z",
         "endDate": "2026-02-18T07:00:00Z",
         "zoneOffset": "+01:00",
@@ -915,7 +924,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "d4e5f6a7-b8c9-0123-defa-234567890123-dia",
-        "type": "BloodPressureRecord",
+        "type": "BLOOD_PRESSURE",
         "startDate": "2026-02-18T07:00:00Z",
         "endDate": "2026-02-18T07:00:00Z",
         "zoneOffset": "+01:00",
@@ -927,7 +936,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
-        "type": "BloodGlucoseRecord",
+        "type": "BLOOD_GLUCOSE",
         "startDate": "2026-02-18T12:15:00Z",
         "endDate": "2026-02-18T12:15:00Z",
         "zoneOffset": "+01:00",
@@ -939,7 +948,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "b8c9d0e1-f2a3-4567-bcde-678901234567",
-        "type": "WeightRecord",
+        "type": "WEIGHT",
         "startDate": "2026-02-18T06:50:00Z",
         "endDate": "2026-02-18T06:50:00Z",
         "zoneOffset": "+01:00",
@@ -951,7 +960,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "d0e1f2a3-b4c5-6789-defa-890123456789",
-        "type": "HeartRateVariabilityRmssdRecord",
+        "type": "HEART_RATE_VARIABILITY",
         "startDate": "2026-02-18T08:05:00Z",
         "endDate": "2026-02-18T08:05:00Z",
         "zoneOffset": "+01:00",
@@ -959,11 +968,11 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
         "value": 42.7,
         "unit": "ms",
         "parentId": null,
-        "metadata": null
+        "metadata": { "method": "rmssd" }
       },
       {
         "id": "e1f2a3b4-c5d6-7890-efab-901234567890",
-        "type": "FloorsClimbedRecord",
+        "type": "FLOORS_CLIMBED",
         "startDate": "2026-02-18T09:00:00Z",
         "endDate": "2026-02-18T09:30:00Z",
         "zoneOffset": "+01:00",
@@ -975,7 +984,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       },
       {
         "id": "b4c5d6e7-f8a9-0123-bcde-234567890bcd",
-        "type": "HydrationRecord",
+        "type": "HYDRATION",
         "startDate": "2026-02-18T08:00:00Z",
         "endDate": "2026-02-18T08:00:00Z",
         "zoneOffset": "+01:00",
@@ -990,7 +999,7 @@ unified: sleep[0] = { id: "...-0", parentId: "99999999-...", stage: "light", ...
       {
         "id": "11111111-2222-3333-4444-555555555555",
         "parentId": null,
-        "type": "ExerciseSessionRecord",
+        "type": "EXERCISE",
         "startDate": "2026-02-18T06:30:00Z",
         "endDate": "2026-02-18T07:15:00Z",
         "zoneOffset": "+01:00",
