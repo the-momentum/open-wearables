@@ -22,3 +22,16 @@ def get_s3_client():  # noqa: ANN201
     except (NoCredentialsError, AttributeError):
         log_structured(logger, "warning", "AWS credentials not configured")
         return None
+
+
+def get_sns_client():  # noqa: ANN201
+    try:
+        return boto3.client(
+            "sns",
+            region_name=AWS_REGION,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),
+        )
+    except (NoCredentialsError, AttributeError):
+        log_structured(logger, "warning", "AWS credentials not configured")
+        return None

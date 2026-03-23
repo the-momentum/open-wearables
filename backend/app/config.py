@@ -139,7 +139,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: SecretStr | None = None
     aws_region: str = "eu-north-1"
-    sqs_queue_url: str | None = None
+    # for topic ARN verification from SNS notification (signature is verified regardless)
+    aws_sns_topic_arn: SecretStr | None = None
 
     xml_chunk_size: int = 50_000
 

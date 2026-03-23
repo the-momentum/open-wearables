@@ -56,7 +56,7 @@ class TestProcessUploadTask:
         mock_s3.download_file.side_effect = mock_download
 
         # Act
-        result = process_aws_upload(bucket_name, object_key)
+        result = process_aws_upload(bucket_name, object_key, str(user.id))
 
         # Assert
         assert result["status"] == "success"
@@ -111,7 +111,7 @@ class TestProcessUploadTask:
         mock_s3.download_file.side_effect = mock_download
 
         # Act
-        process_aws_upload(bucket_name, object_key)
+        process_aws_upload(bucket_name, object_key, str(user.id))
 
         # Assert - temp file should be cleaned up
         assert temp_file_path is not None
@@ -146,7 +146,7 @@ class TestProcessUploadTask:
 
         # Act & Assert
         with pytest.raises(Exception, match="S3 connection failed"):
-            process_aws_upload(bucket_name, object_key)
+            process_aws_upload(bucket_name, object_key, str(user.id))
 
     @patch("app.integrations.celery.tasks.process_aws_upload_task.SessionLocal")
     @patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client")
@@ -186,7 +186,7 @@ class TestProcessUploadTask:
 
         # Act & Assert
         with pytest.raises(Exception, match="XML parsing error"):
-            process_aws_upload(bucket_name, object_key)
+            process_aws_upload(bucket_name, object_key, str(user.id))
 
         # Verify rollback was called
         mock_db.rollback.assert_called_once()
@@ -224,7 +224,7 @@ class TestProcessUploadTask:
         mock_s3.download_file.side_effect = mock_download
 
         # Act
-        result = process_aws_upload(bucket_name, object_key)
+        result = process_aws_upload(bucket_name, object_key, user_id)
 
         # Assert
         assert result["user_id"] == user_id

@@ -13,7 +13,7 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.post("/sdk/users/{user_id}/sync")
+@router.post("/sdk/users/{user_id}/sync", status_code=status.HTTP_202_ACCEPTED)
 def sync_sdk_data(
     user_id: str,
     body: SDKSyncRequest,
