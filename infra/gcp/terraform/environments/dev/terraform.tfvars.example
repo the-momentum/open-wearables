@@ -1,0 +1,106 @@
+project_id = "your-dev-project-id"
+region     = "europe-west1"
+
+name_prefix = "open-wearables"
+
+labels = {
+  app         = "open-wearables"
+  environment = "dev"
+  managed_by  = "terraform"
+}
+
+artifact_registry_repository_id = "open-wearables-dev"
+
+create_secrets = true
+secret_names = [
+  "open-wearables-dev-secret-key",
+  "open-wearables-dev-db-password",
+  "open-wearables-dev-resend-api-key",
+  "open-wearables-dev-polar-client-id",
+  "open-wearables-dev-polar-client-secret",
+]
+
+create_network     = true
+create_cloud_sql   = true
+create_memorystore = true
+
+enable_backend_api_service    = true
+enable_worker_service         = true
+enable_backend_init_job       = true
+enable_frontend_service       = true
+enable_cloud_tasks_dispatch   = false
+create_default_scheduler_jobs = true
+
+cloud_sql_db_name     = "open-wearables"
+cloud_sql_db_user     = "open_wearables"
+cloud_sql_db_password = null # Provided via secrets below
+
+backend_image  = "europe-west1-docker.pkg.dev/your-dev-project-id/open-wearables-dev/backend:latest"
+frontend_image = "europe-west1-docker.pkg.dev/your-dev-project-id/open-wearables-dev/frontend:latest"
+
+worker_service_base_url = "https://worker-dev.example.run.app"
+
+backend_api_env = {
+  ENVIRONMENT  = "dev"
+  CORS_ORIGINS = "https://frontend-dev.example.run.app"
+}
+
+backend_api_secret_env = {
+  SECRET_KEY          = { secret = "open-wearables-dev-secret-key" }
+  DB_PASSWORD         = { secret = "open-wearables-dev-db-password" }
+  POLAR_CLIENT_ID     = { secret = "open-wearables-dev-polar-client-id" }
+  POLAR_CLIENT_SECRET = { secret = "open-wearables-dev-polar-client-secret" }
+}
+
+backend_worker_env = {
+  ENVIRONMENT = "production"
+}
+
+backend_worker_secret_env = {
+  SECRET_KEY          = { secret = "open-wearables-dev-secret-key" }
+  DB_PASSWORD         = { secret = "open-wearables-dev-db-password" }
+  POLAR_CLIENT_ID     = { secret = "open-wearables-dev-polar-client-id" }
+  POLAR_CLIENT_SECRET = { secret = "open-wearables-dev-polar-client-secret" }
+}
+
+backend_init_env = {
+  ENVIRONMENT = "production"
+}
+
+backend_init_secret_env = {
+  SECRET_KEY          = { secret = "open-wearables-dev-secret-key" }
+  DB_PASSWORD         = { secret = "open-wearables-dev-db-password" }
+  POLAR_CLIENT_ID     = { secret = "open-wearables-dev-polar-client-id" }
+  POLAR_CLIENT_SECRET = { secret = "open-wearables-dev-polar-client-secret" }
+}
+
+frontend_env = {
+  VITE_API_URL = "https://api-dev.example.run.app"
+}
+
+scheduler_jobs = {
+  sync-all-users = {
+    description                = "Run periodic vendor sync fan-out"
+    schedule                   = "0 * * * *"
+    time_zone                  = "Etc/UTC"
+    target_url                 = "https://worker-dev.example.run.app/tasks/sync-all-users"
+    oidc_service_account_email = "open-wearables-dev-scheduler@your-dev-project-id.iam.gserviceaccount.com"
+    audience                   = "https://worker-dev.example.run.app"
+    headers = {
+      Content-Type = "application/json"
+    }
+    body = "{\"source\":\"cloud-scheduler\"}"
+  }
+  finalize-stale-sleeps = {
+    description                = "Finalize stale sleep sessions"
+    schedule                   = "15 * * * *"
+    time_zone                  = "Etc/UTC"
+    target_url                 = "https://worker-dev.example.run.app/tasks/finalize-stale-sleeps"
+    oidc_service_account_email = "open-wearables-dev-scheduler@your-dev-project-id.iam.gserviceaccount.com"
+    audience                   = "https://worker-dev.example.run.app"
+    headers = {
+      Content-Type = "application/json"
+    }
+    body = "{\"source\":\"cloud-scheduler\"}"
+  }
+}

@@ -169,3 +169,12 @@ CLAUDE.local.md
 
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+*.tfplan
+plan.txt
+plan_output.txt
