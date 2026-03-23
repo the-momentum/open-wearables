@@ -23,8 +23,8 @@ from app.integrations.celery.tasks.garmin_backfill_task import (
     get_backfill_status,
     get_trace_id,
     mark_type_success,
-    trigger_next_pending_type,
 )
+from app.integrations.task_dispatcher import RegisteredTask, dispatch_task
 from app.repositories import UserConnectionRepository
 from app.schemas import GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
@@ -524,7 +524,10 @@ def garmin_ping_notification(
         for user_id_str in users_with_new_success:
             backfill_status = get_backfill_status(user_id_str)
             if backfill_status["overall_status"] == "in_progress":
-                trigger_next_pending_type.delay(user_id_str)
+                dispatch_task(
+                    RegisteredTask.TRIGGER_GARMIN_NEXT_PENDING_TYPE,
+                    args=[user_id_str],
+                )
                 backfill_triggered.append(user_id_str)
 
         response: dict[str, Any] = {
@@ -921,7 +924,10 @@ def garmin_push_notification(
                     current_window=backfill_status["current_window"],
                     total_windows=backfill_status["total_windows"],
                 )
-                trigger_next_pending_type.delay(user_id_str)
+                dispatch_task(
+                    RegisteredTask.TRIGGER_GARMIN_NEXT_PENDING_TYPE,
+                    args=[user_id_str],
+                )
                 backfill_triggered.append(user_id_str)
 
         response: dict[str, Any] = {

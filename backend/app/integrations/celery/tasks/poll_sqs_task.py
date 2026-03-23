@@ -5,7 +5,7 @@ from typing import Any
 import boto3
 
 from app.config import settings
-from app.integrations.celery.tasks.process_aws_upload_task import process_aws_upload
+from app.integrations.task_dispatcher import RegisteredTask, dispatch_task
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 from celery import shared_task
@@ -79,11 +79,13 @@ def poll_sqs_messages(user_id: str | None = None) -> dict[str, Any]:
 
                         object_key_parts = object_key.split("/")
                         object_key_user_id = object_key_parts[-3] if len(object_key_parts) >= 3 else None
-                        # Enqueue Celery task
-                        process_aws_upload.delay(
-                            bucket_name=bucket_name,
-                            object_key=object_key,
-                            user_id=object_key_user_id,
+                        dispatch_task(
+                            RegisteredTask.PROCESS_AWS_UPLOAD,
+                            kwargs={
+                                "bucket_name": bucket_name,
+                                "object_key": object_key,
+                                "user_id": object_key_user_id,
+                            },
                         )
                         processed_count += 1
 
@@ -141,7 +143,8 @@ def poll_sqs_task(expiration_seconds: int, iterations_done: int = 0, user_id: st
     poll_sqs_messages(user_id=user_id)
 
     # Schedule next iteration
-    poll_sqs_task.apply_async(
+    dispatch_task(
+        RegisteredTask.POLL_SQS_TASK,
         kwargs={
             "expiration_seconds": expiration_seconds,
             "iterations_done": iterations_done + 1,

@@ -1,7 +1,7 @@
 from logging import getLogger
 
 from app.database import SessionLocal
-from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
+from app.integrations.task_dispatcher import RegisteredTask, dispatch_task
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas import SyncAllUsersResult
 from app.utils.structured_logging import log_structured
@@ -29,18 +29,25 @@ def sync_all_users(
     user_connection_repo = UserConnectionRepository()
 
     with SessionLocal() as db:
-        active_user_ids = user_connection_repo.get_all_active_users(db)
+        active_user_ids = list(user_connection_repo.get_all_active_users(db))
 
-        log_structured(
-            logger,
-            "info",
-            f"Found {len(active_user_ids)} users with active connections",
-            provider="sync_all_users",
-            task="sync_all_users",
-            active_user_ids=[str(uid) for uid in active_user_ids],
+    log_structured(
+        logger,
+        "info",
+        f"Found {len(active_user_ids)} users with active connections",
+        provider="sync_all_users",
+        task="sync_all_users",
+        active_user_ids=[str(uid) for uid in active_user_ids],
+    )
+
+    for active_user_id in active_user_ids:
+        dispatch_task(
+            RegisteredTask.SYNC_VENDOR_DATA,
+            kwargs={
+                "user_id": str(active_user_id),
+                "start_date": start_date,
+                "end_date": end_date,
+            },
         )
 
-        for active_user_id in active_user_ids:
-            sync_vendor_data.delay(user_id=str(active_user_id), start_date=start_date, end_date=end_date)
-
-        return SyncAllUsersResult(users_for_sync=len(active_user_ids)).model_dump()
+    return SyncAllUsersResult(users_for_sync=len(active_user_ids)).model_dump()

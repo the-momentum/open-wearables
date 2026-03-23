@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
-from app.integrations.celery.tasks import send_invitation_email_task
+from app.integrations.task_dispatcher import RegisteredTask, dispatch_task
 from app.models import Developer, Invitation
 from app.repositories.invitation_repository import InvitationRepository
 from app.schemas.invitation import (
@@ -42,12 +42,15 @@ class InvitationService:
     ) -> None:
         """Queue invitation email for async delivery with retry logic."""
         invite_url = self._get_invite_url(invitation.token)
-        send_invitation_email_task.delay(
-            invitation_id=str(invitation.id),
-            to_email=invitation.email,
-            invite_url=invite_url,
-            invited_by_email=invited_by_email,
-            user_id=str(invitation.invited_by_id) if invitation.invited_by_id else None,
+        dispatch_task(
+            RegisteredTask.SEND_INVITATION_EMAIL,
+            kwargs={
+                "invitation_id": str(invitation.id),
+                "to_email": invitation.email,
+                "invite_url": invite_url,
+                "invited_by_email": invited_by_email,
+                "user_id": str(invitation.invited_by_id) if invitation.invited_by_id else None,
+            },
         )
         self.logger.info(f"Queued invitation email for {invitation.id}")
 

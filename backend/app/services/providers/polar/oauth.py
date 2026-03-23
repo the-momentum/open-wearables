@@ -24,8 +24,9 @@ class PolarOAuth(BaseOAuthTemplate):
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts Polar user ID from token response and registers user."""
-        raw = token_response.model_extra.get("x_user_id") if token_response.model_extra else None
-        provider_user_id = str(raw) if raw is not None else None
+        extra = token_response.model_extra or {}
+        x_user_id = extra.get("x_user_id")
+        provider_user_id = str(x_user_id) if x_user_id is not None else None
 
         if provider_user_id:
             self._register_user(token_response.access_token, user_id)

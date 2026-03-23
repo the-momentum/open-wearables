@@ -1,0 +1,99 @@
+---
+title: "Deploy to Google Cloud Run"
+description: "Deploy Open Wearables to Google Cloud Run with a fork-safe GCP overlay and phased async migration."
+---
+
+This deployment path is designed as a fork overlay. The goal is to keep Open Wearables compatible with upstream while adding Google Cloud infrastructure in isolated files under `infra/gcp/terraform`.
+
+## Deployment shape
+
+The recommended Google Cloud layout uses managed infrastructure for the parts that Cloud Run handles well, while keeping the application changes as small and reversible as possible.
+
+| Component | Recommended Google Cloud service | Notes |
+|----------|----------------------------------|-------|
+| Frontend | Cloud Run service | Public web app |
+| Backend API | Cloud Run service | Public API, OAuth callbacks, webhooks |
+| Init and migrations | Cloud Run Job | Runs Alembic and seed/init scripts |
+| PostgreSQL | Cloud SQL for PostgreSQL | Primary application database |
+| Redis | Memorystore for Redis | Redis-backed state and locks |
+| Async dispatch | Cloud Tasks | Replaces Cloud Run-incompatible Celery orchestration over time |
+| Periodic jobs | Cloud Scheduler | Replaces `celery beat` |
+| Secrets | Secret Manager | Runtime secrets and provider credentials |
+| Images | Artifact Registry | Backend and frontend container images |
+
+## Compatibility strategy
+
+The Google Cloud path should remain additive.
+
+- Keep the existing Docker Compose, Celery, and Railway flow working for upstream syncs.
+- Add Google Cloud-specific startup scripts instead of replacing existing ones.
+- Introduce a dispatcher abstraction before removing direct `.delay()` and `.apply_async()` calls.
+- Replace `celery beat` first, then migrate async execution incrementally.
+- Keep business logic in task handlers stable while changing only delivery and scheduling layers.
+
+## Repository layout
+
+The GCP overlay lives in `infra/gcp/terraform`:
+
+```text
+infra/gcp/terraform/
+├── environments/
+│   ├── dev/
+│   └── prod/
+└── modules/
+    └── open_wearables_stack/
+```
+
+This keeps infrastructure changes away from the core backend and frontend codepaths and reduces merge pressure when pulling upstream updates.
+
+## Migration phases
+
+<Steps>
+  <Step title="Provision shared GCP infrastructure">
+    Start with shared resources that do not require deep application rewrites: Artifact Registry, service accounts, Cloud Tasks queues, Cloud Scheduler jobs, and Secret Manager secrets.
+  </Step>
+  <Step title="Split startup responsibilities">
+    Use a dedicated Cloud Run Job for migrations and initialization. The API service should only start FastAPI and should not run Alembic or seed logic on every instance startup.
+  </Step>
+  <Step title="Replace celery beat">
+    Move periodic jobs to Cloud Scheduler while keeping the underlying Python task logic unchanged.
+  </Step>
+  <Step title="Abstract async dispatch">
+    Add a dispatcher layer so the same application code can target Celery in upstream-compatible environments and Cloud Tasks in Google Cloud environments.
+  </Step>
+  <Step title="Migrate large payload and polling flows">
+    Handle large uploads and polling-based jobs separately, since they usually need object storage references and event-driven triggers instead of direct task payloads.
+  </Step>
+</Steps>
+
+## Current scaffold
+
+The initial repository scaffold includes:
+
+- `infra/gcp/terraform` for Terraform environments and reusable modules
+- `backend/scripts/start/cloud-run-api.sh` for Cloud Run API startup
+- `backend/scripts/start/cloud-run-init.sh` for Cloud Run migration and initialization jobs
+- Terraform resources for VPC, Serverless VPC Access, Cloud SQL, Memorystore, Cloud Run services, and Cloud Run jobs
+- A backend task dispatcher abstraction that keeps `Celery` as the default path and adds a `Cloud Tasks` mode
+- An internal worker task API that is only mounted when `INTERNAL_TASK_API_ENABLED=true`
+
+## Two-phase rollout for async dispatch
+
+The Google Cloud async path is intentionally staged to preserve compatibility with upstream.
+
+1. Deploy infrastructure, worker service, and backend services with `enable_cloud_tasks_dispatch = false`.
+2. Read the worker service URL from Terraform outputs.
+3. Set `worker_service_base_url` to that URL and switch `enable_cloud_tasks_dispatch = true`.
+4. Re-apply Terraform so API and worker services receive the Cloud Tasks runtime configuration.
+
+This avoids hard-coding Cloud Run URLs into the core application and keeps the deployment-specific coupling inside the GCP overlay.
+
+## What comes next
+
+The next implementation steps are:
+
+1. Wire Secret Manager-backed runtime secrets into the Cloud Run services.
+2. Validate the Terraform runtime resources in a real GCP project and tune IAM roles.
+3. Switch periodic jobs to the default Cloud Scheduler resources created by Terraform.
+4. Move large upload flows to object-storage references to stay within Cloud Tasks payload limits.
+5. Add deployment automation for image build and rollout.
