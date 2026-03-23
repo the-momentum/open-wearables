@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 # WHOOP workout type mappings based on WHOOP API documentation
 # Reference: https://developer.whoop.com/docs/developing/user-data/workout

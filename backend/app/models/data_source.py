@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32, str_50, str_100
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 if TYPE_CHECKING:
     from app.models.data_point_series import DataPointSeries

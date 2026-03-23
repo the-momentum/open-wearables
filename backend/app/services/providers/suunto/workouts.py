@@ -7,13 +7,13 @@ from app.constants.workout_types.suunto import get_unified_workout_type
 from app.database import DbSession
 from app.models import DataSource
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas import (
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
-    ProviderName,
-    SuuntoWorkoutJSON,
 )
+from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.dates import offset_to_iso

@@ -11,16 +11,22 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import (
-    ActiveMinutesResult,
-    ActivityAggregateResult,
-    IntensityMinutesResult,
+from app.schemas.enums import (
     ProviderName,
+    SeriesType,
+    get_series_type_from_id,
+    get_series_type_id,
+)
+from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
+from app.schemas.responses.activity import (
+    ActiveMinutesResult,
+    ActivityAggregateResult,
+    IntensityMinutesResult,
+)
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 

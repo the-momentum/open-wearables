@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 
 class SDKWorkoutType(StrEnum):

@@ -6,7 +6,12 @@ from sqlalchemy.orm import Query
 from app.database import DbSession
 from app.models import User
 from app.repositories.repositories import CrudRepository
-from app.schemas.user import USER_SORT_COLUMNS, UserCreateInternal, UserQueryParams, UserUpdateInternal
+from app.schemas.model_crud.user_management import (
+    USER_SORT_COLUMNS,
+    UserCreateInternal,
+    UserQueryParams,
+    UserUpdateInternal,
+)
 
 
 class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal]):

@@ -1,5 +1,5 @@
 from app.constants.workout_types.fitbit import get_unified_workout_type
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 
 def test_running_maps_correctly() -> None:

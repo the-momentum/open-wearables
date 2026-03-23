@@ -130,7 +130,7 @@ class TestSystemInfoServiceGetSystemInfo:
     def test_get_system_info_active_connections(self, db: Session) -> None:
         """Should count active connections correctly."""
         # Arrange
-        from app.schemas.oauth import ConnectionStatus
+        from app.schemas.auth import ConnectionStatus
 
         initial_info = system_info_service.get_system_info(db)
         initial_count = initial_info.active_conn.count

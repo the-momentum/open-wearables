@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, relationship
 from app.database import BaseDbModel
 from app.mappings import FKDeveloper, ManyToOne, PrimaryKey, Unique, str_255
 from app.models import Developer
-from app.schemas.invitation import InvitationStatus
+from app.schemas.model_crud.user_management import InvitationStatus
 
 
 class Invitation(BaseDbModel):

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import PrimaryKey, Indexed, Unique
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 
 class ProviderPriority(BaseDbModel):

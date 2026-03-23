@@ -3,7 +3,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import Application
 from app.repositories.repositories import CrudRepository
-from app.schemas.application import ApplicationCreateInternal, ApplicationUpdate
+from app.schemas.model_crud.credentials import ApplicationCreateInternal, ApplicationUpdate
 
 
 class ApplicationRepository(CrudRepository[Application, ApplicationCreateInternal, ApplicationUpdate]):

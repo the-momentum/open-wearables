@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 
 from app.database import DbSession
-from app.schemas.series_types import get_series_type_from_id
-from app.schemas.system_info import (
+from app.schemas.enums import get_series_type_from_id
+from app.schemas.responses.upload import (
     CountWithGrowth,
     DataPointsInfo,
     SeriesTypeMetric,

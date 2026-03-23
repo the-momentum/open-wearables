@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from app.schemas.series_types import SeriesType
+from app.schemas.enums import SeriesType
 
 
 class SDKMetricType(StrEnum):
