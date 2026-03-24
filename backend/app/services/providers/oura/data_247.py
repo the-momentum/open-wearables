@@ -24,6 +24,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
@@ -81,6 +82,13 @@ class Oura247Data(Base247DataTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, endpoint, params=request_params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="oura",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id=endpoint,
+                )
 
                 data = response.get("data", []) if isinstance(response, dict) else []
                 all_data.extend(data)
