@@ -4,6 +4,7 @@ from app.config import settings
 from app.schemas.auth import (
     AuthenticationMethod,
 )
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -29,7 +30,7 @@ class StravaOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.strava_client_id or "",
             client_secret=(settings.strava_client_secret.get_secret_value() if settings.strava_client_secret else ""),
-            redirect_uri=settings.strava_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.STRAVA),
             default_scope=settings.strava_default_scope,
         )
 
