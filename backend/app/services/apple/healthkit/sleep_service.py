@@ -71,7 +71,6 @@ def load_sleep_state(user_id: str) -> SleepState | None:
 
 
 def save_sleep_state(user_id: str, state: SleepState) -> None:
-    state.last_updated_at = datetime.now(timezone.utc)
     get_redis_client().set(key(user_id), state.model_dump_json())
     get_redis_client().expire(key(user_id), settings.redis_sleep_ttl_seconds)
     get_redis_client().sadd(active_users_key(), user_id)
@@ -208,11 +207,11 @@ def handle_sleep_data(
     (e.g. from a bulk historical upload) accumulate stages into the same session instead
     of overwriting each other's state.
 
-    Stale detection uses ``last_updated_at`` (the wall-clock time of the last Redis
-    write) rather than ``end_time`` (the last sleep-sample timestamp).  This prevents
-    sessions from being prematurely finalized when historical data is uploaded hours or
-    days after it was recorded: all payloads in a bulk upload arrive within seconds of
-    each other, so ``last_updated_at`` stays fresh until the upload is complete.
+    Stale detection uses ``end_time`` (the last sleep-sample timestamp).  When a bulk
+    historical upload finalizes a session whose ``end_time`` is in the past, the new
+    session is merged with any adjacent record already in the database, so consecutive
+    payloads within the same night are combined into a single session rather than being
+    stored as separate fragments.
 
     Args:
         db_session: Database session for persisting finalized sleep records

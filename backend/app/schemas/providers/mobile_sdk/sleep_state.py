@@ -27,11 +27,6 @@ class SleepState(BaseModel):
     last_start_timestamp: datetime
     last_end_timestamp: datetime
 
-    # Tracks when this state was last written to Redis. Used for stale detection
-    # instead of end_time so that bulk historical uploads (where end_time is many
-    # hours in the past) are not prematurely finalized between consecutive payloads.
-    last_updated_at: datetime | None = None
-
     in_bed_seconds: float = 0
     awake_seconds: float = 0
     sleeping_seconds: float = 0
