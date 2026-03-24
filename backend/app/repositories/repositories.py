@@ -30,7 +30,7 @@ class CrudRepository[
         return creation
 
     def exists_any(self, db_session: DbSession) -> bool:
-        return db_session.query(exists().where(self.model.id.isnot(None))).scalar()
+        return db_session.query(exists().where(getattr(self.model, "id").isnot(None))).scalar()
 
     def get(self, db_session: DbSession, object_id: UUID | int) -> ModelType | None:
         return db_session.query(self.model).filter(getattr(self.model, "id") == object_id).one_or_none()

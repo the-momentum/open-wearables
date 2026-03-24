@@ -5,15 +5,13 @@ from app.database import DbSession
 from app.models import DataSource, ProviderPriority
 from app.repositories import DataSourceRepository, ProviderPriorityRepository
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
-from app.schemas.data_source import DataSourceListResponse, DataSourceResponse
-from app.schemas.device_type import DeviceType
-from app.schemas.device_type_priority import (
+from app.schemas.enums import DeviceType, ProviderName
+from app.schemas.model_crud.data_priority import (
+    DataSourceListResponse,
+    DataSourceResponse,
     DeviceTypePriorityBulkUpdate,
     DeviceTypePriorityListResponse,
     DeviceTypePriorityResponse,
-)
-from app.schemas.oauth import ProviderName
-from app.schemas.provider_priority import (
     ProviderPriorityBulkUpdate,
     ProviderPriorityListResponse,
     ProviderPriorityResponse,
@@ -29,7 +27,7 @@ class PriorityService:
         self.data_source_repo = DataSourceRepository(DataSource)
 
     @handle_exceptions
-    async def get_provider_priorities(
+    def get_provider_priorities(
         self,
         db_session: DbSession,
     ) -> ProviderPriorityListResponse:
@@ -37,7 +35,7 @@ class PriorityService:
         return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in priorities])
 
     @handle_exceptions
-    async def update_provider_priority(
+    def update_provider_priority(
         self,
         db_session: DbSession,
         provider: ProviderName,
@@ -48,7 +46,7 @@ class PriorityService:
         return ProviderPriorityResponse.model_validate(result)
 
     @handle_exceptions
-    async def bulk_update_priorities(
+    def bulk_update_priorities(
         self,
         db_session: DbSession,
         update: ProviderPriorityBulkUpdate,
@@ -59,7 +57,7 @@ class PriorityService:
         return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in results])
 
     @handle_exceptions
-    async def get_user_data_sources(
+    def get_user_data_sources(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -83,7 +81,7 @@ class PriorityService:
         return DataSourceListResponse(items=items, total=len(items))
 
     @handle_exceptions
-    async def get_device_type_priorities(
+    def get_device_type_priorities(
         self,
         db_session: DbSession,
     ) -> DeviceTypePriorityListResponse:
@@ -91,7 +89,7 @@ class PriorityService:
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in priorities])
 
     @handle_exceptions
-    async def update_device_type_priority(
+    def update_device_type_priority(
         self,
         db_session: DbSession,
         device_type: DeviceType,
@@ -102,7 +100,7 @@ class PriorityService:
         return DeviceTypePriorityResponse.model_validate(result)
 
     @handle_exceptions
-    async def bulk_update_device_type_priorities(
+    def bulk_update_device_type_priorities(
         self,
         db_session: DbSession,
         update: DeviceTypePriorityBulkUpdate,

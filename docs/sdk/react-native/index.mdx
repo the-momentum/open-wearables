@@ -1,0 +1,306 @@
+---
+title: "React Native SDK"
+sidebarTitle: "Overview"
+description: "Background health data sync for React Native apps from Apple HealthKit, Samsung Health, and Health Connect"
+---
+
+## Introduction
+
+The Open Wearables React Native SDK (`open-wearables-react-native-sdk`) enables secure background synchronization of health data from **Apple HealthKit** (iOS), **Samsung Health**, and **Health Connect** (Android) to the Open Wearables platform.
+
+The SDK is built with the [Expo Module API](https://docs.expo.dev/modules/module-api/) enabling install the app in Expo Project as well as in React Native CLI projects. 
+
+On iOS, the React Native SDK is a **wrapper around the [native iOS SDK](/sdk/ios)** (`open_wearables_ios_sdk`). On Android, it wraps the **[native Android SDK](/sdk/android)** (`open_wearables_android_sdk`). This means all the core sync logic — background execution, streaming uploads, secure storage, and retry mechanisms — is handled by the native implementations under the hood. The React Native layer provides a convenient TypeScript API for cross-platform apps.
+
+<CardGroup cols={3}>
+  <Card title="React Native SDK Repository" icon="github" href="https://github.com/the-momentum/open-wearables-react-native-sdk">
+    View source code, report issues, and contribute to the React Native SDK.
+  </Card>
+  <Card title="Native iOS SDK" icon="apple" href="/sdk/ios">
+    See the native iOS SDK documentation for the underlying iOS implementation.
+  </Card>
+  <Card title="Native Android SDK" icon="android" href="/sdk/android">
+    See the native Android SDK documentation for the underlying Android implementation.
+  </Card>
+</CardGroup>
+
+## Features
+
+- **Cross-Platform** - Single TypeScript API for iOS (HealthKit) and Android (Samsung Health, Health Connect)
+- **Background Sync** - Health data syncs even when your app is in the background
+- **Incremental Updates** - Only syncs new data using anchored queries
+- **Secure Storage** - Credentials stored in iOS Keychain / Android EncryptedSharedPreferences
+- **Dual Authentication** - Token-based auth with auto-refresh or API key authentication
+- **Resumable Sessions** - Sync sessions survive app restarts
+- **Wide Data Support** - Steps, heart rate, workouts, sleep, and 40+ data types
+- **Provider Selection** - Choose between Samsung Health and Health Connect on Android
+
+## Requirements
+
+<Tabs>
+  <Tab title="iOS">
+    | Requirement | Details |
+    |-------------|---------|
+    | iOS Version | iOS 15.0+ |
+    | Xcode | Xcode 14+ |
+    | Apple Developer Account | Required for HealthKit entitlement |
+    | HealthKit Capability | Must be enabled in Xcode |
+    | Physical Device | HealthKit doesn't work in iOS Simulator |
+  </Tab>
+  <Tab title="Android">
+    | Requirement | Details |
+    |-------------|---------|
+    | Min SDK | Android 10 (API 29+) |
+    | Samsung Health SDK | For Samsung Health provider |
+    | Health Connect | For Health Connect provider |
+    | Permissions | See Android configuration below |
+  </Tab>
+  <Tab title="React Native">
+    | Requirement | Details |
+    |-------------|---------|
+    | Node.js | 18+ |
+    | React Native | 0.70+ |
+    | TypeScript | 4.0+ |
+    | Expo CLI | 50.0.0+ |
+  </Tab>
+</Tabs>
+
+## Installation
+
+<Steps>
+  <Step title="Add the dependency">
+    Currently, the SDK is only available locally. You can install it using the following command from the project root folder:
+
+    ```
+    npm install 
+    ```
+    
+    When we publish the package to npm (not available yet), you will use the following command:
+
+    ```
+    npm install open-wearables
+    ```
+
+  </Step>
+
+  <Step title="Run the app">
+
+    Depending if you are using Expo or React Native CLI, follow the instructions below:
+
+    #### Using Expo
+      Expo projects using the Expo Modules API automatically link native dependencies.
+      After installing the package, simply run your project.
+
+      ```
+      npx expo run:ios
+      ```
+
+      If your project does not yet contain native directories (ios/ and android/), Expo will automatically generate them.
+
+      You can also generate them manually using:
+
+      ```
+      npx expo prebuild 
+      ```
+
+    #### Using React Native CLI
+      For bare React Native projects, you must ensure that you have installed and configured the expo package before continuing.
+      After installing the package, install the iOS CocoaPods dependencies:
+
+      ```
+      npx pod-install
+      ```
+      or manually:
+
+      ```
+      cd ios && pod install
+      ```
+  </Step>
+
+  <Step title="Config Plugin (optional)">
+    You can customize the permission messages displayed to users by configuring the plugin in your app.json or app.config.js.
+
+    ```json
+    {
+      "expo": {
+        "plugins": [
+          [
+            "open-wearables",
+            {
+              "healthShareUsage": "Allow $(PRODUCT_NAME) to read your health data.",
+              "healthUpdateUsage": "Allow $(PRODUCT_NAME) to write health data."
+            }
+          ]
+        ]
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Quick Start
+
+Here's the minimal code to get health sync working:
+
+```TypeScript
+
+import OpenWearablesHealthSDK from "open-wearables";
+
+// Configure the SDK with your backend host
+OpenWearablesHealthSDK.configure("https://your-api-host.com");
+
+// Sign in (token-based)
+OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+
+// Or sign in (API key)
+OpenWearablesHealthSDK.signIn(userId, null, null, apiKey);
+
+// Request HealthKit authorization
+await OpenWearablesHealthSDK.requestAuthorization(["steps", "heartRate", "sleep"]);
+
+// Start background sync
+await OpenWearablesHealthSDK.startBackgroundSync();
+
+// Sync immediately
+await OpenWearablesHealthSDK.syncNow();
+```
+
+## Events
+Subscribe to native SDK events using the standard Expo module event emitter:
+
+```TypeScript
+
+  const subscription = OpenWearablesHealthSDK.addListener("onLog", ({ message }) => {
+    console.log("SDK log:", message);
+  });
+
+  const authSub = OpenWearablesHealthSDK.addListener(
+    "onAuthError",
+    ({ statusCode, message }) => {
+      console.error(`Auth error ${statusCode}:`, message);
+    }
+  );
+
+  // Clean up
+  subscription.remove();
+  authSub.remove();
+
+```
+
+| Event         | Payload                                   | Description                            |
+| ------------- | ----------------------------------------- | -------------------------------------- |
+| `onLog`       | `{ message: string }`                     | Log messages emitted by the native SDK |
+| `onAuthError` | `{ statusCode: number, message: string }` | Authentication errors                  |
+
+## Documentation
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="book" href="/sdk/react-native/integration">
+    Complete guide to integrating the SDK including authentication flow, backend setup, and best practices.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/sdk/react-native/troubleshooting">
+    Common issues and their solutions for iOS and Android.
+  </Card>
+</CardGroup>
+
+## Supported Health Data Types
+
+The SDK supports 40+ health data types across multiple categories:
+
+<AccordionGroup>
+  <Accordion title="Activity & Fitness">
+    | Type | Description |
+    |------|-------------|
+    | `steps` | Step count |
+    | `distanceWalkingRunning` | Walking/running distance |
+    | `distanceCycling` | Cycling distance |
+    | `flightsClimbed` | Floors climbed |
+    | `walkingSpeed` | Average walking speed |
+    | `walkingStepLength` | Step length |
+    | `walkingAsymmetryPercentage` | Walking asymmetry percentage |
+    | `walkingDoubleSupportPercentage` | Walking double support percentage |
+    | `sixMinuteWalkTestDistance` | 6-minute walk test |
+    | `activeEnergy` | Active energy burned |
+    | `basalEnergy` | Basal (resting) energy burned |
+  </Accordion>
+
+  <Accordion title="Heart & Vitals">
+    | Type | Description |
+    |------|-------------|
+    | `heartRate` | Heart rate measurements |
+    | `restingHeartRate` | Resting heart rate |
+    | `heartRateVariabilitySDNN` | HRV (SDNN) |
+    | `vo2Max` | VO2 max |
+    | `oxygenSaturation` | Blood oxygen |
+    | `respiratoryRate` | Breathing rate |
+  </Accordion>
+
+  <Accordion title="Body Measurements">
+    | Type | Description |
+    |------|-------------|
+    | `bodyMass` | Weight |
+    | `height` | Height |
+    | `bmi` | Body Mass Index |
+    | `bodyFatPercentage` | Body fat % |
+    | `leanBodyMass` | Lean body mass |
+    | `waistCircumference` | Waist circumference |
+    | `bodyTemperature` | Body temperature |
+  </Accordion>
+
+  <Accordion title="Blood & Metabolic">
+    | Type | Description |
+    |------|-------------|
+    | `bloodGlucose` | Blood glucose level |
+    | `insulinDelivery` | Insulin delivery |
+    | `bloodPressureSystolic` | Systolic blood pressure |
+    | `bloodPressureDiastolic` | Diastolic blood pressure |
+    | `bloodPressure` | Blood pressure (correlation type) |
+  </Accordion>
+
+  <Accordion title="Sleep & Mindfulness">
+    | Type | Description |
+    |------|-------------|
+    | `sleep` | Sleep sessions and stages |
+    | `mindfulSession` | Meditation/mindfulness sessions |
+  </Accordion>
+
+  <Accordion title="Reproductive Health">
+    | Type | Description |
+    |------|-------------|
+    | `menstrualFlow` | Menstrual flow |
+    | `cervicalMucusQuality` | Cervical mucus quality |
+    | `ovulationTestResult` | Ovulation test result |
+    | `sexualActivity` | Sexual activity |
+  </Accordion>
+
+  <Accordion title="Nutrition">
+    | Type | Description |
+    |------|-------------|
+    | `dietaryEnergyConsumed` | Calories consumed |
+    | `dietaryCarbohydrates` | Carbs |
+    | `dietaryProtein` | Protein |
+    | `dietaryFatTotal` | Total fat |
+    | `dietaryWater` | Water intake |
+  </Accordion>
+
+  <Accordion title="Workouts">
+    | Type | Description |
+    |------|-------------|
+    | `workout` | All workout types with metadata |
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Not all data types are available on all providers. Samsung Health supports a subset of types compared to Health Connect and HealthKit. See the [Android SDK docs](/sdk/android) for provider-specific availability.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Integration Guide" icon="arrow-right" href="/sdk/react-native/integration">
+    Complete step-by-step integration guide.
+  </Card>
+  <Card title="API Reference" icon="code" href="https://github.com/the-momentum/open-wearables-react-native-sdk">
+    Full API documentation on GitHub.
+  </Card>
+</CardGroup>

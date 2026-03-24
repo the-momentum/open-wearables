@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas import AuthenticationMethod, OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
+from app.schemas.auth import AuthenticationMethod
+from app.schemas.model_crud.credentials import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
 from app.services.providers.garmin.oauth import GarminOAuth
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -324,3 +325,38 @@ class TestGarminOAuth:
         assert data["refresh_token"] == "test_refresh_token"
         assert headers["Content-Type"] == "application/x-www-form-urlencoded"
         assert "Authorization" not in headers  # Body auth, not Basic auth
+
+    @patch("httpx.delete")
+    def test_deregister_user_success(self, mock_httpx_delete: MagicMock, garmin_oauth: GarminOAuth) -> None:
+        """Test calling Garmin deregistration endpoint."""
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.status_code = 204
+        mock_response.raise_for_status.return_value = None
+        mock_httpx_delete.return_value = mock_response
+
+        # Act
+        garmin_oauth.deregister_user("test_access_token")
+
+        # Assert
+        mock_httpx_delete.assert_called_once_with(
+            "https://apis.garmin.com/partner-gateway/rest/user/registration",
+            headers={"Authorization": "Bearer test_access_token"},
+            timeout=30.0,
+        )
+
+    @patch("httpx.delete")
+    def test_deregister_user_raises_on_http_error(
+        self, mock_httpx_delete: MagicMock, garmin_oauth: GarminOAuth
+    ) -> None:
+        """Test that deregister_user raises on HTTP error (caller handles it)."""
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Unauthorized", request=MagicMock(), response=MagicMock(status_code=401)
+        )
+        mock_httpx_delete.return_value = mock_response
+
+        # Act & Assert
+        with pytest.raises(httpx.HTTPStatusError):
+            garmin_oauth.deregister_user("expired_token")

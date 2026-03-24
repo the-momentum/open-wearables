@@ -10,13 +10,17 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.series_types import SeriesType, get_series_type_id
+from app.schemas.enums import SeriesType, get_series_type_id
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    TimeSeriesSampleCreate,
+)
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
@@ -90,6 +94,13 @@ class Whoop247Data(Base247DataTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/activity/sleep", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/sleep",
+                )
 
                 # Extract records from response
                 records = response.get("records", []) if isinstance(response, dict) else []
@@ -136,6 +147,7 @@ class Whoop247Data(Base247DataTemplate):
         end_time = raw_sleep.get("end")
         nap = raw_sleep.get("nap", False)
         cycle_id = raw_sleep.get("cycle_id")
+        zone_offset = raw_sleep.get("zone_offset")
 
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
@@ -181,6 +193,7 @@ class Whoop247Data(Base247DataTemplate):
             "timestamp": start_time or end_time,
             "start_time": start_time,
             "end_time": end_time,
+            "zone_offset": zone_offset,
             "duration_seconds": duration_seconds,
             "efficiency_percent": float(efficiency) if efficiency is not None else None,
             "is_nap": nap,
@@ -241,6 +254,7 @@ class Whoop247Data(Base247DataTemplate):
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
+            zone_offset=normalized_sleep.get("zone_offset"),
             external_id=str(normalized_sleep.get("whoop_sleep_id")) if normalized_sleep.get("whoop_sleep_id") else None,
             source=self.provider_name,
             user_id=user_id,
@@ -396,6 +410,13 @@ class Whoop247Data(Base247DataTemplate):
         """
         try:
             response = self._make_api_request(db, user_id, "/v2/user/measurement/body")
+            store_raw_payload(
+                source="api_response",
+                provider="whoop",
+                payload=response,
+                user_id=str(user_id),
+                trace_id="/v2/user/measurement/body",
+            )
             return response if isinstance(response, dict) else {}
         except Exception as e:
             log_structured(
@@ -537,6 +558,13 @@ class Whoop247Data(Base247DataTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/recovery", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/recovery",
+                )
 
                 # Extract records from response
                 records = response.get("records", []) if isinstance(response, dict) else []

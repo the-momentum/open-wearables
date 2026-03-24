@@ -23,9 +23,9 @@ from sqlalchemy.orm import Session
 from app.models import EventRecord
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas import SuuntoWorkoutJSON
-from app.schemas.suunto.workout_import import HeartRateJSON
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
+from app.schemas.providers.suunto import HeartRateJSON
+from app.schemas.providers.suunto import WorkoutJSON as SuuntoWorkoutJSON
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 
@@ -347,7 +347,7 @@ class TestSuuntoWorkouts:
         result = suunto_workouts.load_data(db, user.id, since=0, limit=10)
 
         # Assert
-        assert result is True
+        assert result == 1
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
         # Verify data source creation was attempted

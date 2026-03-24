@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, Query, status
 
 from app.database import DbSession
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
 
@@ -13,7 +13,7 @@ factory = ProviderFactory()
 
 
 @router.get("/{provider}/users/{user_id}/workouts")
-async def get_user_workouts(
+def get_user_workouts(
     provider: Annotated[ProviderName, Path(description="Workout data provider")],
     user_id: UUID,
     db: DbSession,
@@ -80,7 +80,7 @@ async def get_user_workouts(
 
 
 @router.get("/{provider}/users/{user_id}/workouts/{workout_id}")
-async def get_user_workout_detail(
+def get_user_workout_detail(
     provider: Annotated[ProviderName, Path(description="Workout data provider")],
     user_id: UUID,
     workout_id: str,

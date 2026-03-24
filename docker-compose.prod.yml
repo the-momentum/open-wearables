@@ -1,0 +1,118 @@
+services:
+  db:
+    image: postgres:18
+    container_name: postgres__open-wearables
+    environment:
+      POSTGRES_DB: open-wearables
+      POSTGRES_USER: open-wearables
+      POSTGRES_PASSWORD: open-wearables
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: unless-stopped
+
+  app:
+    build:
+        context: ./backend
+        dockerfile: Dockerfile
+    container_name: backend__open-wearables
+    image: open-wearables-platform:latest
+    pull_policy: never
+    command: scripts/start/app.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  celery-worker:
+    container_name: celery-worker__open-wearables
+    image: open-wearables-platform:latest
+    pull_policy: never
+    command: scripts/start/worker.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  celery-beat:
+    container_name: celery-beat__open-wearables
+    image: open-wearables-platform:latest
+    pull_policy: never
+    command: scripts/start/beat.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  flower:
+    container_name: flower__open-wearables
+    image: open-wearables-platform:latest
+    pull_policy: never
+    command: scripts/start/flower.sh
+    env_file:
+      - ./backend/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - 5555:5555
+    depends_on:
+      - redis
+      - db
+      - app
+    restart: unless-stopped
+
+  redis:
+    container_name: redis__open-wearables
+    image: redis:8
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/var/lib/redis/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in your environment}
+    container_name: frontend__open-wearables
+    image: open-wearables-frontend:latest
+    pull_policy: never
+    ports:
+      - "3000:3000"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

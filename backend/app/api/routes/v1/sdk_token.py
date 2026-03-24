@@ -5,8 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, status
 
 from app.config import settings
 from app.database import DbSession
-from app.schemas.sdk import SDKTokenRequest
-from app.schemas.token import TokenResponse
+from app.schemas.auth import SDKTokenRequest, TokenResponse
 from app.services import application_service, create_sdk_user_token, refresh_token_service
 from app.utils.auth import DeveloperOptionalDep
 
@@ -14,7 +13,7 @@ router = APIRouter()
 
 
 @router.post("/users/{user_id}/token")
-async def create_user_token(
+def create_user_token(
     user_id: UUID,
     db: DbSession,
     payload: Annotated[SDKTokenRequest | None, Body()] = None,

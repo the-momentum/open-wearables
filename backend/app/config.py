@@ -45,12 +45,16 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_SAMPLES_RATE: float = 0.5
     SENTRY_ENV: str | None = None
+    SENTRY_SERVER_NAME: str | None = None
 
     # AUTH SETTINGS
     secret_key: str
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     token_lifetime: int = 3600
+
+    # VALIDATION SETTINGS
+    min_password_length: int = 8
 
     # REDIS SETTINGS
     redis_host: str = "localhost"
@@ -98,6 +102,19 @@ class Settings(BaseSettings):
     whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
+    # FITBIT OAUTH SETTINGS
+    fitbit_client_id: str | None = None
+    fitbit_client_secret: SecretStr | None = None
+    fitbit_redirect_uri: str = "http://localhost:8000/api/v1/oauth/fitbit/callback"
+    fitbit_default_scope: str = "activity heartrate sleep profile"
+
+    # OURA OAUTH SETTINGS
+    oura_client_id: str | None = None
+    oura_client_secret: SecretStr | None = None
+    oura_redirect_uri: str = "http://localhost:8000/api/v1/oauth/oura/callback"
+    oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration"
+    oura_webhook_verification_token: SecretStr | None = None
+
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None
     strava_client_secret: SecretStr | None = None
@@ -106,6 +123,12 @@ class Settings(BaseSettings):
     strava_webhook_verify_token: str = "open-wearables-strava-verify"
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
+
+    # ULTRAHUMAN OAUTH SETTINGS
+    ultrahuman_client_id: str | None = None
+    ultrahuman_client_secret: SecretStr | None = None
+    ultrahuman_redirect_uri: str = "http://localhost:8000/api/v1/oauth/ultrahuman/callback"
+    ultrahuman_default_scope: str = "ring_data cgm_data profile"
 
     # EMAIL SETTINGS (Resend)
     resend_api_key: SecretStr | None = None
@@ -123,7 +146,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str | None = None
     aws_secret_access_key: SecretStr | None = None
     aws_region: str = "eu-north-1"
-    sqs_queue_url: str | None = None
+    # for topic ARN verification from SNS notification (signature is verified regardless)
+    aws_sns_topic_arn: SecretStr | None = None
 
     xml_chunk_size: int = 50_000
 

@@ -17,14 +17,14 @@ from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.oauth import (
-    AuthenticationMethod,
+from app.schemas.auth import AuthenticationMethod
+from app.schemas.model_crud.credentials import (
     OAuthState,
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,
-    UserConnectionCreate,
 )
+from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -331,6 +331,9 @@ class BaseOAuthTemplate(ABC):
             "Authorization": f"Basic {b64_credentials}",
             "Content-Type": "application/x-www-form-urlencoded",
         }
+
+    def deregister_user(self, access_token: str) -> None:
+        """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts provider user info. Default implementation returns None."""

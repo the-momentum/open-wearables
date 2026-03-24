@@ -5,16 +5,25 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import DataPointSeries
 from app.repositories import DataPointSeriesRepository
-from app.schemas import (
+from app.schemas.enums import (
+    SeriesType,
+    get_series_type_from_id,
+    get_series_type_unit,
+)
+from app.schemas.model_crud.activities import (
     HeartRateSampleCreate,
     StepSampleCreate,
     TimeSeriesQueryParams,
-    TimeSeriesSample,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.common_types import PaginatedResponse, Pagination, SourceMetadata, TimeseriesMetadata
-from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_unit
+from app.schemas.responses.activity import TimeSeriesSample
+from app.schemas.utils import (
+    PaginatedResponse,
+    Pagination,
+    SourceMetadata,
+    TimeseriesMetadata,
+)
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -61,7 +70,7 @@ class TimeSeriesService(
         return self.crud.get_count_by_source(db_session)
 
     @handle_exceptions
-    async def get_timeseries(
+    def get_timeseries(
         self,
         db_session: DbSession,
         user_id: UUID,
@@ -120,6 +129,7 @@ class TimeSeriesService(
 
             item = TimeSeriesSample(
                 timestamp=sample.recorded_at,
+                zone_offset=sample.zone_offset,
                 type=series_type,
                 value=float(sample.value),
                 unit=unit,

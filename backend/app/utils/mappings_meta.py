@@ -1,6 +1,7 @@
-from typing import Any, get_args, get_origin
+import types
+from typing import Annotated, Any, Union, get_args, get_origin
 
-from sqlalchemy.orm import Mapped, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
 from app.mappings import ManyToOne, OneToMany, OneToOne
@@ -23,6 +24,43 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
     def __new__(mcls, name: str, bases: tuple, namespace: dict, **kw):
         annotations = dict(namespace.get("__annotations__", {}))
         local_rels = {}
+        merged_columns = {}
+
+        for attr, ann in annotations.items():
+            # We pass fields with explicit type definition
+            if attr in namespace:
+                continue
+
+            # We get all mapped_columns from Annotations
+            mcs = AutoRelMeta._extract_mapped_columns(ann)
+
+            # If we found more than 1, we merge them
+            if len(mcs) > 1:
+                merged_kwargs: dict = {}
+
+                # Iterate reversed so the outermost annotation (e.g. Indexed, Unique)
+                # is processed first and its flags take priority via setdefault().
+                # SA resolves ForeignKey constraints and column types from the
+                # annotation directly, so we only need to propagate the flags.
+                for mc in reversed(mcs):
+                    col = mc.column
+                    if col.unique is True:
+                        merged_kwargs.setdefault("unique", True)
+                    if col.index is True:
+                        merged_kwargs.setdefault("index", True)
+                    if col.primary_key is True:
+                        merged_kwargs.setdefault("primary_key", True)
+                    if col.nullable is False:
+                        merged_kwargs.setdefault("nullable", False)
+                    if col.default is not None:
+                        merged_kwargs.setdefault("default", col.default)
+                    if col.server_default is not None:
+                        merged_kwargs.setdefault("server_default", col.server_default)
+
+                # Create one merged mapped_column; SA will apply FK + type from annotation
+                merged_columns[attr] = mapped_column(**merged_kwargs)
+
+        namespace.update(merged_columns)
 
         for attr, ann in list(annotations.items()):
             if get_origin(ann) is not Mapped:
@@ -61,6 +99,32 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         if isinstance(tp, type):
             return tp.__name__
         return None
+
+    @staticmethod
+    def _extract_mapped_columns(tp: Any) -> list[Any]:
+        mcs = []
+        origin = get_origin(tp)
+
+        # 1. Check Annotated (search for mapped_column)
+        if origin is Annotated:
+            args = get_args(tp)
+            for arg in args[1:]:
+                # SQLAlchemy rteurns MappedColumn object
+                if type(arg).__name__ == "MappedColumn":
+                    mcs.append(arg)
+            # Search deeper in base type
+            mcs.extend(AutoRelMeta._extract_mapped_columns(args[0]))
+
+        # 2. Check Unions
+        elif origin in (Union, getattr(types, "UnionType", type(None))):
+            for arg in get_args(tp):
+                mcs.extend(AutoRelMeta._extract_mapped_columns(arg))
+
+        # 3. Check Mapped (entrypoint)
+        elif origin is Mapped:
+            mcs.extend(AutoRelMeta._extract_mapped_columns(get_args(tp)[0]))
+
+        return mcs
 
     @classmethod
     def _add_relation(cls, attr: str, inner: Any, namespace: dict, local_rels: dict) -> None:

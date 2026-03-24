@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
 
 
 class AppleSourceHandler(ABC):

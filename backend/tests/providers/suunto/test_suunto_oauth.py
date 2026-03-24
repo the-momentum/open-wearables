@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.oauth import OAuthTokenResponse
+from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.suunto.oauth import SuuntoOAuth
 
 
@@ -206,7 +206,7 @@ class TestSuuntoOAuth:
     def test_uses_basic_auth_method(self, suunto_oauth: SuuntoOAuth) -> None:
         """Should use Basic Auth for token exchange."""
         # Act
-        from app.schemas.oauth import AuthenticationMethod
+        from app.schemas.auth import AuthenticationMethod
 
         # Assert
         assert suunto_oauth.auth_method == AuthenticationMethod.BASIC_AUTH

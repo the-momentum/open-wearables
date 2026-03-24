@@ -3,14 +3,14 @@ import json
 from fastapi import APIRouter, HTTPException, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
-from app.schemas import UploadDataResponse
+from app.schemas.responses.upload import UploadDataResponse
 from app.utils.auth import SDKAuthDep
 
 router = APIRouter()
 
 
 @router.post("/users/{user_id}/import/apple/auto-health-export")
-async def sync_data_auto_health_export(
+def sync_data_auto_health_export(
     user_id: str,
     body: dict,
     auth: SDKAuthDep,

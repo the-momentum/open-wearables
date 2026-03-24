@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRecordDetail, SleepDetails, WorkoutDetails
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
-from app.schemas.event_record_detail import EventRecordDetailCreate, EventRecordDetailUpdate
+from app.schemas.model_crud.activities import EventRecordDetailCreate, EventRecordDetailUpdate
 from tests.factories import EventRecordFactory, SleepDetailsFactory, WorkoutDetailsFactory
 
 

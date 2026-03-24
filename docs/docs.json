@@ -66,6 +66,15 @@
                   "sdk/flutter/integration",
                   "sdk/flutter/troubleshooting"
                 ]
+              },
+              {
+                "group": "React Native",
+                "pages": [
+                  "sdk/react-native/index",
+                  "sdk/react-native/example-app",
+                  "sdk/react-native/integration",
+                  "sdk/react-native/troubleshooting"
+                ]
               }
             ]
           },
@@ -163,15 +172,15 @@
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {

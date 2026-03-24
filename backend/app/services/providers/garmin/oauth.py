@@ -3,8 +3,10 @@ import logging
 import httpx
 
 from app.config import settings
-from app.schemas import (
+from app.schemas.auth import (
     AuthenticationMethod,
+)
+from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
     ProviderEndpoints,
@@ -35,6 +37,15 @@ class GarminOAuth(BaseOAuthTemplate):
 
     use_pkce = True
     auth_method = AuthenticationMethod.BODY
+
+    def deregister_user(self, access_token: str) -> None:
+        """Call Garmin's user deregistration endpoint to remove the app association."""
+        response = httpx.delete(
+            f"{self.api_base_url}/partner-gateway/rest/user/registration",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30.0,
+        )
+        response.raise_for_status()
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fetches Garmin user ID and API permissions."""

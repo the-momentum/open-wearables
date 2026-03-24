@@ -5,15 +5,15 @@ from uuid import UUID, uuid4
 
 from app.constants.workout_types.whoop import get_unified_workout_type
 from app.database import DbSession
-from app.schemas import (
+from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
-    WhoopWorkoutCollectionJSON,
-    WhoopWorkoutJSON,
 )
+from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 
@@ -48,6 +48,13 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/activity/workout", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/workout",
+                )
 
                 # Parse response
                 if isinstance(response, dict):
@@ -192,6 +199,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             duration_seconds=duration_seconds,
             start_datetime=start_date,
             end_datetime=end_date,
+            zone_offset=raw_workout.timezone_offset,
             id=workout_id,
             external_id=raw_workout.id,  # Whoop workout UUID
             source=self.provider_name,
@@ -223,7 +231,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         **kwargs: Any,
-    ) -> bool:
+    ) -> int:
         """Load data from Whoop API with pagination."""
         all_workouts = []
         next_token = None
@@ -275,6 +283,13 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             try:
                 response = self.get_workouts_from_api(db, user_id, **params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/workout",
+                )
 
                 # Parse response
                 if isinstance(response, dict):
@@ -309,9 +324,11 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                 raise
 
         # Process and save all workouts
+        count = 0
         for record, details in self._build_bundles(all_workouts, user_id):
             created_record = event_record_service.create(db, record)
             detail_for_record = details.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
+            count += 1
 
-        return True
+        return count

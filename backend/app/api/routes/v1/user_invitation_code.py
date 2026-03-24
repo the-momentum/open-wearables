@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.database import DbSession
-from app.schemas.user_invitation_code import (
+from app.schemas.model_crud.credentials import (
     InvitationCodeRedeemResponse,
     UserInvitationCodeRead,
     UserInvitationCodeRedeem,
@@ -18,7 +18,7 @@ router = APIRouter()
     "/users/{user_id}/invitation-code",
     status_code=status.HTTP_201_CREATED,
 )
-async def generate_invitation_code(
+def generate_invitation_code(
     user_id: UUID,
     db: DbSession,
     developer: DeveloperDep,
@@ -38,7 +38,7 @@ async def generate_invitation_code(
 @router.post(
     "/invitation-code/redeem",
 )
-async def redeem_invitation_code(
+def redeem_invitation_code(
     payload: UserInvitationCodeRedeem,
     db: DbSession,
 ) -> InvitationCodeRedeemResponse:

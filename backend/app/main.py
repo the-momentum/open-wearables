@@ -1,3 +1,4 @@
+import logging
 import sys
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
@@ -22,6 +23,13 @@ basicConfig(
     format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
     handlers=[StreamHandler(sys.stdout)],
 )
+
+# Remove uvicorn's default handlers to prevent duplicate logs (uvicorn.error)
+# and ensure access logs (uvicorn.access) also get timestamps via the root logger
+for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    _logger = logging.getLogger(_name)
+    _logger.handlers.clear()
+    _logger.propagate = True
 
 api = FastAPI(title=settings.api_name)
 celery_app = create_celery()

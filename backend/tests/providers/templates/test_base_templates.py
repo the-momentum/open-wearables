@@ -19,7 +19,7 @@ import pytest
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas import EventRecordCreate, EventRecordDetailCreate
+from app.schemas.model_crud.activities import EventRecordCreate, EventRecordDetailCreate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 

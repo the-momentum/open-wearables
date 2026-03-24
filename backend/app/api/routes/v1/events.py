@@ -4,12 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, Query
 
 from app.database import DbSession
-from app.schemas.common_types import PaginatedResponse
-from app.schemas.event_record import EventRecordQueryParams
-from app.schemas.events import (
+from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.responses.activity import (
     SleepSession,
     Workout,
 )
+from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
 from app.utils.dates import parse_query_datetime
@@ -18,7 +18,7 @@ router = APIRouter()
 
 
 @router.get("/users/{user_id}/events/workouts")
-async def list_workouts(
+def list_workouts(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -36,11 +36,11 @@ async def list_workouts(
         limit=limit,
         record_type=record_type,
     )
-    return await event_record_service.get_workouts(db, user_id, params)
+    return event_record_service.get_workouts(db, user_id, params)
 
 
 @router.get("/users/{user_id}/events/sleep")
-async def list_sleep_sessions(
+def list_sleep_sessions(
     user_id: UUID,
     start_date: str,
     end_date: str,
@@ -56,4 +56,4 @@ async def list_sleep_sessions(
         cursor=cursor,
         limit=limit,
     )
-    return await event_record_service.get_sleep_sessions(db, user_id, params)
+    return event_record_service.get_sleep_sessions(db, user_id, params)

@@ -5,8 +5,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config import settings
 from app.database import DbSession
-from app.schemas import DeveloperRead, DeveloperUpdate, PasswordChange
-from app.schemas.token import TokenResponse
+from app.schemas.auth import TokenResponse
+from app.schemas.model_crud.user_management import DeveloperRead, DeveloperUpdate, PasswordChange
 from app.services import DeveloperDep, developer_service, refresh_token_service
 from app.utils.security import create_access_token, verify_password
 
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.post("/login")
-async def login(
+def login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DbSession,
 ) -> TokenResponse:
@@ -54,13 +54,13 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(_developer: DeveloperDep):
+def logout(_developer: DeveloperDep):
     """Logout developer (token invalidation should be handled client-side)."""
     return {"message": "Successfully logged out"}
 
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     payload: PasswordChange,
     db: DbSession,
     developer: DeveloperDep,
@@ -82,13 +82,13 @@ async def change_password(
 
 
 @router.get("/me", response_model=DeveloperRead)
-async def get_current_developer_info(db: DbSession, developer: DeveloperDep):
+def get_current_developer_info(db: DbSession, developer: DeveloperDep):
     """Get current authenticated developer."""
     return developer
 
 
 @router.patch("/me", response_model=DeveloperRead)
-async def update_current_developer(
+def update_current_developer(
     payload: DeveloperUpdate,
     db: DbSession,
     developer: DeveloperDep,

@@ -2,7 +2,11 @@ from jose import jwt
 from jose.exceptions import JWTError
 
 from app.config import settings
-from app.schemas import OAuthTokenResponse, ProviderCredentials, ProviderEndpoints
+from app.schemas.model_crud.credentials import (
+    OAuthTokenResponse,
+    ProviderCredentials,
+    ProviderEndpoints,
+)
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 

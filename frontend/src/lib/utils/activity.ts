@@ -84,7 +84,7 @@ export function calculateActivityStats(
   // Heart rate stats (average of daily averages)
   const heartRates = summaries
     .map((s) => s.heart_rate?.avg_bpm)
-    .filter((hr): hr is number => hr !== null);
+    .filter((hr): hr is number => hr != null);
   const avgHeartRate =
     heartRates.length > 0
       ? heartRates.reduce((a, b) => a + b, 0) / heartRates.length

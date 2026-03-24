@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32, str_50, str_100
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 
 if TYPE_CHECKING:
     from app.models.data_point_series import DataPointSeries
@@ -22,7 +22,7 @@ class DataSource(BaseDbModel):
 
     __tablename__ = "data_source"
     __table_args__ = (
-        Index("idx_data_source_user_provider", "user_id", "provider"),
+        Index("ix_data_source_user_provider", "user_id", "provider"),
         Index(
             "uq_data_source_identity",
             "user_id",

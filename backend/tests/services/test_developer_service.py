@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas.developer import DeveloperCreate, DeveloperUpdate
+from app.schemas.model_crud.user_management import DeveloperCreate, DeveloperUpdate
 from app.services.developer_service import developer_service
 from tests.factories import DeveloperFactory
 

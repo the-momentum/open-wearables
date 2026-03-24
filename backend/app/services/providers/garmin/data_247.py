@@ -10,13 +10,17 @@ from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
-from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.series_types import SeriesType
+from app.schemas.enums import SeriesType
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+    TimeSeriesSampleCreate,
+)
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 
@@ -156,6 +160,7 @@ class Garmin247Data(Base247DataTemplate):
 
         start_dt = self._from_epoch_seconds(start_ts)
         end_dt = self._from_epoch_seconds(end_ts)
+        zone_offset = offset_to_iso(raw_sleep.get("startTimeOffsetInSeconds"))
 
         # Sleep stages (in seconds)
         deep_seconds = raw_sleep.get("deepSleepDurationInSeconds") or 0
@@ -175,6 +180,7 @@ class Garmin247Data(Base247DataTemplate):
             "provider": self.provider_name,
             "start_time": start_dt.isoformat(),
             "end_time": end_dt.isoformat(),
+            "zone_offset": zone_offset,
             "duration_seconds": duration,
             "stages": {
                 "deep_seconds": deep_seconds,
@@ -227,6 +233,7 @@ class Garmin247Data(Base247DataTemplate):
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
+            zone_offset=normalized_sleep.get("zone_offset"),
             external_id=normalized_sleep.get("garmin_summary_id"),
             source=self.provider_name,
             user_id=user_id,
@@ -301,6 +308,7 @@ class Garmin247Data(Base247DataTemplate):
             "user_id": user_id,
             "calendar_date": raw_daily.get("calendarDate"),
             "start_time_seconds": raw_daily.get("startTimeInSeconds"),
+            "zone_offset": offset_to_iso(raw_daily.get("startTimeOffsetInSeconds")),
             "steps": raw_daily.get("steps"),
             "distance_meters": raw_daily.get("distanceInMeters"),
             "active_calories": raw_daily.get("activeKilocalories"),
@@ -345,6 +353,8 @@ class Garmin247Data(Base247DataTemplate):
         else:
             return samples
 
+        zone_offset = normalized_daily.get("zone_offset")
+
         series_mappings: list[tuple[str, SeriesType]] = [
             ("steps", SeriesType.steps),
             ("active_calories", SeriesType.energy),
@@ -362,6 +372,7 @@ class Garmin247Data(Base247DataTemplate):
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=recorded_at,
+                        zone_offset=zone_offset,
                         value=Decimal(str(value)),
                         series_type=series_type,
                         external_id=normalized_daily.get("garmin_summary_id"),
@@ -370,7 +381,7 @@ class Garmin247Data(Base247DataTemplate):
 
         hr_samples = normalized_daily.get("heart_rate_samples")
         if hr_samples and isinstance(hr_samples, dict):
-            samples.extend(self._collect_heart_rate_samples(user_id, start_ts or 0, hr_samples))
+            samples.extend(self._collect_heart_rate_samples(user_id, start_ts or 0, hr_samples, zone_offset))
 
         return samples
 
@@ -394,6 +405,7 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         base_timestamp: int,
         hr_samples: dict[str, int],
+        zone_offset: str | None = None,
     ) -> list[TimeSeriesSampleCreate]:
         """Collect heart rate samples from daily summary for bulk insert.
 
@@ -401,6 +413,7 @@ class Garmin247Data(Base247DataTemplate):
             user_id: User ID
             base_timestamp: Base Unix timestamp (start of day)
             hr_samples: Dict of offset_seconds -> heart_rate_bpm
+            zone_offset: ISO 8601 timezone offset string
 
         Returns:
             List of TimeSeriesSampleCreate objects
@@ -421,6 +434,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(hr_value)),
                     series_type=SeriesType.heart_rate,
                 )
@@ -468,6 +482,7 @@ class Garmin247Data(Base247DataTemplate):
                 continue
 
             recorded_at = self._from_epoch_seconds(start_ts)
+            zone_offset = offset_to_iso(epoch.get("startTimeOffsetInSeconds"))
 
             # Heart rate
             mean_hr = epoch.get("meanHeartRateInBeatsPerMinute")
@@ -476,6 +491,7 @@ class Garmin247Data(Base247DataTemplate):
                     {
                         "timestamp": recorded_at.isoformat(),
                         "value": mean_hr,
+                        "zone_offset": zone_offset,
                     }
                 )
 
@@ -486,6 +502,7 @@ class Garmin247Data(Base247DataTemplate):
                     {
                         "timestamp": recorded_at.isoformat(),
                         "value": steps,
+                        "zone_offset": zone_offset,
                     }
                 )
 
@@ -496,6 +513,7 @@ class Garmin247Data(Base247DataTemplate):
                     {
                         "timestamp": recorded_at.isoformat(),
                         "value": calories,
+                        "zone_offset": zone_offset,
                     }
                 )
 
@@ -537,6 +555,7 @@ class Garmin247Data(Base247DataTemplate):
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=recorded_at,
+                        zone_offset=sample.get("zone_offset"),
                         value=Decimal(str(value)),
                         series_type=series_type,
                     )
@@ -589,6 +608,7 @@ class Garmin247Data(Base247DataTemplate):
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
         summary_id = raw_body_comp.get("summaryId")
+        zone_offset = offset_to_iso(raw_body_comp.get("measurementTimeOffsetInSeconds"))
 
         # Weight (convert grams to kg)
         weight_grams = raw_body_comp.get("weightInGrams")
@@ -599,6 +619,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(weight_grams)) / 1000,  # Convert to kg
                     series_type=SeriesType.weight,
                     external_id=summary_id,
@@ -614,6 +635,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(body_fat)),
                     series_type=SeriesType.body_fat_percentage,
                     external_id=summary_id,
@@ -629,6 +651,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(bmi)),
                     series_type=SeriesType.body_mass_index,
                     external_id=summary_id,
@@ -666,6 +689,7 @@ class Garmin247Data(Base247DataTemplate):
         start_ts = raw_hrv.get("startTimeInSeconds", 0)
         summary_id = raw_hrv.get("summaryId")
         calendar_date = raw_hrv.get("calendarDate")
+        zone_offset = offset_to_iso(raw_hrv.get("startTimeOffsetInSeconds"))
 
         if not start_ts:
             log_structured(
@@ -687,6 +711,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(last_night_avg)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
                     external_id=summary_id,
@@ -706,6 +731,7 @@ class Garmin247Data(Base247DataTemplate):
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=recorded_at,
+                        zone_offset=zone_offset,
                         value=Decimal(str(hrv_ms)),
                         series_type=SeriesType.heart_rate_variability_sdnn,
                         external_id=f"{summary_id}:{offset_str}" if summary_id else None,
@@ -753,6 +779,7 @@ class Garmin247Data(Base247DataTemplate):
 
         start_dt = self._from_epoch_seconds(start_ts)
         end_dt = self._from_epoch_seconds(start_ts + duration) if duration else start_dt
+        zone_offset = offset_to_iso(raw_activity.get("startTimeOffsetInSeconds"))
 
         activity_type = raw_activity.get("activityType", "unknown")
 
@@ -766,6 +793,7 @@ class Garmin247Data(Base247DataTemplate):
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
+            zone_offset=zone_offset,
             external_id=str(activity_id),
             source=self.provider_name,
             user_id=user_id,
@@ -827,6 +855,8 @@ class Garmin247Data(Base247DataTemplate):
         if not start_ts:
             return samples
 
+        zone_offset = offset_to_iso(raw_stress.get("startTimeOffsetInSeconds"))
+
         # Stress level values
         stress_values = raw_stress.get("stressLevelValues", {})
         if stress_values and isinstance(stress_values, dict):
@@ -842,6 +872,7 @@ class Garmin247Data(Base247DataTemplate):
                             user_id=user_id,
                             source=self.provider_name,
                             recorded_at=recorded_at,
+                            zone_offset=zone_offset,
                             value=Decimal(str(stress_value)),
                             series_type=SeriesType.garmin_stress_level,
                         )
@@ -864,6 +895,7 @@ class Garmin247Data(Base247DataTemplate):
                             user_id=user_id,
                             source=self.provider_name,
                             recorded_at=recorded_at,
+                            zone_offset=zone_offset,
                             value=Decimal(str(battery_value)),
                             series_type=SeriesType.garmin_body_battery,
                         )
@@ -905,6 +937,8 @@ class Garmin247Data(Base247DataTemplate):
         if not start_ts:
             return samples
 
+        zone_offset = offset_to_iso(raw_respiration.get("startTimeOffsetInSeconds"))
+
         # Average respiration for the period
         avg_respiration = raw_respiration.get("avgWakingRespirationValue")
         if avg_respiration:
@@ -915,6 +949,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(avg_respiration)),
                     series_type=SeriesType.respiratory_rate,
                     external_id=summary_id,
@@ -936,6 +971,7 @@ class Garmin247Data(Base247DataTemplate):
                             user_id=user_id,
                             source=self.provider_name,
                             recorded_at=recorded_at,
+                            zone_offset=zone_offset,
                             value=Decimal(str(resp_value)),
                             series_type=SeriesType.respiratory_rate,
                         )
@@ -977,6 +1013,8 @@ class Garmin247Data(Base247DataTemplate):
         if not start_ts:
             return samples
 
+        zone_offset = offset_to_iso(raw_pulse_ox.get("startTimeOffsetInSeconds"))
+
         # Average SpO2
         avg_spo2 = raw_pulse_ox.get("avgSpo2")
         if avg_spo2:
@@ -987,6 +1025,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(avg_spo2)),
                     series_type=SeriesType.oxygen_saturation,
                     external_id=summary_id,
@@ -1008,6 +1047,7 @@ class Garmin247Data(Base247DataTemplate):
                             user_id=user_id,
                             source=self.provider_name,
                             recorded_at=recorded_at,
+                            zone_offset=zone_offset,
                             value=Decimal(str(spo2_value)),
                             series_type=SeriesType.oxygen_saturation,
                         )
@@ -1055,6 +1095,10 @@ class Garmin247Data(Base247DataTemplate):
 
         recorded_at = self._from_epoch_seconds(measurement_ts)
 
+        meas = raw_bp.get("measurementTimeOffsetInSeconds")
+        start = raw_bp.get("startTimeOffsetInSeconds")
+        zone_offset = offset_to_iso(meas if meas is not None else start)
+
         # Systolic blood pressure
         systolic = raw_bp.get("systolic")
         if systolic:
@@ -1064,6 +1108,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(systolic)),
                     series_type=SeriesType.blood_pressure_systolic,
                     external_id=summary_id,
@@ -1079,6 +1124,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(diastolic)),
                     series_type=SeriesType.blood_pressure_diastolic,
                     external_id=summary_id,
@@ -1189,6 +1235,7 @@ class Garmin247Data(Base247DataTemplate):
             return samples
 
         recorded_at = self._from_epoch_seconds(start_ts)
+        zone_offset = offset_to_iso(raw_skin_temp.get("startTimeOffsetInSeconds"))
 
         skin_temp = raw_skin_temp.get("skinTemperature")
         if skin_temp is not None:
@@ -1198,6 +1245,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(skin_temp)),
                     series_type=SeriesType.skin_temperature,
                     external_id=summary_id,
@@ -1239,6 +1287,7 @@ class Garmin247Data(Base247DataTemplate):
             return samples
 
         recorded_at = self._from_epoch_seconds(start_ts)
+        zone_offset = offset_to_iso(raw_snapshot.get("startTimeOffsetInSeconds"))
 
         # Heart rate from snapshot
         heart_rate = raw_snapshot.get("heartRate")
@@ -1249,6 +1298,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(heart_rate)),
                     series_type=SeriesType.heart_rate,
                     external_id=f"{summary_id}:hr" if summary_id else None,
@@ -1264,6 +1314,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(hrv)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
                     external_id=f"{summary_id}:hrv" if summary_id else None,
@@ -1279,6 +1330,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(stress)),
                     series_type=SeriesType.garmin_stress_level,
                     external_id=f"{summary_id}:stress" if summary_id else None,
@@ -1294,6 +1346,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(spo2)),
                     series_type=SeriesType.oxygen_saturation,
                     external_id=f"{summary_id}:spo2" if summary_id else None,
@@ -1309,6 +1362,7 @@ class Garmin247Data(Base247DataTemplate):
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
+                    zone_offset=zone_offset,
                     value=Decimal(str(respiration)),
                     series_type=SeriesType.respiratory_rate,
                     external_id=f"{summary_id}:resp" if summary_id else None,
@@ -1351,6 +1405,7 @@ class Garmin247Data(Base247DataTemplate):
 
         start_dt = self._from_epoch_seconds(start_ts)
         end_dt = self._from_epoch_seconds(start_ts + duration) if duration else start_dt
+        zone_offset = offset_to_iso(raw_moveiq.get("startTimeOffsetInSeconds"))
 
         activity_type = raw_moveiq.get("activityType", "unknown")
 
@@ -1363,6 +1418,7 @@ class Garmin247Data(Base247DataTemplate):
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
+            zone_offset=zone_offset,
             external_id=summary_id,
             source=self.provider_name,
             user_id=user_id,

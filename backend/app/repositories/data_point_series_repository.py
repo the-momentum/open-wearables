@@ -11,16 +11,22 @@ from app.database import DbSession
 from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import (
-    ActiveMinutesResult,
-    ActivityAggregateResult,
-    IntensityMinutesResult,
+from app.schemas.enums import (
     ProviderName,
+    SeriesType,
+    get_series_type_from_id,
+    get_series_type_id,
+)
+from app.schemas.model_crud.activities import (
     TimeSeriesQueryParams,
     TimeSeriesSampleCreate,
     TimeSeriesSampleUpdate,
 )
-from app.schemas.series_types import SeriesType, get_series_type_from_id, get_series_type_id
+from app.schemas.responses.activity import (
+    ActiveMinutesResult,
+    ActivityAggregateResult,
+    IntensityMinutesResult,
+)
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -33,9 +39,9 @@ class DataPointSeriesRepository(
 ):
     """Repository for unified device data point series."""
 
-    # PostgreSQL/psycopg limit: 65535 params per query. With 6 params per row, max ~10922 rows.
-    # Use 10000 as a safe chunk size.
-    BATCH_INSERT_CHUNK_SIZE = 10_000
+    # PostgreSQL/psycopg limit: 65535 params per query. With 7 params per row, max ~9362 rows.
+    # Use 9000 as a safe chunk size.
+    BATCH_INSERT_CHUNK_SIZE = 9_000
 
     def __init__(self, model: type[DataPointSeries]):
         super().__init__(model)
@@ -145,6 +151,7 @@ class DataPointSeriesRepository(
                     "external_id": creator.external_id,
                     "data_source_id": source_id,
                     "recorded_at": creator.recorded_at,
+                    "zone_offset": creator.zone_offset,
                     "value": creator.value,
                     "series_type_definition_id": get_series_type_id(creator.series_type),
                 }
@@ -167,6 +174,7 @@ class DataPointSeriesRepository(
                     set_={
                         "value": stmt.excluded.value,
                         "external_id": stmt.excluded.external_id,
+                        "zone_offset": stmt.excluded.zone_offset,
                     },
                 )
                 db_session.execute(stmt)

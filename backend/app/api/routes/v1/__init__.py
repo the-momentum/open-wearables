@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from .api_keys import router as api_keys_router
 from .applications import router as applications_router
+from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
@@ -12,6 +13,7 @@ from .garmin_webhooks import router as garmin_webhooks_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
+from .oura_webhooks import router as oura_webhooks_router
 from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
@@ -34,6 +36,8 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"]
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
 # Garmin webhooks for push/ping notifications
 v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
+# Oura webhooks for data notifications
+v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
 # Strava webhooks for event notifications
 v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
 # New unified vendor workouts endpoint
@@ -56,6 +60,9 @@ v1_router.include_router(priorities_router, tags=["priorities"])
 v1_router.include_router(summaries_router, tags=["Summaries"])
 v1_router.include_router(timeseries_router, tags=["Timeseries"])
 v1_router.include_router(events_router, tags=["Events"])
+
+# Data lifecycle / archival settings
+v1_router.include_router(archival_router, tags=["Data Lifecycle"])
 
 # Token refresh endpoint
 v1_router.include_router(token_router, tags=["token"])

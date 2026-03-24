@@ -14,7 +14,7 @@ from typing import Annotated, Any, cast
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -26,7 +26,7 @@ from app.integrations.celery.tasks.garmin_backfill_task import (
     trigger_next_pending_type,
 )
 from app.repositories import UserConnectionRepository
-from app.schemas import GarminActivityJSON
+from app.schemas.providers.garmin import ActivityJSON as GarminActivityJSON
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.workouts import GarminWorkouts
@@ -37,7 +37,7 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-async def _process_wellness_notification(
+def _process_wellness_notification(
     db: DbSession,
     summary_type: str,
     notifications: list[dict[str, Any]],
@@ -123,10 +123,9 @@ async def _process_wellness_notification(
 
         try:
             # Fetch data from callback URL
-            async with httpx.AsyncClient() as client:
-                response = await client.get(callback_url, timeout=30.0)
-                response.raise_for_status()
-                data = response.json()
+            response = httpx.get(callback_url, timeout=30.0)
+            response.raise_for_status()
+            data = response.json()
 
             if not isinstance(data, list):
                 data = [data]
@@ -319,8 +318,8 @@ def _process_deregistrations(
 
 
 @router.post("/ping")
-async def garmin_ping_notification(
-    request: Request,
+def garmin_ping_notification(
+    payload: dict,
     db: DbSession,
     garmin_client_id: Annotated[str | None, Header(alias="garmin-client-id")] = None,
 ) -> dict:
@@ -350,7 +349,6 @@ async def garmin_ping_notification(
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
-        payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         log_structured(
@@ -366,6 +364,7 @@ async def garmin_ping_notification(
         processed_count = 0
         errors: list[str] = []
         processed_activities: list[dict] = []
+        synced_user_ids: set[UUID] = set()
 
         # Process activities via callback URLs
         if "activities" in payload:
@@ -417,10 +416,9 @@ async def garmin_ping_notification(
 
                     # Fetch activity data from callback URL
                     try:
-                        async with httpx.AsyncClient() as client:
-                            response = await client.get(callback_url, timeout=30.0)
-                            response.raise_for_status()
-                            activities_data = response.json()
+                        response = httpx.get(callback_url, timeout=30.0)
+                        response.raise_for_status()
+                        activities_data = response.json()
 
                         activities_count = len(activities_data) if isinstance(activities_data, list) else 1
                         log_structured(
@@ -503,12 +501,25 @@ async def garmin_ping_notification(
                     summary_type=summary_type,
                     count=len(payload[summary_type]),
                 )
-                wellness_results[summary_type] = await _process_wellness_notification(
+                wellness_results[summary_type] = _process_wellness_notification(
                     db, summary_type, payload[summary_type], garmin_247, request_trace_id
                 )
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
+
+        # Extract user IDs from wellness results and update last_synced_at
+        for result in wellness_results.values():
+            if isinstance(result, dict):
+                for item in result.get("items", []):
+                    if item.get("saved", 0) > 0:
+                        synced_user_ids.add(UUID(item["internal_user_id"]))
+        if synced_user_ids:
+            user_connection_repo = UserConnectionRepository()
+            for uid in synced_user_ids:
+                connection = user_connection_repo.get_active_connection(db, uid, "garmin")
+                if connection:
+                    user_connection_repo.update_last_synced_at(db, connection)
 
         # Collect user IDs with new success transitions from wellness results
         users_with_new_success: set[str] = set()
@@ -577,8 +588,8 @@ async def garmin_ping_notification(
 
 
 @router.post("/push")
-async def garmin_push_notification(
-    request: Request,
+def garmin_push_notification(
+    payload: dict,
     db: DbSession,
     garmin_client_id: Annotated[str | None, Header(alias="garmin-client-id")] = None,
 ) -> dict:
@@ -620,7 +631,6 @@ async def garmin_push_notification(
         raise HTTPException(status_code=401, detail="Missing garmin-client-id header")
 
     try:
-        payload = await request.json()
         request_trace_id = str(uuid4())[:8]
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
         garmin_user_ids = list(
@@ -653,6 +663,7 @@ async def garmin_push_notification(
         saved_count = 0
         errors: list[str] = []
         processed_activities: list[dict] = []
+        synced_user_ids: set[UUID] = set()
 
         # Get Garmin workouts service via factory
         factory = ProviderFactory()
@@ -756,6 +767,8 @@ async def garmin_push_notification(
                         },
                     )
                     processed_count += 1
+                    if created_ids:
+                        synced_user_ids.add(internal_user_id)
                     log_structured(
                         logger,
                         "info",
@@ -866,8 +879,11 @@ async def garmin_push_notification(
             for uid, items in user_items.items():
                 trace_id = get_trace_id(uid) or request_trace_id
                 try:
-                    type_count += garmin_247.process_items_batch(db, uid, data_type, items)
+                    count = garmin_247.process_items_batch(db, uid, data_type, items)
+                    type_count += count
                     type_users.add(str(uid))
+                    if count > 0:
+                        synced_user_ids.add(uid)
                 except Exception as e:
                     log_structured(
                         logger,
@@ -900,6 +916,12 @@ async def garmin_push_notification(
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
         db.commit()
+
+        # Update last_synced_at for all users that received data via push
+        for uid in synced_user_ids:
+            connection = user_connection_repo.get_active_connection(db, uid, "garmin")
+            if connection:
+                user_connection_repo.update_last_synced_at(db, connection)
 
         # Also add users from activity processing (only if newly succeeded)
         for act in processed_activities:
@@ -976,6 +998,6 @@ async def garmin_push_notification(
 
 
 @router.get("/health")
-async def garmin_webhook_health() -> dict:
+def garmin_webhook_health() -> dict:
     """Health check endpoint for Garmin webhook configuration."""
     return {"status": "ok", "service": "garmin-webhooks"}

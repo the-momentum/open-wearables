@@ -11,7 +11,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.repositories.repositories import CrudRepository
-from app.schemas.event_record_detail import (
+from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     EventRecordDetailUpdate,
 )

@@ -1,3 +1,4 @@
+from .archival_task import run_daily_archival
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
     BACKFILL_DATA_TYPES as GARMIN_BACKFILL_DATA_TYPES,
@@ -40,7 +41,6 @@ from .garmin_backfill_task import (
 )
 from .garmin_gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
-from .poll_sqs_task import poll_sqs_task
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
@@ -63,9 +63,10 @@ __all__ = [
     "acquire_garmin_backfill_lock",
     "release_garmin_backfill_lock",
     "gc_stuck_backfills",
+    # Archival
+    "run_daily_archival",
     # Other tasks
     "finalize_stale_sleeps",
-    "poll_sqs_task",
     "process_sdk_upload",
     "process_aws_upload",
     "process_xml_upload",

@@ -1,0 +1,196 @@
+---
+title: "Fitbit API Integration"
+description: "Setup guide for Fitbit integration"
+---
+
+<Note>
+**Need help with your Fitbit integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Fitbit provides access to workout/activity data from Fitbit devices through the [Fitbit Web API](https://dev.fitbit.com/build/reference/web-api/). The integration uses OAuth 2.0 for authentication and pull-based syncing to fetch activity data.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Workouts / Activities | Yes |
+| Sleep | Available via API - not yet implemented |
+| Heart rate (intraday) | Available via API - not yet implemented |
+| Daily activity summary | Available via API - not yet implemented |
+
+<Info>
+Open Wearables currently syncs **workout/activity data** from Fitbit using the Activities List API. Heart rate, sleep, and daily activity summary support is planned for a future release.
+</Info>
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches activity data via the Fitbit Web API (via Celery Beat) |
+
+<Note>
+Fitbit Subscription (webhook) support is out of scope for the current integration and remains tracked in [GitHub issue #226](https://github.com/the-momentum/open-wearables/issues/226). All sync is currently polling-based.
+</Note>
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret from the Fitbit Developer portal
+- **Redirect URI** registered in your Fitbit application
+
+## Prerequisites
+
+- A [Fitbit account](https://www.fitbit.com) (any Fitbit user account can access the Developer portal)
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Create a Fitbit Developer account">
+    Go to [dev.fitbit.com](https://dev.fitbit.com) and sign in with your Fitbit account credentials.
+
+    No separate developer account is required — your regular Fitbit account grants access to the Developer portal.
+  </Step>
+
+  <Step title="Register your application">
+    Navigate to [dev.fitbit.com/apps/new](https://dev.fitbit.com/apps/new) to register a new application.
+
+    Fill in the registration form:
+
+    - **Application Name**: Your app name (e.g. "Open Wearables")
+    - **Description**: Brief description of your application
+    - **Application Website URL**: Your app's website (can be `http://localhost:3000` for local dev)
+    - **Organization**: Your organization name
+    - **Organization Website URL**: Your organization's website
+    - **Terms of Service URL**: URL to your terms (can be the same as Application Website for local dev)
+    - **Privacy Policy URL**: URL to your privacy policy (can be the same as Application Website for local dev)
+    - **OAuth 2.0 Application Type**: Select **Personal** for development and testing, or **Server** for production deployments
+    - **Redirect URL**: For local development use `http://localhost:8000/api/v1/oauth/fitbit/callback`
+    - **Default Access Type**: Select **Read Only**
+
+    Click **Register** to create your application.
+
+    <Warning>
+    After registration, your **Client ID** and **Client Secret** are shown on the application detail page. Store the Client Secret securely — it cannot be recovered if lost and you would need to generate new credentials.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+#--- Fitbit ---#
+FITBIT_CLIENT_ID=your-fitbit-client-id
+FITBIT_CLIENT_SECRET=your-fitbit-client-secret
+FITBIT_REDIRECT_URI=http://localhost:8000/api/v1/oauth/fitbit/callback
+# Optional: override default OAuth scopes (default: "activity heartrate sleep profile")
+FITBIT_DEFAULT_SCOPE="activity heartrate sleep profile"
+```
+
+    **Configuration details:**
+
+    | Variable | Description | Default |
+    |----------|-------------|---------|
+    | `FITBIT_CLIENT_ID` | Client ID from the Fitbit Developer portal | — |
+    | `FITBIT_CLIENT_SECRET` | Client Secret from the Fitbit Developer portal | — |
+    | `FITBIT_REDIRECT_URI` | Must match the Redirect URL registered in your Fitbit application. For local dev: `http://localhost:8000/api/v1/oauth/fitbit/callback` | `http://localhost:8000/api/v1/oauth/fitbit/callback` |
+    | `FITBIT_DEFAULT_SCOPE` | Space-separated list of OAuth scopes to request. Only `activity` is actively synced at this time; reduce the scope to minimize consent surface if desired. | `activity heartrate sleep profile` |
+
+    <Note>
+    Only `activity` data is actively synced at this time. You can reduce the requested consent surface by setting `FITBIT_DEFAULT_SCOPE="activity"`.
+    </Note>
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow to connect a user's Fitbit account.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/fitbit/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://www.fitbit.com/oauth2/authorize?client_id=...&redirect_uri=...&response_type=code&scope=activity+heartrate+sleep+profile&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Fitbit and authorize your app.
+
+    **3. Fitbit redirects back** to the callback URI configured in your `.env` (`FITBIT_REDIRECT_URI`). Open Wearables automatically exchanges the authorization code for access tokens.
+
+    **4. Verify the connection** was created:
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "fitbit"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `FITBIT_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback that Fitbit sends the authorization code to.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually trigger a sync:
+
+    ```bash
+    # Sync workouts/activities
+    curl -X POST "http://localhost:8000/api/v1/providers/fitbit/users/{user_id}/sync?data_type=workouts" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    <Note>
+    By default, Open Wearables syncs activities from the last 30 days. You can specify a custom date range using the `start_date` and `end_date` query parameters.
+    </Note>
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch workouts
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If workout data is returned, your Fitbit integration is working end-to-end.
+  </Step>
+</Steps>
+
+## Rate Limits
+
+The Fitbit Web API enforces rate limits on a per-user, per-application basis:
+
+| Limit | Value |
+|-------|-------|
+| Per hour (per user) | 150 requests |
+
+When the rate limit is exceeded, the API returns HTTP `429 Too Many Requests`. The `Fitbit-Rate-Limit-Reset` response header indicates when the limit resets (Unix timestamp).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Architecture" icon="diagram" href="/architecture/system-overview">
+    Understand the overall system architecture.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Fitbit Web API Documentation](https://dev.fitbit.com/build/reference/web-api/).
+- Contact Fitbit developer support through the [Fitbit Developer portal](https://dev.fitbit.com).
+</Note>

@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from app.schemas import PolarExerciseJSON
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
+from app.schemas.providers.polar import ExerciseJSON as PolarExerciseJSON
 from app.services.providers.polar.workouts import PolarWorkouts
 from tests.factories import UserConnectionFactory, UserFactory
 
@@ -523,7 +523,7 @@ class TestPolarWorkoutsDataLoading:
         result = workouts.load_data(db, user.id)
 
         # Assert
-        assert result is True
+        assert result == 1
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
 
@@ -563,4 +563,4 @@ class TestPolarWorkoutsDataLoading:
         result = workouts.load_data(db, user.id)
 
         # Assert
-        assert result is True
+        assert result == 0

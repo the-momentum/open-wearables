@@ -1,24 +1,24 @@
 from uuid import UUID
+from datetime import datetime
 
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, PrimaryKey, datetime_tz, str_64
-from app.schemas.oauth import ConnectionStatus
+from app.mappings import FKUser, PrimaryKey, str_64
+from app.schemas.auth import ConnectionStatus
 
 
 class UserConnection(BaseDbModel):
     """OAuth connections to external cloud providers (Suunto, Garmin, Polar, Coros)"""
 
     __table_args__ = (
-        UniqueConstraint("user_id", "provider", name="uq_user_provider"),
         Index(
-            "idx_user_connection_token_expiry",
+            "ix_user_connection_token_expiry",
             "token_expires_at",
             postgresql_where="status = 'active'",
         ),
-        Index("idx_user_connection_user_provider", "user_id", "provider"),
+        Index("ix_user_connection_user_provider", "user_id", "provider", unique=True),
     )
     __tablename__ = "user_connection"
 
@@ -33,11 +33,11 @@ class UserConnection(BaseDbModel):
     # OAuth tokens (optional for SDK-based providers like Apple)
     access_token: Mapped[str | None]
     refresh_token: Mapped[str | None]
-    token_expires_at: Mapped[datetime_tz | None]
+    token_expires_at: Mapped[datetime | None]
     scope: Mapped[str | None]
 
     # Metadata
     status: Mapped[ConnectionStatus]
-    last_synced_at: Mapped[datetime_tz | None]
-    created_at: Mapped[datetime_tz]
-    updated_at: Mapped[datetime_tz]
+    last_synced_at: Mapped[datetime | None]
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]

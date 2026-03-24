@@ -7,8 +7,10 @@ from uuid import UUID
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
@@ -98,7 +100,7 @@ class BaseWorkoutsTemplate(ABC):
         """
         raise NotImplementedError(f"{self.__class__.__name__} does not support API-based workout detail fetching")
 
-    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> int:
         """Load data from provider API.
 
         Override this method in subclasses that support cloud API access.

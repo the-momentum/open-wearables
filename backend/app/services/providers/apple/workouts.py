@@ -5,8 +5,10 @@ from uuid import UUID
 from app.database import DbSession
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.event_record import EventRecordCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
 from app.services.providers.apple.handlers.auto_export import AutoExportHandler
 from app.services.providers.apple.handlers.base import AppleSourceHandler
 from app.services.providers.apple.handlers.healthkit import HealthKitHandler
@@ -70,7 +72,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
         """Apple Health does not support cloud API - data is push-only."""
         raise NotImplementedError("Apple Health does not support API-based workout detail fetching")
 
-    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> bool:
+    def load_data(self, db: DbSession, user_id: UUID, **kwargs: Any) -> int:
         """Apple Health uses push-based data ingestion via process_payload."""
         raise NotImplementedError("Apple Health uses process_payload for data ingestion, not load_data")
 

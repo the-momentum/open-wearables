@@ -8,7 +8,10 @@ from fastapi import HTTPException
 from app.database import DbSession
 from app.models import Application
 from app.repositories.application_repository import ApplicationRepository
-from app.schemas.application import ApplicationCreateInternal, ApplicationUpdate
+from app.schemas.model_crud.credentials import (
+    ApplicationCreateInternal,
+    ApplicationUpdate,
+)
 from app.services.services import AppService
 from app.utils.security import get_password_hash, verify_password
 from app.utils.structured_logging import log_structured

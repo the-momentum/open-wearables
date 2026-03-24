@@ -1,0 +1,193 @@
+---
+title: "Ultrahuman API Integration"
+description: "Setup guide for Ultrahuman Ring Air integration"
+---
+
+<Note>
+**Need help with your Ultrahuman integration?** Pop into our [Discord](https://discord.gg/qrcfFnNE6H) if you have questions or want to discover how Open Wearables can solve your problems.
+</Note>
+
+## Overview
+
+Ultrahuman provides access to sleep, recovery, and continuous activity data through their Partnership API. The integration uses OAuth 2.0 for authentication and pull-based syncing to fetch daily metrics.
+
+### Supported data types
+
+| Data Type | Support |
+|-----------|---------|
+| Sleep (with stages) | Yes |
+| Heart rate (24/7) | Yes |
+| HRV - SDNN (24/7) | Yes |
+| Skin temperature (24/7) | Yes |
+| Steps (24/7) | Yes |
+| VO2 max | Yes |
+| Recovery metrics | Partial (normalized, not yet saved) |
+| Workouts / Activities | No (not available via Partnership API) |
+
+### Data delivery
+
+| Method | Description |
+|--------|-------------|
+| **Polling (pull)** | Open Wearables periodically fetches daily metrics via the Ultrahuman Partnership API (default: every hour via Celery Beat) |
+
+## What you need by the end
+
+- **App credentials**: Client ID + Client Secret from the Ultrahuman Developer Dashboard
+- **OAuth scopes** configured
+- **Redirect URI** registered
+
+## Prerequisites
+
+- A personal Ultrahuman account (Ring Air owner)
+
+## Application walkthrough
+
+<Steps>
+  <Step title="Sign in to the Ultrahuman Developer Dashboard">
+    Go to the [Ultrahuman Developer Dashboard](https://vision.ultrahuman.com/developer) and sign in with your Ultrahuman account.
+
+    <Note>
+    Login requires a personal Ultrahuman account - the same one you use with the Ultrahuman app.
+    </Note>
+  </Step>
+
+  <Step title="Create an OAuth application">
+    In the Developer Dashboard, create a new application:
+
+    - **App Name**: Your application name
+    - **Redirect URI**: Your OAuth callback URL (e.g. `http://localhost:8000/api/v1/oauth/ultrahuman/callback` for local development)
+
+    After creating the app, you'll receive:
+    - **Client ID**
+    - **Client Secret**
+
+    <Warning>
+    Your Client Secret should never be logged or shared. It should only be used server-side.
+    </Warning>
+  </Step>
+
+  <Step title="Configure credentials in Open Wearables">
+    Add the following to your `.env` file:
+
+```bash
+#--- Ultrahuman ---#
+ULTRAHUMAN_CLIENT_ID=your-ultrahuman-client-id
+ULTRAHUMAN_CLIENT_SECRET=your-ultrahuman-client-secret
+ULTRAHUMAN_REDIRECT_URI=http://localhost:8000/api/v1/oauth/ultrahuman/callback
+ULTRAHUMAN_DEFAULT_SCOPE=ring_data cgm_data profile
+```
+
+    **Configuration details:**
+
+    | Variable | Description |
+    |----------|-------------|
+    | `ULTRAHUMAN_CLIENT_ID` | Client ID from the Developer Dashboard |
+    | `ULTRAHUMAN_CLIENT_SECRET` | Client Secret from the Developer Dashboard |
+    | `ULTRAHUMAN_REDIRECT_URI` | Must match the redirect URI registered in the Developer Dashboard. For local dev: `http://localhost:8000/api/v1/oauth/ultrahuman/callback` |
+    | `ULTRAHUMAN_DEFAULT_SCOPE` | OAuth scopes requested during authorization |
+
+  </Step>
+
+  <Step title="Connect a user via OAuth">
+    With credentials configured and your Open Wearables instance running, initiate the OAuth flow.
+
+    **1. Get the authorization URL:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/oauth/ultrahuman/authorize?user_id={user_id}&redirect_uri=http://localhost:3000/users/{user_id}" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "authorization_url": "https://auth.ultrahuman.com/authorise?client_id=...&redirect_uri=...&response_type=code&scope=ring_data+cgm_data+profile&state=...",
+      "state": "abc123..."
+    }
+    ```
+
+    **2. Redirect the user** to the `authorization_url`. They will log in to Ultrahuman and authorize your app.
+
+    **3. Ultrahuman redirects back** to the callback URI configured in your `.env`. Open Wearables automatically exchanges the authorization code for access and refresh tokens.
+
+    **4. Verify the connection:**
+
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/connections" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    You should see a connection with `"provider": "ultrahuman"` and `"status": "active"`.
+
+    <Note>
+      The `redirect_uri` parameter in the authorize call is where the **user** is sent after the flow completes (e.g., back to your app). This is separate from `ULTRAHUMAN_REDIRECT_URI` in your `.env`, which is the **server-side** OAuth callback.
+    </Note>
+  </Step>
+
+  <Step title="Sync data">
+    An initial sync is triggered automatically after a successful OAuth connection. To manually sync:
+
+    ```bash
+    # Sync all 24/7 data (sleep, HR, HRV, temperature, steps, VO2 max)
+    curl -X POST "http://localhost:8000/api/v1/providers/ultrahuman/users/{user_id}/sync?data_type=247" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    <Note>
+      When no date range is specified, Ultrahuman defaults to syncing the last 30 days of data.
+    </Note>
+  </Step>
+
+  <Step title="Verify the integration">
+    Once data has synced, fetch it via the Open Wearables API:
+
+    ```bash
+    # Fetch sleep sessions
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch timeseries data (HR, HRV, temperature, steps, VO2 max)
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/timeseries?start_time=2026-01-01T00:00:00Z&end_time=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+    ```
+
+    If data is returned, your Ultrahuman integration is working end-to-end.
+  </Step>
+</Steps>
+
+## API Details
+
+| Detail | Value |
+|--------|-------|
+| **Auth endpoint** | `https://auth.ultrahuman.com/authorise` |
+| **Token endpoint** | `https://partner.ultrahuman.com/api/partners/oauth/token` |
+| **Data API base** | `https://partner.ultrahuman.com/api/partners/v1` |
+| **Metrics endpoint** | `GET /user_data/metrics?date=YYYY-MM-DD` |
+
+## OAuth Scopes Reference
+
+| Scope | Description |
+|-------|-------------|
+| `ring_data` | Access to Ring Air data (sleep, HR, HRV, temperature, steps, VO2 max) |
+| `cgm_data` | Access to CGM (continuous glucose monitor) data |
+| `profile` | Access to user profile information |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="terminal" href="/api-reference/introduction">
+    Explore the Open Wearables API endpoints.
+  </Card>
+  <Card title="Coverage Matrix" icon="table" href="/providers/coverage">
+    See the full data coverage comparison.
+  </Card>
+</CardGroup>
+
+## Support
+
+<Note>
+**Need Help?**
+- Join our [Discord](https://discord.gg/qrcfFnNE6H) and ask a question.
+- Check [GitHub Discussions](https://github.com/the-momentum/open-wearables/discussions).
+- Check the [Ultrahuman Developer Docs](https://vision.ultrahuman.com/developer-docs).
+</Note>

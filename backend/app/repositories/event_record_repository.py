@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -13,7 +13,12 @@ from app.models import DataSource, EventRecord, SleepDetails
 from app.models.workout_details import WorkoutDetails
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
-from app.schemas import EventRecordCreate, EventRecordQueryParams, EventRecordUpdate, ProviderName
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordQueryParams,
+    EventRecordUpdate,
+)
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import decode_cursor
 
@@ -132,6 +137,7 @@ class EventRecordRepository(
                     "duration_seconds": creator.duration_seconds,
                     "start_datetime": creator.start_datetime,
                     "end_datetime": creator.end_datetime,
+                    "zone_offset": creator.zone_offset,
                 }
             )
 
@@ -139,12 +145,16 @@ class EventRecordRepository(
             return []
 
         # 3. Batch insert with ON CONFLICT DO NOTHING
-        # Chunk to stay under PostgreSQL's 65535 parameter limit (9 params/row → max ~7281 rows)
-        chunk_size = 7_000
+        # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
+        chunk_size = 6_500
         inserted_ids: set[UUID] = set()
         for i in range(0, len(values_list), chunk_size):
             chunk = values_list[i : i + chunk_size]
-            stmt = insert(self.model).values(chunk).on_conflict_do_nothing(constraint="uq_event_record_datetime")
+            stmt = (
+                insert(self.model)
+                .values(chunk)
+                .on_conflict_do_nothing(index_elements=["data_source_id", "start_datetime", "end_datetime"])
+            )
             result = db_session.execute(stmt.returning(self.model.id))
             inserted_ids.update(row[0] for row in result.fetchall())
         # NOTE: Caller should commit - allows batching multiple operations
@@ -559,3 +569,35 @@ class EventRecordRepository(
                 }
             )
         return aggregates
+
+    @handle_exceptions
+    def find_adjacent_sleep_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        threshold_minutes: int,
+    ) -> EventRecord | None:
+        """Return the most-recent sleep session adjacent to [start_time, end_time].
+
+        A record is adjacent when its window overlaps or is within
+        *threshold_minutes* of the candidate window.  The detail relationship
+        is eagerly loaded so callers can read ``sleep_stages`` without an extra
+        query.
+        """
+        threshold = timedelta(minutes=threshold_minutes)
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.detail))
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.category == "sleep",
+                self.model.type == "sleep_session",
+                self.model.start_datetime <= end_time + threshold,
+                self.model.end_datetime >= start_time - threshold,
+            )
+            .order_by(self.model.start_datetime.desc())
+            .first()
+        )

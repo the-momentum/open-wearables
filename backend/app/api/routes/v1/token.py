@@ -1,14 +1,14 @@
 from fastapi import APIRouter, status
 
 from app.database import DbSession
-from app.schemas.token import RefreshTokenRequest, TokenResponse
+from app.schemas.auth import RefreshTokenRequest, TokenResponse
 from app.services import refresh_token_service
 
 router = APIRouter()
 
 
 @router.post("/token/refresh")
-async def refresh_token(
+def refresh_token(
     payload: RefreshTokenRequest,
     db: DbSession,
 ) -> TokenResponse:
@@ -32,7 +32,7 @@ async def refresh_token(
 
 
 @router.post("/token/revoke", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_refresh_token(
+def revoke_refresh_token(
     payload: RefreshTokenRequest,
     db: DbSession,
 ) -> None:

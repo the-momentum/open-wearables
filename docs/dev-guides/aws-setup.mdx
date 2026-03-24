@@ -1,11 +1,11 @@
 ---
 title: "AWS Setup for XML Imports"
-description: "Configure AWS S3 and SQS for handling large file uploads"
+description: "Configure AWS S3 and SNS for handling large file uploads"
 ---
 
 ## Overview
 
-To enable large XML file uploads via presigned URLs, you need to configure AWS S3 and SQS. This guide walks through creating and configuring the required AWS resources.
+To enable large XML file uploads via presigned URLs, you need to configure AWS S3 and SNS. The frontend handles uploads through presigned URLs, and SNS notifications trigger automatic processing when files land in S3. This guide walks through creating and configuring the required AWS resources.
 
 ## Prerequisites
 
@@ -44,102 +44,87 @@ aws s3api create-bucket \
 ```
 </Accordion>
 
-## Step 2: Create SQS Queue
+## Step 2: Create SNS Topic
 
 <Steps>
-  <Step title="Open SQS Console">
-    Navigate to [AWS SQS Console](https://console.aws.amazon.com/sqs/)
+  <Step title="Open SNS Console">
+    Navigate to [AWS SNS Console](https://console.aws.amazon.com/sns/)
   </Step>
 
-  <Step title="Create Queue">
-    Click **Create queue** and configure:
+  <Step title="Create Topic">
+    Click **Topics** → **Create topic** and configure:
     
     - **Type**: Standard
-    - **Name**: e.g., `owear-queue` or `open-wearables-queue`
-    - **Visibility timeout**: 300 seconds (5 minutes) - adjust based on processing time
-    - **Message retention period**: 4 days (default)
-    - **Receive message wait time**: 0 seconds
+    - **Name**: e.g., `owear`
   </Step>
 
-  <Step title="Create Queue">
-    Click **Create queue** at the bottom
+  <Step title="Create Topic">
+    Click **Create topic** at the bottom
   </Step>
 
-  <Step title="Copy Queue URL">
-    After creation, copy the **Queue URL** from the details page. It will look like:
+  <Step title="Copy Topic ARN">
+    After creation, copy the **ARN** from the details page. It will look like:
     
     ```
-    https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
+    arn:aws:sns:eu-north-1:123456789012:owear
     ```
     
-    You'll need this for the environment variables.
+    You'll need this for the environment variables and access policy.
   </Step>
 </Steps>
 
 <Accordion title="Using AWS CLI">
 ```bash
-aws sqs create-queue \
-  --queue-name owear-queue \
-  --region eu-north-1 \
-  --attributes VisibilityTimeout=300
+aws sns create-topic \
+  --name owear \
+  --region eu-north-1
 
-# Get the queue URL
-aws sqs get-queue-url --queue-name owear-queue --region eu-north-1
+# Note the TopicArn from the output
 ```
 </Accordion>
 
-## Step 3: Add SQS Access Policy
+## Step 3: Update SNS Topic Access Policy
 
-The SQS queue needs permission to receive messages from S3.
+The SNS topic needs permission to receive publish events from S3.
 
 <Steps>
-  <Step title="Get Queue ARN">
-    In the SQS console, click on your queue and note the **ARN** from the details:
-    
-    ```
-    arn:aws:sqs:eu-north-1:123456789012:owear-queue
-    ```
+  <Step title="Open Topic Access Policy">
+    In the SNS console, click on your topic → **Edit** → expand **Access policy**
   </Step>
 
-  <Step title="Update Queue Policy">
-    In your queue, go to **Access policy** tab → **Edit**
-    
-    Replace the policy with the following JSON (update the ARNs with your values):
+  <Step title="Add S3 Publish Permission">
+    Add the following statement to the policy's `Statement` array (update the ARNs with your values):
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "s3.amazonaws.com"
-      },
-      "Action": "SQS:SendMessage",
-      "Resource": "arn:aws:sqs:eu-north-1:123456789012:owear-queue",
-      "Condition": {
-        "ArnLike": {
-          "aws:SourceArn": "arn:aws:s3:::open-wearables-xml"
-        }
-      }
+  "Sid": "AllowS3Publish",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "s3.amazonaws.com"
+  },
+  "Action": "SNS:Publish",
+  "Resource": "arn:aws:sns:eu-north-1:123456789012:owear",
+  "Condition": {
+    "ArnLike": {
+      "aws:SourceArn": "arn:aws:s3:::open-wearables-xml"
     }
-  ]
+  }
 }
 ```
   </Step>
 
-  <Step title="Save Policy">
-    Click **Save** to apply the policy
+  <Step title="Save Changes">
+    Click **Save changes** to apply the updated policy
   </Step>
 </Steps>
 
 <Warning>
-  Replace `123456789012` with your AWS Account ID, `open-wearables-xml` with your bucket name, and `owear-queue` with your queue name.
+  Replace `123456789012` with your AWS Account ID, `open-wearables-xml` with your bucket name, and `owear` with your topic name.
 </Warning>
 
 ## Step 4: Add S3 Event Notification
 
-Configure S3 to send notifications to SQS when files are uploaded.
+Configure S3 to send notifications to the SNS topic when files are uploaded.
 
 <Steps>
   <Step title="Open Bucket Properties">
@@ -152,10 +137,9 @@ Configure S3 to send notifications to SQS when files are uploaded.
     Configure:
     - **Name**: e.g., `xml-upload-notification`
     - **Event types**: Check **All object create events** (or specifically `s3:ObjectCreated:Post`)
-    - **Prefix**: `apple-uploads/` (optional, to only notify for specific folder)
     - **Suffix**: `.xml` (optional, to only notify for XML files)
-    - **Destination**: Select **SQS queue**
-    - **SQS queue**: Select your queue (e.g., `owear-queue`)
+    - **Destination**: Select **SNS topic**
+    - **SNS topic**: Select your topic (e.g., `owear`)
   </Step>
 
   <Step title="Save Configuration">
@@ -165,17 +149,15 @@ Configure S3 to send notifications to SQS when files are uploaded.
 
 <Accordion title="Using AWS CLI">
 ```bash
-# Create notification configuration JSON
 cat > notification.json <<EOF
 {
-  "QueueConfigurations": [
+  "TopicConfigurations": [
     {
-      "QueueArn": "arn:aws:sqs:eu-north-1:123456789012:owear-queue",
+      "TopicArn": "arn:aws:sns:eu-north-1:123456789012:owear",
       "Events": ["s3:ObjectCreated:*"],
       "Filter": {
         "Key": {
           "FilterRules": [
-            {"Name": "prefix", "Value": "apple-uploads/"},
             {"Name": "suffix", "Value": ".xml"}
           ]
         }
@@ -185,14 +167,45 @@ cat > notification.json <<EOF
 }
 EOF
 
-# Apply notification configuration
 aws s3api put-bucket-notification-configuration \
   --bucket open-wearables-xml \
   --notification-configuration file://notification.json
 ```
 </Accordion>
 
-## Step 5: Update Environment Variables
+## Step 5: Create SNS Subscription
+
+Create an HTTPS subscription so SNS delivers notifications to your backend.
+
+<Steps>
+  <Step title="Open Topic Subscriptions">
+    In the SNS console, click on your topic → **Create subscription**
+  </Step>
+
+  <Step title="Configure Subscription">
+    - **Topic ARN**: Select your topic (e.g., `owear`)
+    - **Protocol**: HTTPS
+    - **Endpoint**: Your backend's SNS notification URL, e.g.:
+    
+    ```
+    https://your-backend-domain.com/api/v1/sns/notification
+    ```
+  </Step>
+
+  <Step title="Create Subscription">
+    Click **Create subscription**. AWS will send a `SubscriptionConfirmation` request to your endpoint. The backend handles this automatically and confirms the subscription.
+  </Step>
+
+  <Step title="Verify Confirmation">
+    After a few seconds, refresh the subscriptions page. The status should change from **Pending confirmation** to **Confirmed**.
+  </Step>
+</Steps>
+
+<Note>
+  The backend must be publicly accessible for SNS to reach it. If developing locally, use a tool like [ngrok](https://ngrok.com/) to expose your local server.
+</Note>
+
+## Step 6: Update Environment Variables
 
 Add the AWS configuration to your `.env` file:
 
@@ -203,12 +216,12 @@ AWS_REGION=eu-north-1
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
 
-# SQS Configuration
-SQS_QUEUE_URL=https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
+# SNS Configuration
+AWS_SNS_TOPIC_ARN=arn:aws:sns:eu-north-1:123456789012:owear
 ```
 
 <Accordion title="How to Get AWS Credentials">
-### Create IAM User with S3 and SQS Permissions
+### Create IAM User with S3 and SNS Permissions
 
 1. Go to [IAM Console](https://console.aws.amazon.com/iam/)
 2. Click **Users** → **Add users**
@@ -217,7 +230,7 @@ SQS_QUEUE_URL=https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
 5. Click **Next: Permissions**
 6. Attach policies:
    - `AmazonS3FullAccess` (or create a custom policy with specific bucket access)
-   - `AmazonSQSFullAccess` (or create a custom policy with specific queue access)
+   - `AmazonSNSFullAccess` (or create a custom policy with specific topic access)
 7. Click through to create the user
 8. **Copy** the **Access key ID** and **Secret access key** immediately (you won't see the secret again)
 
@@ -226,7 +239,7 @@ SQS_QUEUE_URL=https://sqs.eu-north-1.amazonaws.com/123456789012/owear-queue
 </Warning>
 </Accordion>
 
-## Step 6: Restart Services
+## Step 7: Restart Services
 
 After updating the `.env` file, restart your services:
 
@@ -241,18 +254,12 @@ docker compose up -d
 Test your configuration:
 
 <Steps>
-  <Step title="Check Celery Worker">
-    Ensure the Celery worker is running and polling SQS:
-    
-    ```bash
-    docker compose logs -f celery-worker
-    ```
-    
-    You should see logs about SQS polling.
+  <Step title="Check SNS Subscription">
+    In the SNS console, verify your subscription status is **Confirmed**.
   </Step>
 
   <Step title="Test Upload">
-    Try uploading a small XML file using the presigned URL endpoint:
+    Try uploading a small XML file using the presigned URL endpoint. The frontend handles this automatically, or you can use the upload script for manual testing:
     
     ```bash
     python upload_xml.py test-export.xml
@@ -261,53 +268,55 @@ Test your configuration:
     See the [Apple XML Import Guide](/api-reference/guides/apple-xml-import) for details.
   </Step>
 
-  <Step title="Monitor SQS Queue">
-    In the SQS console, check **Monitoring** tab to see:
-    - Messages sent
-    - Messages received
-    - Messages deleted
+  <Step title="Check Backend Logs">
+    After uploading, check the backend logs for SNS notification processing:
     
-    If messages are stuck, check the Celery worker logs for errors.
+    ```bash
+    docker compose logs -f app
+    ```
+    
+    You should see logs about dispatching `process_aws_upload` tasks.
   </Step>
 </Steps>
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="Messages Not Appearing in SQS">
+  <Accordion title="SNS Subscription Stuck on Pending">
+    **Possible causes:**
+    - Backend is not publicly accessible
+    - Endpoint URL is incorrect
+    - Backend returned an error during confirmation
+    
+    **Fix:**
+    - Verify your backend is reachable from the internet
+    - Check the endpoint URL matches `/api/v1/sns/notification`
+    - Check backend logs for confirmation errors
+    - Delete the subscription and create a new one
+  </Accordion>
+
+  <Accordion title="Notifications Not Triggering Processing">
     **Possible causes:**
     - S3 event notification not configured correctly
-    - SQS policy doesn't allow S3 to send messages
-    - Wrong bucket or queue ARN in configuration
+    - SNS topic access policy doesn't allow S3 to publish
+    - Wrong bucket or topic ARN in configuration
     
     **Fix:**
     - Verify the event notification in S3 bucket properties
-    - Check the SQS access policy matches your bucket ARN
-    - Test by manually uploading a file to S3 and checking SQS
-  </Accordion>
-
-  <Accordion title="Celery Not Processing Messages">
-    **Possible causes:**
-    - Wrong `SQS_QUEUE_URL` in environment variables
-    - AWS credentials don't have SQS permissions
-    - Celery worker not running or crashed
-    
-    **Fix:**
-    - Verify `SQS_QUEUE_URL` matches your queue URL exactly
-    - Check IAM user has `sqs:ReceiveMessage` and `sqs:DeleteMessage` permissions
-    - Check Celery logs: `docker compose logs celery-worker`
+    - Check the SNS access policy allows `s3.amazonaws.com` to publish
+    - Test by manually uploading a file to S3 and checking backend logs
   </Accordion>
 
   <Accordion title="Access Denied Errors">
     **Possible causes:**
     - IAM user doesn't have required permissions
     - Wrong AWS credentials in `.env`
-    - Bucket or queue in different region
+    - Bucket or topic in different region
     
     **Fix:**
-    - Verify IAM user has S3 and SQS permissions
+    - Verify IAM user has S3 and SNS permissions
     - Double-check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
-    - Ensure `AWS_REGION` matches where your bucket and queue are located
+    - Ensure `AWS_REGION` matches where your bucket and topic are located
   </Accordion>
 </AccordionGroup>
 
@@ -320,9 +329,9 @@ Test your configuration:
     - Consider moving to Glacier for long-term archival
   </Card>
   
-  <Card title="SQS Messages" icon="envelope">
-    - Messages are free for the first 1 million requests/month
-    - Reduce message retention period if needed
+  <Card title="SNS Notifications" icon="bell">
+    - SNS free tier includes 100,000 HTTP/HTTPS notifications per month
+    - Check [AWS SNS pricing](https://aws.amazon.com/sns/pricing/) for current limits and rates beyond free tier
   </Card>
   
   <Card title="Data Transfer" icon="arrow-right-arrow-left">
@@ -331,8 +340,8 @@ Test your configuration:
   </Card>
   
   <Card title="Request Costs" icon="money-bill">
-    - S3 PUT requests: $0.005 per 1,000 requests
-    - SQS requests: Free tier covers typical usage
+    - S3 and SNS costs are negligible for typical usage
+    - See [AWS S3 pricing](https://aws.amazon.com/s3/pricing/) for current rates
   </Card>
 </CardGroup>
 
@@ -341,7 +350,7 @@ Test your configuration:
 1. **Use IAM Roles**: If running on EC2/ECS, use IAM roles instead of access keys
 2. **Restrict Bucket Access**: Only allow specific IAM users/roles to access the bucket
 3. **Enable Encryption**: Use SSE-S3 or SSE-KMS for data at rest
-4. **Monitor Access**: Enable CloudTrail logging for S3 and SQS
+4. **Monitor Access**: Enable CloudTrail logging for S3 and SNS
 5. **Rotate Credentials**: Regularly rotate AWS access keys
 
 ## Related Guides

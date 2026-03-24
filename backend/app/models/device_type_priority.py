@@ -1,13 +1,11 @@
-"""Global device type priority configuration."""
-
 from uuid import UUID
+from datetime import datetime
 
-from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, Unique, datetime_tz
-from app.schemas.device_type import DeviceType
+from app.mappings import PrimaryKey, Indexed, Unique
+from app.schemas.enums import DeviceType
 
 
 class DeviceTypePriority(BaseDbModel):
@@ -20,10 +18,9 @@ class DeviceTypePriority(BaseDbModel):
     """
 
     __tablename__ = "device_type_priority"
-    __table_args__ = (Index("idx_device_type_priority_order", "priority"),)
 
     id: Mapped[PrimaryKey[UUID]]
     device_type: Mapped[Unique[DeviceType]]  # Uses DeviceType enum
-    priority: Mapped[int]  # 1 = highest priority (watch), 99 = lowest (unknown)
-    created_at: Mapped[datetime_tz]
-    updated_at: Mapped[datetime_tz]
+    priority: Mapped[Indexed[int]]  # 1 = highest priority (watch), 99 = lowest (unknown)
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]

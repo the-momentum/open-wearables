@@ -8,7 +8,7 @@ from fastapi import Depends, Header, HTTPException
 from app.database import DbSession
 from app.models import ApiKey, Developer
 from app.repositories.api_key_repository import ApiKeyRepository
-from app.schemas.api_key import ApiKeyCreate, ApiKeyUpdate
+from app.schemas.model_crud.credentials import ApiKeyCreate, ApiKeyUpdate
 from app.services.services import AppService
 from app.utils.auth import get_current_developer_optional
 

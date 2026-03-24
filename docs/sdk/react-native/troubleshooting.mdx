@@ -1,0 +1,347 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Common issues and solutions for the React Native SDK on iOS and Android"
+---
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="HealthKit permissions not showing (iOS)">
+    **Symptoms:** The health permissions dialog doesn't appear when calling `requestAuthorization()`.
+
+    **Solutions:**
+
+    1. **Verify Info.plist configuration:**
+       ```xml
+       <key>NSHealthShareUsageDescription</key>
+       <string>This app syncs your health data to your account.</string>
+       ```
+
+    2. **Check HealthKit capability in Xcode:**
+       - Open `ios/[ProjectName].xcworkspace`
+       - Select target → Signing & Capabilities
+       - Ensure HealthKit is listed
+
+    3. **Run on physical device:**
+       HealthKit doesn't work in the iOS Simulator. Always test on a real device.
+
+    4. **Check provisioning profile:**
+       Your Apple Developer account must have HealthKit capability enabled for the App ID.
+  </Accordion>
+
+  <Accordion title="Health Connect permissions not showing (Android)">
+    **Symptoms:** Permission dialog doesn't appear on Android.
+
+    **Solutions:**
+
+    1. **Ensure Health Connect is installed:**
+       Health Connect must be installed on the device. It's pre-installed on Android 14+ but may need to be installed from Play Store on older versions.
+
+    2. **Set provider before requesting authorization:**
+       ```ts
+       OpenWearablesHealthSDK.setProvider("google"); // or "samsung"
+       const authorized = await OpenWearablesHealthSDK.requestAuthorization([
+          HealthDataType.Steps,
+          HealthDataType.HeartRate,
+          HealthDataType.Sleep
+       ]);
+       // authorized === true  → permissions dialog was shown and accepted
+       // authorized === false → user denied or dialog failed to appear
+       console.log("Permissions granted:", authorized);
+       ```
+
+    3. **Check minSdk version:**
+       Your `android/app/build.gradle` must have `minSdk 29` or higher.
+
+    4. **Verify the Activity is set (if using native Android directly):**
+       The React Native plugin handles this automatically, but if you see permission launcher issues, try rebuilding the app.
+  </Accordion>
+
+  <Accordion title="Background sync not working (iOS)">
+    **Symptoms:** Data only syncs when the app is in the foreground.
+
+    **Solutions:**
+
+    1. **Verify background modes in Info.plist:**
+       ```xml
+       <key>UIBackgroundModes</key>
+       <array>
+           <string>fetch</string>
+           <string>processing</string>
+       </array>
+
+       <key>BGTaskSchedulerPermittedIdentifiers</key>
+       <array>
+           <string>com.openwearables.healthsdk.task.refresh</string>
+           <string>com.openwearables.healthsdk.task.process</string>
+       </array>
+       ```
+
+    2. **Check Background App Refresh setting:**
+       - Go to iOS Settings → Your App → Background App Refresh
+       - Ensure it's enabled
+
+    3. **Check Low Power Mode:**
+       Background tasks are suspended when Low Power Mode is active.
+
+    4. **Wait for system scheduling:**
+       iOS controls when background tasks run. Initial syncs may take 15+ minutes to trigger.
+  </Accordion>
+
+  <Accordion title="Background sync not working (Android)">
+    **Symptoms:** Data only syncs when the app is in the foreground on Android.
+
+    **Solutions:**
+
+    1. **Check battery optimization:**
+       Some Android manufacturers aggressively kill background services. Ask users to disable battery optimization for your app in Settings.
+
+    2. **Verify notification permissions:**
+       On Android 13+, the SDK uses a foreground service notification during sync. Ensure `POST_NOTIFICATIONS` permission is granted.
+
+    3. **Check provider connection:**
+       Verify the health provider is properly connected:
+       ```ts
+       const providers = OpenWearablesHealthSDK.getAvailableProviders();
+       console.log(providers);
+       ```
+  </Accordion>
+
+  <Accordion title="Sign-in fails with error">
+    **Symptoms:** `SignInException` when calling `signIn()`.
+
+    **Solutions:**
+
+    1. **Check token expiration:**
+       Access tokens expire. Ensure your backend generates fresh tokens.
+
+    2. **Verify credentials:**
+       Ensure you're providing either (`accessToken` + `refreshToken`) or `apiKey`:
+       ```ts
+       // Token-based (recommended)
+       await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+
+       // OR API key-based
+       await OpenWearablesHealthSDK.signIn(userId, null, null, apiKey);
+       ```
+
+    3. **Check network connectivity:**
+       Ensure the device can reach your Open Wearables host.
+
+    4. **Handle sign-in errors:**
+       ```ts
+       try {
+         await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+       } catch (e: any) {
+         console.error("Sign-in error:", e?.message ?? String(e));
+       }
+
+       // Or listen for auth errors via the event emitter
+       OpenWearablesHealthSDK.addListener("onAuthError", ({ statusCode, message }) => {
+         console.error(`Auth error ${statusCode}: ${message}`);
+       });
+       ```
+  </Accordion>
+
+  <Accordion title="Data not appearing in Open Wearables">
+    **Symptoms:** Sync completes but data doesn't show up in the API.
+
+    **Solutions:**
+
+    1. **Check sync status:**
+       ```ts
+       const status = OpenWearablesHealthSDK.getSyncStatus();
+       console.log("Sent count:", status.sentCount);
+       ```
+
+    2. **Verify health data exists:**
+       Open Apple Health or Health Connect and confirm data exists for the requested types.
+
+    3. **Check date range:**
+       The SDK syncs data incrementally. New data may not exist yet.
+
+    4. **Reset anchors for full sync:**
+       ```ts
+       OpenWearablesHealthSDK.resetAnchors();
+       await OpenWearablesHealthSDK.syncNow();
+       ```
+
+    5. **Check permissions:**
+       Users may have denied specific data types even if they approved the overall request.
+  </Accordion>
+
+  <Accordion title="NotConfiguredException thrown">
+    **Symptoms:** Exception when calling SDK methods.
+
+    **Solution:**
+    Ensure `configure()` is called before any other SDK methods:
+
+    ```ts
+    // ✅ Correct order
+    OpenWearablesHealthSDK.configure('https://api.openwearables.io');
+    await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+    await OpenWearablesHealthSDK.startBackgroundSync();
+
+    // ❌ Wrong - signIn before configure
+    await OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null); // Throws
+    ```
+  </Accordion>
+
+  <Accordion title="NotSignedInException thrown">
+    **Symptoms:** Exception when starting sync without signing in.
+
+    **Solution:**
+    Check sign-in status before sync operations:
+
+    ```ts
+    if (!OpenWearablesHealthSDK.isSessionValid()) {
+      OpenWearablesHealthSDK.signIn(userId, accessToken, refreshToken, null);
+    }
+    await OpenWearablesHealthSDK.startBackgroundSync();
+    ```
+  </Accordion>
+
+  <Accordion title="Samsung Health not available">
+    **Symptoms:** Samsung Health provider not found on `getAvailableProviders()`.
+
+    **Solutions:**
+
+    1. **Samsung Health must be installed** on the device.
+    2. **Samsung devices only** - Samsung Health is typically only available on Samsung devices.
+    3. **Try Health Connect instead** as it works on all Android 10+ devices:
+       ```ts
+       OpenWearablesHealthSDK.setProvider("google");
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## HealthKit Entitlement Issues (iOS)
+
+If you see "Missing HealthKit entitlement" errors:
+
+1. **In Xcode:**
+   - Target → Signing & Capabilities → Add HealthKit
+   - Check "Background Delivery" for background updates
+
+2. **In Apple Developer Portal:**
+   - App IDs → Your App → Capabilities
+   - Enable HealthKit
+
+3. **Regenerate provisioning profiles** after making changes
+
+### Background Delivery Limitations (iOS)
+
+iOS has strict limits on background execution:
+
+| Factor | Impact |
+|--------|--------|
+| Battery Level | Background tasks paused below 20% |
+| Low Power Mode | All background tasks suspended |
+| User Behavior | iOS learns when you use the app and schedules accordingly |
+| Network | Background tasks require network connectivity |
+
+<Tip>
+  For critical sync operations, prompt users to open the app and trigger `syncNow()` manually.
+</Tip>
+
+## Testing Background Sync
+
+### iOS
+
+To test background sync during development:
+
+1. Run app on device
+2. Navigate to home screen
+3. Wait 15+ minutes (or use Xcode's debug menu)
+4. Check logs for sync activity
+
+In Xcode, you can simulate background fetch:
+- Debug → Simulate Background Fetch
+
+### Android
+
+1. Run app on device or emulator
+2. Minimize the app
+3. The SDK uses WorkManager which should trigger relatively quickly
+4. Check logs via the `onLog` event listener
+
+
+## Debugging Tips
+
+### Enable Debug Logging
+
+```ts
+import OpenWearablesHealthSDK from "open-wearables";
+
+// Listen to SDK logs
+const logSub = OpenWearablesHealthSDK.addListener("onLog", ({ message }) => {
+  console.log("[HealthSDK]", message);
+});
+
+// Listen to auth errors
+const authSub = OpenWearablesHealthSDK.addListener("onAuthError", ({ statusCode, message }) => {
+  console.error(`[HealthSDK] Auth error: ${statusCode} - ${message}`);
+});
+
+// Log current state
+console.log("Is session valid:", OpenWearablesHealthSDK.isSessionValid());
+console.log("Is sync active:", OpenWearablesHealthSDK.isSyncActive());
+console.log("Stored credentials:", OpenWearablesHealthSDK.getStoredCredentials());
+
+// Clean up when done
+logSub.remove();
+authSub.remove();
+```
+
+### Check Stored Credentials
+
+```ts
+const creds = OpenWearablesHealthSDK.getStoredCredentials();
+console.log("Stored credentials:", creds);
+```
+
+### Monitor Sync Progress
+
+```ts
+const status = OpenWearablesHealthSDK.getSyncStatus();
+console.log("Has resumable session:", status.hasResumableSession);
+console.log("Sent count:", status.sentCount);
+console.log("Is full export:", status.isFullExport);
+console.log("Created at:", status.createdAt);
+```
+
+### Force Fresh Start
+
+If things are in a bad state:
+
+```ts
+// Clear everything and start fresh
+OpenWearablesHealthSDK.stopBackgroundSync();
+OpenWearablesHealthSDK.signOut();
+OpenWearablesHealthSDK.resetAnchors();
+
+// Re-initialize
+OpenWearablesHealthSDK.configure('https://api.openwearables.io');
+```
+
+## Getting Help
+
+If you're still experiencing issues:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/the-momentum/open-wearables-react-native-sdk/issues">
+    Report bugs or request features on the SDK repository.
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/the-momentum/open-wearables/discussions">
+    Ask questions and get help from the community.
+  </Card>
+</CardGroup>
+
+When reporting issues, please include:
+- React Native version (`npx react-native --version`)
+- SDK version (from `package.json`)
+- Platform (iOS/Android) and OS version
+- Device model
+- Relevant logs and error messages
+- Steps to reproduce

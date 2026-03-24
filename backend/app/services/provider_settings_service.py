@@ -1,6 +1,10 @@
 from app.database import DbSession
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.schemas import ProviderName, ProviderSettingRead, ProviderSettingUpdate
+from app.schemas.enums import ProviderName
+from app.schemas.model_crud.data_priority import (
+    ProviderSettingRead,
+    ProviderSettingUpdate,
+)
 from app.services.providers.factory import ProviderFactory
 
 
@@ -24,7 +28,7 @@ class ProviderSettingsService:
         for provider_enum in ProviderName:
             provider_key = provider_enum.value
             # Skip providers without active strategies
-            if provider_key in ("unknown", "oura"):
+            if provider_key in ("unknown",):
                 continue
             strategy = self.factory.get_provider(provider_key)
 
