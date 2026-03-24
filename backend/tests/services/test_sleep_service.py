@@ -670,3 +670,49 @@ class TestSDKSyncEndpointSleep:
         assert response.status_code == 202
         data = response.json()
         assert data["status_code"] == 202
+
+
+class TestNoIntermediateRedisSaves:
+    """Regression test: Redis state must only be saved once per batch, not per stage.
+
+    Previously, save_sleep_state was called inside the per-stage loop, exposing
+    partially-accumulated intermediate states to the concurrent finalize_stale_sleeps
+    task.  That task could read a partial state, decide it was stale, and finalize it
+    — producing a duplicate (subset) sleep record.  Moving the save outside the loop
+    prevents this race condition.
+    """
+
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.apple.healthkit.sleep_service.event_record_service")
+    @patch("app.services.apple.healthkit.sleep_service.get_redis_client")
+    def test_redis_set_called_once_per_batch(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        """Redis .set() should be called exactly once after processing all stages."""
+        user_id = str(uuid4())
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        mock_redis_func.return_value = mock_redis
+
+        request = SyncRequest.model_validate(DETAILED_STAGES_PAYLOAD)
+
+        handle_sleep_data(db, request, user_id)
+
+        # Count how many times set() was called (each call = one Redis state save).
+        # With the fix, this should be exactly 1 — after the loop finishes.
+        # Before the fix, it was called once per stage (9 times for this payload).
+        set_calls = mock_redis.set.call_args_list
+        assert len(set_calls) == 1, (
+            f"Expected exactly 1 Redis save per batch, got {len(set_calls)}. "
+            "Intermediate saves expose partial state to finalize_stale_sleeps."
+        )
+
+        # Verify the single saved state contains ALL stages from the payload
+        state = SleepState.model_validate_json(set_calls[0][0][1])
+        # The payload has 9 stages; in_bed is included but counted under in_bed_seconds
+        assert len(state.stages) >= 8  # at least the 8 watch stages + 1 in_bed

@@ -259,6 +259,9 @@ def handle_sleep_data(
             device_model,
             sjson.zoneOffset,
         )
+
+    # Persist the accumulated state to Redis only once after processing the entire batch
+    if current_state:
         save_sleep_state(user_id, current_state)
 
     # Finalize the remaining session synchronously if it is already stale.
