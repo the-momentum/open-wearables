@@ -13,6 +13,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.whoop import WhoopWorkoutCollectionJSON, WhoopWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 
@@ -47,6 +48,13 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/activity/workout", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/workout",
+                )
 
                 # Parse response
                 if isinstance(response, dict):
@@ -275,6 +283,13 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             try:
                 response = self.get_workouts_from_api(db, user_id, **params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/workout",
+                )
 
                 # Parse response
                 if isinstance(response, dict):

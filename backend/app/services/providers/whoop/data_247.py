@@ -20,6 +20,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
@@ -93,6 +94,13 @@ class Whoop247Data(Base247DataTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/activity/sleep", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/activity/sleep",
+                )
 
                 # Extract records from response
                 records = response.get("records", []) if isinstance(response, dict) else []
@@ -402,6 +410,13 @@ class Whoop247Data(Base247DataTemplate):
         """
         try:
             response = self._make_api_request(db, user_id, "/v2/user/measurement/body")
+            store_raw_payload(
+                source="api_response",
+                provider="whoop",
+                payload=response,
+                user_id=str(user_id),
+                trace_id="/v2/user/measurement/body",
+            )
             return response if isinstance(response, dict) else {}
         except Exception as e:
             log_structured(
@@ -543,6 +558,13 @@ class Whoop247Data(Base247DataTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/recovery", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="whoop",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/recovery",
+                )
 
                 # Extract records from response
                 records = response.get("records", []) if isinstance(response, dict) else []
