@@ -1,3 +1,4 @@
+from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -69,6 +70,17 @@ class EventRecordService(
         detail_type: str = "workout",
     ) -> EventRecordDetail:
         return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
+
+    def find_adjacent_sleep_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        threshold_minutes: int,
+    ) -> EventRecord | None:
+        """Find an existing sleep session adjacent to [start_time, end_time]."""
+        return self.crud.find_adjacent_sleep_record(db_session, user_id, start_time, end_time, threshold_minutes)
 
     def bulk_create(
         self,

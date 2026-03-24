@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -569,3 +569,35 @@ class EventRecordRepository(
                 }
             )
         return aggregates
+
+    @handle_exceptions
+    def find_adjacent_sleep_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        threshold_minutes: int,
+    ) -> EventRecord | None:
+        """Return the most-recent sleep session adjacent to [start_time, end_time].
+
+        A record is adjacent when its window overlaps or is within
+        *threshold_minutes* of the candidate window.  The detail relationship
+        is eagerly loaded so callers can read ``sleep_stages`` without an extra
+        query.
+        """
+        threshold = timedelta(minutes=threshold_minutes)
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.detail))
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.category == "sleep",
+                self.model.type == "sleep_session",
+                self.model.start_datetime <= end_time + threshold,
+                self.model.end_datetime >= start_time - threshold,
+            )
+            .order_by(self.model.start_datetime.desc())
+            .first()
+        )

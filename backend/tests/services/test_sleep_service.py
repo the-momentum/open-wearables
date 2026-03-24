@@ -17,6 +17,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.constants.sleep import SleepStageType
+from app.schemas.model_crud.activities import (
+    EventRecordCreate,
+    EventRecordDetailCreate,
+)
 from app.schemas.providers.mobile_sdk import (
     SleepState,
     SleepStateStage,
@@ -402,6 +406,7 @@ class TestFinishSleep:
         mock_record = MagicMock()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
 
         state = SleepState(
             uuid=str(uuid4()),
@@ -466,6 +471,7 @@ class TestFinishSleep:
         mock_record = MagicMock()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
 
         state = SleepState(
             uuid=str(uuid4()),
@@ -549,6 +555,7 @@ class TestHandleSleepDataIntegration:
         mock_record = MagicMock()
         mock_record.id = uuid4()
         mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
 
         request = SyncRequest.model_validate(OLD_WATCH_PAYLOAD)
 
@@ -572,9 +579,7 @@ class TestHandleSleepDataIntegration:
         assert state.light_seconds == 0
         assert state.rem_seconds == 0
 
-        # Stages should have SLEEPING and IN_BED types
-        # Note: with 120-min gap threshold, entries 1-2 form one session (finalized),
-        # entry 3 (sleeping) + entry 4 (in_bed) form the active session in Redis.
+        # All entries are within the gap threshold so they merge into one session.
         sleeping_stages = [s for s in state.stages if s.stage == SleepStageType.SLEEPING]
         in_bed_stages = [s for s in state.stages if s.stage == SleepStageType.IN_BED]
         assert len(sleeping_stages) >= 1
@@ -596,6 +601,11 @@ class TestHandleSleepDataIntegration:
         mock_redis = MagicMock()
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
+
+        mock_record = MagicMock()
+        mock_record.id = uuid4()
+        mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
 
         request = SyncRequest.model_validate(DETAILED_STAGES_PAYLOAD)
 
@@ -699,6 +709,11 @@ class TestNoIntermediateRedisSaves:
         mock_redis.get.return_value = None
         mock_redis_func.return_value = mock_redis
 
+        mock_record = MagicMock()
+        mock_record.id = uuid4()
+        mock_event_service.create.return_value = mock_record
+        mock_event_service.find_adjacent_sleep_record.return_value = None
+
         request = SyncRequest.model_validate(DETAILED_STAGES_PAYLOAD)
 
         handle_sleep_data(db, request, user_id)
@@ -716,3 +731,111 @@ class TestNoIntermediateRedisSaves:
         state = SleepState.model_validate_json(set_calls[0][0][1])
         # The payload has 9 stages; in_bed is included but counted under in_bed_seconds
         assert len(state.stages) >= 8  # at least the 8 watch stages + 1 in_bed
+
+
+class TestHistoricalBulkUploadMerging:
+    """Regression tests: consecutive payloads for the same night must produce
+    a single merged DB record rather than one record per payload.
+
+    Root cause: Apple sends one night's sleep as many small consecutive payloads
+    (each ending where the next begins).  When uploaded hours after recording the
+    synchronous stale-check fires on every payload (now - end_time >> 2 h),
+    immediately finalizing each payload as its own separate session.
+
+    The fix: finish_sleep() queries for an adjacent existing record and merges
+    instead of always inserting.  Combined with the per-user Redis lock that
+    serializes concurrent tasks, this guarantees one DB record per night
+    regardless of how many payloads Apple sends.
+    """
+
+    @patch("app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps")
+    @patch("app.services.apple.healthkit.sleep_service.event_record_service")
+    @patch("app.services.apple.healthkit.sleep_service.get_redis_client")
+    def test_second_payload_merges_with_adjacent_db_record(
+        self,
+        mock_redis_func: MagicMock,
+        mock_event_service: MagicMock,
+        mock_finalize: MagicMock,
+        db: Session,
+    ) -> None:
+        """When payload B arrives after payload A has already been finalized to the
+        DB, finish_sleep should find the adjacent record, delete it and create a
+        new merged record covering both sessions.
+
+        Payload A: 23:00–01:00 (light + deep)
+        Payload B: 01:00–06:00 (rem + light), chains directly onto A
+        """
+
+        user_id = str(uuid4())
+
+        payload_b = {
+            "provider": "apple",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2026-03-23T08:00:01Z",
+            "data": {
+                "records": [],
+                "workouts": [],
+                "sleep": [
+                    {
+                        "id": "B003",
+                        "stage": "rem",
+                        "startDate": "2026-03-23T01:00:00Z",
+                        "endDate": "2026-03-23T02:30:00Z",
+                        "source": {"device_type": "watch", "device_model": "Watch7,9"},
+                    },
+                    {
+                        "id": "B004",
+                        "stage": "light",
+                        "startDate": "2026-03-23T02:30:00Z",
+                        "endDate": "2026-03-23T06:00:00Z",
+                        "source": {"device_type": "watch", "device_model": "Watch7,9"},
+                    },
+                ],
+            },
+        }
+
+        # Simulate the adjacent record that payload A already wrote to the DB
+        mock_adjacent = MagicMock()
+        mock_adjacent.id = uuid4()
+        mock_adjacent.start_datetime = _dt("2026-03-22T23:00:00Z")
+        mock_adjacent.end_datetime = _dt("2026-03-23T01:00:00Z")
+        mock_adjacent.detail = MagicMock()
+        mock_adjacent.detail.sleep_stages = [
+            {"stage": "light", "start_time": "2026-03-22T23:00:00+00:00", "end_time": "2026-03-22T23:45:00+00:00"},
+            {"stage": "deep", "start_time": "2026-03-22T23:45:00+00:00", "end_time": "2026-03-23T01:00:00+00:00"},
+        ]
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None  # No active Redis state for this user
+        mock_redis_func.return_value = mock_redis
+
+        mock_record = MagicMock()
+        mock_record.id = uuid4()
+        mock_event_service.create.return_value = mock_record
+        # First call to find_adjacent returns the payload-A record; second call (if any) returns None
+        mock_event_service.find_adjacent_sleep_record.return_value = mock_adjacent
+
+        handle_sleep_data(db, SyncRequest.model_validate(payload_b), user_id)
+
+        # find_adjacent_sleep_record must have been called to look for a matching record
+        mock_event_service.find_adjacent_sleep_record.assert_called_once()
+
+        # The old record must be deleted before the merged one is created
+        mock_event_service.delete.assert_called_once_with(db, mock_adjacent.id)
+
+        # A new (merged) record must be created
+        mock_event_service.create.assert_called_once()
+        created_record: EventRecordCreate = mock_event_service.create.call_args[0][1]
+
+        # Merged window covers both A and B
+        assert created_record.start_datetime <= _dt("2026-03-22T23:00:00Z")
+        assert created_record.end_datetime >= _dt("2026-03-23T06:00:00Z")
+
+        # Detail must contain stages from both payloads
+        mock_event_service.create_detail.assert_called_once()
+        created_detail: EventRecordDetailCreate = mock_event_service.create_detail.call_args[0][1]
+        assert created_detail.sleep_stages is not None
+        stage_types = {s.stage for s in created_detail.sleep_stages}
+        assert SleepStageType.LIGHT in stage_types
+        assert SleepStageType.DEEP in stage_types
+        assert SleepStageType.REM in stage_types
