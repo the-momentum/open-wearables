@@ -7,8 +7,12 @@ Tests the UltrahumanOAuth class for OAuth 2.0 authentication flow with Ultrahuma
 from unittest.mock import MagicMock, patch
 
 import httpx
+from app.schemas.oauth import AuthenticationMethod
 from sqlalchemy.orm import Session
 
+from app.models import User
+from app.repositories.user_connection_repository import UserConnectionRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
 from tests.factories import UserFactory
@@ -19,10 +23,6 @@ class TestUltrahumanOAuthConfiguration:
 
     def test_ultrahuman_oauth_endpoints(self, db: Session) -> None:
         """Test Ultrahuman OAuth endpoints are configured correctly."""
-        from app.models import User
-        from app.repositories.user_connection_repository import UserConnectionRepository
-        from app.repositories.user_repository import UserRepository
-
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         oauth = UltrahumanOAuth(
@@ -41,10 +41,6 @@ class TestUltrahumanOAuthConfiguration:
 
     def test_ultrahuman_oauth_credentials_structure(self, db: Session) -> None:
         """Test Ultrahuman OAuth credentials are structured correctly."""
-        from app.models import User
-        from app.repositories.user_connection_repository import UserConnectionRepository
-        from app.repositories.user_repository import UserRepository
-
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         oauth = UltrahumanOAuth(
@@ -66,12 +62,6 @@ class TestUltrahumanOAuthConfiguration:
 
     def test_ultrahuman_oauth_uses_body_auth(self, db: Session) -> None:
         """Test Ultrahuman OAuth uses BODY Authentication method."""
-        from app.schemas.oauth import AuthenticationMethod
-
-        from app.models import User
-        from app.repositories.user_connection_repository import UserConnectionRepository
-        from app.repositories.user_repository import UserRepository
-
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         oauth = UltrahumanOAuth(
@@ -86,10 +76,6 @@ class TestUltrahumanOAuthConfiguration:
 
     def test_ultrahuman_oauth_does_not_use_pkce(self, db: Session) -> None:
         """Test Ultrahuman OAuth does not use PKCE."""
-        from app.models import User
-        from app.repositories.user_connection_repository import UserConnectionRepository
-        from app.repositories.user_repository import UserRepository
-
         user_repo = UserRepository(User)
         connection_repo = UserConnectionRepository()
         oauth = UltrahumanOAuth(
@@ -148,7 +134,7 @@ class TestUltrahumanOAuthAuthorization:
         assert call_args[0][1] == 900  # TTL
         assert str(user.id) in call_args[0][2]  # State contains user_id
 
-    @patch("app.integrations.redis_client.get_redis_client")
+    @patch("app.services.providers.templates.base_oauth.get_redis_client")
     def test_authorization_url_includes_scope(self, mock_redis_client: MagicMock, db: Session) -> None:
         """Test authorization URL includes default scope."""
         from app.models import User

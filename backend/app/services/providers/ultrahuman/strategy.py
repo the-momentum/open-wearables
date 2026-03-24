@@ -8,7 +8,7 @@ from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
 class UltrahumanStrategy(BaseProviderStrategy):
     """Ultrahuman Ring Air provider implementation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.oauth = UltrahumanOAuth(
             user_repo=self.user_repo,

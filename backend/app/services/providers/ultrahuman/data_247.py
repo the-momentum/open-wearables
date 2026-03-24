@@ -94,7 +94,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                     item["date"] = date_str
                     # Inject date into the inner object for use in normalization
                     if "object" in item and isinstance(item["object"], dict):
-                        item["ultrahuman_date"] = date_str
+                        item["object"]["ultrahuman_date"] = date_str
                 return metrics
         except HTTPException as e:
             # Fatal errors - should be raised to trigger token refresh or invalidate connection
@@ -180,15 +180,18 @@ class Ultrahuman247Data(Base247DataTemplate):
         db: DbSession,
         user_id: UUID,
         normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data to database as EventRecord with SleepDetails."""
+    ) -> bool:
+        """Save normalized sleep data to database as EventRecord with SleepDetails.
+
+        Returns True if the record was saved, False if skipped.
+        """
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
 
         if not start_dt or not end_dt:
             self.logger.warning(f"Skipping sleep record {sleep_id}: missing start/end time")
-            return
+            return False
 
         # Create EventRecord for sleep
         record = EventRecordCreate(
@@ -234,8 +237,10 @@ class Ultrahuman247Data(Base247DataTemplate):
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
+            return True
         except Exception as e:
             self.logger.error(f"Error saving sleep record {sleep_id}: {e}")
+            return False
 
     # -------------------------------------------------------------------------
     # Recovery Data
@@ -467,8 +472,9 @@ class Ultrahuman247Data(Base247DataTemplate):
             "errors": [],
         }
 
-        current_date = start_time
-        while current_date <= end_time:
+        current_date = datetime.combine(start_time.date(), datetime.min.time(), tzinfo=timezone.utc)
+        end_date = datetime.combine(end_time.date(), datetime.min.time(), tzinfo=timezone.utc)
+        while current_date <= end_date:
             date_str = current_date.strftime("%Y-%m-%d")
             day_error = None
 
@@ -490,8 +496,8 @@ class Ultrahuman247Data(Base247DataTemplate):
                 if "Sleep" in items_by_type:
                     try:
                         normalized_sleep = self.normalize_sleep(items_by_type["Sleep"], user_id)
-                        self.save_sleep_data(db, user_id, normalized_sleep)
-                        results["sleep_sessions_synced"] += 1
+                        if self.save_sleep_data(db, user_id, normalized_sleep):
+                            results["sleep_sessions_synced"] += 1
                     except Exception as e:
                         day_error = f"Sleep processing failed: {e}"
 

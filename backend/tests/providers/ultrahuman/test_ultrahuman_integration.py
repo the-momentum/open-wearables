@@ -71,48 +71,48 @@ class TestUltrahumanSleepDataIntegration:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["sleep_sessions_synced"] > 0:
-                records = (
-                    db.query(EventRecord)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        DataSource.provider == "ultrahuman",
-                        EventRecord.category == "sleep",
-                    )
-                    .all()
+            assert results["sleep_sessions_synced"] > 0, "Fixture has sleep data, expected synced sessions"
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    DataSource.provider == "ultrahuman",
+                    EventRecord.category == "sleep",
                 )
+                .all()
+            )
 
-                assert len(records) > 0, "No sleep records found in database"
+            assert len(records) > 0, "No sleep records found in database"
 
-                for record in records:
-                    assert record.category == "sleep"
-                    assert record.duration_seconds is not None
-                    assert record.start_datetime is not None
-                    assert record.end_datetime is not None
+            for record in records:
+                assert record.category == "sleep"
+                assert record.duration_seconds is not None
+                assert record.start_datetime is not None
+                assert record.end_datetime is not None
 
-                    details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
-                    if details:
-                        assert details.sleep_efficiency_score is not None
-                        assert details.sleep_deep_minutes is not None
-                        assert details.sleep_light_minutes is not None
-                        assert details.sleep_rem_minutes is not None
-                        assert details.sleep_awake_minutes is not None
+                details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
+                if details:
+                    assert details.sleep_efficiency_score is not None
+                    assert details.sleep_deep_minutes is not None
+                    assert details.sleep_light_minutes is not None
+                    assert details.sleep_rem_minutes is not None
+                    assert details.sleep_awake_minutes is not None
 
-                        total = (
-                            (details.sleep_deep_minutes or 0)
-                            + (details.sleep_light_minutes or 0)
-                            + (details.sleep_rem_minutes or 0)
-                            + (details.sleep_awake_minutes or 0)
-                        )
-                        total_sleep = (
-                            (details.sleep_deep_minutes or 0)
-                            + (details.sleep_light_minutes or 0)
-                            + (details.sleep_rem_minutes or 0)
-                        )
+                    total = (
+                        (details.sleep_deep_minutes or 0)
+                        + (details.sleep_light_minutes or 0)
+                        + (details.sleep_rem_minutes or 0)
+                        + (details.sleep_awake_minutes or 0)
+                    )
+                    total_sleep = (
+                        (details.sleep_deep_minutes or 0)
+                        + (details.sleep_light_minutes or 0)
+                        + (details.sleep_rem_minutes or 0)
+                    )
 
-                        assert total >= 0, "Total minutes should be non-negative"
-                        assert total_sleep >= 0, "Total sleep minutes should be non-negative"
+                    assert total >= 0, "Total minutes should be non-negative"
+                    assert total_sleep >= 0, "Total sleep minutes should be non-negative"
 
     def test_sleep_efficiency_extraction_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
@@ -134,24 +134,24 @@ class TestUltrahumanSleepDataIntegration:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["sleep_sessions_synced"] > 0:
-                records = (
-                    db.query(EventRecord)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        EventRecord.category == "sleep",
-                    )
-                    .all()
+            assert results["sleep_sessions_synced"] > 0, "Fixture has sleep data, expected synced sessions"
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    EventRecord.category == "sleep",
                 )
+                .all()
+            )
 
-                for record in records:
-                    details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
-                    if details:
-                        assert details.sleep_efficiency_score is not None, "Sleep efficiency should not be null"
-                        assert 0 <= details.sleep_efficiency_score <= 100, (
-                            f"Sleep efficiency {details.sleep_efficiency_score} should be 0-100"
-                        )
+            for record in records:
+                details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
+                if details:
+                    assert details.sleep_efficiency_score is not None, "Sleep efficiency should not be null"
+                    assert 0 <= details.sleep_efficiency_score <= 100, (
+                        f"Sleep efficiency {details.sleep_efficiency_score} should be 0-100"
+                    )
 
     def test_sleep_stage_values_are_nonzero_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
@@ -173,32 +173,32 @@ class TestUltrahumanSleepDataIntegration:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["sleep_sessions_synced"] > 0:
-                records = (
-                    db.query(EventRecord)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        EventRecord.category == "sleep",
-                    )
-                    .all()
+            assert results["sleep_sessions_synced"] > 0, "Fixture has sleep data, expected synced sessions"
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    EventRecord.category == "sleep",
                 )
+                .all()
+            )
 
-                all_zero = True
-                for record in records:
-                    details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
-                    if details:
-                        stage_sum = (
-                            (details.sleep_deep_minutes or 0)
-                            + (details.sleep_light_minutes or 0)
-                            + (details.sleep_rem_minutes or 0)
-                            + (details.sleep_awake_minutes or 0)
-                        )
-                        if stage_sum > 0:
-                            all_zero = False
-                            break
+            all_zero = True
+            for record in records:
+                details = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
+                if details:
+                    stage_sum = (
+                        (details.sleep_deep_minutes or 0)
+                        + (details.sleep_light_minutes or 0)
+                        + (details.sleep_rem_minutes or 0)
+                        + (details.sleep_awake_minutes or 0)
+                    )
+                    if stage_sum > 0:
+                        all_zero = False
+                        break
 
-                assert not all_zero, "All sleep stage values are zero - parsing may be broken"
+            assert not all_zero, "All sleep stage values are zero - parsing may be broken"
 
 
 class TestUltrahumanActivitySamplesIntegration:
@@ -248,31 +248,31 @@ class TestUltrahumanActivitySamplesIntegration:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["activity_samples"] > 0:
-                samples_by_type = {}
+            assert results["activity_samples"] > 0, "Fixture has activity data, expected synced samples"
+            samples_by_type = {}
 
-                samples = (
-                    db.query(DataPointSeries)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        DataSource.provider == "ultrahuman",
-                    )
-                    .all()
+            samples = (
+                db.query(DataPointSeries)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    DataSource.provider == "ultrahuman",
                 )
+                .all()
+            )
 
-                assert len(samples) > 0, "No activity samples found in database"
+            assert len(samples) > 0, "No activity samples found in database"
 
-                for sample in samples:
-                    if sample.series_type_definition_id not in samples_by_type:
-                        samples_by_type[sample.series_type_definition_id] = 0
-                    samples_by_type[sample.series_type_definition_id] += 1
+            for sample in samples:
+                if sample.series_type_definition_id not in samples_by_type:
+                    samples_by_type[sample.series_type_definition_id] = 0
+                samples_by_type[sample.series_type_definition_id] += 1
 
-                series_types = {1: "heart_rate", 2: "hrv", 3: "body_temperature", 80: "steps"}
+            series_types = {1: "heart_rate", 2: "hrv", 3: "body_temperature", 80: "steps"}
 
-                for type_id, count in samples_by_type.items():
-                    type_name = series_types.get(type_id, f"unknown_{type_id}")
-                    assert count > 0, f"{type_name} should have samples"
+            for type_id, count in samples_by_type.items():
+                type_name = series_types.get(type_id, f"unknown_{type_id}")
+                assert count > 0, f"{type_name} should have samples"
 
     def test_heart_rate_values_are_reasonable_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
@@ -394,18 +394,18 @@ class TestUltrahumanAPIEndpoints:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["sleep_sessions_synced"] > 0:
-                records = (
-                    db.query(EventRecord)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        EventRecord.category == "sleep",
-                    )
-                    .all()
+            assert results["sleep_sessions_synced"] > 0, "Fixture has sleep data, expected synced sessions"
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    EventRecord.category == "sleep",
                 )
+                .all()
+            )
 
-                assert len(records) > 0, "Should have sleep records after sync"
+            assert len(records) > 0, "Should have sleep records after sync"
 
     def test_timeseries_endpoint_returns_data_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
@@ -427,10 +427,10 @@ class TestUltrahumanAPIEndpoints:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["activity_samples"] > 0:
-                samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
+            assert results["activity_samples"] > 0, "Fixture has activity data, expected synced samples"
+            samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
 
-                assert len(samples) > 0, "Should have activity samples after sync"
+            assert len(samples) > 0, "Should have activity samples after sync"
 
 
 class TestUltrahumanErrorHandling:
@@ -529,21 +529,21 @@ class TestUltrahumanErrorHandling:
             results = provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-            if results["sleep_sessions_synced"] > 0:
-                records = (
-                    db.query(EventRecord)
-                    .join(DataSource)
-                    .filter(
-                        DataSource.user_id == user.id,
-                        EventRecord.category == "sleep",
-                    )
-                    .all()
+            assert results["sleep_sessions_synced"] > 0, "Fixture has sleep data, expected synced sessions"
+            records = (
+                db.query(EventRecord)
+                .join(DataSource)
+                .filter(
+                    DataSource.user_id == user.id,
+                    EventRecord.category == "sleep",
                 )
+                .all()
+            )
 
-                for record in records:
-                    assert record.start_datetime >= start_time, (
-                        f"Sleep record {record.start_datetime} is before start time {start_time}"
-                    )
-                    assert record.start_datetime <= end_time, (
-                        f"Sleep record {record.start_datetime} is after end time {end_time}"
-                    )
+            for record in records:
+                assert record.start_datetime >= start_time, (
+                    f"Sleep record {record.start_datetime} is before start time {start_time}"
+                )
+                assert record.start_datetime <= end_time, (
+                    f"Sleep record {record.start_datetime} is after end time {end_time}"
+                )
