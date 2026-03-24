@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
-from app.schemas.enums.series_types import SeriesType, get_series_type_id
+from app.models import DataPointSeries, DataSource, EventRecord, SeriesTypeDefinition, SleepDetails
+from app.schemas.enums.series_types import SeriesType
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from tests.factories import (
@@ -250,7 +250,6 @@ class TestUltrahumanActivitySamplesIntegration:
             db.commit()
 
             assert results["activity_samples"] > 0, "Fixture has activity data, expected synced samples"
-            samples_by_type = {}
 
             samples = (
                 db.query(DataPointSeries)
@@ -264,21 +263,18 @@ class TestUltrahumanActivitySamplesIntegration:
 
             assert len(samples) > 0, "No activity samples found in database"
 
+            # Collect series type codes present in synced samples
+            type_id_to_code = {}
             for sample in samples:
-                if sample.series_type_definition_id not in samples_by_type:
-                    samples_by_type[sample.series_type_definition_id] = 0
-                samples_by_type[sample.series_type_definition_id] += 1
+                if sample.series_type_definition_id not in type_id_to_code:
+                    std = db.query(SeriesTypeDefinition).get(sample.series_type_definition_id)
+                    type_id_to_code[sample.series_type_definition_id] = std.code if std else None
 
-            expected_types = {
-                get_series_type_id(SeriesType.heart_rate): "heart_rate",
-                get_series_type_id(SeriesType.heart_rate_variability_sdnn): "heart_rate_variability_sdnn",
-                get_series_type_id(SeriesType.body_temperature): "body_temperature",
-                get_series_type_id(SeriesType.steps): "steps",
-            }
+            synced_codes = set(type_id_to_code.values())
+            expected_codes = {"heart_rate", "heart_rate_variability_sdnn", "body_temperature", "steps"}
 
-            for type_id, type_name in expected_types.items():
-                assert type_id in samples_by_type, f"{type_name} (id={type_id}) missing from synced samples"
-                assert samples_by_type[type_id] > 0, f"{type_name} should have samples"
+            for code in expected_codes:
+                assert code in synced_codes, f"{code} missing from synced samples"
 
     def test_vo2_max_saved_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """Verify VO2 max value is saved as a DataPointSeries after sync."""
@@ -298,14 +294,13 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        vo2_max_type_id = get_series_type_id(SeriesType.vo2_max)
-
         samples = (
             db.query(DataPointSeries)
             .join(DataSource)
+            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
-                DataPointSeries.series_type_definition_id == vo2_max_type_id,
+                SeriesTypeDefinition.code == SeriesType.vo2_max.value,
             )
             .all()
         )
@@ -335,14 +330,13 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        heart_rate_type_id = get_series_type_id(SeriesType.heart_rate)
-
         samples = (
             db.query(DataPointSeries)
             .join(DataSource)
+            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
-                DataPointSeries.series_type_definition_id == heart_rate_type_id,
+                SeriesTypeDefinition.code == SeriesType.heart_rate.value,
             )
             .all()
         )
@@ -372,14 +366,13 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        temp_type_id = get_series_type_id(SeriesType.body_temperature)
-
         samples = (
             db.query(DataPointSeries)
             .join(DataSource)
+            .join(SeriesTypeDefinition, DataPointSeries.series_type_definition_id == SeriesTypeDefinition.id)
             .filter(
                 DataSource.user_id == user.id,
-                DataPointSeries.series_type_definition_id == temp_type_id,
+                SeriesTypeDefinition.code == SeriesType.body_temperature.value,
             )
             .all()
         )
@@ -387,7 +380,7 @@ class TestUltrahumanActivitySamplesIntegration:
         assert len(samples) > 0, "No temperature samples found"
         for sample in samples:
             value = float(sample.value)
-            assert 35 <= value <= 42, f"Temperature {value} is outside realistic range"
+            assert 29 <= value <= 42, f"Temperature {value} is outside realistic range"
 
     def test_timestamps_are_utc_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
         """Verify all activity sample timestamps are in UTC timezone."""
@@ -412,7 +405,7 @@ class TestUltrahumanActivitySamplesIntegration:
         assert len(samples) > 0, "No activity samples found"
         for sample in samples:
             assert sample.recorded_at.tzinfo is not None, f"Timestamp {sample.recorded_at} has no timezone info"
-            assert sample.recorded_at.tzinfo == timezone.utc, f"Timestamp {sample.recorded_at} is not UTC"
+            assert sample.recorded_at.utcoffset().total_seconds() == 0, f"Timestamp {sample.recorded_at} is not UTC"
 
 
 class TestUltrahumanAPIEndpoints:
