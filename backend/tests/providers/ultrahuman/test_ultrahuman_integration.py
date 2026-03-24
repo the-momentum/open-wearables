@@ -11,11 +11,11 @@ from unittest.mock import patch
 
 from sqlalchemy.orm import Session
 
-from app.models import DataPointSeries, EventRecord, ExternalDeviceMapping, SleepDetails
+from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from tests.factories import (
-    ExternalDeviceMappingFactory,
+    DataSourceFactory,
     UserConnectionFactory,
     UserFactory,
 )
@@ -28,7 +28,7 @@ class TestUltrahumanSleepDataIntegration:
         """Test complete sleep sync flow: Mocked API -> Normalization -> Database."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -57,7 +57,7 @@ class TestUltrahumanSleepDataIntegration:
         """Verify sleep records are correctly stored with all fields."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -74,10 +74,10 @@ class TestUltrahumanSleepDataIntegration:
             if results["sleep_sessions_synced"] > 0:
                 records = (
                     db.query(EventRecord)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
-                        ExternalDeviceMapping.provider_name == "ultrahuman",
+                        DataSource.user_id == user.id,
+                        DataSource.provider == "ultrahuman",
                         EventRecord.category == "sleep",
                     )
                     .all()
@@ -120,7 +120,7 @@ class TestUltrahumanSleepDataIntegration:
         """Verify sleep efficiency is correctly extracted from quick_metrics."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -137,9 +137,9 @@ class TestUltrahumanSleepDataIntegration:
             if results["sleep_sessions_synced"] > 0:
                 records = (
                     db.query(EventRecord)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
+                        DataSource.user_id == user.id,
                         EventRecord.category == "sleep",
                     )
                     .all()
@@ -159,7 +159,7 @@ class TestUltrahumanSleepDataIntegration:
         """Verify sleep stage values are not all zero after sync."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -176,9 +176,9 @@ class TestUltrahumanSleepDataIntegration:
             if results["sleep_sessions_synced"] > 0:
                 records = (
                     db.query(EventRecord)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
+                        DataSource.user_id == user.id,
                         EventRecord.category == "sleep",
                     )
                     .all()
@@ -210,7 +210,7 @@ class TestUltrahumanActivitySamplesIntegration:
         """Test complete activity samples sync flow: Mocked API -> Normalization -> Database."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -234,7 +234,7 @@ class TestUltrahumanActivitySamplesIntegration:
         """Verify activity samples are correctly stored for all data types."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -253,10 +253,10 @@ class TestUltrahumanActivitySamplesIntegration:
 
                 samples = (
                     db.query(DataPointSeries)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
-                        ExternalDeviceMapping.provider_name == "ultrahuman",
+                        DataSource.user_id == user.id,
+                        DataSource.provider == "ultrahuman",
                     )
                     .all()
                 )
@@ -280,7 +280,7 @@ class TestUltrahumanActivitySamplesIntegration:
         """Verify heart rate values are within realistic range (40-200 bpm)."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -298,9 +298,9 @@ class TestUltrahumanActivitySamplesIntegration:
 
         samples = (
             db.query(DataPointSeries)
-            .join(ExternalDeviceMapping)
+            .join(DataSource)
             .filter(
-                ExternalDeviceMapping.user_id == user.id,
+                DataSource.user_id == user.id,
                 DataPointSeries.series_type_definition_id == heart_rate_type_id,
             )
             .all()
@@ -316,7 +316,7 @@ class TestUltrahumanActivitySamplesIntegration:
         """Verify temperature values are within realistic range (35-42°C)."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -334,9 +334,9 @@ class TestUltrahumanActivitySamplesIntegration:
 
         samples = (
             db.query(DataPointSeries)
-            .join(ExternalDeviceMapping)
+            .join(DataSource)
             .filter(
-                ExternalDeviceMapping.user_id == user.id,
+                DataSource.user_id == user.id,
                 DataPointSeries.series_type_definition_id == temp_type_id,
             )
             .all()
@@ -350,7 +350,7 @@ class TestUltrahumanActivitySamplesIntegration:
         """Verify all activity sample timestamps are in UTC timezone."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -364,9 +364,7 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        samples = (
-            db.query(DataPointSeries).join(ExternalDeviceMapping).filter(ExternalDeviceMapping.user_id == user.id).all()
-        )
+        samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
 
         for sample in samples:
             assert sample.recorded_at.tzinfo is not None, f"Timestamp {sample.recorded_at} has no timezone info"
@@ -382,7 +380,7 @@ class TestUltrahumanAPIEndpoints:
         """Verify sleep events endpoint returns data after sync."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -399,9 +397,9 @@ class TestUltrahumanAPIEndpoints:
             if results["sleep_sessions_synced"] > 0:
                 records = (
                     db.query(EventRecord)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
+                        DataSource.user_id == user.id,
                         EventRecord.category == "sleep",
                     )
                     .all()
@@ -415,7 +413,7 @@ class TestUltrahumanAPIEndpoints:
         """Verify timeseries endpoint returns activity samples after sync."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -430,12 +428,7 @@ class TestUltrahumanAPIEndpoints:
             db.commit()
 
             if results["activity_samples"] > 0:
-                samples = (
-                    db.query(DataPointSeries)
-                    .join(ExternalDeviceMapping)
-                    .filter(ExternalDeviceMapping.user_id == user.id)
-                    .all()
-                )
+                samples = db.query(DataPointSeries).join(DataSource).filter(DataSource.user_id == user.id).all()
 
                 assert len(samples) > 0, "Should have activity samples after sync"
 
@@ -447,7 +440,7 @@ class TestUltrahumanErrorHandling:
         """Verify sync continues when API returns no data for some days."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -473,7 +466,7 @@ class TestUltrahumanErrorHandling:
         """Verify sync handles days with partial data (sleep but no activity)."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -522,7 +515,7 @@ class TestUltrahumanErrorHandling:
         """Verify sync only fetches data within specified date range."""
         user = UserFactory()
         UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
-        ExternalDeviceMappingFactory(user_id=user.id, provider_name="ultrahuman")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
 
         factory = ProviderFactory()
         strategy = factory.get_provider("ultrahuman")
@@ -539,9 +532,9 @@ class TestUltrahumanErrorHandling:
             if results["sleep_sessions_synced"] > 0:
                 records = (
                     db.query(EventRecord)
-                    .join(ExternalDeviceMapping)
+                    .join(DataSource)
                     .filter(
-                        ExternalDeviceMapping.user_id == user.id,
+                        DataSource.user_id == user.id,
                         EventRecord.category == "sleep",
                     )
                     .all()

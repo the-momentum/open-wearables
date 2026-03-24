@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 from sqlalchemy.orm import Session
 
-from app.schemas import OAuthTokenResponse
+from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
 from tests.factories import UserFactory
 
