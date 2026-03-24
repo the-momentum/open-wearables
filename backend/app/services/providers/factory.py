@@ -39,7 +39,7 @@ class ProviderFactory:
                 return StravaStrategy()
             case ProviderName.FITBIT.value:
                 return FitbitStrategy()
-            case "ultrahuman":
+            case ProviderName.ULTRAHUMAN.value:
                 return UltrahumanStrategy()
             case _:
                 raise ValueError(f"Unknown provider: {provider_name}")
