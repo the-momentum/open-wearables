@@ -514,6 +514,24 @@ class Ultrahuman247Data(Base247DataTemplate):
                         normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)
                         saved_count = self.save_activity_samples(db, user_id, normalized_samples)
                         results["activity_samples"] += saved_count
+
+                    # VO2 max (single daily value, not a time series)
+                    if "vo2_max" in items_by_type:
+                        vo2_obj = items_by_type["vo2_max"]
+                        vo2_value = vo2_obj.get("value")
+                        vo2_ts = vo2_obj.get("day_start_timestamp")
+                        if vo2_value and vo2_ts:
+                            recorded_at = datetime.fromtimestamp(vo2_ts, tz=timezone.utc)
+                            ts_sample = TimeSeriesSampleCreate(
+                                id=uuid4(),
+                                user_id=user_id,
+                                provider=self.provider_name,
+                                recorded_at=recorded_at,
+                                value=Decimal(str(vo2_value)),
+                                series_type=SeriesType.vo2_max,
+                            )
+                            self.data_point_repo.create(db, ts_sample)
+                            results["activity_samples"] += 1
                 except Exception as e:
                     day_error = f"Activity samples processing failed: {e}"
 

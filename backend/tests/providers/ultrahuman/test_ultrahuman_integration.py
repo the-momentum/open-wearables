@@ -12,6 +12,7 @@ from unittest.mock import patch
 from sqlalchemy.orm import Session
 
 from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
+from app.schemas.enums.series_types import SeriesType, get_series_type_id
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from tests.factories import (
@@ -268,11 +269,51 @@ class TestUltrahumanActivitySamplesIntegration:
                     samples_by_type[sample.series_type_definition_id] = 0
                 samples_by_type[sample.series_type_definition_id] += 1
 
-            expected_types = {1: "heart_rate", 3: "heart_rate_variability_sdnn", 45: "body_temperature", 80: "steps"}
+            expected_types = {
+                get_series_type_id(SeriesType.heart_rate): "heart_rate",
+                get_series_type_id(SeriesType.heart_rate_variability_sdnn): "heart_rate_variability_sdnn",
+                get_series_type_id(SeriesType.body_temperature): "body_temperature",
+                get_series_type_id(SeriesType.steps): "steps",
+            }
 
             for type_id, type_name in expected_types.items():
                 assert type_id in samples_by_type, f"{type_name} (id={type_id}) missing from synced samples"
                 assert samples_by_type[type_id] > 0, f"{type_name} should have samples"
+
+    def test_vo2_max_saved_with_mocked_api(self, db: Session, sample_ultrahuman_api_response: dict) -> None:
+        """Verify VO2 max value is saved as a DataPointSeries after sync."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="ultrahuman", status="active", access_token="test_token")
+        DataSourceFactory(user_id=user.id, provider="ultrahuman")
+
+        factory = ProviderFactory()
+        strategy = factory.get_provider("ultrahuman")
+        provider_impl = strategy.data_247
+        assert isinstance(provider_impl, Ultrahuman247Data)
+
+        end_time = datetime(2024, 1, 16, tzinfo=timezone.utc)
+        start_time = datetime(2024, 1, 15, tzinfo=timezone.utc)
+
+        with patch.object(provider_impl, "_make_api_request", return_value=sample_ultrahuman_api_response):
+            provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
+            db.commit()
+
+        vo2_max_type_id = get_series_type_id(SeriesType.vo2_max)
+
+        samples = (
+            db.query(DataPointSeries)
+            .join(DataSource)
+            .filter(
+                DataSource.user_id == user.id,
+                DataPointSeries.series_type_definition_id == vo2_max_type_id,
+            )
+            .all()
+        )
+
+        assert len(samples) > 0, "No VO2 max samples found"
+        for sample in samples:
+            value = float(sample.value)
+            assert 15 <= value <= 90, f"VO2 max {value} is outside realistic range (15-90 ml/kg/min)"
 
     def test_heart_rate_values_are_reasonable_with_mocked_api(
         self, db: Session, sample_ultrahuman_api_response: dict
@@ -294,7 +335,7 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        heart_rate_type_id = 1
+        heart_rate_type_id = get_series_type_id(SeriesType.heart_rate)
 
         samples = (
             db.query(DataPointSeries)
@@ -331,7 +372,7 @@ class TestUltrahumanActivitySamplesIntegration:
             provider_impl.load_and_save_all(db, user.id, start_time=start_time, end_time=end_time)
             db.commit()
 
-        temp_type_id = 3
+        temp_type_id = get_series_type_id(SeriesType.body_temperature)
 
         samples = (
             db.query(DataPointSeries)
