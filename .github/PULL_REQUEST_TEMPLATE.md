@@ -10,6 +10,7 @@
 - [ ] I have performed a self-review of my code
 - [ ] I have added tests that prove my fix/feature works (if applicable)
 - [ ] New and existing tests pass locally
+- [ ] I have updated relevant documentation in `docs/` (or no docs update needed)
 
 ### Backend Changes
 

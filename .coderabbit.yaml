@@ -1,0 +1,31 @@
+inheritance: true
+
+reviews:
+  instructions: |
+    For every PR that modifies backend API endpoints, provider integrations,
+    or data schemas: flag if no corresponding documentation update is included
+    in docs/. Suggest specific doc files that likely need updating.
+
+  path_instructions:
+    - path: "backend/app/api/**"
+      instructions: |
+        If API endpoints are added, modified, or removed, check whether
+        corresponding documentation in docs/api-reference/ has been updated.
+        If not, flag it as a required change.
+
+    - path: "backend/app/services/providers/**"
+      instructions: |
+        If a new provider is added or an existing provider's data mapping
+        changes, verify that docs/providers/ pages are updated accordingly.
+        Check coverage tables and supported data types.
+
+    - path: "backend/app/schemas/**"
+      instructions: |
+        If data models or enums change (e.g. new provider, new data type),
+        check if docs/architecture/unified-data-model.mdx and related pages
+        reflect these changes.
+
+    - path: "docs/**"
+      instructions: |
+        Verify documentation accuracy against the actual code in this PR.
+        Ensure code examples are correct and API references match current endpoints.
