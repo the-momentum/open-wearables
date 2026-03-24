@@ -14,6 +14,7 @@ class ProviderName(str, Enum):
     STRAVA = "strava"
     OURA = "oura"
     FITBIT = "fitbit"
+    ULTRAHUMAN = "ultrahuman"
     UNKNOWN = "unknown"
 
     @classmethod

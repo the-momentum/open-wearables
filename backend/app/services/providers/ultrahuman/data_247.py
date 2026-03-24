@@ -19,6 +19,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 
 
 class Ultrahuman247Data(Base247DataTemplate):
@@ -78,6 +79,13 @@ class Ultrahuman247Data(Base247DataTemplate):
                 user_id,
                 "/user_data/metrics",
                 params={"date": date_str},
+            )
+            store_raw_payload(
+                source="api_response",
+                provider="ultrahuman",
+                payload=response,
+                user_id=str(user_id),
+                trace_id=date_str,
             )
             if response and "data" in response and "metric_data" in response["data"]:
                 # Add date to each metric item for reference
@@ -422,6 +430,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
+        is_first_sync: bool = False,
     ) -> dict[str, Any]:
         """Load and save all 247 data types by fetching daily metrics.
 
@@ -433,6 +442,10 @@ class Ultrahuman247Data(Base247DataTemplate):
                 - failed_days: int - Number of days that failed to process
                 - errors: list[dict[str, str]] - List of errors with date and message
         """
+
+        # TODO: Extract default backfill days (30) to an env var / settings constant.
+        # Not doing it now - this should be unified across all providers at once,
+        # since other providers like Garmin, Oura, Whoop each hardcode their own defaults.
 
         # Handle date defaults (last 30 days if not specified)
         if isinstance(start_time, str):
@@ -493,7 +506,7 @@ class Ultrahuman247Data(Base247DataTemplate):
                     sample_inputs = []
                     for t in ["hr", "hrv", "temp", "steps"]:
                         if t in items_by_type:
-                            sample_inputs.append({"type": t, "values": items_by_type[t]})
+                            sample_inputs.append({"type": t, "values": items_by_type[t].get("values", [])})
 
                     if sample_inputs:
                         normalized_samples = self.normalize_activity_samples(sample_inputs, user_id)

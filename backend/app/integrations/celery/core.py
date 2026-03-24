@@ -3,6 +3,7 @@ import sys
 from logging import Formatter, StreamHandler, getLogger
 
 from app.config import settings
+from app.services import raw_payload_storage
 from celery import Celery, signals
 from celery import current_app as current_celery_app
 from celery.schedules import crontab
@@ -37,6 +38,18 @@ def setup_celery_logging(**kwargs) -> None:
     celery_logger.addHandler(stdout_handler)
     celery_logger.setLevel(logging.INFO)
     celery_logger.propagate = False
+
+
+@signals.worker_init.connect
+def init_raw_payload_storage(**kwargs) -> None:
+    """Initialize raw payload storage in celery workers."""
+    raw_payload_storage.configure(
+        settings.raw_payload_storage,
+        settings.raw_payload_max_size_bytes,
+        s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
+        s3_prefix=settings.raw_payload_s3_prefix,
+        s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
+    )
 
 
 def create_celery() -> Celery:
