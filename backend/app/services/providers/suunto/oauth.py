@@ -1,3 +1,5 @@
+import logging
+
 from jose import jwt
 from jose.exceptions import JWTError
 
@@ -34,9 +36,13 @@ class SuuntoOAuth(BaseOAuthTemplate):
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts and verifies Suunto user info from JWT access token."""
+        logger = logging.getLogger(__name__)
         credentials = self.credentials
+
         if not credentials.client_secret or not credentials.client_id:
-            return {"user_id": None, "username": None}
+            logger.warning("Suunto OAuth credentials not configured: client_id or client_secret is missing")
+            raise ValueError("Suunto OAuth credentials not configured")
+
         try:
             decoded = jwt.decode(
                 token_response.access_token,
