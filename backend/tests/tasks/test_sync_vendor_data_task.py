@@ -219,17 +219,23 @@ class TestSyncVendorDataTask:
         mock_session_local.return_value.__enter__.return_value = db
         mock_session_local.return_value.__exit__.return_value = None
 
-        # Mock provider to raise an error
-        mock_get_provider.side_effect = Exception("Provider API unavailable")
+        # Mock provider that fails during sync
+        mock_workouts = MagicMock()
+        mock_workouts.load_data.side_effect = Exception("Provider API unavailable")
+
+        mock_strategy = MagicMock()
+        mock_strategy.has_cloud_api = True
+        mock_strategy.workouts = mock_workouts
+        mock_get_provider.return_value = mock_strategy
 
         # Act
         result = sync_vendor_data(str(user.id))
 
         # Assert
         assert str(result["user_id"]) == str(user.id)
-        assert "garmin" in result["errors"]
-        assert "Provider API unavailable" in result["errors"]["garmin"]
-        assert result["providers_synced"] == {}
+        assert "garmin" in result["providers_synced"]
+        assert result["providers_synced"]["garmin"]["params"]["workouts"]["success"] is False
+        assert "Provider API unavailable" in result["providers_synced"]["garmin"]["params"]["workouts"]["error"]
 
     @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
     @patch("app.services.providers.factory.ProviderFactory.get_provider")
@@ -294,6 +300,35 @@ class TestSyncVendorDataTask:
         assert "garmin" in result["providers_synced"]
         assert "workouts" not in result["providers_synced"]["garmin"]["params"]
         assert result["errors"] == {}
+
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.SessionLocal")
+    @patch("app.services.providers.factory.ProviderFactory.get_provider")
+    def test_sync_vendor_data_skips_push_based_provider(
+        self,
+        mock_get_provider: MagicMock,
+        mock_session_local: MagicMock,
+        db: Session,
+        mock_celery_app: MagicMock,
+    ) -> None:
+        """Test that push-based providers (no cloud API) are filtered out entirely."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="apple", status=ConnectionStatus.ACTIVE)
+
+        mock_session_local.return_value.__enter__.return_value = db
+        mock_session_local.return_value.__exit__.return_value = None
+
+        mock_strategy = MagicMock()
+        mock_strategy.has_cloud_api = False
+        mock_get_provider.return_value = mock_strategy
+
+        # Act
+        result = sync_vendor_data(str(user.id))
+
+        # Assert - SDK provider is filtered out, never enters sync loop
+        assert "apple" not in result["providers_synced"]
+        assert result["errors"] == {}
+        assert result["message"] == "No active provider connections found"
 
     def test_sync_vendor_data_invalid_user_id(self, mock_celery_app: MagicMock) -> None:
         """Test handling of invalid user ID format."""

@@ -69,6 +69,9 @@ def sync_vendor_data(
             if providers:
                 connections = [c for c in connections if c.provider in providers]
 
+            # Only sync cloud API providers - SDK-based ones (Apple, Google, Samsung) use process_payload
+            connections = [c for c in connections if factory.get_provider(c.provider).has_cloud_api]
+
             if not connections:
                 log_structured(
                     logger,
