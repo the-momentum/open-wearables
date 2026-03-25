@@ -1,6 +1,8 @@
 """Garmin 247 Data implementation for sleep, dailies, epochs, and body composition."""
 
+import itertools
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -11,10 +13,12 @@ from app.models import DataPointSeries, EventRecord
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import SeriesType
+from app.constants.sleep import SleepStageType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     TimeSeriesSampleCreate,
+    SleepStage,
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
@@ -148,6 +152,51 @@ class Garmin247Data(Base247DataTemplate):
         """Fetch sleep data from Garmin /wellness-api/rest/sleeps."""
         return self._fetch_in_chunks(db, user_id, "/wellness-api/rest/sleeps", start_time, end_time)
 
+    _GARMIN_STAGE_MAP = {
+        "deep": SleepStageType.DEEP,
+        "light": SleepStageType.LIGHT,
+        "rem": SleepStageType.REM,
+        "awake": SleepStageType.AWAKE,
+    }
+
+    def _parse_sleep_levels_map_str(self, sleep_map_str: str) -> dict[SleepStageType, list]:
+        """Parse Garmin's JS-like sleepLevelsMap string into a dict.
+
+        The pull API returns a non-JSON string with unquoted keys, e.g.:
+        "deep: [{startTimeInSeconds: 123, endTimeInSeconds: 456}], light: [...]"
+        Splits on known stage names, then extracts integer pairs from each block.
+        """
+        parts = re.split(r"(deep|light|rem|awake)\s*:\s*", sleep_map_str)[1:]
+        # parts = ['deep', '[{...}], ', 'light', '[{...}]', ...]
+
+        result: dict[SleepStageType, list] = {}
+        for stage, chunk in itertools.batched(parts, 2):
+            nums = [int(n) for n in re.findall(r"\d+", chunk)]
+            intervals = [(start, end) for start, end in itertools.batched(nums, 2)]
+            result[self._GARMIN_STAGE_MAP.get(stage)] = intervals
+        return result
+
+    def _extract_sleep_stages_from_map(self, sleep_map: str | dict) -> list[SleepStage]:
+        """Extract sleep stage intervals from Garmin sleepLevelsMap."""
+        if isinstance(sleep_map, str):
+            sleep_map = self._parse_sleep_levels_map(sleep_map)
+
+        stages: list[SleepStage] = []
+        for garmin_key, intervals in sleep_map.items():
+            stage_type = self._GARMIN_STAGE_MAP.get(garmin_key)
+            if stage_type is None:
+                continue
+            for start_timestamp, end_timestamp in intervals:
+                stages.append(
+                    SleepStage(
+                        stage=stage_type,
+                        start_time=datetime.fromtimestamp(start_timestamp),
+                        end_time=datetime.fromtimestamp(end_timestamp),
+                    )
+                )
+
+        return stages
+
     def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
@@ -167,6 +216,10 @@ class Garmin247Data(Base247DataTemplate):
         light_seconds = raw_sleep.get("lightSleepDurationInSeconds") or 0
         rem_seconds = raw_sleep.get("remSleepInSeconds") or 0
         awake_seconds = raw_sleep.get("awakeDurationInSeconds") or 0
+
+        sleep_stages: list[SleepStage] | None = None
+        if sleep_map := raw_sleep.get("sleepLevelsMap"):
+            sleep_stages = self._extract_sleep_stages_from_map(sleep_map)
 
         # Extract sleep score if available
         sleep_score = None
@@ -188,6 +241,7 @@ class Garmin247Data(Base247DataTemplate):
                 "rem_seconds": rem_seconds,
                 "awake_seconds": awake_seconds,
             },
+            "stage_timestamps": sleep_stages,
             "avg_heart_rate_bpm": raw_sleep.get("averageHeartRate"),
             "min_heart_rate_bpm": raw_sleep.get("lowestHeartRate"),
             "avg_respiration": raw_sleep.get("respirationAvg"),
@@ -255,6 +309,7 @@ class Garmin247Data(Base247DataTemplate):
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
             heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
+            sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
 
         return record, detail
