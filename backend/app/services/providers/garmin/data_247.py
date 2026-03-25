@@ -8,17 +8,17 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import SeriesType
-from app.constants.sleep import SleepStageType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
-    TimeSeriesSampleCreate,
     SleepStage,
+    TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
@@ -159,7 +159,7 @@ class Garmin247Data(Base247DataTemplate):
         "awake": SleepStageType.AWAKE,
     }
 
-    def _parse_sleep_levels_map_str(self, sleep_map_str: str) -> dict[SleepStageType, list]:
+    def _parse_sleep_levels_map(self, sleep_map_str: str) -> dict[SleepStageType, list]:
         """Parse Garmin's JS-like sleepLevelsMap string into a dict.
 
         The pull API returns a non-JSON string with unquoted keys, e.g.:
@@ -173,7 +173,7 @@ class Garmin247Data(Base247DataTemplate):
         for stage, chunk in itertools.batched(parts, 2):
             nums = [int(n) for n in re.findall(r"\d+", chunk)]
             intervals = [(start, end) for start, end in itertools.batched(nums, 2)]
-            result[self._GARMIN_STAGE_MAP.get(stage)] = intervals
+            result[self._GARMIN_STAGE_MAP.get(stage, SleepStageType.UNKNOWN)] = intervals
         return result
 
     def _extract_sleep_stages_from_map(self, sleep_map: str | dict) -> list[SleepStage]:
@@ -182,10 +182,7 @@ class Garmin247Data(Base247DataTemplate):
             sleep_map = self._parse_sleep_levels_map(sleep_map)
 
         stages: list[SleepStage] = []
-        for garmin_key, intervals in sleep_map.items():
-            stage_type = self._GARMIN_STAGE_MAP.get(garmin_key)
-            if stage_type is None:
-                continue
+        for stage_type, intervals in sleep_map.items():
             for start_timestamp, end_timestamp in intervals:
                 stages.append(
                     SleepStage(
