@@ -150,19 +150,13 @@ class Garmin247Data(Base247DataTemplate):
         """Fetch sleep data from Garmin /wellness-api/rest/sleeps."""
         return self._fetch_in_chunks(db, user_id, "/wellness-api/rest/sleeps", start_time, end_time)
 
-    _GARMIN_STAGE_MAP = {
-        "deep": SleepStageType.DEEP,
-        "light": SleepStageType.LIGHT,
-        "rem": SleepStageType.REM,
-        "awake": SleepStageType.AWAKE,
-    }
-
     def _extract_sleep_stages_from_map(self, sleep_map: dict) -> list[SleepStage]:
         """Extract sleep stage intervals from Garmin sleepLevelsMap."""
         stages: list[SleepStage] = []
         for stage_key, intervals in sleep_map.items():
-            stage_type = self._GARMIN_STAGE_MAP.get(stage_key)
-            if stage_type is None:
+            try:
+                stage_type = SleepStageType(stage_key)
+            except ValueError:
                 continue
             for iv in intervals:
                 stages.append(
