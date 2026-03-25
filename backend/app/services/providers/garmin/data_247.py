@@ -1,8 +1,6 @@
 """Garmin 247 Data implementation for sleep, dailies, epochs, and body composition."""
 
-import itertools
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -159,36 +157,19 @@ class Garmin247Data(Base247DataTemplate):
         "awake": SleepStageType.AWAKE,
     }
 
-    def _parse_sleep_levels_map(self, sleep_map_str: str) -> dict[SleepStageType, list]:
-        """Parse Garmin's JS-like sleepLevelsMap string into a dict.
-
-        The pull API returns a non-JSON string with unquoted keys, e.g.:
-        "deep: [{startTimeInSeconds: 123, endTimeInSeconds: 456}], light: [...]"
-        Splits on known stage names, then extracts integer pairs from each block.
-        """
-        parts = re.split(r"(deep|light|rem|awake)\s*:\s*", sleep_map_str)[1:]
-        # parts = ['deep', '[{...}], ', 'light', '[{...}]', ...]
-
-        result: dict[SleepStageType, list] = {}
-        for stage, chunk in itertools.batched(parts, 2):
-            nums = [int(n) for n in re.findall(r"\d+", chunk)]
-            intervals = [(start, end) for start, end in itertools.batched(nums, 2)]
-            result[self._GARMIN_STAGE_MAP.get(stage, SleepStageType.UNKNOWN)] = intervals
-        return result
-
-    def _extract_sleep_stages_from_map(self, sleep_map: str | dict) -> list[SleepStage]:
+    def _extract_sleep_stages_from_map(self, sleep_map: dict) -> list[SleepStage]:
         """Extract sleep stage intervals from Garmin sleepLevelsMap."""
-        if isinstance(sleep_map, str):
-            sleep_map = self._parse_sleep_levels_map(sleep_map)
-
         stages: list[SleepStage] = []
-        for stage_type, intervals in sleep_map.items():
-            for start_timestamp, end_timestamp in intervals:
+        for stage_key, intervals in sleep_map.items():
+            stage_type = self._GARMIN_STAGE_MAP.get(stage_key)
+            if stage_type is None:
+                continue
+            for iv in intervals:
                 stages.append(
                     SleepStage(
                         stage=stage_type,
-                        start_time=datetime.fromtimestamp(start_timestamp, tz=timezone.utc),
-                        end_time=datetime.fromtimestamp(end_timestamp, tz=timezone.utc),
+                        start_time=datetime.fromtimestamp(iv["startTimeInSeconds"], tz=timezone.utc),
+                        end_time=datetime.fromtimestamp(iv["endTimeInSeconds"], tz=timezone.utc),
                     )
                 )
 
