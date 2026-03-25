@@ -187,12 +187,12 @@ class Garmin247Data(Base247DataTemplate):
                 stages.append(
                     SleepStage(
                         stage=stage_type,
-                        start_time=datetime.fromtimestamp(start_timestamp),
-                        end_time=datetime.fromtimestamp(end_timestamp),
+                        start_time=datetime.fromtimestamp(start_timestamp, tz=timezone.utc),
+                        end_time=datetime.fromtimestamp(end_timestamp, tz=timezone.utc),
                     )
                 )
 
-        return stages
+        return sorted(stages, key=lambda s: s.start_time)
 
     def normalize_sleep(
         self,
