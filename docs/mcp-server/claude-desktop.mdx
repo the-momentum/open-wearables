@@ -94,6 +94,4 @@ docker compose up -d
 
 ### No users found
 
-The API key determines which users you can see. Ensure:
-1. Users have been created via the API or SDK
-2. Your API key has access to those users
+Make sure `OPEN_WEARABLES_API_URL` in `mcp/config/.env` points to the **API base URL** (e.g. `https://api.openwearables.io` or `http://localhost:8000`), not the URL of your Open Wearables dashboard/frontend. The MCP server calls `GET /api/v1/users` on this URL - if it points to the wrong service, you'll get a 404 ("Resource not found").
