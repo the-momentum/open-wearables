@@ -1327,11 +1327,7 @@ class Garmin247Data(Base247DataTemplate):
         recorded_at = self._from_epoch_seconds(start_ts)
         zone_offset = offset_to_iso(raw_snapshot.get("startTimeOffsetInSeconds"))
 
-        summaries = {
-            s["summaryType"]: s
-            for s in raw_snapshot.get("summaries", [])
-            if "summaryType" in s
-        }
+        summaries = {s["summaryType"]: s for s in raw_snapshot.get("summaries", []) if "summaryType" in s}
 
         # Heart rate from snapshot
         hr_summary = summaries.get("heart_rate", {})

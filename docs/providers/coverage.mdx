@@ -38,8 +38,8 @@ This guide provides a comprehensive overview of data type support across all int
 |-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
 | `heart_rate` | bpm | ✅ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ |
 | `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ✅ | 🔜 | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ◐ | ❌ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | ❌ | ◐ | ❌ | ❌ | ✅ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -169,9 +169,10 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 | **Biometrics During Sleep** | | | | | | | |
 | Average heart rate | 🔜 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Min heart rate | 🔜 | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Average HRV | 🔜 | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| SpO2 | 🔜 | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Nap detection | 🔜 | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Average HRV | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ |
+| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ |
 
 <Info>
   🔜 = Data available from provider API/SDK but processing not yet implemented in Open Wearables.
@@ -242,7 +243,7 @@ Key differences and limitations to be aware of when working with each provider:
 
   - Webhooks push data for 16 data types: activities, sleep, dailies, epochs, body composition, HRV, stress, respiration, pulse ox, blood pressure, user metrics, skin temperature, health snapshots, activity details, Move IQ, and menstrual cycle tracking
   - Full sleep processing with stages (deep, light, REM, awake), duration, efficiency score, and heart rate biometrics
-  - Continuous 24/7 timeseries data: heart rate, steps, energy, HRV, stress levels, body battery, respiratory rate, SpO2, and more
+  - Continuous 24/7 timeseries data: heart rate, steps, energy, HRV (RMSSD, overnight sleep window), stress levels, body battery, respiratory rate, SpO2, and more
   - Body composition from Garmin Index scale: weight, body fat %, BMI
   - Garmin-specific metrics: stress level, body battery, fitness age, skin temperature
   - 135+ workout type mappings to unified taxonomy
