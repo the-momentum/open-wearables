@@ -751,7 +751,7 @@ class Garmin247Data(Base247DataTemplate):
                     recorded_at=recorded_at,
                     zone_offset=zone_offset,
                     value=Decimal(str(last_night_avg)),
-                    series_type=SeriesType.heart_rate_variability_sdnn,
+                    series_type=SeriesType.heart_rate_variability_rmssd,
                     external_id=summary_id,
                 )
             )
@@ -771,7 +771,7 @@ class Garmin247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         zone_offset=zone_offset,
                         value=Decimal(str(hrv_ms)),
-                        series_type=SeriesType.heart_rate_variability_sdnn,
+                        series_type=SeriesType.heart_rate_variability_rmssd,
                         external_id=f"{summary_id}:{offset_str}" if summary_id else None,
                     )
                     samples.append(sample)
@@ -1327,8 +1327,15 @@ class Garmin247Data(Base247DataTemplate):
         recorded_at = self._from_epoch_seconds(start_ts)
         zone_offset = offset_to_iso(raw_snapshot.get("startTimeOffsetInSeconds"))
 
+        summaries = {
+            s["summaryType"]: s
+            for s in raw_snapshot.get("summaries", [])
+            if "summaryType" in s
+        }
+
         # Heart rate from snapshot
-        heart_rate = raw_snapshot.get("heartRate")
+        hr_summary = summaries.get("heart_rate", {})
+        heart_rate = hr_summary.get("avgValue")
         if heart_rate:
             samples.append(
                 TimeSeriesSampleCreate(
@@ -1343,9 +1350,8 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
-        # HRV from snapshot
-        hrv = raw_snapshot.get("hrv")
-        if hrv:
+        # RMSSD HRV from snapshot
+        if rmssd := summaries.get("rmssd_hrv", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1353,14 +1359,30 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     zone_offset=zone_offset,
-                    value=Decimal(str(hrv)),
+                    value=Decimal(str(rmssd)),
+                    series_type=SeriesType.heart_rate_variability_rmssd,
+                    external_id=f"{summary_id}:rmssd_hrv" if summary_id else None,
+                )
+            )
+
+        # SDNN HRV from snapshot
+        if sdrr := summaries.get("sdrr_hrv", {}).get("avgValue"):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(sdrr)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
-                    external_id=f"{summary_id}:hrv" if summary_id else None,
+                    external_id=f"{summary_id}:sdrr_hrv" if summary_id else None,
                 )
             )
 
         # Stress from snapshot
-        stress = raw_snapshot.get("stress")
+        stress_summary = summaries.get("stress", {})
+        stress = stress_summary.get("avgValue")
         if stress is not None and stress >= 0:
             samples.append(
                 TimeSeriesSampleCreate(
@@ -1376,7 +1398,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # SpO2 from snapshot
-        spo2 = raw_snapshot.get("spo2")
+        spo2 = summaries.get("pulse_ox", {}).get("avgValue")
         if spo2:
             samples.append(
                 TimeSeriesSampleCreate(
@@ -1392,7 +1414,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # Respiration from snapshot
-        respiration = raw_snapshot.get("respiration")
+        respiration = summaries.get("respiration", {}).get("avgValue")
         if respiration:
             samples.append(
                 TimeSeriesSampleCreate(
