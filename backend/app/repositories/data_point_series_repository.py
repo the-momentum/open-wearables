@@ -401,7 +401,7 @@ class DataPointSeriesRepository(
                 ON dps.data_source_id = ww.data_source_id
                 AND dps.series_type_definition_id = :hr_type_id
                 AND dps.recorded_at >= ww.start_time
-                AND dps.recorded_at <= ww.end_time
+                AND dps.recorded_at < ww.end_time
             GROUP BY ww.record_id
         """)
 
