@@ -80,9 +80,12 @@ class EventRecordService(
         start_time: datetime,
         end_time: datetime,
         threshold_minutes: int,
+        source: str | None = None,
     ) -> EventRecord | None:
         """Find an existing sleep session adjacent to [start_time, end_time]."""
-        return self.crud.find_adjacent_sleep_record(db_session, user_id, start_time, end_time, threshold_minutes)
+        return self.crud.find_adjacent_sleep_record(
+            db_session, user_id, start_time, end_time, threshold_minutes, source=source
+        )
 
     def create_or_merge_sleep(
         self,
@@ -96,12 +99,19 @@ class EventRecordService(
 
         When an adjacent session already exists in the database within the gap threshold,
         the two records are merged: the time window expands to cover both, stage minutes
-        are summed, and efficiency is recalculated as a time-in-bed-weighted average.
-        The merged record is created first, and the old record is deleted only after a
-        successful insert — so a failure never loses the original data.
+        are summed (or recomputed from the merged stage timeline when windows overlap and
+        stages are available), and efficiency is recalculated as a time-in-bed-weighted
+        average over sessions that have a non-None score.  The merged record is created
+        first, and the old record is deleted only after a successful insert — so a failure
+        never loses the original data.
         """
         adjacent = self.find_adjacent_sleep_record(
-            db_session, user_id, record.start_datetime, record.end_datetime, threshold_minutes
+            db_session,
+            user_id,
+            record.start_datetime,
+            record.end_datetime,
+            threshold_minutes,
+            source=record.source,
         )
 
         if adjacent is not None:
@@ -114,17 +124,19 @@ class EventRecordService(
             new_in_bed = detail.sleep_time_in_bed_minutes or 0
             merged_in_bed = adj_in_bed + new_in_bed
 
+            # Weighted efficiency: only include sessions that have a non-None score
+            # so a missing score on one session does not dilute the merged average.
             merged_efficiency: Decimal | None = None
-            if merged_in_bed > 0:
-                adj_eff = (
-                    float(adj_detail.sleep_efficiency_score)
-                    if adj_detail and adj_detail.sleep_efficiency_score
-                    else 0.0
-                )
-                new_eff = float(detail.sleep_efficiency_score) if detail.sleep_efficiency_score else 0.0
-                merged_efficiency = Decimal(
-                    str(round((adj_eff * adj_in_bed + new_eff * new_in_bed) / merged_in_bed, 2))
-                )
+            eff_numerator = 0.0
+            eff_denominator = 0
+            if adj_detail and adj_detail.sleep_efficiency_score and adj_in_bed > 0:
+                eff_numerator += float(adj_detail.sleep_efficiency_score) * adj_in_bed
+                eff_denominator += adj_in_bed
+            if detail.sleep_efficiency_score and new_in_bed > 0:
+                eff_numerator += float(detail.sleep_efficiency_score) * new_in_bed
+                eff_denominator += new_in_bed
+            if eff_denominator > 0:
+                merged_efficiency = Decimal(str(round(eff_numerator / eff_denominator, 2)))
 
             # Merge sleep_stages: convert DB dicts back to SleepStage, concatenate, sort
             adj_stages_raw = (adj_detail.sleep_stages if adj_detail else None) or []
@@ -137,6 +149,52 @@ class EventRecordService(
             merged_start = min(adjacent.start_datetime, record.start_datetime)
             merged_end = max(adjacent.end_datetime, record.end_datetime)
 
+            # Compute per-stage minute totals.  When the windows actually overlap
+            # and stage intervals are available, recompute from the merged timeline
+            # (clipping overlaps — consistent with Apple SDK's _calculate_final_metrics)
+            # to avoid double-counting the overlapping period.  For non-overlapping
+            # sessions simple summation is exact.
+            overlap_seconds = max(
+                0,
+                (
+                    min(adjacent.end_datetime, record.end_datetime)
+                    - max(adjacent.start_datetime, record.start_datetime)
+                ).total_seconds(),
+            )
+            if overlap_seconds > 0 and merged_stages:
+                deep_secs = light_secs = rem_secs = awake_secs = sleeping_secs = 0.0
+                last_end = None
+                for s in merged_stages:  # already sorted above
+                    s_start, s_end = s.start_time, s.end_time
+                    if last_end is not None and s_start < last_end:
+                        s_start = last_end
+                    if s_start >= s_end:
+                        continue
+                    dur = (s_end - s_start).total_seconds()
+                    stage_str = str(s.stage)
+                    if stage_str == "deep":
+                        deep_secs += dur
+                    elif stage_str == "light":
+                        light_secs += dur
+                    elif stage_str == "rem":
+                        rem_secs += dur
+                    elif stage_str == "awake":
+                        awake_secs += dur
+                    elif stage_str == "sleeping":
+                        sleeping_secs += dur
+                    last_end = s_end
+                merged_deep = int(deep_secs / 60)
+                merged_light = int(light_secs / 60)
+                merged_rem = int(rem_secs / 60)
+                merged_awake = int(awake_secs / 60)
+                merged_total = merged_deep + merged_light + merged_rem + int(sleeping_secs / 60)
+            else:
+                merged_deep = _adj_int("sleep_deep_minutes") + (detail.sleep_deep_minutes or 0)
+                merged_light = _adj_int("sleep_light_minutes") + (detail.sleep_light_minutes or 0)
+                merged_rem = _adj_int("sleep_rem_minutes") + (detail.sleep_rem_minutes or 0)
+                merged_awake = _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0)
+                merged_total = _adj_int("sleep_total_duration_minutes") + (detail.sleep_total_duration_minutes or 0)
+
             self.logger.info(
                 "Merging adjacent sleep records: %s (%s – %s) + %s (%s – %s)",
                 adjacent.id,
@@ -147,6 +205,38 @@ class EventRecordService(
                 record.end_datetime,
             )
 
+            merged_detail_fields = {
+                "sleep_deep_minutes": merged_deep,
+                "sleep_light_minutes": merged_light,
+                "sleep_rem_minutes": merged_rem,
+                "sleep_awake_minutes": merged_awake,
+                "sleep_total_duration_minutes": merged_total,
+                "sleep_time_in_bed_minutes": merged_in_bed,
+                "sleep_efficiency_score": merged_efficiency,
+                "is_nap": bool(adj_detail.is_nap if adj_detail else False) and bool(detail.is_nap or False),
+                "sleep_stages": merged_stages,
+            }
+
+            # When the merged window is identical to the existing record's window
+            # (new session fully contained within adjacent), inserting a new record
+            # would violate the unique constraint on (data_source_id, start, end).
+            # Detect this upfront and update the detail in-place instead.
+            same_window = (
+                merged_start == adjacent.start_datetime
+                and merged_end == adjacent.end_datetime
+                and record.data_source_id is not None
+                and record.data_source_id == adjacent.data_source_id
+            )
+
+            if same_window:
+                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
+                self.create_detail(
+                    db_session,
+                    detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
+                    detail_type="sleep",
+                )
+                return adjacent
+
             record = record.model_copy(
                 update={
                     "id": uuid4(),
@@ -155,31 +245,28 @@ class EventRecordService(
                     "duration_seconds": int((merged_end - merged_start).total_seconds()),
                 }
             )
-            detail = detail.model_copy(
-                update={
-                    "record_id": record.id,
-                    "sleep_deep_minutes": _adj_int("sleep_deep_minutes") + (detail.sleep_deep_minutes or 0),
-                    "sleep_light_minutes": _adj_int("sleep_light_minutes") + (detail.sleep_light_minutes or 0),
-                    "sleep_rem_minutes": _adj_int("sleep_rem_minutes") + (detail.sleep_rem_minutes or 0),
-                    "sleep_awake_minutes": _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0),
-                    "sleep_total_duration_minutes": _adj_int("sleep_total_duration_minutes")
-                    + (detail.sleep_total_duration_minutes or 0),
-                    "sleep_time_in_bed_minutes": merged_in_bed,
-                    "sleep_efficiency_score": merged_efficiency,
-                    "is_nap": bool(adj_detail.is_nap if adj_detail else False) and bool(detail.is_nap or False),
-                    "sleep_stages": merged_stages,
-                }
-            )
-
-            # Create merged record first, then delete old — if create fails,
-            # the adjacent record stays intact.
-            # If `create` hits the unique constraint (identical timestamps), it
-            # returns the existing adjacent record — in that case skip the delete.
+            # Create merged record first (new UUID), then remove old.
+            # If create fails the adjacent stays intact; detail is created
+            # before the old record is deleted so no data is lost on rollback.
             created_record = self.create(db_session, record)
-            detail = detail.model_copy(update={"record_id": created_record.id})
-            if created_record.id != adjacent.id:
-                self.create_detail(db_session, detail, detail_type="sleep")
-                self.delete(db_session, adjacent.id)
+
+            if created_record.id == adjacent.id:
+                # data_source_id was None (resolved at insert time) and the
+                # constraint returned the existing row — treat as same_window.
+                self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
+                self.create_detail(
+                    db_session,
+                    detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
+                    detail_type="sleep",
+                )
+                return adjacent
+
+            self.create_detail(
+                db_session,
+                detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields}),
+                detail_type="sleep",
+            )
+            self.delete(db_session, adjacent.id)
             return created_record
 
         created_record = self.create(db_session, record)

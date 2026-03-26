@@ -578,6 +578,7 @@ class EventRecordRepository(
         start_time: datetime,
         end_time: datetime,
         threshold_minutes: int,
+        source: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -585,19 +586,26 @@ class EventRecordRepository(
         *threshold_minutes* of the candidate window.  The detail relationship
         is eagerly loaded so callers can read ``sleep_stages`` without an extra
         query.
+
+        When *source* is provided the query is restricted to records whose
+        DataSource has the same source string, preventing cross-provider merges
+        (e.g. Oura sessions being merged with Garmin sessions).
         """
         threshold = timedelta(minutes=threshold_minutes)
+        filters = [
+            DataSource.user_id == user_id,
+            self.model.category == "sleep",
+            self.model.type == "sleep_session",
+            self.model.start_datetime <= end_time + threshold,
+            self.model.end_datetime >= start_time - threshold,
+        ]
+        if source is not None:
+            filters.append(DataSource.source == source)
         return (
             db_session.query(self.model)
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .options(selectinload(self.model.detail))
-            .filter(
-                DataSource.user_id == user_id,
-                self.model.category == "sleep",
-                self.model.type == "sleep_session",
-                self.model.start_datetime <= end_time + threshold,
-                self.model.end_datetime >= start_time - threshold,
-            )
+            .filter(*filters)
             .order_by(self.model.start_datetime.desc())
             .first()
         )

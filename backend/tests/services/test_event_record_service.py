@@ -326,8 +326,8 @@ class TestCreateOrMergeSleep:
             id=uuid4(),
             category="sleep",
             type="sleep_session",
-            source_name="Oura",
-            source="oura",
+            source_name=data_source.source or "test",
+            source=data_source.source,
             user_id=data_source.user_id,
             data_source_id=data_source.id,
             start_datetime=start,
@@ -593,6 +593,78 @@ class TestCreateOrMergeSleep:
 
         db.refresh(result)
         assert result.detail.is_nap is True
+
+    def test_same_user_different_source_not_merged(self, db: Session) -> None:
+        """Sessions from different data sources for the same user are never merged."""
+        user = UserFactory()
+        ds_oura = DataSourceFactory(user=user, source="oura")
+        ds_garmin = DataSourceFactory(user=user, source="garmin")
+
+        existing = EventRecordFactory(
+            mapping=ds_oura,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(20, 56),
+            end_datetime=self._dt(21, 26),
+            duration_seconds=1800,
+        )
+        SleepDetailsFactory(event_record=existing)
+
+        # Garmin record within threshold of the existing Oura record
+        garmin_record = EventRecordCreate(
+            id=uuid4(),
+            category="sleep",
+            type="sleep_session",
+            source_name="garmin",
+            source="garmin",
+            user_id=user.id,
+            data_source_id=ds_garmin.id,
+            start_datetime=self._dt(22, 25),
+            end_datetime=self._dt(7, 40, day=22),
+            duration_seconds=int((self._dt(7, 40, day=22) - self._dt(22, 25)).total_seconds()),
+        )
+        detail = self._detail(garmin_record.id)
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, garmin_record, detail, self.THRESHOLD)
+
+        assert result.id == garmin_record.id
+        assert event_record_service.get(db, existing.id) is not None
+
+    def test_overlapping_sessions_handled_safely(self, db: Session) -> None:
+        """A new session fully contained within an existing one updates the detail without data loss."""
+        user = UserFactory()
+        data_source = DataSourceFactory(user=user)
+
+        existing = EventRecordFactory(
+            mapping=data_source,
+            category="sleep",
+            type_="sleep_session",
+            start_datetime=self._dt(1, 0),
+            end_datetime=self._dt(8, 0),
+            duration_seconds=7 * 3600,
+        )
+        SleepDetailsFactory(
+            event_record=existing,
+            sleep_deep_minutes=60,
+            sleep_light_minutes=180,
+            sleep_rem_minutes=60,
+            sleep_awake_minutes=30,
+            sleep_total_duration_minutes=300,
+            sleep_time_in_bed_minutes=330,
+        )
+
+        # New record is fully contained within existing: 2:00–7:00
+        record = self._record(data_source, self._dt(2, 0), self._dt(7, 0))
+        detail = self._detail(record.id, deep=30, light=150, rem=50, awake=20, in_bed=250)
+
+        result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
+
+        # Merged window equals the existing (new is contained within it)
+        assert result.start_datetime == self._dt(1, 0)
+        assert result.end_datetime == self._dt(8, 0)
+        # Detail must be present — no silent data loss
+        db.refresh(result)
+        assert result.detail is not None
 
     def test_merge_concatenates_sleep_stages(self, db: Session) -> None:
         """Sleep stages from both sessions are concatenated and sorted."""

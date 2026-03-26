@@ -121,3 +121,11 @@ class EventRecordDetailRepository(
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
         """Get detail by its associated event record ID."""
         return db_session.query(EventRecordDetail).filter(EventRecordDetail.record_id == record_id).one_or_none()
+
+    def delete_by_record_id(self, db_session: DbSession, record_id: UUID) -> None:
+        """Delete the detail row for a given record, flushing immediately so the
+        slot is free for a replacement insert in the same transaction."""
+        detail = self.get_by_record_id(db_session, record_id)
+        if detail is not None:
+            db_session.delete(detail)
+            db_session.flush()
