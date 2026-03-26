@@ -17,6 +17,8 @@ export interface UserRead {
   last_name: string | null;
   email: string | null;
   external_user_id: string | null;
+  last_synced_at: string | null;
+  last_synced_provider: string | null;
 }
 
 export interface UserCreate {
@@ -29,7 +31,7 @@ export interface UserCreate {
 export interface UserQueryParams {
   page?: number;
   limit?: number;
-  sort_by?: 'created_at' | 'email' | 'first_name' | 'last_name';
+  sort_by?: 'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
