@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
+import { ROUTES } from '@/lib/constants/routes';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { truncateId } from '@/lib/utils/format';
 import { Badge } from '@/components/ui/badge';
@@ -126,7 +127,7 @@ export function UsersTable({
   };
 
   const handleCopyPairLink = async (userId: string) => {
-    const pairLink = `${window.location.origin}/users/${userId}/pair`;
+    const pairLink = `${window.location.origin}${ROUTES.users}/${userId}/pair`;
     const success = await copyToClipboard(
       pairLink,
       'Pairing link copied to clipboard'
@@ -410,13 +411,24 @@ export function UsersTable({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                  role="link"
+                  tabIndex={0}
+                  className="hover:bg-zinc-800/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-500"
                   onClick={() =>
                     navigate({
-                      to: '/users/$userId',
+                      to: `${ROUTES.users}/$userId`,
                       params: { userId: row.original.id },
                     })
                   }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate({
+                        to: `${ROUTES.users}/$userId`,
+                        params: { userId: row.original.id },
+                      });
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">

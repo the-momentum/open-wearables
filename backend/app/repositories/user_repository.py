@@ -103,7 +103,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
         else:
             sort_column = getattr(self.model, sort_by_column)
             order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
-        query = query.order_by(order_column)
+        query = query.order_by(order_column, self.model.id)
 
         offset = (query_params.page - 1) * query_params.limit
         query = query.offset(offset).limit(query_params.limit)
