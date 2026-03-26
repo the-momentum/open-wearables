@@ -630,5 +630,6 @@ class EventRecordRepository(
             .options(selectinload(self.model.detail))
             .filter(*filters)
             .order_by(self.model.start_datetime.desc())
+            .with_for_update()
             .first()
         )
