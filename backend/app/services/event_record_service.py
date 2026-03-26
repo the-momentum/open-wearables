@@ -230,11 +230,12 @@ class EventRecordService(
 
             if same_window:
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
-                self.create_detail(
+                self.event_record_detail_repo.create_and_flush(
                     db_session,
                     detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
                     detail_type="sleep",
                 )
+                db_session.commit()
                 return adjacent
 
             record = record.model_copy(
@@ -245,33 +246,36 @@ class EventRecordService(
                     "duration_seconds": int((merged_end - merged_start).total_seconds()),
                 }
             )
-            # Create merged record first (new UUID), then remove old.
-            # If create fails the adjacent stays intact; detail is created
-            # before the old record is deleted so no data is lost on rollback.
-            created_record = self.create(db_session, record)
+            created_record = self.crud.create_and_flush(db_session, record)
 
             if created_record.id == adjacent.id:
                 # data_source_id was None (resolved at insert time) and the
                 # constraint returned the existing row — treat as same_window.
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
-                self.create_detail(
+                self.event_record_detail_repo.create_and_flush(
                     db_session,
                     detail.model_copy(update={"record_id": adjacent.id, **merged_detail_fields}),
                     detail_type="sleep",
                 )
+                db_session.commit()
                 return adjacent
 
-            self.create_detail(
+            self.event_record_detail_repo.create_and_flush(
                 db_session,
                 detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields}),
                 detail_type="sleep",
             )
-            self.delete(db_session, adjacent.id)
+            self.crud.delete_flush(db_session, adjacent)
+            db_session.commit()
             return created_record
 
-        created_record = self.create(db_session, record)
-        detail = detail.model_copy(update={"record_id": created_record.id})
-        self.create_detail(db_session, detail, detail_type="sleep")
+        created_record = self.crud.create_and_flush(db_session, record)
+        self.event_record_detail_repo.create_and_flush(
+            db_session,
+            detail.model_copy(update={"record_id": created_record.id}),
+            detail_type="sleep",
+        )
+        db_session.commit()
         return created_record
 
     def bulk_create(

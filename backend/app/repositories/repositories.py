@@ -71,3 +71,8 @@ class CrudRepository[
         db_session.delete(originator)
         db_session.commit()
         return originator
+
+    def delete_flush(self, db_session: DbSession, originator: ModelType) -> None:
+        """Delete the object and flush without committing; caller is responsible for the commit."""
+        db_session.delete(originator)
+        db_session.flush()
