@@ -5,13 +5,19 @@ from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.models import (
+    DataPointSeries,
     DataSource,
     EventRecord,
     EventRecordDetail,
     SleepDetails,
     WorkoutDetails,
 )
-from app.repositories import DataSourceRepository, EventRecordDetailRepository, EventRecordRepository
+from app.repositories import (
+    DataPointSeriesRepository,
+    DataSourceRepository,
+    EventRecordDetailRepository,
+    EventRecordRepository,
+)
 from app.schemas.enums import WORKOUTS_WITH_PACE
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
@@ -44,6 +50,34 @@ class EventRecordService(
         super().__init__(crud_model=EventRecordRepository, model=EventRecord, log=log, **kwargs)
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
+        self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
+
+    def _resolve_avg_hr(
+        self,
+        db_session: DbSession,
+        records: list[EventRecord],
+    ) -> dict[UUID, int | None]:
+        """Return avg HR for each workout record.
+
+        Uses stored heart_rate_avg where available, falls back to a single batch query
+        against data_point_series for records that don't have it.
+        """
+        result: dict[UUID, int | None] = {}
+        missing = []
+
+        for r in records:
+            details = r.detail if isinstance(r.detail, WorkoutDetails) else None
+            if details and details.heart_rate_avg:
+                result[r.id] = int(details.heart_rate_avg)
+            else:
+                result[r.id] = None
+                missing.append((r.id, r.data_source_id, r.start_datetime, r.end_datetime))
+
+        if missing:
+            computed = self.data_point_series_repo.get_avg_hr_for_workout_batch(db_session, missing)
+            result.update(computed)
+
+        return result
 
     def _build_response(
         self,
@@ -377,6 +411,8 @@ class EventRecordService(
                     first_record, _ = records[0]
                     previous_cursor = encode_cursor(first_record.start_datetime, first_record.id, "prev")
 
+        computed_hr = self._resolve_avg_hr(db_session, [r for r, _ in records])
+
         data = []
         for record, data_source in records:
             details: WorkoutDetails | None = record.detail if isinstance(record.detail, WorkoutDetails) else None
@@ -392,7 +428,7 @@ class EventRecordService(
                 source=self._map_source(data_source),
                 calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
                 distance_meters=float(details.distance) if details and details.distance else None,
-                avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
+                avg_heart_rate_bpm=computed_hr.get(record.id),
                 max_heart_rate_bpm=details.heart_rate_max if details else None,
                 avg_pace_sec_per_km=None,  # Derived or in details?
                 elevation_gain_meters=float(details.total_elevation_gain)
@@ -456,7 +492,7 @@ class EventRecordService(
             source=self._map_source(data_source),
             calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
             distance_meters=float(details.distance) if details and details.distance else None,
-            avg_heart_rate_bpm=int(details.heart_rate_avg) if details and details.heart_rate_avg else None,
+            avg_heart_rate_bpm=self._resolve_avg_hr(db_session, [record]).get(record.id),
             max_heart_rate_bpm=details.heart_rate_max if details else None,
             avg_pace_sec_per_km=avg_pace_sec_per_km,
             elevation_gain_meters=float(details.total_elevation_gain)
