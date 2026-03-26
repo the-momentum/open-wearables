@@ -271,7 +271,10 @@ export function UsersTable({
         </span>
       ),
       cell: ({ row }) => (
-        <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="flex justify-end gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Button
             variant="outline"
             size="icon"

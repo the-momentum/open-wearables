@@ -31,7 +31,12 @@ export interface UserCreate {
 export interface UserQueryParams {
   page?: number;
   limit?: number;
-  sort_by?: 'created_at' | 'email' | 'first_name' | 'last_name' | 'last_synced_at';
+  sort_by?:
+    | 'created_at'
+    | 'email'
+    | 'first_name'
+    | 'last_name'
+    | 'last_synced_at';
   sort_order?: 'asc' | 'desc';
   search?: string;
   email?: string;
