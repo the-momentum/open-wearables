@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.constants.sleep import SleepStageType
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -197,6 +198,22 @@ class TestGarmin247Data:
         assert normalized["avg_heart_rate_bpm"] == 58
         assert normalized["min_heart_rate_bpm"] == 48
         assert normalized["avg_respiration"] == 14.5
+
+    def test_extract_sleep_stages_from_map(self, garmin_247: Garmin247Data) -> None:
+        """Sleep stage intervals are parsed, sorted, and typed correctly."""
+        sleep_map = {
+            "deep": [{"startTimeInSeconds": 1705276800, "endTimeInSeconds": 1705280400}],
+            "light": [{"startTimeInSeconds": 1705273200, "endTimeInSeconds": 1705276800}],
+            "rem": [{"startTimeInSeconds": 1705280400, "endTimeInSeconds": 1705284000}],
+            "awake": [{"startTimeInSeconds": 1705284000, "endTimeInSeconds": 1705285800}],
+            "unknown_stage": [{"startTimeInSeconds": 1705285800, "endTimeInSeconds": 1705287600}],  # skipped
+            "deep_bad": [{"startTimeInSeconds": "bad"}],  # skipped
+        }
+        stages = garmin_247._extract_sleep_stages_from_map(sleep_map)
+
+        assert len(stages) == 4
+        assert [s.stage.value for s in stages] == ["light", "deep", "rem", "awake"]
+        assert all(s.start_time.tzinfo == timezone.utc for s in stages)
 
     def test_normalize_sleep_missing_stages(self, garmin_247: Garmin247Data) -> None:
         """Test normalizing sleep with missing stage data."""

@@ -159,13 +159,24 @@ class Garmin247Data(Base247DataTemplate):
             except ValueError:
                 continue
             for iv in intervals:
-                stages.append(
-                    SleepStage(
-                        stage=stage_type,
-                        start_time=datetime.fromtimestamp(iv["startTimeInSeconds"], tz=timezone.utc),
-                        end_time=datetime.fromtimestamp(iv["endTimeInSeconds"], tz=timezone.utc),
+                try:
+                    stages.append(
+                        SleepStage(
+                            stage=stage_type,
+                            start_time=datetime.fromtimestamp(iv["startTimeInSeconds"], tz=timezone.utc),
+                            end_time=datetime.fromtimestamp(iv["endTimeInSeconds"], tz=timezone.utc),
+                        )
                     )
-                )
+                except (KeyError, TypeError, ValueError):
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        f"Invalid sleep stage interval data",
+                        interval_data=iv,
+                        provider="garmin",
+                        task="extract_sleep_stages_from_map",
+                    )
+                    continue
 
         return sorted(stages, key=lambda s: s.start_time)
 
