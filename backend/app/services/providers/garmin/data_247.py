@@ -1330,9 +1330,7 @@ class Garmin247Data(Base247DataTemplate):
         summaries = {s["summaryType"]: s for s in raw_snapshot.get("summaries", []) if "summaryType" in s}
 
         # Heart rate from snapshot
-        hr_summary = summaries.get("heart_rate", {})
-        heart_rate = hr_summary.get("avgValue")
-        if heart_rate:
+        if heart_rate := summaries.get("heart_rate", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1394,8 +1392,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # SpO2 from snapshot
-        spo2 = summaries.get("pulse_ox", {}).get("avgValue")
-        if spo2:
+        if spo2 := summaries.get("pulse_ox", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1410,8 +1407,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # Respiration from snapshot
-        respiration = summaries.get("respiration", {}).get("avgValue")
-        if respiration:
+        if respiration := summaries.get("respiration", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
