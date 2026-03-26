@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
@@ -310,9 +311,7 @@ class Garmin247Data(Base247DataTemplate):
 
         record, detail = result
         try:
-            created_record = event_record_service.create(db, record)
-            detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             log_structured(
                 self.logger,

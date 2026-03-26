@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 
+from app.config import settings
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -234,9 +235,7 @@ class Ultrahuman247Data(Base247DataTemplate):
         )
 
         try:
-            created_record = event_record_service.create(db, record)
-            detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
             return True
         except Exception as e:
             self.logger.error(f"Error saving sleep record {sleep_id}: {e}")

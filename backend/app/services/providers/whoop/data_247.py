@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.config import settings
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -286,15 +287,7 @@ class Whoop247Data(Base247DataTemplate):
         )
 
         try:
-            # Create record first
-            created_record = event_record_service.create(db, record)
-
-            # Ensure we use the ID of the actually created/retrieved record
-            # This handles the case where an existing record was returned
-            detail.record_id = created_record.id
-
-            # Create detail
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             log_structured(
                 self.logger,
@@ -303,9 +296,6 @@ class Whoop247Data(Base247DataTemplate):
                 provider="whoop",
                 task="save_sleep_data",
             )
-            # Rollback is handled by the service/repository or session manager
-            # But we should ensure we don't break the entire sync loop
-            pass
 
     def load_and_save_sleep(
         self,

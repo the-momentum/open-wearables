@@ -1,6 +1,7 @@
 from datetime import datetime
+from decimal import Decimal
 from logging import Logger, getLogger
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.database import DbSession
 from app.models import (
@@ -19,6 +20,7 @@ from app.schemas.model_crud.activities import (
     EventRecordResponse,
     EventRecordUpdate,
 )
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import SleepSession, SleepStagesSummary, Workout, WorkoutDetailed
 from app.schemas.utils import (
     PaginatedResponse,
@@ -81,6 +83,109 @@ class EventRecordService(
     ) -> EventRecord | None:
         """Find an existing sleep session adjacent to [start_time, end_time]."""
         return self.crud.find_adjacent_sleep_record(db_session, user_id, start_time, end_time, threshold_minutes)
+
+    def create_or_merge_sleep(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+        threshold_minutes: int,
+    ) -> EventRecord:
+        """Create a sleep record, merging with any adjacent session within threshold_minutes.
+
+        When an adjacent session already exists in the database within the gap threshold,
+        the two records are merged: the time window expands to cover both, stage minutes
+        are summed, and efficiency is recalculated as a time-in-bed-weighted average.
+        The merged record is created first, and the old record is deleted only after a
+        successful insert — so a failure never loses the original data.
+        """
+        adjacent = self.find_adjacent_sleep_record(
+            db_session, user_id, record.start_datetime, record.end_datetime, threshold_minutes
+        )
+
+        if adjacent is not None:
+            adj_detail: SleepDetails | None = adjacent.detail if isinstance(adjacent.detail, SleepDetails) else None
+
+            def _adj_int(attr: str) -> int:
+                return (getattr(adj_detail, attr) or 0) if adj_detail else 0
+
+            adj_in_bed = _adj_int("sleep_time_in_bed_minutes")
+            new_in_bed = detail.sleep_time_in_bed_minutes or 0
+            merged_in_bed = adj_in_bed + new_in_bed
+
+            merged_efficiency: Decimal | None = None
+            if merged_in_bed > 0:
+                adj_eff = (
+                    float(adj_detail.sleep_efficiency_score)
+                    if adj_detail and adj_detail.sleep_efficiency_score
+                    else 0.0
+                )
+                new_eff = float(detail.sleep_efficiency_score) if detail.sleep_efficiency_score else 0.0
+                merged_efficiency = Decimal(
+                    str(round((adj_eff * adj_in_bed + new_eff * new_in_bed) / merged_in_bed, 2))
+                )
+
+            # Merge sleep_stages: convert DB dicts back to SleepStage, concatenate, sort
+            adj_stages_raw = (adj_detail.sleep_stages if adj_detail else None) or []
+            adj_stages = [SleepStage.model_validate(s) for s in adj_stages_raw]
+            new_stages = list(detail.sleep_stages or [])
+            merged_stages: list[SleepStage] | None = None
+            if adj_stages or new_stages:
+                merged_stages = sorted(adj_stages + new_stages, key=lambda s: s.start_time)
+
+            merged_start = min(adjacent.start_datetime, record.start_datetime)
+            merged_end = max(adjacent.end_datetime, record.end_datetime)
+
+            self.logger.info(
+                "Merging adjacent sleep records: %s (%s – %s) + %s (%s – %s)",
+                adjacent.id,
+                adjacent.start_datetime,
+                adjacent.end_datetime,
+                record.id,
+                record.start_datetime,
+                record.end_datetime,
+            )
+
+            record = record.model_copy(
+                update={
+                    "id": uuid4(),
+                    "start_datetime": merged_start,
+                    "end_datetime": merged_end,
+                    "duration_seconds": int((merged_end - merged_start).total_seconds()),
+                }
+            )
+            detail = detail.model_copy(
+                update={
+                    "record_id": record.id,
+                    "sleep_deep_minutes": _adj_int("sleep_deep_minutes") + (detail.sleep_deep_minutes or 0),
+                    "sleep_light_minutes": _adj_int("sleep_light_minutes") + (detail.sleep_light_minutes or 0),
+                    "sleep_rem_minutes": _adj_int("sleep_rem_minutes") + (detail.sleep_rem_minutes or 0),
+                    "sleep_awake_minutes": _adj_int("sleep_awake_minutes") + (detail.sleep_awake_minutes or 0),
+                    "sleep_total_duration_minutes": _adj_int("sleep_total_duration_minutes")
+                    + (detail.sleep_total_duration_minutes or 0),
+                    "sleep_time_in_bed_minutes": merged_in_bed,
+                    "sleep_efficiency_score": merged_efficiency,
+                    "is_nap": bool(adj_detail.is_nap if adj_detail else False) and bool(detail.is_nap or False),
+                    "sleep_stages": merged_stages,
+                }
+            )
+
+            # Create merged record first, then delete old — if create fails,
+            # the adjacent record stays intact.
+            # If `create` hits the unique constraint (identical timestamps), it
+            # returns the existing adjacent record — in that case skip the delete.
+            created_record = self.create(db_session, record)
+            detail = detail.model_copy(update={"record_id": created_record.id})
+            if created_record.id != adjacent.id:
+                self.create_detail(db_session, detail, detail_type="sleep")
+                self.delete(db_session, adjacent.id)
+            return created_record
+
+        created_record = self.create(db_session, record)
+        detail = detail.model_copy(update={"record_id": created_record.id})
+        self.create_detail(db_session, detail, detail_type="sleep")
+        return created_record
 
     def bulk_create(
         self,
