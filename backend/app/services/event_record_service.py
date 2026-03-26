@@ -68,7 +68,7 @@ class EventRecordService(
         for r in records:
             details = r.detail if isinstance(r.detail, WorkoutDetails) else None
             if details and details.heart_rate_avg is not None:
-                result[r.id] = int(details.heart_rate_avg)
+                result[r.id] = round(details.heart_rate_avg)
             else:
                 result[r.id] = None
                 missing.append((r.id, r.data_source_id, r.start_datetime, r.end_datetime))
