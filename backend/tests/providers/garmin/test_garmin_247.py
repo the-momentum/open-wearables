@@ -9,7 +9,6 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.constants.sleep import SleepStageType
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth

@@ -171,7 +171,7 @@ class Garmin247Data(Base247DataTemplate):
                     log_structured(
                         self.logger,
                         "warning",
-                        f"Invalid sleep stage interval data",
+                        "Invalid sleep stage interval data",
                         interval_data=iv,
                         provider="garmin",
                         task="extract_sleep_stages_from_map",
