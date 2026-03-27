@@ -14,10 +14,10 @@ from app.schemas.model_crud.user_management import (
     UserUpdateInternal,
 )
 from app.schemas.utils import OldPaginatedResponse
-from app.services.user_connection_service import user_connection_service
 from app.services.providers.factory import ProviderFactory
 from app.services.services import AppService
-from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.services.user_connection_service import user_connection_service
+from app.utils.exceptions import handle_exceptions
 from app.utils.structured_logging import log_structured
 
 
@@ -63,15 +63,17 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
             return None
         provider_factory = ProviderFactory()
         for connection in user_connection_service.get_connections_by_user(db_session, user.id):
+            if not connection.access_token:
+                continue
             try:
                 strategy = provider_factory.get_provider(connection.provider)
                 if oauth := strategy.oauth:
-                    user_connection_service.disconnect(db_session, user.id, connection.provider, oauth=oauth)
-            except (ValueError, ResourceNotFoundError) as e:
+                    oauth.deregister_user(connection.access_token)
+            except Exception as e:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Connection for provider '{connection.provider}' not found during deregistration",
+                    f"Failed to deregister user from provider '{connection.provider}'",
                     user_id=user.id,
                     provider=connection.provider,
                     error=str(e),
