@@ -4,7 +4,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Generator
 from uuid import UUID, uuid4
-from xml.etree import ElementTree as ET
+import defusedxml.ElementTree as ET
 
 from app.config import settings
 from app.constants.series_types.apple import SleepPhase, get_series_type_from_metric_type
