@@ -14,8 +14,11 @@ from app.schemas.model_crud.user_management import (
     UserUpdateInternal,
 )
 from app.schemas.utils import OldPaginatedResponse
+from app.services.user_connection_service import user_connection_service
+from app.services.providers.factory import ProviderFactory
 from app.services.services import AppService
-from app.utils.exceptions import handle_exceptions
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.structured_logging import log_structured
 
 
 class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdateInternal]):
@@ -52,6 +55,28 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         update_data = updater.model_dump(exclude_unset=True)
         internal_updater = UserUpdateInternal(**update_data)
         return self.crud.update(db_session, user, internal_updater)
+
+    def delete(self, db_session: DbSession, object_id: UUID | str | int, raise_404: bool = False) -> User | None:
+        """Delete a user by ID."""
+        user = self.get(db_session, object_id, raise_404=raise_404)
+        if not user:
+            return None
+        provider_factory = ProviderFactory()
+        for connection in user_connection_service.get_connections_by_user(db_session, user.id):
+            try:
+                strategy = provider_factory.get_provider(connection.provider)
+                if oauth := strategy.oauth:
+                    user_connection_service.disconnect(db_session, user.id, connection.provider, oauth=oauth)
+            except (ValueError, ResourceNotFoundError) as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Connection for provider '{connection.provider}' not found during deregistration",
+                    user_id=user.id,
+                    provider=connection.provider,
+                    error=str(e),
+                )
+        return self.crud.delete(db_session, user)
 
     @handle_exceptions
     def get_users_paginated(

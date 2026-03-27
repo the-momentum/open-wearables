@@ -47,7 +47,7 @@ class UserConnectionService(
 
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
-            self.logger.info("Disconnected user %s from provider %s", user_id, provider)
+            self.logger.info("Revoked connection for user %s from provider %s", user_id, provider)
             return
 
         # Nothing updated - check if connection exists (already revoked) or not found
