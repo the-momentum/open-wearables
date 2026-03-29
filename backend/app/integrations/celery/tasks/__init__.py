@@ -40,6 +40,12 @@ from .garmin_backfill_task import (
     trigger_next_pending_type as trigger_garmin_next_pending_type,
 )
 from .garmin_gc_task import gc_stuck_backfills
+from .garmin_webhook_task import (
+    process_ping as process_garmin_ping,
+)
+from .garmin_webhook_task import (
+    process_push as process_garmin_push,
+)
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
@@ -73,4 +79,6 @@ __all__ = [
     "sync_vendor_data",
     "sync_all_users",
     "send_invitation_email_task",
+    "process_garmin_ping",
+    "process_garmin_push",
 ]
