@@ -550,7 +550,7 @@ def process_ping(self: Task, payload: dict[str, Any], request_trace_id: str) -> 
         log_structured(
             logger,
             "error",
-            "Error processing Garmin PUSH task",
+            "Error processing Garmin PING task",
             provider="garmin",
             trace_id=request_trace_id,
             error=str(e),
