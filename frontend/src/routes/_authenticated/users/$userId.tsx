@@ -300,7 +300,11 @@ function UserDetailPage() {
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon" aria-label="More user actions">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-label="More user actions"
+                >
                   <Ellipsis className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
