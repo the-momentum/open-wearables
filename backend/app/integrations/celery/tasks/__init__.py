@@ -42,6 +42,7 @@ from .garmin_backfill_task import (
 from .garmin_gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
+from .process_csv_import_task import process_csv_import
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
 from .send_email_task import send_invitation_email_task
@@ -69,6 +70,7 @@ __all__ = [
     "finalize_stale_sleeps",
     "process_sdk_upload",
     "process_aws_upload",
+    "process_csv_import",
     "process_xml_upload",
     "sync_vendor_data",
     "sync_all_users",
