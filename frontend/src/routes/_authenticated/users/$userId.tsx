@@ -14,6 +14,7 @@ import {
   Scale,
   Smartphone,
   Copy,
+  Ellipsis,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -58,6 +59,13 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 export const Route = createFileRoute('/_authenticated/users/$userId')({
   component: UserDetailPage,
@@ -95,6 +103,7 @@ function UserDetailPage() {
   const [codeCopied, setCodeCopied] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isUploading = isUploadingFile(userId);
@@ -242,30 +251,6 @@ function UserDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            onClick={handleUploadClick}
-            disabled={isUploading}
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                Upload Apple Health XML
-              </>
-            )}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xml"
-            onChange={(e) => handleUpload(userId, e)}
-            className="hidden"
-          />
           <Button variant="secondary" onClick={handleCopyPairLink}>
             {copied ? (
               <>
@@ -303,13 +288,48 @@ function UserDetailPage() {
               Generate a one-time code to connect the Open Wearables iOS app
             </TooltipContent>
           </Tooltip>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isDeleting}>
-                <Trash2 className="h-4 w-4" />
-                {isDeleting ? 'Deleting...' : 'Delete User'}
-              </Button>
-            </AlertDialogTrigger>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml"
+            onChange={(e) => handleUpload(userId, e)}
+            className="hidden"
+          />
+          <AlertDialog
+            open={isDeleteDialogOpen}
+            onOpenChange={setIsDeleteDialogOpen}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="icon">
+                  <Ellipsis className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={handleUploadClick}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  {isUploading ? 'Uploading...' : 'Upload Apple Health XML'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <AlertDialogTrigger asChild>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    disabled={isDeleting}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {isDeleting ? 'Deleting...' : 'Delete User'}
+                  </DropdownMenuItem>
+                </AlertDialogTrigger>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete User</AlertDialogTitle>
