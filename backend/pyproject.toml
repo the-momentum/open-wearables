@@ -43,6 +43,7 @@ dev = [
     "faker>=33.1.0",
     "psycopg-binary>=3.3.2",
     "ruff>=0.14.7",
+    "testcontainers[postgres]>=4.14.2",
 ]
 
 [tool.ruff]

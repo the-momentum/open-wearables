@@ -2,7 +2,7 @@
 Main pytest configuration for Open Wearables backend tests.
 
 Following patterns from know-how-tests.md:
-- PostgreSQL test database with transaction rollback
+- PostgreSQL test database with transaction rollback (via testcontainers or external DB)
 - Auto-use fixtures for global mocking
 - Factory pattern for test data
 """
@@ -16,27 +16,45 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from testcontainers.postgres import PostgresContainer
+
+from app.database import BaseDbModel, _get_db_dependency
+from app.main import api
 
 # Set test environment before importing app modules
 os.environ["ENV"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
 
-from app.database import BaseDbModel, _get_db_dependency
-from app.main import api
 
-# Test database URL - uses test PostgreSQL database
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test",
-)
+@pytest.fixture(scope="session")
+def _postgres_url() -> Generator[str, None, None]:
+    """
+    Provide a PostgreSQL connection URL for tests.
+
+    - If TEST_DATABASE_URL is set (e.g. in CI), use it directly.
+    - Otherwise, spin up a PostgreSQL container via testcontainers.
+    """
+    explicit_url = os.environ.get("TEST_DATABASE_URL")
+    if explicit_url:
+        yield explicit_url
+        return
+
+    with PostgresContainer(
+        image="postgres:18",
+        username="open-wearables",
+        password="open-wearables",
+        dbname="open_wearables_test",
+        driver="psycopg",
+    ) as pg:
+        yield pg.get_connection_url()
 
 
 @pytest.fixture(scope="session")
-def engine() -> Any:
+def engine(_postgres_url: str) -> Any:
     """Create test database engine and tables."""
     test_engine = create_engine(
-        TEST_DATABASE_URL,
+        _postgres_url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,

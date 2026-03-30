@@ -4,45 +4,22 @@ This guide covers how to run tests and write new tests for Open Wearables.
 
 ## Prerequisites
 
-Before running tests, you need a PostgreSQL database running:
+Tests use [testcontainers](https://testcontainers.com/guides/getting-started-with-testcontainers-for-python/) to automatically spin up a disposable PostgreSQL container. You need:
 
-### Option 1: Use Docker (Recommended)
+- **Docker running** on your machine
+- **No manual database setup required** — testcontainers handles everything automatically
 
-```bash
-# Start only the PostgreSQL container
-docker compose up db -d
-
-# Wait for it to be ready
-docker compose logs -f db  # Look for "database system is ready"
-
-# Create the test database
-docker compose exec db psql -U open-wearables -c "CREATE DATABASE open_wearables_test;"
-```
-
-### Option 2: Local PostgreSQL
-
-If you have PostgreSQL installed locally:
-
-```bash
-createdb -U open-wearables open_wearables_test
-```
-
-**Test Database Configuration:**
-- Host: `localhost`
-- Port: `5432`
-- Database: `open_wearables_test`
-- User: `open-wearables`
-- Password: `open-wearables`
+> **CI note:** In GitHub Actions the workflow provides its own PostgreSQL service and sets `TEST_DATABASE_URL`. When that variable is present, testcontainers is skipped and the external database is used directly.
 
 ## Running Tests
 
 ### Backend Tests
 
 ```bash
-# Using Make (recommended)
+# Using Make (recommended; run from project root directory)
 make test
 
-# Or directly with pytest
+# Or directly with pytest (run `uv sync --dev` first)
 cd backend
 uv run pytest
 
@@ -51,9 +28,6 @@ uv run pytest tests/api/v1/test_users.py
 
 # Run with verbose output
 uv run pytest -v
-
-# Run with coverage report
-uv run pytest --cov=app --cov-report=html
 ```
 
 ### Frontend Tests
