@@ -73,7 +73,7 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Failed to deregister user from provider '{connection.provider}'",
+                    "Failed to deregister user",
                     user_id=user.id,
                     provider=connection.provider,
                     error=str(e),

@@ -337,7 +337,7 @@ class BaseOAuthTemplate(ABC):
         log_structured(
             logger,
             "warning",
-            f"Deregistering not supported for provider '{self.provider_name}'",
+            "Deregistering not supported",
             provider=self.provider_name,
             action="deregister_user",
         )
