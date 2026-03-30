@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.series_types.oura.sleep_phase import SLEEP_PHASE_MAP
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord
@@ -142,23 +143,16 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
-    SLEEP_PHASE_MAP = {
-        "1": SleepStageType.DEEP,
-        "2": SleepStageType.LIGHT,
-        "3": SleepStageType.REM,
-        "4": SleepStageType.AWAKE,
-    }
-
     def _extract_sleep_stages(self, sleep_phase_5_min: str | None, sleep_start: str | None) -> list[SleepStage]:
         """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
-        if not sleep_phase_5_min or not sleep_start:
+        if not (sleep_phase_5_min and sleep_start):
             return []
 
         stages: list[SleepStage] = []
 
         phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
 
-        for stage, group in groupby(sleep_phase_5_min, lambda x: self.SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
+        for stage, group in groupby(sleep_phase_5_min, lambda x: SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
             occurrences = len(list(group))
             stages.append(
                 SleepStage(
