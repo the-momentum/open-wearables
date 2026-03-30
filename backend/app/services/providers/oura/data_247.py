@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
@@ -16,6 +17,7 @@ from app.schemas.model_crud.activities import (
     EventRecordDetailCreate,
     TimeSeriesSampleCreate,
 )
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.providers.oura import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
@@ -139,6 +141,41 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
+    def _extract_sleep_stages(self, sleep_phase_5_min: str | None, sleep_start: str | None) -> list[SleepStage]:
+        """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
+        if not sleep_phase_5_min or not sleep_start:
+            return []
+        
+        stages: list[SleepStage] = []
+
+        phase_map = {
+            "1": SleepStageType.DEEP,
+            "2": SleepStageType.LIGHT,
+            "3": SleepStageType.REM,
+            "4": SleepStageType.AWAKE,
+        }
+
+        phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
+        current_phase: SleepStageType | None = None
+        phase_occurences = 0
+
+        for phase in sleep_phase_5_min:
+            stage = phase_map.get(phase, SleepStageType.unknown)
+            if stage == current_phase:
+                phase_occurences += 1
+            else:
+                if current_phase is not None:
+                    stages.append(SleepStage(
+                        stage=current_phase,
+                        start_time=phase_start,
+                        end_time=phase_start + timedelta(minutes=5 * phase_occurences)
+                    ))
+                current_phase = stage
+                phase_start += timedelta(minutes=5 * phase_occurences)
+                phase_occurences = 1
+
+        return stages
+
     def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
@@ -165,6 +202,8 @@ class Oura247Data(Base247DataTemplate):
                 duration_seconds = int((end_dt - start_dt).total_seconds())
             except (ValueError, AttributeError):
                 pass
+
+        sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
 
         internal_id = uuid4()
         with suppress(ValueError, TypeError):

@@ -55,6 +55,7 @@ class OuraSleepJSON(BaseModel):
     readiness_score_delta: float | None = None
     rem_sleep_duration: int | None = None  # seconds
     restless_periods: int | None = None
+    sleep_phase_5_min: str | None = None  # 1 - deep, 2 - light, 3 - rem, 4 - awake
     sleep_score_delta: float | None = None
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
