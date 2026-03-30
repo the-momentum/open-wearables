@@ -305,7 +305,10 @@ function UserDetailPage() {
                   <Ellipsis className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-zinc-800 border-zinc-700/50">
+              <DropdownMenuContent
+                align="end"
+                className="bg-zinc-800 border-zinc-700/50"
+              >
                 <DropdownMenuItem
                   onSelect={handleUploadClick}
                   disabled={isUploading}
