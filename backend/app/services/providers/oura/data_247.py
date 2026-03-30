@@ -16,9 +16,9 @@ from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    SleepStage,
     TimeSeriesSampleCreate,
 )
-from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.providers.oura import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
