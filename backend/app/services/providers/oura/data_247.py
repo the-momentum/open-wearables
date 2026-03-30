@@ -397,20 +397,19 @@ class Oura247Data(Base247DataTemplate):
             ("temperature_deviation", SeriesType.body_temperature),
         ]
 
+        samples: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in metrics:
             value = normalized_recovery.get(field_name)
             if value is not None:
                 try:
-                    sample = TimeSeriesSampleCreate(
+                    samples.append(TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=timestamp,
                         value=Decimal(str(value)),
                         series_type=series_type,
-                    )
-                    timeseries_service.crud.create(db, sample)
-                    count += 1
+                    ))
                 except Exception as e:
                     log_structured(
                         self.logger,
@@ -421,7 +420,9 @@ class Oura247Data(Base247DataTemplate):
                         error=str(e),
                     )
 
-        return count
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
 
     def load_and_save_recovery(
         self,
@@ -475,7 +476,7 @@ class Oura247Data(Base247DataTemplate):
         raw_data: list[dict[str, Any]],
     ) -> int:
         """Save heart rate samples as DataPointSeries."""
-        count = 0
+        samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             bpm = item.get("bpm")
             timestamp_str = item.get("timestamp")
@@ -484,16 +485,14 @@ class Oura247Data(Base247DataTemplate):
 
             try:
                 recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-                sample = TimeSeriesSampleCreate(
+                samples.append(TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(bpm)),
                     series_type=SeriesType.heart_rate,
-                )
-                timeseries_service.crud.create(db, sample)
-                count += 1
+                ))
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -503,7 +502,9 @@ class Oura247Data(Base247DataTemplate):
                     error=str(e),
                 )
 
-        return count
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
 
     # -------------------------------------------------------------------------
     # Daily Activity Data - /v2/usercollection/daily_activity
@@ -562,27 +563,24 @@ class Oura247Data(Base247DataTemplate):
         normalized: dict[str, list[dict[str, Any]]],
     ) -> int:
         """Save daily activity data as DataPointSeries."""
-        count = 0
-
         type_map = {
             "steps": SeriesType.steps,
             "energy": SeriesType.energy,
             "distance": SeriesType.distance_walking_running,
         }
 
+        samples: list[TimeSeriesSampleCreate] = []
         for key, series_type in type_map.items():
             for item in normalized.get(key, []):
                 try:
-                    sample = TimeSeriesSampleCreate(
+                    samples.append(TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
                         source=self.provider_name,
                         recorded_at=item["recorded_at"],
                         value=Decimal(str(item["value"])),
                         series_type=series_type,
-                    )
-                    timeseries_service.crud.create(db, sample)
-                    count += 1
+                    ))
                 except Exception as e:
                     log_structured(
                         self.logger,
@@ -593,7 +591,9 @@ class Oura247Data(Base247DataTemplate):
                         error=str(e),
                     )
 
-        return count
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
 
     # -------------------------------------------------------------------------
     # Daily SpO2 Data
@@ -620,7 +620,7 @@ class Oura247Data(Base247DataTemplate):
         raw_data: list[dict[str, Any]],
     ) -> int:
         """Save SpO2 data as DataPointSeries."""
-        count = 0
+        samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
             spo2_pct = item.get("spo2_percentage")
             day = item.get("day")
@@ -634,16 +634,14 @@ class Oura247Data(Base247DataTemplate):
 
             try:
                 recorded_at = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                sample = TimeSeriesSampleCreate(
+                samples.append(TimeSeriesSampleCreate(
                     id=uuid4(),
                     user_id=user_id,
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     value=Decimal(str(avg_spo2)),
                     series_type=SeriesType.oxygen_saturation,
-                )
-                timeseries_service.crud.create(db, sample)
-                count += 1
+                ))
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -653,7 +651,9 @@ class Oura247Data(Base247DataTemplate):
                     error=str(e),
                 )
 
-        return count
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
 
     # -------------------------------------------------------------------------
     # Daily Activity Statistics (required by base class)
@@ -793,3 +793,59 @@ class Oura247Data(Base247DataTemplate):
             )
 
         return results
+
+
+    # -------------------------------------------------------------------------
+    # Daily Vo2 Data
+    # -------------------------------------------------------------------------
+
+    def get_vo2_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily Vo2 data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/vO2_max", params)
+
+    def save_vo2_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_data: list[dict[str, Any]],
+    ) -> int:
+        """Save Vo2 data as DataPointSeries."""
+        samples: list[TimeSeriesSampleCreate] = []
+        for item in raw_data:
+            vo2_max = item.get("vo2_max")
+            timestamp = item.get("timestamp")
+            if not vo2_max or not timestamp:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                samples.append(TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    value=Decimal(str(vo2_max)),
+                    series_type=SeriesType.vo2_max,
+                ))
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save Vo2 data",
+                    action="oura_vo2_save_error",
+                    error=str(e),
+                )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
