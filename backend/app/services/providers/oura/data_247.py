@@ -3,6 +3,7 @@
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from itertools import groupby
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -145,7 +146,7 @@ class Oura247Data(Base247DataTemplate):
         """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
         if not sleep_phase_5_min or not sleep_start:
             return []
-        
+
         stages: list[SleepStage] = []
 
         phase_map = {
@@ -156,23 +157,15 @@ class Oura247Data(Base247DataTemplate):
         }
 
         phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
-        current_phase: SleepStageType | None = None
-        phase_occurences = 0
 
-        for phase in sleep_phase_5_min:
-            stage = phase_map.get(phase, SleepStageType.unknown)
-            if stage == current_phase:
-                phase_occurences += 1
-            else:
-                if current_phase is not None:
-                    stages.append(SleepStage(
-                        stage=current_phase,
-                        start_time=phase_start,
-                        end_time=phase_start + timedelta(minutes=5 * phase_occurences)
-                    ))
-                current_phase = stage
-                phase_start += timedelta(minutes=5 * phase_occurences)
-                phase_occurences = 1
+        for stage, group in groupby(sleep_phase_5_min, lambda x: phase_map.get(x, SleepStageType.UNKNOWN)):
+            occurences = len(list(group))
+            stages.append(
+                SleepStage(
+                    stage=stage, start_time=phase_start, end_time=phase_start + timedelta(minutes=5 * occurences)
+                )
+            )
+            phase_start += timedelta(minutes=5 * occurences)
 
         return stages
 
@@ -225,6 +218,7 @@ class Oura247Data(Base247DataTemplate):
                 "rem_seconds": rem_seconds,
                 "awake_seconds": awake_seconds,
             },
+            "stage_timestamps": sleep_stages,
             "average_heart_rate": sleep.average_heart_rate,
             "average_hrv": sleep.average_hrv,
             "lowest_heart_rate": sleep.lowest_heart_rate,
@@ -300,6 +294,7 @@ class Oura247Data(Base247DataTemplate):
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
             is_nap=normalized_sleep.get("is_nap", False),
+            sleep_stages=normalized_sleep.get("stage_timestamps", []),
         )
 
         try:
