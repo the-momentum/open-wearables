@@ -142,6 +142,13 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
+    SLEEP_PHASE_MAP = {
+        "1": SleepStageType.DEEP,
+        "2": SleepStageType.LIGHT,
+        "3": SleepStageType.REM,
+        "4": SleepStageType.AWAKE,
+    }
+
     def _extract_sleep_stages(self, sleep_phase_5_min: str | None, sleep_start: str | None) -> list[SleepStage]:
         """Convert Oura's 5-minute sleep phase string into list of SleepStage."""
         if not sleep_phase_5_min or not sleep_start:
@@ -149,23 +156,16 @@ class Oura247Data(Base247DataTemplate):
 
         stages: list[SleepStage] = []
 
-        phase_map = {
-            "1": SleepStageType.DEEP,
-            "2": SleepStageType.LIGHT,
-            "3": SleepStageType.REM,
-            "4": SleepStageType.AWAKE,
-        }
-
         phase_start = datetime.fromisoformat(sleep_start.replace("Z", "+00:00"))
 
-        for stage, group in groupby(sleep_phase_5_min, lambda x: phase_map.get(x, SleepStageType.UNKNOWN)):
-            occurences = len(list(group))
+        for stage, group in groupby(sleep_phase_5_min, lambda x: self.SLEEP_PHASE_MAP.get(x, SleepStageType.UNKNOWN)):
+            occurrences = len(list(group))
             stages.append(
                 SleepStage(
-                    stage=stage, start_time=phase_start, end_time=phase_start + timedelta(minutes=5 * occurences)
+                    stage=stage, start_time=phase_start, end_time=phase_start + timedelta(minutes=5 * occurrences)
                 )
             )
-            phase_start += timedelta(minutes=5 * occurences)
+            phase_start += timedelta(minutes=5 * occurrences)
 
         return stages
 
