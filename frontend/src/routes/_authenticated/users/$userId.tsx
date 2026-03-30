@@ -42,7 +42,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
   Dialog,
@@ -301,7 +300,7 @@ function UserDetailPage() {
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon">
+                <Button variant="secondary" size="icon" aria-label="More user actions">
                   <Ellipsis className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -321,16 +320,14 @@ function UserDetailPage() {
                   {isUploading ? 'Uploading...' : 'Upload Apple Health XML'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    disabled={isDeleting}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {isDeleting ? 'Deleting...' : 'Delete User'}
-                  </DropdownMenuItem>
-                </AlertDialogTrigger>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  disabled={isDeleting}
+                  onSelect={() => setIsDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {isDeleting ? 'Deleting...' : 'Delete User'}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <AlertDialogContent>
