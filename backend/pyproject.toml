@@ -99,6 +99,9 @@ addopts = "-v --tb=short"
 requires = ["uv_build"]
 build-backend = "uv_build"
 
+[tool.uv]
+exclude-newer= "1 week"
+
 [tool.uv.build-backend]
 module-root = ""
 module-name = "app"
