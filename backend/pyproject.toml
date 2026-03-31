@@ -101,7 +101,7 @@ build-backend = "uv_build"
 
 [tool.uv]
 required-version = ">=0.9.17"
-exclude-newer= "1 week"
+exclude-newer= "3 days"
 
 [tool.uv.build-backend]
 module-root = ""
