@@ -14,6 +14,7 @@ import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
 import { useUserConnections } from '@/hooks/api/use-health';
 import { useMemo } from 'react';
 import { API_CONFIG } from '@/lib/api/config';
+import { isAuthenticated } from '@/lib/auth/session';
 
 export const Route = createFileRoute('/users/$userId/pair/')({
   component: PairWearablePage,
@@ -33,7 +34,7 @@ function PairWearablePage() {
     useOAuthConnect({ userId, redirectUrl });
 
   const { data: apiProviders, isLoading } = useOAuthProviders(true, true);
-  const { data: connections } = useUserConnections(userId);
+  const { data: connections } = useUserConnections(userId, isAuthenticated());
 
   const connectedProviders = useMemo(() => {
     if (!connections) return new Set<string>();

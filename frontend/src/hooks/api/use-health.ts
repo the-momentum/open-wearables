@@ -38,11 +38,11 @@ export function useDisconnectProvider(provider: string, userId: string) {
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections
  */
-export function useUserConnections(userId: string) {
+export function useUserConnections(userId: string, enabled: boolean = true) {
   return useQuery({
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
-    enabled: !!userId,
+    enabled: !!userId && enabled,
   });
 }
 
