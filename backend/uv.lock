@@ -3,8 +3,8 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-24T09:16:47.008644Z"
-exclude-newer-span = "P1W"
+exclude-newer = "2026-03-28T09:59:09.936786Z"
+exclude-newer-span = "P3D"
 
 [[package]]
 name = "alembic"
