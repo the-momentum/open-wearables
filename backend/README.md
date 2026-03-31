@@ -5,14 +5,8 @@ FastAPI backend for the Open Wearables platform.
 ## Requirements
 
 - Python 3.13+
-- [uv](https://github.com/astral-sh/uv) package manager (keep it up to date — see below)
+- [uv](https://github.com/astral-sh/uv) **>=0.9.17** package manager — upgrade with `uv self update` if needed ([docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv))
 - PostgreSQL database
-
-> **Troubleshooting `pyproject.toml` errors?** Make sure you have the latest version of uv:
-> ```bash
-> uv self update
-> ```
-> See the [uv upgrade docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv) for details.
 
 ## Development
 

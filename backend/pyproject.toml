@@ -100,6 +100,7 @@ requires = ["uv_build"]
 build-backend = "uv_build"
 
 [tool.uv]
+required-version = ">=0.9.17"
 exclude-newer= "1 week"
 
 [tool.uv.build-backend]
