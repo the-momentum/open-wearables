@@ -126,6 +126,295 @@ class Oura247Data(Base247DataTemplate):
         return all_data
 
     # -------------------------------------------------------------------------
+    # Daily Activity Data - /v2/usercollection/daily_activity
+    # -------------------------------------------------------------------------
+
+    def get_activity_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily activity data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/daily_activity", params)
+
+    def normalize_activity_samples(
+        self,
+        raw_samples: list[dict[str, Any]],
+        user_id: UUID,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Normalize daily activity data into categorized samples."""
+        result: dict[str, list[dict[str, Any]]] = {
+            "steps": [],
+            "energy": [],
+            "distance": [],
+        }
+
+        for item in raw_samples:
+            activity = OuraDailyActivityJSON(**item)
+            timestamp_str = activity.timestamp or (f"{activity.day}T00:00:00+00:00" if activity.day else None)
+            if not timestamp_str:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+
+            if activity.steps is not None:
+                result["steps"].append({"recorded_at": recorded_at, "value": activity.steps})
+            if activity.active_calories is not None:
+                result["energy"].append({"recorded_at": recorded_at, "value": activity.active_calories})
+            if activity.equivalent_walking_distance is not None:
+                result["distance"].append({"recorded_at": recorded_at, "value": activity.equivalent_walking_distance})
+
+        return result
+
+    def save_activity_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized: dict[str, list[dict[str, Any]]],
+    ) -> int:
+        """Save daily activity data as DataPointSeries."""
+        type_map = {
+            "steps": SeriesType.steps,
+            "energy": SeriesType.energy,
+            "distance": SeriesType.distance_walking_running,
+        }
+
+        samples: list[TimeSeriesSampleCreate] = []
+        for key, series_type in type_map.items():
+            for item in normalized.get(key, []):
+                try:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=item["recorded_at"],
+                            value=Decimal(str(item["value"])),
+                            series_type=series_type,
+                        )
+                    )
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save activity metric",
+                        action="oura_activity_save_error",
+                        metric=key,
+                        error=str(e),
+                    )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
+
+    # -------------------------------------------------------------------------
+    # Cardiovascular age - /v2/usercollection/daily_cardiovascular_age
+    # -------------------------------------------------------------------------
+
+    def get_cardiovascular_age_samples(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily cardiovascular age data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/daily_cardiovascular_age", params)
+
+    def normalize_cardiovascular_age_samples(
+        self,
+        raw_samples: list[dict[str, Any]],
+        user_id: UUID,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Normalize daily cardiovascular age data into categorized samples."""
+        result: list[dict[str, Any]] = []
+
+        for item in raw_samples:
+            day = item.get("day")
+            cardiovascular_age = item.get("vascular_age")
+
+            if cardiovascular_age is None or not day:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(day)
+                result.append((recorded_at, cardiovascular_age))
+            except (ValueError, AttributeError):
+                continue
+
+        return {"cardiovascular_age": result}
+
+    def save_cardiovascular_age_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized: dict[str, list[dict[str, Any]]],
+    ) -> int:
+        """Save daily cardiovascular age data as DataPointSeries."""
+        samples: list[TimeSeriesSampleCreate] = []
+
+        for recorded_at, value in normalized.get("cardiovascular_age", []):
+            try:
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(value)),
+                        series_type=SeriesType.cardiovascular_age,
+                    )
+                )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save cardiovascular age data",
+                    action="oura_cardiovascular_age_save_error",
+                    error=str(e),
+                )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
+
+    # -------------------------------------------------------------------------
+    # Readiness Data
+    # -------------------------------------------------------------------------
+
+    def get_readiness_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily readiness (recovery) data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/daily_readiness", params)
+
+    def normalize_readiness(
+        self,
+        raw_readiness: dict[str, Any],
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        """Normalize Oura readiness data to internal schema."""
+        readiness = OuraDailyReadinessJSON(**raw_readiness)
+
+        timestamp = None
+        if readiness.timestamp:
+            try:
+                timestamp = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                timestamp = datetime.now(timezone.utc)
+        elif readiness.day:
+            try:
+                timestamp = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError):
+                timestamp = datetime.now(timezone.utc)
+
+        return {
+            "user_id": user_id,
+            "provider": self.provider_name,
+            "timestamp": timestamp,
+            "recovery_score": readiness.score,
+            "temperature_deviation": readiness.temperature_deviation,
+            "raw": raw_readiness,
+        }
+
+    def save_readiness_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_readiness: dict[str, Any],
+    ) -> int:
+        """Save normalized readiness data as DataPointSeries."""
+        if not normalized_readiness:
+            return 0
+
+        timestamp = normalized_readiness.get("timestamp")
+        if not timestamp:
+            return 0
+
+        # Map Oura readiness fields to SeriesType
+        metrics = [
+            ("recovery_score", SeriesType.recovery_score),
+            ("temperature_deviation", SeriesType.body_temperature),
+        ]
+
+        samples: list[TimeSeriesSampleCreate] = []
+        for field_name, series_type in metrics:
+            value = normalized_readiness.get(field_name)
+            if value is not None:
+                try:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=timestamp,
+                            value=Decimal(str(value)),
+                            series_type=series_type,
+                        )
+                    )
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save readiness metric",
+                        action="oura_readiness_save_error",
+                        field=field_name,
+                        error=str(e),
+                    )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
+
+    def load_and_save_readiness(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Load readiness data from API and save to database."""
+        raw_data = self.get_readiness_data(db, user_id, start_time, end_time)
+        total_count = 0
+
+        for item in raw_data:
+            try:
+                normalized = self.normalize_readiness(item, user_id)
+                if normalized:
+                    total_count += self.save_readiness_data(db, user_id, normalized)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save readiness data",
+                    action="oura_readiness_save_error",
+                    error=str(e),
+                )
+
+        return total_count
+
+    # -------------------------------------------------------------------------
     # Sleep Data
     # -------------------------------------------------------------------------
 
@@ -329,273 +618,6 @@ class Oura247Data(Base247DataTemplate):
         return count
 
     # -------------------------------------------------------------------------
-    # Recovery / Readiness Data
-    # -------------------------------------------------------------------------
-
-    def get_recovery_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Fetch daily readiness (recovery) data from Oura API."""
-        params = {
-            "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/daily_readiness", params)
-
-    def normalize_recovery(
-        self,
-        raw_recovery: dict[str, Any],
-        user_id: UUID,
-    ) -> dict[str, Any]:
-        """Normalize Oura readiness data to internal schema."""
-        readiness = OuraDailyReadinessJSON(**raw_recovery)
-
-        timestamp = None
-        if readiness.timestamp:
-            try:
-                timestamp = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                timestamp = datetime.now(timezone.utc)
-        elif readiness.day:
-            try:
-                timestamp = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            except (ValueError, AttributeError):
-                timestamp = datetime.now(timezone.utc)
-
-        return {
-            "user_id": user_id,
-            "provider": self.provider_name,
-            "timestamp": timestamp,
-            "recovery_score": readiness.score,
-            "temperature_deviation": readiness.temperature_deviation,
-            "raw": raw_recovery,
-        }
-
-    def save_recovery_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        normalized_recovery: dict[str, Any],
-    ) -> int:
-        """Save normalized readiness data as DataPointSeries."""
-        if not normalized_recovery:
-            return 0
-
-        timestamp = normalized_recovery.get("timestamp")
-        if not timestamp:
-            return 0
-
-        count = 0
-
-        # Map Oura readiness fields to SeriesType
-        metrics = [
-            ("recovery_score", SeriesType.recovery_score),
-            ("temperature_deviation", SeriesType.body_temperature),
-        ]
-
-        samples: list[TimeSeriesSampleCreate] = []
-        for field_name, series_type in metrics:
-            value = normalized_recovery.get(field_name)
-            if value is not None:
-                try:
-                    samples.append(TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=timestamp,
-                        value=Decimal(str(value)),
-                        series_type=series_type,
-                    ))
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save readiness metric",
-                        action="oura_readiness_save_error",
-                        field=field_name,
-                        error=str(e),
-                    )
-
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
-
-    def load_and_save_recovery(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load readiness data from API and save to database."""
-        raw_data = self.get_recovery_data(db, user_id, start_time, end_time)
-        total_count = 0
-
-        for item in raw_data:
-            try:
-                normalized = self.normalize_recovery(item, user_id)
-                if normalized:
-                    total_count += self.save_recovery_data(db, user_id, normalized)
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    "Failed to save readiness data",
-                    action="oura_readiness_save_error",
-                    error=str(e),
-                )
-
-        return total_count
-
-    # -------------------------------------------------------------------------
-    # Heart Rate Data
-    # -------------------------------------------------------------------------
-
-    def get_heart_rate_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601)."""
-        params = {
-            "start_datetime": start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "end_datetime": end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/heartrate", params)
-
-    def save_heart_rate_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_data: list[dict[str, Any]],
-    ) -> int:
-        """Save heart rate samples as DataPointSeries."""
-        samples: list[TimeSeriesSampleCreate] = []
-        for item in raw_data:
-            bpm = item.get("bpm")
-            timestamp_str = item.get("timestamp")
-            if bpm is None or not timestamp_str:
-                continue
-
-            try:
-                recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-                samples.append(TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    source=self.provider_name,
-                    recorded_at=recorded_at,
-                    value=Decimal(str(bpm)),
-                    series_type=SeriesType.heart_rate,
-                ))
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    "Failed to save HR sample",
-                    action="oura_hr_save_error",
-                    error=str(e),
-                )
-
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
-
-    # -------------------------------------------------------------------------
-    # Daily Activity Data - /v2/usercollection/daily_activity
-    # -------------------------------------------------------------------------
-
-    def get_activity_samples(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Fetch daily activity data from Oura API."""
-        params = {
-            "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/daily_activity", params)
-
-    def normalize_activity_samples(
-        self,
-        raw_samples: list[dict[str, Any]],
-        user_id: UUID,
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Normalize daily activity data into categorized samples."""
-        result: dict[str, list[dict[str, Any]]] = {
-            "steps": [],
-            "energy": [],
-            "distance": [],
-        }
-
-        for item in raw_samples:
-            activity = OuraDailyActivityJSON(**item)
-            timestamp_str = activity.timestamp or (f"{activity.day}T00:00:00+00:00" if activity.day else None)
-            if not timestamp_str:
-                continue
-
-            try:
-                recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                continue
-
-            if activity.steps is not None:
-                result["steps"].append({"recorded_at": recorded_at, "value": activity.steps})
-            if activity.active_calories is not None:
-                result["energy"].append({"recorded_at": recorded_at, "value": activity.active_calories})
-            if activity.equivalent_walking_distance is not None:
-                result["distance"].append({"recorded_at": recorded_at, "value": activity.equivalent_walking_distance})
-
-        return result
-
-    def save_activity_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        normalized: dict[str, list[dict[str, Any]]],
-    ) -> int:
-        """Save daily activity data as DataPointSeries."""
-        type_map = {
-            "steps": SeriesType.steps,
-            "energy": SeriesType.energy,
-            "distance": SeriesType.distance_walking_running,
-        }
-
-        samples: list[TimeSeriesSampleCreate] = []
-        for key, series_type in type_map.items():
-            for item in normalized.get(key, []):
-                try:
-                    samples.append(TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=item["recorded_at"],
-                        value=Decimal(str(item["value"])),
-                        series_type=series_type,
-                    ))
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save activity metric",
-                        action="oura_activity_save_error",
-                        metric=key,
-                        error=str(e),
-                    )
-
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
-
-    # -------------------------------------------------------------------------
     # Daily SpO2 Data
     # -------------------------------------------------------------------------
 
@@ -634,14 +656,16 @@ class Oura247Data(Base247DataTemplate):
 
             try:
                 recorded_at = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                samples.append(TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    source=self.provider_name,
-                    recorded_at=recorded_at,
-                    value=Decimal(str(avg_spo2)),
-                    series_type=SeriesType.oxygen_saturation,
-                ))
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(avg_spo2)),
+                        series_type=SeriesType.oxygen_saturation,
+                    )
+                )
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -656,33 +680,118 @@ class Oura247Data(Base247DataTemplate):
         return len(samples)
 
     # -------------------------------------------------------------------------
-    # Daily Activity Statistics (required by base class)
+    # Heart Rate Data
     # -------------------------------------------------------------------------
 
-    def get_daily_activity_statistics(
+    def get_heart_rate_data(
         self,
         db: DbSession,
         user_id: UUID,
-        start_date: datetime,
-        end_date: datetime,
+        start_time: datetime,
+        end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch daily activity - delegates to get_activity_samples."""
-        return self.get_activity_samples(db, user_id, start_date, end_date)
-
-    def normalize_daily_activity(
-        self,
-        raw_stats: dict[str, Any],
-        user_id: UUID,
-    ) -> dict[str, Any]:
-        """Normalize single daily activity record."""
-        activity = OuraDailyActivityJSON(**raw_stats)
-        return {
-            "day": activity.day,
-            "steps": activity.steps,
-            "active_calories": activity.active_calories,
-            "distance": activity.equivalent_walking_distance,
-            "score": activity.score,
+        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601)."""
+        params = {
+            "start_datetime": start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "end_datetime": end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
+        return self._paginate(db, user_id, "/v2/usercollection/heartrate", params)
+
+    def save_heart_rate_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_data: list[dict[str, Any]],
+    ) -> int:
+        """Save heart rate samples as DataPointSeries."""
+        samples: list[TimeSeriesSampleCreate] = []
+        for item in raw_data:
+            bpm = item.get("bpm")
+            timestamp_str = item.get("timestamp")
+            if bpm is None or not timestamp_str:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(bpm)),
+                        series_type=SeriesType.heart_rate,
+                    )
+                )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save HR sample",
+                    action="oura_hr_save_error",
+                    error=str(e),
+                )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
+
+    # -------------------------------------------------------------------------
+    # Daily Vo2 Data
+    # -------------------------------------------------------------------------
+
+    def get_vo2_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily Vo2 data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/vO2_max", params)
+
+    def save_vo2_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_data: list[dict[str, Any]],
+    ) -> int:
+        """Save Vo2 data as DataPointSeries."""
+        samples: list[TimeSeriesSampleCreate] = []
+        for item in raw_data:
+            vo2_max = item.get("vo2_max")
+            timestamp = item.get("timestamp")
+            if not vo2_max or not timestamp:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(vo2_max)),
+                        series_type=SeriesType.vo2_max,
+                    )
+                )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Failed to save Vo2 data",
+                    action="oura_vo2_save_error",
+                    error=str(e),
+                )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
 
     # -------------------------------------------------------------------------
     # Combined Load
@@ -793,59 +902,3 @@ class Oura247Data(Base247DataTemplate):
             )
 
         return results
-
-
-    # -------------------------------------------------------------------------
-    # Daily Vo2 Data
-    # -------------------------------------------------------------------------
-
-    def get_vo2_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> list[dict[str, Any]]:
-        """Fetch daily Vo2 data from Oura API."""
-        params = {
-            "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/vO2_max", params)
-
-    def save_vo2_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_data: list[dict[str, Any]],
-    ) -> int:
-        """Save Vo2 data as DataPointSeries."""
-        samples: list[TimeSeriesSampleCreate] = []
-        for item in raw_data:
-            vo2_max = item.get("vo2_max")
-            timestamp = item.get("timestamp")
-            if not vo2_max or not timestamp:
-                continue
-
-            try:
-                recorded_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-                samples.append(TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    source=self.provider_name,
-                    recorded_at=recorded_at,
-                    value=Decimal(str(vo2_max)),
-                    series_type=SeriesType.vo2_max,
-                ))
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    "Failed to save Vo2 data",
-                    action="oura_vo2_save_error",
-                    error=str(e),
-                )
-
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
-        return len(samples)
