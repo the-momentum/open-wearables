@@ -43,7 +43,7 @@ class TestOura247SleepNormalization:
 
     def test_normalize_sleep_basic_fields(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_sleep(sample_oura_sleep, user_id)
+        result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
 
         assert result["user_id"] == user_id
         assert result["provider"] == "oura"
@@ -53,7 +53,7 @@ class TestOura247SleepNormalization:
 
     def test_normalize_sleep_stages(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_sleep(sample_oura_sleep, user_id)
+        result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
         stages = result["stages"]
 
         assert stages["deep_seconds"] == 5400
@@ -63,14 +63,14 @@ class TestOura247SleepNormalization:
 
     def test_normalize_sleep_timestamps(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_sleep(sample_oura_sleep, user_id)
+        result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
 
         assert result["start_time"] == "2024-01-15T23:00:00+00:00"
         assert result["end_time"] == "2024-01-15T07:00:00+00:00"
 
     def test_normalize_sleep_not_nap(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_sleep(sample_oura_sleep, user_id)
+        result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
         assert result["is_nap"] is False
 
     def test_normalize_sleep_nap_detection(self, data_247: Oura247Data) -> None:
@@ -82,12 +82,12 @@ class TestOura247SleepNormalization:
             "type": "rest",
             "time_in_bed": 1800,
         }
-        result = data_247.normalize_sleep(raw, user_id)
+        result = data_247.normalize_sleeps([raw], user_id)[0]
         assert result["is_nap"] is True
 
     def test_normalize_sleep_heart_rate(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_sleep(sample_oura_sleep, user_id)
+        result = data_247.normalize_sleeps([sample_oura_sleep], user_id)[0]
         assert result["average_heart_rate"] == 55.0
         assert result["average_hrv"] == 45
         assert result["lowest_heart_rate"] == 48
@@ -114,7 +114,7 @@ class TestOura247ReadinessNormalization:
 
     def test_normalize_readiness_score(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_recovery(sample_oura_readiness, user_id)
+        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
 
         assert result["recovery_score"] == 82
         assert result["provider"] == "oura"
@@ -122,12 +122,12 @@ class TestOura247ReadinessNormalization:
 
     def test_normalize_readiness_temperature(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_recovery(sample_oura_readiness, user_id)
+        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
         assert result["temperature_deviation"] == 0.15
 
     def test_normalize_readiness_timestamp(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_recovery(sample_oura_readiness, user_id)
+        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
         assert result["timestamp"] is not None
 
 
