@@ -19,7 +19,11 @@ const config = defineConfig({
   },
   plugins: [
     devtools(),
-    nitro(),
+    nitro({
+      // decimal.js-light has "main": "decimal" (no extension) in package.json
+      // which breaks ESM resolution when externalized. Force inline bundling.
+      externals: { inline: ['decimal.js-light'] },
+    }),
     // this is the plugin that enables path aliases
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],
