@@ -866,25 +866,32 @@ class Oura247Data(Base247DataTemplate):
             end_time = datetime.now(timezone.utc)
 
         tasks: dict[str, Callable[[], int]] = {
-            "sleep": lambda: self.save_sleep_data(
-                db, user_id, self.normalize_sleeps(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
+            "activity": lambda: self.save_activity_data(
+                db,
+                user_id,
+                self.normalize_activity_samples(self.get_activity_samples(db, user_id, start_time, end_time), user_id),
+            ),
+            "cardiovascular_age": lambda: self.save_cardiovascular_age_data(
+                db,
+                user_id,
+                self.normalize_cardiovascular_age_samples(
+                    self.get_cardiovascular_age_samples(db, user_id, start_time, end_time), user_id
+                ),
             ),
             "readiness": lambda: self.save_readiness_data(
                 db,
                 user_id,
                 self.normalize_readiness(self.get_readiness_data(db, user_id, start_time, end_time), user_id),
             ),
-            "activity": lambda: self.save_activity_data(
-                db,
-                user_id,
-                self.normalize_activity_samples(self.get_activity_samples(db, user_id, start_time, end_time), user_id),
+            "sleep": lambda: self.save_sleep_data(
+                db, user_id, self.normalize_sleeps(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
             ),
+            "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),
             "heart_rate": lambda: self.save_heart_rate_data(
                 db, user_id, self.get_heart_rate_data(db, user_id, start_time, end_time)
             ),
-            "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),
-            "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
             "personal_info": lambda: self.save_personal_info(db, user_id, self.get_personal_info(db, user_id)),
+            "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
         }
 
         results: dict[str, int] = {}
