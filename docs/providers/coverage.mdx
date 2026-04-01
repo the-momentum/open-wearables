@@ -7,13 +7,13 @@ This guide provides a comprehensive overview of data type support across all int
 
 ## Quick Overview
 
-| Capability | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|------------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| **Sleep** | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
-| **24/7 Data** | ✅ | ✅ | ❌ | ✅ | ◐ | ✅ | ❌ |
-| **Timeseries** | ✅ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ |
+| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Sleep** | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **24/7 Data** | ✅ | ✅ | ❌ | ✅ | ✅ | ◐ | ✅ | ❌ |
+| **Timeseries** | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ✅ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Fully implemented and collecting data
@@ -34,14 +34,14 @@ This guide provides a comprehensive overview of data type support across all int
 
 ### Heart & Cardiovascular
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `heart_rate` | bpm | ✅ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ |
-| `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ✅ | 🔜 | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ◐ | ❌ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `heart_rate` | bpm | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ◐ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Available as time series data
@@ -52,85 +52,88 @@ This guide provides a comprehensive overview of data type support across all int
 
 ### Blood & Respiratory
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `oxygen_saturation` | % | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| `blood_glucose` | mg/dL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `blood_pressure_systolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `blood_pressure_diastolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `respiratory_rate` | brpm | ✅ | ✅ | ❌ | ❌ | 🔜 | ❌ | ❌ |
-| `sleeping_breathing_disturbances` | count | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `oxygen_saturation` | % | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `blood_glucose` | mg/dL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `blood_pressure_systolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `blood_pressure_diastolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `respiratory_rate` | brpm | ✅ | ✅ | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ |
+| `sleeping_breathing_disturbances` | count | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Body Composition
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `height` | cm | ✅ | ❌ | 🔜 | ❌ | ✅ | ❌ | ❌ |
-| `weight` | kg | ✅ | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ |
-| `body_fat_percentage` | % | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `body_mass_index` | kg/m² | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `lean_body_mass` | kg | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `body_temperature` | °C | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `skin_temperature` | °C | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `height` | cm | ✅ | ❌ | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `weight` | kg | ✅ | ✅ | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ |
+| `body_fat_percentage` | % | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `body_mass_index` | kg/m² | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `lean_body_mass` | kg | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `body_temperature` | °C | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `skin_temperature` | °C | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `skin_temperature_deviation` | °C | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `skin_temperature_trend_deviation` | °C | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 ### Fitness Metrics
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `vo2_max` | mL/kg/min | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `recovery_score` | score | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `vo2_max` | mL/kg/min | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| `cardiovascular_age` | years | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `six_minute_walk_test_distance` | meters | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `recovery_score` | score | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 ### Activity - Basic
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `steps` | count | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
-| `energy` | kcal | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ | ❌ |
-| `basal_energy` | kcal | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `exercise_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `physical_effort` | score | ❌ | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ |
-| `flights_climbed` | count | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `steps` | count | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `energy` | kcal | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `basal_energy` | kcal | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `exercise_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `physical_effort` | score | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ |
+| `flights_climbed` | count | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Activity - Distance
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `distance_walking_running` | meters | ✅ | ✅ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `distance_cycling` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `distance_swimming` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `distance_downhill_snow_sports` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `distance_walking_running` | meters | ✅ | ✅ | ◐ | ◐ | ✅ | ❌ | ❌ | ❌ |
+| `distance_cycling` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `distance_swimming` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `distance_downhill_snow_sports` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
 
 ### Activity - Walking Metrics
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `walking_step_length` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_double_support_percentage` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_asymmetry_percentage` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_steadiness` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `stair_descent_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `stair_ascent_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `walking_step_length` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_double_support_percentage` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_asymmetry_percentage` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_steadiness` | % | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `stair_descent_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `stair_ascent_speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Activity - Running Metrics
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `running_power` | watts | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `running_speed` | m/s | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `running_vertical_oscillation` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_ground_contact_time` | ms | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `running_stride_length` | cm | ✅ | ❌ | ❌ | ◐ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `running_power` | watts | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `running_speed` | m/s | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `running_vertical_oscillation` | cm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `running_ground_contact_time` | ms | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `running_stride_length` | cm | ✅ | ❌ | ❌ | ◐ | ❌ | ❌ | ❌ | ❌ |
 
 ### Activity - Other
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `swimming_stroke_count` | count | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `cadence` | rpm | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
-| `power` | watts | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `swimming_stroke_count` | count | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `cadence` | rpm | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
+| `power` | watts | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
 
 ### Provider-Specific Metrics
 
@@ -144,10 +147,10 @@ These metrics are unique to specific providers and don't have a universal equiva
 
 ### Environmental
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| `environmental_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `headphone_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| `environmental_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `headphone_audio_exposure` | dB | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ---
 
@@ -155,25 +158,25 @@ These metrics are unique to specific providers and don't have a universal equiva
 
 Sleep tracking varies significantly across providers. Here's what each provider offers:
 
-| Feature | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|---------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| Sleep sessions | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| Total duration | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| Time in bed | ✅ | ❌ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| Sleep efficiency | 🔜 | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| **Sleep Stages** | | | | | | | |
-| Stage timestamps | ✅ | ✅ | 🔜 | ❌ | 🔜 | 🔜 | ❌ |
-| Deep sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| Light sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| REM sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| Awake time | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ❌ |
-| **Biometrics During Sleep** | | | | | | | |
-| Average heart rate | 🔜 | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ |
-| Min heart rate | 🔜 | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ |
-| Average HRV | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ |
-| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| Sleep sessions | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Total duration | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Time in bed | ✅ | ❌ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Sleep efficiency | 🔜 | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Sleep Stages** | | | | | | | | |
+| Stage timestamps | ✅ | ✅ | 🔜 | ❌ | ✅ | 🔜 | 🔜 | ❌ |
+| Deep sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Light sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| REM sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Awake time | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Biometrics During Sleep** | | | | | | | | |
+| Average heart rate | 🔜 | ✅ | 🔜 | ✅ | 🔜 | ❌ | ❌ | ❌ |
+| Min heart rate | 🔜 | ✅ | 🔜 | ✅ | 🔜 | ❌ | ❌ | ❌ |
+| Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ |
+| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 <Info>
   🔜 = Data available from provider API/SDK but processing not yet implemented in Open Wearables.
@@ -185,33 +188,33 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 
 All providers that support workouts provide these common fields:
 
-| Feature | Apple | Garmin | Polar | Suunto | Whoop | Ultrahuman | Strava |
-|---------|:-----:|:------:|:-----:|:------:|:-----:|:----------:|:------:|
-| Workout sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Duration | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Start/end time | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| **Heart Rate** | | | | | | | |
-| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Max heart rate | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **Activity Metrics** | | | | | | | |
-| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ❌ | ✅ |
-| **Speed & Power** | | | | | | | |
-| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| **Elevation** | | | | | | | |
-| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ✅ | ❌ | ✅ |
-| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ✅ |
-| **Other** | | | | | | | |
-| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ |
+| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| Workout sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Start/end time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Heart Rate** | | | | | | | | |
+| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| Max heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Activity Metrics** | | | | | | | | |
+| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Speed & Power** | | | | | | | | |
+| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Elevation** | | | | | | | | |
+| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ | ❌ | ✅ |
+| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
+| **Other** | | | | | | | | |
+| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ |
 
 <Accordion title="Apple Workout Data Note">
   Most workout metrics are supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation). Moving time and max watts are not yet implemented.
@@ -272,6 +275,21 @@ Key differences and limitations to be aware of when working with each provider:
   - Daily activity statistics for aggregated steps and energy
   - 121+ workout type mappings to unified taxonomy
   - Recovery data: Balance score (0-100) mapped to recovery_score
+</Accordion>
+
+<Accordion title="Oura">
+  **Integration Method:** OAuth 2.0 + Webhooks
+
+  - Webhooks push real-time notifications for: daily activity, daily readiness, daily sleep, daily SpO2, and workouts
+  - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, efficiency score, stage timestamps, and nap detection
+  - Sleep biometrics (average HR, lowest HR, average HRV) are available from the API but not yet persisted per sleep record
+  - Continuous 24/7 timeseries: heart rate (5-min intervals), daily SpO2, steps, active calories, walking distance
+  - Recovery data from daily readiness: recovery score, skin temperature deviation, and skin temperature trend deviation
+  - Fitness metrics: VO2 max (daily estimate) and cardiovascular age — both require the `heart_health` OAuth scope
+  - Personal info sync: height and weight from user profile
+  - Oura does **not** expose heart rate data during workouts via API; workout records include only duration, type, calories, and distance
+  - `temperature_deviation` and `temperature_trend_deviation` reflect skin temperature relative to baseline (not absolute body temperature)
+  - Backfill defaults to 30 days when no date range is specified
 </Accordion>
 
 <Accordion title="Whoop">
