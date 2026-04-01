@@ -193,6 +193,7 @@ def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
 @pytest.fixture(autouse=True)
 def flush_redis(_redis_url: str) -> Generator[None, None, None]:
     """Flush Redis state before each test to ensure isolation."""
+    redis_lib.from_url(_redis_url).flushdb()
     get_redis_client.cache_clear()
     yield
     redis_lib.from_url(_redis_url).flushdb()
