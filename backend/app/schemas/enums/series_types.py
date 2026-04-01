@@ -66,6 +66,7 @@ class SeriesType(str, Enum):
     # =========================================================================
     vo2_max = "vo2_max"
     six_minute_walk_test_distance = "six_minute_walk_test_distance"
+    cardiovascular_age = "cardiovascular_age"
 
     # =========================================================================
     # ACTIVITY - Basic (IDs 80-99)
@@ -211,6 +212,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     # -------------------------------------------------------------------------
     (60, SeriesType.vo2_max, "ml_kg_min"),
     (61, SeriesType.six_minute_walk_test_distance, "meters"),
+    (62, SeriesType.cardiovascular_age, "years"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Basic (IDs 80-99)
     # -------------------------------------------------------------------------

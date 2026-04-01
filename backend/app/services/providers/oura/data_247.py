@@ -240,9 +240,9 @@ class Oura247Data(Base247DataTemplate):
         self,
         raw_samples: list[dict[str, Any]],
         user_id: UUID,
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Normalize daily cardiovascular age data into categorized samples."""
-        result: list[dict[str, Any]] = []
+    ) -> list[tuple[datetime, float]]:
+        """Normalize daily cardiovascular age data into (recorded_at, value) pairs."""
+        result: list[tuple[datetime, float]] = []
 
         for item in raw_samples:
             day = item.get("day")
@@ -252,23 +252,23 @@ class Oura247Data(Base247DataTemplate):
                 continue
 
             try:
-                recorded_at = datetime.fromisoformat(day)
+                recorded_at = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 result.append((recorded_at, cardiovascular_age))
             except (ValueError, AttributeError):
                 continue
 
-        return {"cardiovascular_age": result}
+        return result
 
     def save_cardiovascular_age_data(
         self,
         db: DbSession,
         user_id: UUID,
-        normalized: dict[str, list[dict[str, Any]]],
+        normalized: list[tuple[datetime, float]],
     ) -> int:
         """Save daily cardiovascular age data as DataPointSeries."""
         samples: list[TimeSeriesSampleCreate] = []
 
-        for recorded_at, value in normalized.get("cardiovascular_age", []):
+        for recorded_at, value in normalized:
             try:
                 samples.append(
                     TimeSeriesSampleCreate(
@@ -430,15 +430,15 @@ class Oura247Data(Base247DataTemplate):
 
         return stages
 
-    def normalize_sleep(
+    def normalize_sleeps(
         self,
-        raw_items: list[dict[str, Any]],
+        raw_sleep: list[dict[str, Any]],
         user_id: UUID,
     ) -> list[dict[str, Any]]:
         """Normalize Oura sleep data to internal schema."""
         result = []
-        for raw_sleep in raw_items:
-            sleep = OuraSleepJSON(**raw_sleep)
+        for item in raw_sleep:
+            sleep = OuraSleepJSON(**item)
 
             start_time = sleep.bedtime_start
             end_time = sleep.bedtime_end
@@ -708,7 +708,7 @@ class Oura247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-    ) -> dict[str, Any] | None:
+    ) -> list[dict[str, Any]]:
         """Fetch personal info data from Oura API."""
         return self._paginate(db, user_id, "/v2/usercollection/personal_info", params={})
 
@@ -867,7 +867,7 @@ class Oura247Data(Base247DataTemplate):
 
         tasks: dict[str, Callable[[], int]] = {
             "sleep": lambda: self.save_sleep_data(
-                db, user_id, self.normalize_sleep(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
+                db, user_id, self.normalize_sleeps(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
             ),
             "readiness": lambda: self.save_readiness_data(
                 db,
@@ -884,7 +884,7 @@ class Oura247Data(Base247DataTemplate):
             ),
             "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),
             "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
-            "personal_info": lambda: self.save_personal_info(db, user_id, self.get_personal_info(db, user_id) or []),
+            "personal_info": lambda: self.save_personal_info(db, user_id, self.get_personal_info(db, user_id)),
         }
 
         results: dict[str, int] = {}
@@ -904,3 +904,27 @@ class Oura247Data(Base247DataTemplate):
                 )
 
         return results
+
+    # -------------------------------------------------------------------------
+    # Base class stubs — these abstract methods don't map to Oura's API.
+    # Oura uses provider-specific endpoints (readiness, daily_activity, etc.)
+    # rather than the generic recovery/daily_activity_statistics shape the base
+    # class assumes. Implemented as no-ops to satisfy ABC instantiation.
+    # -------------------------------------------------------------------------
+
+    def normalize_sleep(self, raw_sleep: dict, user_id: UUID) -> dict:
+        return {}
+
+    def get_recovery_data(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict]:
+        return []
+
+    def normalize_recovery(self, raw_recovery: dict, user_id: UUID) -> dict:
+        return {}
+
+    def get_daily_activity_statistics(
+        self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
+    ) -> list[dict]:
+        return []
+
+    def normalize_daily_activity(self, raw_stats: dict, user_id: UUID) -> dict:
+        return {}
