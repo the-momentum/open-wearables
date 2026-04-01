@@ -8,6 +8,8 @@ updates:
       - "/sdk/python"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "chore"
     cooldown:
       default-days: 7
       semver-major-days: 30
@@ -29,6 +31,8 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "chore"
     cooldown:
       default-days: 7
       semver-major-days: 30
