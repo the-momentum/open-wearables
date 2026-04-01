@@ -1,5 +1,6 @@
 """Oura Ring 247 Data implementation for sleep, readiness, heart rate, activity, and SpO2."""
 
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -25,6 +26,7 @@ from app.schemas.providers.oura import (
     OuraDailyReadinessJSON,
     OuraSleepJSON,
 )
+from app.schemas.providers.oura.imports import OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -311,108 +313,82 @@ class Oura247Data(Base247DataTemplate):
 
     def normalize_readiness(
         self,
-        raw_readiness: dict[str, Any],
+        raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         """Normalize Oura readiness data to internal schema."""
-        readiness = OuraDailyReadinessJSON(**raw_readiness)
+        result = []
+        for raw_readiness in raw_items:
+            readiness = OuraDailyReadinessJSON(**raw_readiness)
 
-        timestamp = None
-        if readiness.timestamp:
-            try:
-                timestamp = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                timestamp = datetime.now(timezone.utc)
-        elif readiness.day:
-            try:
-                timestamp = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            except (ValueError, AttributeError):
-                timestamp = datetime.now(timezone.utc)
+            timestamp = None
+            if readiness.timestamp:
+                try:
+                    timestamp = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    timestamp = datetime.now(timezone.utc)
+            elif readiness.day:
+                try:
+                    timestamp = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except (ValueError, AttributeError):
+                    timestamp = datetime.now(timezone.utc)
 
-        return {
-            "user_id": user_id,
-            "provider": self.provider_name,
-            "timestamp": timestamp,
-            "recovery_score": readiness.score,
-            "temperature_deviation": readiness.temperature_deviation,
-            "raw": raw_readiness,
-        }
+            result.append(
+                {
+                    "user_id": user_id,
+                    "provider": self.provider_name,
+                    "timestamp": timestamp,
+                    "recovery_score": readiness.score,
+                    "temperature_deviation": readiness.temperature_deviation,
+                    "raw": raw_readiness,
+                }
+            )
+        return result
 
     def save_readiness_data(
         self,
         db: DbSession,
         user_id: UUID,
-        normalized_readiness: dict[str, Any],
+        normalized_items: list[dict[str, Any]],
     ) -> int:
         """Save normalized readiness data as DataPointSeries."""
-        if not normalized_readiness:
-            return 0
-
-        timestamp = normalized_readiness.get("timestamp")
-        if not timestamp:
-            return 0
-
-        # Map Oura readiness fields to SeriesType
         metrics = [
             ("recovery_score", SeriesType.recovery_score),
             ("temperature_deviation", SeriesType.body_temperature),
         ]
 
         samples: list[TimeSeriesSampleCreate] = []
-        for field_name, series_type in metrics:
-            value = normalized_readiness.get(field_name)
-            if value is not None:
-                try:
-                    samples.append(
-                        TimeSeriesSampleCreate(
-                            id=uuid4(),
-                            user_id=user_id,
-                            source=self.provider_name,
-                            recorded_at=timestamp,
-                            value=Decimal(str(value)),
-                            series_type=series_type,
+        for normalized_readiness in normalized_items:
+            timestamp = normalized_readiness.get("timestamp")
+            if not timestamp:
+                continue
+            for field_name, series_type in metrics:
+                value = normalized_readiness.get(field_name)
+                if value is not None:
+                    try:
+                        samples.append(
+                            TimeSeriesSampleCreate(
+                                id=uuid4(),
+                                user_id=user_id,
+                                source=self.provider_name,
+                                recorded_at=timestamp,
+                                value=Decimal(str(value)),
+                                series_type=series_type,
+                            )
                         )
-                    )
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        "Failed to save readiness metric",
-                        action="oura_readiness_save_error",
-                        field=field_name,
-                        error=str(e),
-                    )
+                    except Exception as e:
+                        log_structured(
+                            self.logger,
+                            "warning",
+                            "Failed to save readiness metric",
+                            action="oura_readiness_save_error",
+                            field=field_name,
+                            error=str(e),
+                        )
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
         return len(samples)
-
-    def load_and_save_readiness(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int:
-        """Load readiness data from API and save to database."""
-        raw_data = self.get_readiness_data(db, user_id, start_time, end_time)
-        total_count = 0
-
-        for item in raw_data:
-            try:
-                normalized = self.normalize_readiness(item, user_id)
-                if normalized:
-                    total_count += self.save_readiness_data(db, user_id, normalized)
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    "Failed to save readiness data",
-                    action="oura_readiness_save_error",
-                    error=str(e),
-                )
-
-        return total_count
 
     # -------------------------------------------------------------------------
     # Sleep Data
@@ -454,165 +430,151 @@ class Oura247Data(Base247DataTemplate):
 
     def normalize_sleep(
         self,
-        raw_sleep: dict[str, Any],
+        raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         """Normalize Oura sleep data to internal schema."""
-        sleep = OuraSleepJSON(**raw_sleep)
+        result = []
+        for raw_sleep in raw_items:
+            sleep = OuraSleepJSON(**raw_sleep)
 
-        start_time = sleep.bedtime_start
-        end_time = sleep.bedtime_end
+            start_time = sleep.bedtime_start
+            end_time = sleep.bedtime_end
 
-        # Oura provides durations in seconds
-        duration_seconds = sleep.time_in_bed or 0
-        deep_seconds = sleep.deep_sleep_duration or 0
-        light_seconds = sleep.light_sleep_duration or 0
-        rem_seconds = sleep.rem_sleep_duration or 0
-        awake_seconds = sleep.awake_time or 0
+            # Oura provides durations in seconds
+            duration_seconds = sleep.time_in_bed or 0
+            deep_seconds = sleep.deep_sleep_duration or 0
+            light_seconds = sleep.light_sleep_duration or 0
+            rem_seconds = sleep.rem_sleep_duration or 0
+            awake_seconds = sleep.awake_time or 0
 
-        # If duration is 0 but we have start/end, calculate
-        if duration_seconds == 0 and start_time and end_time:
-            try:
-                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-                duration_seconds = int((end_dt - start_dt).total_seconds())
-            except (ValueError, AttributeError):
-                pass
+            # If duration is 0 but we have start/end, calculate
+            if duration_seconds == 0 and start_time and end_time:
+                try:
+                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                    duration_seconds = int((end_dt - start_dt).total_seconds())
+                except (ValueError, AttributeError):
+                    pass
 
-        sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
+            sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
 
-        internal_id = uuid4()
-        with suppress(ValueError, TypeError):
-            internal_id = UUID(sleep.id)
+            internal_id = uuid4()
+            with suppress(ValueError, TypeError):
+                internal_id = UUID(sleep.id)
 
-        return {
-            "id": internal_id,
-            "user_id": user_id,
-            "provider": self.provider_name,
-            "timestamp": start_time or end_time,
-            "start_time": start_time,
-            "end_time": end_time,
-            "duration_seconds": duration_seconds,
-            "efficiency_percent": float(sleep.efficiency) if sleep.efficiency is not None else None,
-            "is_nap": sleep.type == "rest",
-            "stages": {
-                "deep_seconds": deep_seconds,
-                "light_seconds": light_seconds,
-                "rem_seconds": rem_seconds,
-                "awake_seconds": awake_seconds,
-            },
-            "stage_timestamps": sleep_stages,
-            "average_heart_rate": sleep.average_heart_rate,
-            "average_hrv": sleep.average_hrv,
-            "lowest_heart_rate": sleep.lowest_heart_rate,
-            "oura_sleep_id": sleep.id,
-            "raw": raw_sleep,
-        }
+            result.append(
+                {
+                    "id": internal_id,
+                    "user_id": user_id,
+                    "provider": self.provider_name,
+                    "timestamp": start_time or end_time,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "duration_seconds": duration_seconds,
+                    "efficiency_percent": float(sleep.efficiency) if sleep.efficiency is not None else None,
+                    "is_nap": sleep.type == "rest",
+                    "stages": {
+                        "deep_seconds": deep_seconds,
+                        "light_seconds": light_seconds,
+                        "rem_seconds": rem_seconds,
+                        "awake_seconds": awake_seconds,
+                    },
+                    "stage_timestamps": sleep_stages,
+                    "average_heart_rate": sleep.average_heart_rate,
+                    "average_hrv": sleep.average_hrv,
+                    "lowest_heart_rate": sleep.lowest_heart_rate,
+                    "oura_sleep_id": sleep.id,
+                    "raw": raw_sleep,
+                }
+            )
+        return result
 
     def save_sleep_data(
         self,
         db: DbSession,
         user_id: UUID,
-        normalized_sleep: dict[str, Any],
-    ) -> None:
-        """Save normalized sleep data to database as EventRecord with SleepDetails."""
-        sleep_id = normalized_sleep["id"]
-
-        start_dt = None
-        end_dt = None
-        if normalized_sleep.get("start_time"):
-            start_time = normalized_sleep["start_time"]
-            if isinstance(start_time, str):
-                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-            elif isinstance(start_time, datetime):
-                start_dt = start_time
-
-        if normalized_sleep.get("end_time"):
-            end_time = normalized_sleep["end_time"]
-            if isinstance(end_time, str):
-                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-            elif isinstance(end_time, datetime):
-                end_dt = end_time
-
-        if not start_dt or not end_dt:
-            log_structured(
-                self.logger,
-                "warning",
-                "Skipping sleep record: missing start/end time",
-                action="oura_sleep_skip",
-                sleep_id=str(sleep_id),
-            )
-            return
-
-        record = EventRecordCreate(
-            id=sleep_id,
-            category="sleep",
-            type="sleep_session",
-            source_name="Oura",
-            device_model=None,
-            duration_seconds=normalized_sleep.get("duration_seconds"),
-            start_datetime=start_dt,
-            end_datetime=end_dt,
-            external_id=str(normalized_sleep.get("oura_sleep_id")) if normalized_sleep.get("oura_sleep_id") else None,
-            source=self.provider_name,
-            user_id=user_id,
-        )
-
-        stages = normalized_sleep.get("stages", {})
-        total_sleep_seconds = (
-            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
-        )
-        total_sleep_minutes = total_sleep_seconds // 60
-        time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
-
-        detail = EventRecordDetailCreate(
-            record_id=sleep_id,
-            sleep_total_duration_minutes=total_sleep_minutes,
-            sleep_time_in_bed_minutes=time_in_bed_minutes,
-            sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
-            if normalized_sleep.get("efficiency_percent") is not None
-            else None,
-            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
-            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
-            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
-            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
-            is_nap=normalized_sleep.get("is_nap", False),
-            sleep_stages=normalized_sleep.get("stage_timestamps", []),
-        )
-
-        try:
-            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Error saving sleep record",
-                action="oura_sleep_save_error",
-                sleep_id=str(sleep_id),
-                error=str(e),
-            )
-
-    def load_and_save_sleep(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
+        normalized_items: list[dict[str, Any]],
     ) -> int:
-        """Load sleep data from API and save to database."""
-        raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
+        """Save normalized sleep data to database as EventRecord with SleepDetails."""
         count = 0
-        for item in raw_data:
+        for normalized_sleep in normalized_items:
+            sleep_id = normalized_sleep["id"]
+
+            start_dt = None
+            end_dt = None
+            if normalized_sleep.get("start_time"):
+                start_time = normalized_sleep["start_time"]
+                if isinstance(start_time, str):
+                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                elif isinstance(start_time, datetime):
+                    start_dt = start_time
+
+            if normalized_sleep.get("end_time"):
+                end_time = normalized_sleep["end_time"]
+                if isinstance(end_time, str):
+                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                elif isinstance(end_time, datetime):
+                    end_dt = end_time
+
+            if not start_dt or not end_dt:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    "Skipping sleep record: missing start/end time",
+                    action="oura_sleep_skip",
+                    sleep_id=str(sleep_id),
+                )
+                continue
+
+            record = EventRecordCreate(
+                id=sleep_id,
+                category="sleep",
+                type="sleep_session",
+                source_name="Oura",
+                device_model=None,
+                duration_seconds=normalized_sleep.get("duration_seconds"),
+                start_datetime=start_dt,
+                end_datetime=end_dt,
+                external_id=str(normalized_sleep.get("oura_sleep_id"))
+                if normalized_sleep.get("oura_sleep_id")
+                else None,
+                source=self.provider_name,
+                user_id=user_id,
+            )
+
+            stages = normalized_sleep.get("stages", {})
+            total_sleep_seconds = (
+                stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+            )
+            total_sleep_minutes = total_sleep_seconds // 60
+            time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
+
+            detail = EventRecordDetailCreate(
+                record_id=sleep_id,
+                sleep_total_duration_minutes=total_sleep_minutes,
+                sleep_time_in_bed_minutes=time_in_bed_minutes,
+                sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
+                if normalized_sleep.get("efficiency_percent") is not None
+                else None,
+                sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
+                sleep_light_minutes=stages.get("light_seconds", 0) // 60,
+                sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
+                sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+                is_nap=normalized_sleep.get("is_nap", False),
+                sleep_stages=normalized_sleep.get("stage_timestamps", []),
+            )
+
             try:
-                normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
+                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
                 count += 1
             except Exception as e:
                 log_structured(
                     self.logger,
-                    "warning",
-                    "Failed to save sleep data",
+                    "error",
+                    "Error saving sleep record",
                     action="oura_sleep_save_error",
+                    sleep_id=str(sleep_id),
                     error=str(e),
                 )
         return count
@@ -737,6 +699,83 @@ class Oura247Data(Base247DataTemplate):
         return len(samples)
 
     # -------------------------------------------------------------------------
+    # Personal Info Data (age, height, weight, etc.) - /v2/usercollection/personal_info
+    # -------------------------------------------------------------------------
+
+    def get_personal_info(
+        self,
+        db: DbSession,
+        user_id: UUID,
+    ) -> dict[str, Any] | None:
+        """Fetch personal info data from Oura API."""
+        return self._paginate(db, user_id, "/v2/usercollection/personal_info", params={})
+
+    def normalize_personal_info(
+        self,
+        raw_info: dict[str, Any],
+        user_id: UUID,
+    ) -> dict[str, Any]:
+        """Normalize personal info data."""
+        try:
+            personal_info = OuraPersonalInfoJSON(**raw_info)
+            return {
+                "weight": personal_info.weight,
+                "height": personal_info.height,
+            }
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                "Failed to normalize personal info",
+                action="oura_personal_info_normalization_error",
+                error=str(e),
+            )
+            return {}
+
+    def save_personal_info(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        raw_data: list[dict[str, Any]],
+    ) -> int:
+        """Save personal info (weight, height) as DataPointSeries."""
+        samples: list[TimeSeriesSampleCreate] = []
+        recorded_at = datetime.now(timezone.utc)
+
+        for item in raw_data:
+            normalized = self.normalize_personal_info(item, user_id)
+            if not normalized:
+                continue
+
+            if (weight := normalized.get("weight")) is not None:
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(weight)),
+                        series_type=SeriesType.weight,
+                    )
+                )
+
+            if (height := normalized.get("height")) is not None:
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(round(height * 100, 2))),  # meters → cm
+                        series_type=SeriesType.height,
+                    )
+                )
+
+        if samples:
+            timeseries_service.bulk_create_samples(db, samples)
+        return len(samples)
+
+    # -------------------------------------------------------------------------
     # Daily Vo2 Data
     # -------------------------------------------------------------------------
 
@@ -824,81 +863,42 @@ class Oura247Data(Base247DataTemplate):
         if not end_time:
             end_time = datetime.now(timezone.utc)
 
-        results = {
-            "sleep_sessions_synced": 0,
-            "recovery_samples_synced": 0,
-            "activity_samples_synced": 0,
-            "heart_rate_samples_synced": 0,
-            "spo2_samples_synced": 0,
+        tasks: dict[str, Callable[[], int]] = {
+            "sleep": lambda: self.save_sleep_data(
+                db, user_id, self.normalize_sleep(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
+            ),
+            "readiness": lambda: self.save_readiness_data(
+                db,
+                user_id,
+                self.normalize_readiness(self.get_readiness_data(db, user_id, start_time, end_time), user_id),
+            ),
+            "activity": lambda: self.save_activity_data(
+                db,
+                user_id,
+                self.normalize_activity_samples(self.get_activity_samples(db, user_id, start_time, end_time), user_id),
+            ),
+            "heart_rate": lambda: self.save_heart_rate_data(
+                db, user_id, self.get_heart_rate_data(db, user_id, start_time, end_time)
+            ),
+            "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),
+            "vo2_max": lambda: self.save_vo2_data(db, user_id, self.get_vo2_data(db, user_id, start_time, end_time)),
+            "personal_info": lambda: self.save_personal_info(db, user_id, self.get_personal_info(db, user_id) or []),
         }
 
-        try:
-            results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Failed to sync sleep data",
-                action="oura_sync_error",
-                data_type="sleep",
-                user_id=str(user_id),
-                error=str(e),
-            )
-
-        try:
-            results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Failed to sync readiness data",
-                action="oura_sync_error",
-                data_type="readiness",
-                user_id=str(user_id),
-                error=str(e),
-            )
-
-        try:
-            raw_activity = self.get_activity_samples(db, user_id, start_time, end_time)
-            normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
-            results["activity_samples_synced"] = self.save_activity_data(db, user_id, normalized_activity)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Failed to sync activity data",
-                action="oura_sync_error",
-                data_type="activity",
-                user_id=str(user_id),
-                error=str(e),
-            )
-
-        try:
-            raw_hr = self.get_heart_rate_data(db, user_id, start_time, end_time)
-            results["heart_rate_samples_synced"] = self.save_heart_rate_data(db, user_id, raw_hr)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Failed to sync heart rate data",
-                action="oura_sync_error",
-                data_type="heart_rate",
-                user_id=str(user_id),
-                error=str(e),
-            )
-
-        try:
-            raw_spo2 = self.get_spo2_data(db, user_id, start_time, end_time)
-            results["spo2_samples_synced"] = self.save_spo2_data(db, user_id, raw_spo2)
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                "Failed to sync SpO2 data",
-                action="oura_sync_error",
-                data_type="spo2",
-                user_id=str(user_id),
-                error=str(e),
-            )
+        results: dict[str, int] = {}
+        for data_type, fn in tasks.items():
+            try:
+                results[data_type] = fn()
+            except Exception as e:
+                results[data_type] = 0
+                log_structured(
+                    self.logger,
+                    "error",
+                    f"Failed to sync {data_type} data",
+                    action="oura_sync_error",
+                    data_type=data_type,
+                    user_id=str(user_id),
+                    error=str(e),
+                )
 
         return results
