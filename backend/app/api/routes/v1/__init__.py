@@ -15,6 +15,7 @@ from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .priorities import router as priorities_router
+from .providers_webhooks import router as providers_webhooks_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
 from .strava_webhooks import router as strava_webhooks_router
@@ -40,6 +41,8 @@ v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags
 v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
 # Strava webhooks for event notifications
 v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
+# Unified webhook router – delegates to provider strategy handlers
+v1_router.include_router(providers_webhooks_router, prefix="/providers", tags=["providers webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])

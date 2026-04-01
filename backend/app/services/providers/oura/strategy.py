@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.oauth import OuraOAuth
 from app.services.providers.oura.workouts import OuraWorkouts
@@ -43,3 +43,10 @@ class OuraStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
         return "https://api.ouraring.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Oura REST API supports historical and recent data polling.
+        # Oura webhooks send a lightweight notification (event_type + user_id)
+        # when new data is ready; actual data must still be fetched via REST.
+        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
