@@ -326,12 +326,15 @@ class Oura247Data(Base247DataTemplate):
                 try:
                     timestamp = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    timestamp = datetime.now(timezone.utc)
+                    continue
             elif readiness.day:
                 try:
                     timestamp = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
                 except (ValueError, AttributeError):
-                    timestamp = datetime.now(timezone.utc)
+                    continue
+
+            if timestamp is None:
+                continue
 
             result.append(
                 {
@@ -608,36 +611,59 @@ class Oura247Data(Base247DataTemplate):
         """Save SpO2 data as DataPointSeries."""
         samples: list[TimeSeriesSampleCreate] = []
         for item in raw_data:
-            spo2_pct = item.get("spo2_percentage")
             day = item.get("day")
-            if not spo2_pct or not day:
-                continue
-
-            # spo2_percentage is a dict with "average" key
-            avg_spo2 = spo2_pct.get("average") if isinstance(spo2_pct, dict) else None
-            if avg_spo2 is None:
+            if not day:
                 continue
 
             try:
                 recorded_at = datetime.strptime(day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                samples.append(
-                    TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(avg_spo2)),
-                        series_type=SeriesType.oxygen_saturation,
+            except (ValueError, AttributeError):
+                continue
+
+            spo2_pct = item.get("spo2_percentage")
+            avg_spo2 = spo2_pct.get("average") if isinstance(spo2_pct, dict) else None
+            if avg_spo2 is not None:
+                try:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=recorded_at,
+                            value=Decimal(str(avg_spo2)),
+                            series_type=SeriesType.oxygen_saturation,
+                        )
                     )
-                )
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    "Failed to save SpO2 data",
-                    action="oura_spo2_save_error",
-                    error=str(e),
-                )
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save SpO2 data",
+                        action="oura_spo2_save_error",
+                        error=str(e),
+                    )
+
+            bdi = item.get("breathing_disturbance_index")
+            if bdi is not None:
+                try:
+                    samples.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=recorded_at,
+                            value=Decimal(str(bdi)),
+                            series_type=SeriesType.breathing_disturbance_index,
+                        )
+                    )
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save breathing disturbance index",
+                        action="oura_bdi_save_error",
+                        error=str(e),
+                    )
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
@@ -708,9 +734,9 @@ class Oura247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Fetch personal info data from Oura API."""
-        return self._paginate(db, user_id, "/v2/usercollection/personal_info", params={})
+        return self._make_api_request(db, user_id, "/v2/usercollection/personal_info") or {}
 
     def normalize_personal_info(
         self,
@@ -738,37 +764,49 @@ class Oura247Data(Base247DataTemplate):
         self,
         db: DbSession,
         user_id: UUID,
-        raw_data: list[dict[str, Any]],
+        raw_data: dict[str, Any],
     ) -> int:
-        """Save personal info (weight, height) as DataPointSeries."""
+        """Save personal info (weight, height) as DataPointSeries.
+
+        Only saves when the value has changed from the most recent stored entry.
+        """
+        normalized = self.normalize_personal_info(raw_data, user_id)
+        if not normalized:
+            return 0
+
+        now = datetime.now(timezone.utc)
+        latest = timeseries_service.crud.get_latest_values_for_types(
+            db, user_id, before_date=now, series_types=[SeriesType.weight, SeriesType.height]
+        )
+
         samples: list[TimeSeriesSampleCreate] = []
-        recorded_at = datetime.now(timezone.utc)
 
-        for item in raw_data:
-            normalized = self.normalize_personal_info(item, user_id)
-            if not normalized:
-                continue
-
-            if (weight := normalized.get("weight")) is not None:
+        if (weight := normalized.get("weight")) is not None:
+            new_weight = Decimal(str(weight))
+            latest_weight = latest.get(SeriesType.weight)
+            if latest_weight is None or abs(Decimal(str(latest_weight[0])) - new_weight) > Decimal("0.01"):
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
                         source=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(weight)),
+                        recorded_at=now,
+                        value=new_weight,
                         series_type=SeriesType.weight,
                     )
                 )
 
-            if (height := normalized.get("height")) is not None:
+        if (height := normalized.get("height")) is not None:
+            new_height = Decimal(str(round(height * 100, 2)))  # meters → cm
+            latest_height = latest.get(SeriesType.height)
+            if latest_height is None or abs(Decimal(str(latest_height[0])) - new_height) > Decimal("0.01"):
                 samples.append(
                     TimeSeriesSampleCreate(
                         id=uuid4(),
                         user_id=user_id,
                         source=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=Decimal(str(round(height * 100, 2))),  # meters → cm
+                        recorded_at=now,
+                        value=new_height,
                         series_type=SeriesType.height,
                     )
                 )

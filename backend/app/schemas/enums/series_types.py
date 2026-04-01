@@ -36,6 +36,8 @@ class SeriesType(str, Enum):
     respiratory_rate = "respiratory_rate"
     sleeping_breathing_disturbances = "sleeping_breathing_disturbances"
 
+    breathing_disturbance_index = "breathing_disturbance_index"
+
     # Blood & Respiratory - Extended
     blood_alcohol_content = "blood_alcohol_content"
     peripheral_perfusion_index = "peripheral_perfusion_index"
@@ -192,6 +194,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (28, SeriesType.forced_vital_capacity, "liters"),
     (29, SeriesType.forced_expiratory_volume_1, "liters"),
     (30, SeriesType.peak_expiratory_flow_rate, "liters"),
+    (31, SeriesType.breathing_disturbance_index, "score"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Body Composition (IDs 40-59)
     # -------------------------------------------------------------------------
