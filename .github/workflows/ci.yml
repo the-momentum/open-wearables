@@ -103,6 +103,7 @@ jobs:
     env:
       ENV: test
       TEST_DATABASE_URL: postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test
+      TEST_REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: test-secret-key-for-ci
       MASTER_KEY: dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk=
     steps:

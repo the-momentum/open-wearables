@@ -8,18 +8,27 @@ Following patterns from know-how-tests.md:
 """
 
 import os
+import sys
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
+import redis as redis_lib
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
 
+from app.config import settings
 from app.database import BaseDbModel, _get_db_dependency
+from app.integrations.redis_client import get_redis_client
 from app.main import api
+from app.models import SeriesTypeDefinition
+from app.schemas.enums import SERIES_TYPE_DEFINITIONS
+from tests import factories
 
 # Set test environment before importing app modules
 os.environ["ENV"] = "test"
@@ -62,12 +71,7 @@ def engine(_postgres_url: str) -> Any:
     BaseDbModel.metadata.create_all(bind=test_engine)
 
     # Seed series type definitions (these need to exist for foreign key constraints)
-    from sqlalchemy.orm import Session as SessionClass
-
-    from app.models import SeriesTypeDefinition
-    from app.schemas.enums import SERIES_TYPE_DEFINITIONS
-
-    with SessionClass(bind=test_engine) as session:
+    with Session(bind=test_engine) as session:
         for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:
             # Skip series types with codes exceeding VARCHAR(32) limit
             if len(enum.value) > 32:
@@ -119,8 +123,6 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
 @pytest.fixture(autouse=True)
 def set_factory_session(db: Session) -> Generator[None, None, None]:
     """Set database session for all factory-boy factories."""
-    from tests import factories
-
     for name, obj in vars(factories).items():
         if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
             obj._meta.sqlalchemy_session = db
@@ -149,33 +151,57 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 
 # ============================================================================
-# Auto-use fixtures for global mocking
+# Infrastructure: Redis
 # ============================================================================
 
 
+@pytest.fixture(scope="session")
+def _redis_url() -> Generator[str, None, None]:
+    """
+    Provide a Redis connection URL for tests.
+
+    - If TEST_REDIS_URL is set (e.g. in CI), use it directly.
+    - Otherwise, spin up a Redis container via testcontainers.
+    """
+    explicit_url = os.environ.get("TEST_REDIS_URL")
+    if explicit_url:
+        yield explicit_url
+        return
+
+    with RedisContainer(image="redis:7") as r:
+        host = r.get_container_host_ip()
+        port = r.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
+    """
+    Point app settings at the test Redis instance for the whole session.
+
+    Uses patch.object instead of env vars because settings is already
+    instantiated from config/.env at import time.
+    """
+    parsed = urlparse(_redis_url)
+    with (
+        patch.object(settings, "redis_host", parsed.hostname or "localhost"),
+        patch.object(settings, "redis_port", parsed.port or 6379),
+    ):
+        yield
+
+
 @pytest.fixture(autouse=True)
-def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Globally mock Redis to prevent connection errors in tests."""
-    mock = MagicMock()
-    mock.lock.return_value.__enter__ = MagicMock(return_value=None)
-    mock.lock.return_value.__exit__ = MagicMock(return_value=None)
-    mock.get.return_value = None
-    mock.set.return_value = True
-    mock.setex.return_value = True
-    mock.expire.return_value = True
-    mock.delete.return_value = True
-    mock.sadd.return_value = 1
-    mock.srem.return_value = 1
-    mock.smembers.return_value = set()
-
-    # Return mock for redis.from_url (used by get_redis_client)
-    # We also need to clear lru_cache of get_redis_client to ensure it picks up the mock
-    from app.integrations.redis_client import get_redis_client
-
+def flush_redis(_redis_url: str) -> Generator[None, None, None]:
+    """Flush Redis state before each test to ensure isolation."""
+    get_redis_client.cache_clear()
+    yield
+    redis_lib.from_url(_redis_url).flushdb()
     get_redis_client.cache_clear()
 
-    with patch("redis.from_url", return_value=mock):
-        yield mock
+
+# ============================================================================
+# Auto-use fixtures for global mocking
+# ============================================================================
 
 
 @pytest.fixture(autouse=True)
@@ -263,7 +289,6 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
 @pytest.fixture(autouse=True)
 def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Speed up tests by using simple password hashing."""
-    import sys
 
     def simple_hash(password: str) -> str:
         return f"hashed_{password}"
