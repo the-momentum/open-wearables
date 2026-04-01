@@ -53,6 +53,8 @@ class SeriesType(str, Enum):
     lean_body_mass = "lean_body_mass"
     body_temperature = "body_temperature"
     skin_temperature = "skin_temperature"
+    skin_temperature_deviation = "skin_temperature_deviation"
+    skin_temperature_trend_deviation = "skin_temperature_trend_deviation"
 
     # Body Composition - Extended
     waist_circumference = "waist_circumference"
@@ -202,6 +204,8 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (47, SeriesType.waist_circumference, "cm"),
     (48, SeriesType.body_fat_mass, "kg"),
     (49, SeriesType.skeletal_muscle_mass, "kg"),
+    (50, SeriesType.skin_temperature_deviation, "celsius"),
+    (51, SeriesType.skin_temperature_trend_deviation, "celsius"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------

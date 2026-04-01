@@ -340,6 +340,7 @@ class Oura247Data(Base247DataTemplate):
                     "timestamp": timestamp,
                     "recovery_score": readiness.score,
                     "temperature_deviation": readiness.temperature_deviation,
+                    "temperature_trend_deviation": readiness.temperature_trend_deviation,
                     "raw": raw_readiness,
                 }
             )
@@ -354,7 +355,8 @@ class Oura247Data(Base247DataTemplate):
         """Save normalized readiness data as DataPointSeries."""
         metrics = [
             ("recovery_score", SeriesType.recovery_score),
-            ("temperature_deviation", SeriesType.body_temperature),
+            ("temperature_deviation", SeriesType.skin_temperature_deviation),
+            ("temperature_trend_deviation", SeriesType.skin_temperature_trend_deviation),
         ]
 
         samples: list[TimeSeriesSampleCreate] = []
