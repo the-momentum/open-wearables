@@ -322,7 +322,7 @@ class TestBackfillTaskStopChain:
 
         with (
             patch(f"{self.TASK_MODULE}.SessionLocal") as mock_session_cls,
-            patch(f"{self.TASK_MODULE}.ProviderFactory") as mock_factory_cls,
+            patch(f"{self.TASK_MODULE}.GarminOAuth"),
             patch(f"{self.TASK_MODULE}.get_current_window", return_value=0),
             patch(
                 f"{self.TASK_MODULE}.get_window_date_range",
@@ -348,11 +348,6 @@ class TestBackfillTaskStopChain:
 
             # Setup connection repo — return a valid connection
             mock_conn_repo_cls.return_value.get_by_user_and_provider.return_value = MagicMock()
-
-            # Setup provider factory
-            mock_strategy = MagicMock()
-            mock_strategy.oauth = MagicMock()
-            mock_factory_cls.return_value.get_provider.return_value = mock_strategy
 
             with patch.object(
                 GarminBackfillService,

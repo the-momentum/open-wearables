@@ -1,10 +1,9 @@
 """
-Tests for Garmin webhook endpoints.
+Tests for Garmin webhook handling via the unified provider webhook router.
 
-Tests the /api/v1/garmin/webhooks endpoints including:
-- POST /api/v1/garmin/webhooks/ping - test ping webhook
-- POST /api/v1/garmin/webhooks/push - test push webhook
-- GET /api/v1/garmin/webhooks/health - test health check
+Tests the /api/v1/providers/garmin/webhooks endpoint including:
+- POST /api/v1/providers/garmin/webhooks - PUSH and PING events
+- GET /api/v1/providers/garmin/webhooks - subscription challenge (501 for Garmin)
 - Authentication and authorization
 - Error cases
 - userPermissions webhooks
@@ -63,7 +62,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -89,7 +88,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             json=payload,
         )
 
@@ -116,7 +115,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -153,7 +152,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -207,7 +206,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -242,7 +241,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -283,7 +282,7 @@ class TestGarminPingWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -332,7 +331,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -372,7 +371,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -403,7 +402,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             json=payload,
         )
 
@@ -454,7 +453,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -498,7 +497,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -522,7 +521,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -574,7 +573,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -625,7 +624,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -681,7 +680,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -724,7 +723,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -737,40 +736,22 @@ class TestGarminPushWebhookWellness:
         assert data["wellness"]["sleeps"]["processed"] == 1
 
 
-class TestGarminWebhookHealth:
-    """Test suite for Garmin webhook health check endpoint."""
+class TestGarminWebhookRouting:
+    """Test suite for Garmin webhook routing via the unified provider router."""
 
-    def test_health_check_success(self, client: TestClient, db: Session) -> None:
-        """Test that health check returns OK."""
-        # Act
-        response = client.get("/api/v1/garmin/webhooks/health")
+    def test_get_challenge_returns_501(self, client: TestClient, db: Session) -> None:
+        """Garmin does not support GET subscription challenges — expect 501."""
+        response = client.get("/api/v1/providers/garmin/webhooks")
+        assert response.status_code == 501
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert "service" in data
-        assert data["service"] == "garmin-webhooks"
-
-    def test_health_check_no_auth_required(self, client: TestClient, db: Session) -> None:
-        """Test that health check doesn't require authentication."""
-        # Act - no headers
-        response = client.get("/api/v1/garmin/webhooks/health")
-
-        # Assert
-        assert response.status_code == 200
-
-    def test_health_check_response_structure(self, client: TestClient, db: Session) -> None:
-        """Test health check response structure."""
-        # Act
-        response = client.get("/api/v1/garmin/webhooks/health")
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, dict)
-        assert "status" in data
-        assert "service" in data
+    def test_unknown_provider_returns_404(self, client: TestClient, db: Session) -> None:
+        """Unknown provider names return 404."""
+        response = client.post(
+            "/api/v1/providers/unknown_provider/webhooks",
+            headers={"garmin-client-id": "x"},
+            json={},
+        )
+        assert response.status_code == 404
 
 
 class TestGarminUserPermissionsWebhook:
@@ -803,7 +784,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -846,7 +827,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -889,7 +870,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -924,7 +905,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -963,7 +944,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -1007,7 +988,7 @@ class TestGarminDeregistrationWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -1040,7 +1021,7 @@ class TestGarminDeregistrationWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )

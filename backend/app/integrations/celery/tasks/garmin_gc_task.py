@@ -24,23 +24,20 @@ from app.services.providers.garmin.backfill_config import (
     REDIS_PREFIX,
     REDIS_TTL,
 )
-from app.utils.structured_logging import log_structured
-from celery import shared_task
-
-from .garmin_backfill_task import (
+from app.services.providers.garmin.backfill_state import (
+    _get_key as _key,
+)
+from app.services.providers.garmin.backfill_state import (
     get_current_window,
     is_retry_phase,
     mark_type_timed_out,
     record_timed_out_entry,
     release_backfill_lock,
 )
+from app.utils.structured_logging import log_structured
+from celery import shared_task
 
 logger = getLogger(__name__)
-
-
-def _key(user_id: str, *parts: str) -> str:
-    """Generate Redis key for backfill tracking."""
-    return ":".join([REDIS_PREFIX, user_id, *parts])
 
 
 def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) -> bool:

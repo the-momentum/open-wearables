@@ -1,34 +1,35 @@
+from app.services.providers.garmin.backfill_config import (
+    BACKFILL_DATA_TYPES as GARMIN_BACKFILL_DATA_TYPES,
+)
+from app.services.providers.garmin.backfill_state import (
+    acquire_backfill_lock as acquire_garmin_backfill_lock,
+)
+from app.services.providers.garmin.backfill_state import (
+    get_backfill_status as get_garmin_backfill_status,
+)
+from app.services.providers.garmin.backfill_state import (
+    get_pending_types as get_garmin_pending_types,
+)
+from app.services.providers.garmin.backfill_state import (
+    is_cancelled as is_garmin_backfill_cancelled,
+)
+from app.services.providers.garmin.backfill_state import (
+    mark_type_success as mark_garmin_type_success,
+)
+from app.services.providers.garmin.backfill_state import (
+    release_backfill_lock as release_garmin_backfill_lock,
+)
+from app.services.providers.garmin.backfill_state import (
+    reset_type_status as reset_garmin_type_status,
+)
+from app.services.providers.garmin.backfill_state import (
+    set_cancel_flag as set_garmin_cancel_flag,
+)
+
 from .archival_task import run_daily_archival
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
-    BACKFILL_DATA_TYPES as GARMIN_BACKFILL_DATA_TYPES,
-)
-from .garmin_backfill_task import (
-    acquire_backfill_lock as acquire_garmin_backfill_lock,
-)
-from .garmin_backfill_task import (
     check_triggered_timeout as check_garmin_triggered_timeout,
-)
-from .garmin_backfill_task import (
-    get_backfill_status as get_garmin_backfill_status,
-)
-from .garmin_backfill_task import (
-    get_pending_types as get_garmin_pending_types,
-)
-from .garmin_backfill_task import (
-    is_cancelled as is_garmin_backfill_cancelled,
-)
-from .garmin_backfill_task import (
-    mark_type_success as mark_garmin_type_success,
-)
-from .garmin_backfill_task import (
-    release_backfill_lock as release_garmin_backfill_lock,
-)
-from .garmin_backfill_task import (
-    reset_type_status as reset_garmin_type_status,
-)
-from .garmin_backfill_task import (
-    set_cancel_flag as set_garmin_cancel_flag,
 )
 from .garmin_backfill_task import (
     start_full_backfill as start_garmin_full_backfill,

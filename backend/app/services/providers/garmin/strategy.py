@@ -1,6 +1,7 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
 from app.services.providers.garmin.workouts import GarminWorkouts
 
 
@@ -33,6 +34,10 @@ class GarminStrategy(BaseProviderStrategy):
             provider_name=self.name,
             api_base_url=self.api_base_url,
             oauth=self.oauth,
+        )
+        self.webhooks = GarminWebhookHandler(
+            garmin_workouts=self.workouts,
+            garmin_247=self.data_247,
         )
 
     @property
