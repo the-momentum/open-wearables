@@ -6,6 +6,9 @@ which caused end_datetime to be earlier than the actual session end.
 This script recomputes end_datetime and duration_seconds from the last
 stage in the sleep_stages JSONB column.
 
+Reads DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD from environment
+(defaults match the local Docker Compose setup).
+
 Usage (inside Docker):
     docker compose exec app uv run python scripts/backfill_garmin_sleep_end_datetime.py --dry-run
     docker compose exec app uv run python scripts/backfill_garmin_sleep_end_datetime.py
@@ -78,13 +81,17 @@ UPDATE_QUERY = """
 """
 
 
-def get_database_url() -> str:
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        print("ERROR: DATABASE_URL environment variable is not set.", file=sys.stderr)
+def get_conninfo() -> str:
+    required = ["DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+    missing = [v for v in required if not os.environ.get(v)]
+    if missing:
+        print(f"ERROR: missing environment variables: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
-    # psycopg requires postgresql:// not postgresql+psycopg://
-    return url.replace("postgresql+psycopg://", "postgresql://")
+    return (
+        f"host={os.environ['DB_HOST']} port={os.environ['DB_PORT']} "
+        f"dbname={os.environ['DB_NAME']} user={os.environ['DB_USER']} "
+        f"password={os.environ['DB_PASSWORD']}"
+    )
 
 
 def main() -> None:
@@ -92,9 +99,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Preview affected records without making changes.")
     args = parser.parse_args()
 
-    db_url = get_database_url()
-
-    with psycopg.connect(db_url) as conn, conn.cursor() as cur:
+    with psycopg.connect(get_conninfo()) as conn, conn.cursor() as cur:
         cur.execute(PREVIEW_QUERY)
         rows = cur.fetchall()
 
