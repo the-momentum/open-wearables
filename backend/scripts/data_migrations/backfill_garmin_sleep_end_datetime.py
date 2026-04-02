@@ -10,8 +10,8 @@ Reads DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD from environment
 (defaults match the local Docker Compose setup).
 
 Usage (inside Docker):
-    docker compose exec app uv run python scripts/backfill_garmin_sleep_end_datetime.py --dry-run
-    docker compose exec app uv run python scripts/backfill_garmin_sleep_end_datetime.py
+    docker compose exec app uv run python scripts/data_migrations/backfill_garmin_sleep_end_datetime.py --dry-run
+    docker compose exec app uv run python scripts/data_migrations/backfill_garmin_sleep_end_datetime.py
 """
 
 import argparse
