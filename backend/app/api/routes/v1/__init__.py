@@ -41,7 +41,6 @@ v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags
 v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
 # Strava webhooks for event notifications
 v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
-# Unified webhook router – delegates to provider strategy handlers
 v1_router.include_router(providers_webhooks_router, prefix="/providers", tags=["providers webhooks"])
 # New unified vendor workouts endpoint
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])

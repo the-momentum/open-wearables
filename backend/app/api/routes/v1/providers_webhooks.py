@@ -23,8 +23,9 @@ into its strategy, traffic can be cut over to this router.
 """
 
 from logging import getLogger
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.database import DbSession
 from app.services.providers.factory import ProviderFactory
@@ -58,23 +59,38 @@ def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
     return strategy.webhooks
 
 
+async def _read_body(request: Request) -> bytes:
+    """Async dependency: read raw request body bytes.
+
+    Keeps body reading off the sync route handler so that FastAPI can run the
+    actual handler (which does synchronous DB work) in a threadpool, preventing
+    event loop blocking.
+    """
+    return await request.body()
+
+
 @router.post("/{provider}/webhooks")
-async def handle_provider_webhook(provider: str, request: Request, db: DbSession) -> dict:
+def handle_provider_webhook(
+    provider: str,
+    request: Request,
+    db: DbSession,
+    body: Annotated[bytes, Depends(_read_body)],
+) -> dict:
     """Receive an incoming webhook event from a provider.
 
-    The raw request body is read here (before entering the sync route handler)
-    so that signature verification helpers have access to the exact bytes that
-    were signed by the provider.
+    Body bytes are pre-read by the async ``_read_body`` dependency so that
+    signature verification has access to the exact bytes signed by the provider.
+    The route itself is a plain ``def`` so FastAPI runs it in a threadpool,
+    keeping synchronous DB work off the event loop.
 
     Returns whatever dict the provider's ``dispatch()`` method returns.
     """
     handler = _get_webhook_handler(provider)
-    body = await request.body()
     return handler.handle(request, body, db)
 
 
 @router.get("/{provider}/webhooks")
-async def verify_provider_webhook(provider: str, request: Request) -> dict:
+def verify_provider_webhook(provider: str, request: Request) -> dict:
     """Handle GET-based subscription verification challenges.
 
     Some providers (Strava ``hub.challenge``, Oura ``verification_token``)

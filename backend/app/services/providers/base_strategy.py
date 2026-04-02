@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
@@ -10,23 +9,6 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
-
-
-class DeliveryMode(str, Enum):
-    """High-level data delivery mode for a provider.
-
-    Use ``ProviderCapabilities`` for fine-grained capability flags.
-    This enum is useful for quick routing decisions and UI labels.
-
-    * ``PULL``   – OpenWearables polls the provider REST API on a schedule.
-    * ``PUSH``   – Provider pushes data directly to our webhook endpoint.
-    * ``HYBRID`` – Provider delivers data via webhook *after* an explicit
-                   REST backfill request (Garmin-style).
-    """
-
-    PULL = "pull"
-    PUSH = "push"
-    HYBRID = "hybrid"
 
 
 @dataclass(frozen=True)
@@ -42,29 +24,33 @@ class ProviderCapabilities:
         Provider exposes a REST API that can be polled for historical or
         recent data (``load_data()`` / ``get_workouts()``).
     supports_push:
-        Provider can send incoming webhook events to our endpoint.  This
-        covers both full-payload webhooks (Garmin) and notification-only
-        webhooks (Oura, Strava).
-    supports_backfill:
-        Provider supports an async backfill API where an explicit REST
-        request triggers data delivery via a subsequent webhook.  Garmin
-        is the canonical example.
-    supports_file_upload:
-        Data arrives as a file upload (Apple Health XML, HealthKit package,
-        Samsung/Google SDK payload).  No cloud OAuth or webhooks involved.
+        Provider can send incoming webhook events to our endpoint. Covers
+        both full-payload webhooks (Garmin) and notification-only webhooks
+        (Oura, Strava, Fitbit, Polar, Suunto).
+    supports_async_export:
+        Provider supports an async export flow: we send a REST request to
+        initiate a data export, and the provider delivers the result to our
+        webhook asynchronously. Currently only Garmin uses this pattern.
+    supports_sdk:
+        Data arrives through our mobile SDK endpoint pushed by the client app
+        (Samsung Health, Google Health Connect).
+    supports_xml_import:
+        Data arrives as an XML file export from the user's device
+        (Apple Health XML). May coexist with ``supports_sdk`` for Apple.
     webhook_notify_only:
         When ``True`` the webhook payload contains only a lightweight
         notification (user_id + event_type) and the actual data must still
-        be fetched via the REST API (``supports_pull`` should also be
-        ``True``).  Oura, Strava, Fitbit, Suunto and Polar follow this
-        pattern.  When ``False`` (Garmin) the webhook delivers the full
-        data payload and no subsequent REST call is needed.
+        be fetched via REST (``supports_pull`` should also be ``True``).
+        Oura, Strava, Fitbit, Suunto and Polar follow this pattern.
+        When ``False`` (Garmin) the webhook delivers the full data payload
+        inline.
     """
 
     supports_pull: bool = False
     supports_push: bool = False
-    supports_backfill: bool = False
-    supports_file_upload: bool = False
+    supports_async_export: bool = False
+    supports_sdk: bool = False
+    supports_xml_import: bool = False
     webhook_notify_only: bool = False
 
 
@@ -99,14 +85,18 @@ class BaseProviderStrategy(ABC):
         """Declares the data delivery capabilities of this provider.
 
         Each concrete strategy must override this to accurately reflect what
-        data delivery modes the provider supports.  The unified webhook router
+        data delivery modes the provider supports. The unified webhook router
         and sync scheduler use this to decide how to handle the provider.
 
         Example::
 
             @property
             def capabilities(self) -> ProviderCapabilities:
-                return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+                return ProviderCapabilities(
+                    supports_pull=True,
+                    supports_push=True,
+                    webhook_notify_only=True,
+                )
         """
 
     @property

@@ -49,4 +49,4 @@ class GarminStrategy(BaseProviderStrategy):
         # also supports an async backfill flow (PING → callback URL fetch).
         # There is no plain REST polling path for wellness data; all data
         # arrives via the push/backfill mechanism.
-        return ProviderCapabilities(supports_push=True, supports_backfill=True)
+        return ProviderCapabilities(supports_push=True, supports_async_export=True)
