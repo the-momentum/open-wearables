@@ -96,29 +96,28 @@ def main() -> None:
     args = parser.parse_args()
 
     with psycopg.connect(get_conninfo()) as conn, conn.cursor() as cur:
-        cur.execute(PREVIEW_QUERY)
-        rows = cur.fetchall()
-
-        if not rows:
-            print("No records to update.")
-            return
-
-        print(f"{'ID':<38} {'Start':<22} {'Current End':<22} {'New End':<22} {'Diff (min)':<10}")
-        print("-" * 114)
-        for row in rows:
-            record_id, start, current_end, current_dur, new_end, new_dur = row
-            diff_min = (new_dur - (current_dur or 0)) // 60
-            print(f"{record_id}   {start!s:<22} {current_end!s:<22} {new_end!s:<22} {diff_min:>+8}")
-
-        print(f"\nTotal: {len(rows)} record(s) to update.")
-
         if args.dry_run:
+            cur.execute(PREVIEW_QUERY)
+            rows = cur.fetchall()
+
+            if not rows:
+                print("No records to update.")
+                return
+
+            print(f"{'ID':<38} {'Start':<22} {'Current End':<22} {'New End':<22} {'Diff (min)':<10}")
+            print("-" * 114)
+            for row in rows:
+                record_id, start, current_end, current_dur, new_end, new_dur = row
+                diff_min = (new_dur - (current_dur or 0)) // 60
+                print(f"{record_id}   {start!s:<22} {current_end!s:<22} {new_end!s:<22} {diff_min:>+8}")
+
+            print(f"\nTotal: {len(rows)} record(s) to update.")
             print("\nDry run - no changes made.")
             return
 
         cur.execute(UPDATE_QUERY)
         conn.commit()
-        print(f"\nUpdated {cur.rowcount} record(s).")
+        print(f"Updated {cur.rowcount} record(s).")
 
 
 if __name__ == "__main__":
