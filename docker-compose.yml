@@ -15,6 +15,7 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./agent/scripts/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh
 
   app:
     build:
@@ -134,6 +135,90 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/var/lib/redis/data
+
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: agent__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/app.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    develop:
+      watch:
+        - action: sync
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync+restart
+          path: ./agent/migrations
+          target: /root_project/migrations
+        - action: sync+restart
+          path: ./agent/config/.env
+          target: /root_project/config/.env
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
+        - action: rebuild
+          path: ./agent/uv.lock
+    restart: on-failure
+
+  agent-celery-worker:
+    container_name: agent-celery-worker__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/worker.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - agent
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
+
+  agent-celery-beat:
+    container_name: agent-celery-beat__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/beat.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - db
+      - agent
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
 
   frontend:
     build:
