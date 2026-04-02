@@ -14,8 +14,6 @@ Usage (inside Docker):
     docker compose exec app uv run python scripts/backfill_garmin_sleep_end_datetime.py
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import sys
