@@ -38,8 +38,7 @@ PREVIEW_QUERY = """
         FROM (
             SELECT sd.record_id, sd.sleep_stages
             FROM sleep_details sd
-            JOIN event_record_detail erd ON erd.record_id = sd.record_id
-            JOIN event_record e ON e.id = erd.record_id
+            JOIN event_record e ON e.id = sd.record_id
             WHERE sd.sleep_stages IS NOT NULL
               AND jsonb_typeof(sd.sleep_stages) = 'array'
               AND jsonb_array_length(sd.sleep_stages) > 0
@@ -65,8 +64,7 @@ UPDATE_QUERY = """
         FROM (
             SELECT sd.record_id, sd.sleep_stages
             FROM sleep_details sd
-            JOIN event_record_detail erd ON erd.record_id = sd.record_id
-            JOIN event_record e ON e.id = erd.record_id
+            JOIN event_record e ON e.id = sd.record_id
             WHERE sd.sleep_stages IS NOT NULL
               AND jsonb_typeof(sd.sleep_stages) = 'array'
               AND jsonb_array_length(sd.sleep_stages) > 0
