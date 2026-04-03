@@ -474,6 +474,7 @@ def garmin_ping_notification(
             "stressDetails",
             "respiration",
             "pulseOx",
+            "pulseox",
             "healthSnapshot",
             "skinTemp",
             "moveiq",
@@ -492,17 +493,18 @@ def garmin_ping_notification(
 
         for summary_type in wellness_types:
             if summary_type in payload and payload[summary_type]:
+                normalized_summary_type = "pulseOx" if summary_type == "pulseox" else summary_type
                 log_structured(
                     logger,
                     "info",
                     "Processing wellness notifications",
                     provider="garmin",
                     trace_id=request_trace_id,
-                    summary_type=summary_type,
+                    summary_type=normalized_summary_type,
                     count=len(payload[summary_type]),
                 )
                 wellness_results[summary_type] = _process_wellness_notification(
-                    db, summary_type, payload[summary_type], garmin_247, request_trace_id
+                    db, normalized_summary_type, payload[summary_type], garmin_247, request_trace_id
                 )
 
         # Commit all batch-inserted wellness data (bulk_create defers commit to caller)
@@ -832,6 +834,7 @@ def garmin_push_notification(
             "stressDetails",
             "respiration",
             "pulseOx",
+            "pulseox",
             "bloodPressures",
             "userMetrics",
             "skinTemp",
@@ -844,6 +847,8 @@ def garmin_push_notification(
         for data_type in wellness_types:
             if data_type not in payload:
                 continue
+
+            normalized_data_type = "pulseOx" if data_type == "pulseox" else data_type
 
             # Group items by user for batch processing
             user_items: dict[UUID, list[dict[str, Any]]] = {}
@@ -879,7 +884,7 @@ def garmin_push_notification(
             for uid, items in user_items.items():
                 trace_id = get_trace_id(uid) or request_trace_id
                 try:
-                    count = garmin_247.process_items_batch(db, uid, data_type, items)
+                    count = garmin_247.process_items_batch(db, uid, normalized_data_type, items)
                     type_count += count
                     type_users.add(str(uid))
                     if count > 0:
@@ -908,7 +913,7 @@ def garmin_push_notification(
                     user_count=len(type_users),
                 )
                 for uid_str in type_users:
-                    if mark_type_success(uid_str, data_type):
+                    if mark_type_success(uid_str, normalized_data_type):
                         # First success for this type — schedule next backfill
                         users_with_new_success.add(uid_str)
 

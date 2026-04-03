@@ -587,6 +587,51 @@ class TestGarminPushWebhookWellness:
         assert data["wellness"]["hrv"]["processed"] == 1
         assert data["wellness"]["hrv"]["saved"] > 0
 
+    def test_push_webhook_pulseox_alias_data(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test push webhook accepts lowercase pulseox payload key."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "pulseox": [
+                {
+                    "userId": "garmin_user_123",
+                    "summaryId": "pulseox-123",
+                    "startTimeInSeconds": 1768340715,
+                    "startTimeOffsetInSeconds": 3600,
+                    "timeOffsetSpo2Values": {
+                        "0": 94,
+                        "60": 93,
+                    },
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "wellness" in data
+        assert "pulseox" in data["wellness"]
+        assert data["wellness"]["pulseox"]["processed"] == 1
+        assert data["wellness"]["pulseox"]["saved"] > 0
+
     def test_push_webhook_epochs_batch_logging(
         self,
         client: TestClient,
