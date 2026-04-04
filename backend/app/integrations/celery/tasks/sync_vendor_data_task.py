@@ -69,8 +69,12 @@ def sync_vendor_data(
             if providers:
                 connections = [c for c in connections if c.provider in providers]
 
-            # Only sync cloud API providers - SDK-based ones (Apple, Google, Samsung) use process_payload
-            connections = [c for c in connections if factory.get_provider(c.provider).has_cloud_api]
+            # Only sync providers that support REST polling (pull-based).
+            # Push-only providers (Garmin webhooks, Apple/Google/Samsung SDK) deliver
+            # data via process_payload and should not be polled here.
+            connections = [
+                c for c in connections if factory.get_provider(c.provider).capabilities.supports_pull
+            ]
 
             if not connections:
                 log_structured(

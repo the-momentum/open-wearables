@@ -224,7 +224,7 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.side_effect = Exception("Provider API unavailable")
 
         mock_strategy = MagicMock()
-        mock_strategy.has_cloud_api = True
+        mock_strategy.capabilities.supports_pull = True
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -319,7 +319,7 @@ class TestSyncVendorDataTask:
         mock_session_local.return_value.__exit__.return_value = None
 
         mock_strategy = MagicMock()
-        mock_strategy.has_cloud_api = False
+        mock_strategy.capabilities.supports_pull = False
         mock_get_provider.return_value = mock_strategy
 
         # Act
