@@ -224,6 +224,7 @@ class Garmin247Data(Base247DataTemplate):
             "end_time": end_dt.isoformat(),
             "zone_offset": zone_offset,
             "duration_seconds": duration,
+            "is_nap": False,
             "stages": {
                 "deep_seconds": deep_seconds,
                 "light_seconds": light_seconds,
@@ -240,6 +241,70 @@ class Garmin247Data(Base247DataTemplate):
             "garmin_summary_id": raw_sleep.get("summaryId"),
             "raw": raw_sleep,
         }
+
+    def _extract_naps_from_sleep(
+        self,
+        raw_sleep: dict[str, Any],
+        user_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Extract nap entries from a Garmin sleep summary's ``naps`` array.
+
+        Each nap contains ``napStartTimeInSeconds``, ``napDurationInSeconds``,
+        and ``napOffsetInSeconds``.  We build a normalized sleep dict for every
+        nap entry so it can be persisted through the same pipeline as main sleep
+        records.
+
+        Args:
+            raw_sleep: Raw Garmin sleep payload (may contain a ``naps`` list).
+            user_id: User UUID.
+
+        Returns:
+            List of normalized sleep dicts with ``is_nap=True``.
+        """
+        naps_raw: list[dict[str, Any]] = raw_sleep.get("naps", []) or []
+        nap_records: list[dict[str, Any]] = []
+
+        for nap in naps_raw:
+            start_ts = nap.get("napStartTimeInSeconds")
+            duration = nap.get("napDurationInSeconds", 0)
+
+            if not start_ts or not duration:
+                continue
+
+            end_ts = start_ts + duration
+            start_dt = self._from_epoch_seconds(start_ts)
+            end_dt = self._from_epoch_seconds(end_ts)
+            zone_offset = offset_to_iso(nap.get("napOffsetInSeconds"))
+
+            nap_records.append(
+                {
+                    "id": uuid4(),
+                    "user_id": user_id,
+                    "provider": self.provider_name,
+                    "start_time": start_dt.isoformat(),
+                    "end_time": end_dt.isoformat(),
+                    "zone_offset": zone_offset,
+                    "duration_seconds": duration,
+                    "is_nap": True,
+                    "stages": {
+                        "deep_seconds": 0,
+                        "light_seconds": 0,
+                        "rem_seconds": 0,
+                        "awake_seconds": 0,
+                    },
+                    "stage_timestamps": None,
+                    "avg_heart_rate_bpm": None,
+                    "min_heart_rate_bpm": None,
+                    "avg_respiration": None,
+                    "avg_spo2_percent": None,
+                    "sleep_score": None,
+                    "validation": None,
+                    "garmin_summary_id": None,
+                    "raw": nap,
+                }
+            )
+
+        return nap_records
 
     def _build_sleep_record(
         self,
@@ -294,7 +359,7 @@ class Garmin247Data(Base247DataTemplate):
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
-            is_nap=False,
+            is_nap=normalized_sleep.get("is_nap", False),
             heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
@@ -310,7 +375,10 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_sleep: dict[str, Any],
     ) -> None:
-        """Save normalized sleep data as EventRecord + EventRecordDetail."""
+        """Save normalized sleep data as EventRecord + EventRecordDetail.
+
+        Also extracts and persists any nap entries embedded in the raw payload.
+        """
         result = self._build_sleep_record(user_id, normalized_sleep)
         if not result:
             return
@@ -326,6 +394,27 @@ class Garmin247Data(Base247DataTemplate):
                 provider="garmin",
                 task="save_sleep_data",
             )
+
+        # Process naps from the raw payload
+        raw_sleep = normalized_sleep.get("raw", {})
+        if raw_sleep:
+            for nap_normalized in self._extract_naps_from_sleep(raw_sleep, user_id):
+                nap_result = self._build_sleep_record(user_id, nap_normalized)
+                if not nap_result:
+                    continue
+                nap_record, nap_detail = nap_result
+                try:
+                    event_record_service.create_or_merge_sleep(
+                        db, user_id, nap_record, nap_detail, settings.sleep_end_gap_minutes
+                    )
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "error",
+                        f"Error saving nap record {nap_normalized['id']}: {e}",
+                        provider="garmin",
+                        task="save_sleep_data",
+                    )
 
     # -------------------------------------------------------------------------
     # Dailies Data - /wellness-api/rest/dailies
@@ -1600,6 +1689,13 @@ class Garmin247Data(Base247DataTemplate):
                             record, detail = result
                             all_records.append(record)
                             all_sleep_details.append(detail)
+                        # Also extract naps from the raw sleep payload
+                        for nap_normalized in self._extract_naps_from_sleep(item, user_id):
+                            nap_result = self._build_sleep_record(user_id, nap_normalized)
+                            if nap_result:
+                                nap_record, nap_detail = nap_result
+                                all_records.append(nap_record)
+                                all_sleep_details.append(nap_detail)
                     case "activities" | "activityDetails":
                         result = self._build_activity_record(user_id, item)
                         if result:
