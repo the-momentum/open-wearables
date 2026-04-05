@@ -59,6 +59,7 @@ api = FastAPI(
         {"name": "Internal: Providers", "description": "Provider enable/disable settings"},
         {"name": "Internal: Data Lifecycle", "description": "Data archival settings"},
         # System: provider webhooks and debug tools
+        {"name": "System: OAuth", "description": "OAuth callback and post-authorization redirects"},
         {"name": "System: Garmin Webhooks", "description": "Garmin push/ping webhook receiver"},
         {"name": "System: Oura Webhooks", "description": "Oura data notification webhook receiver"},
         {"name": "System: Strava Webhooks", "description": "Strava event notification webhook receiver"},
