@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
@@ -276,9 +276,11 @@ class Garmin247Data(Base247DataTemplate):
             end_dt = self._from_epoch_seconds(end_ts)
             zone_offset = offset_to_iso(nap.get("napOffsetInSeconds"))
 
+            # Deterministic ID from provider + start time prevents duplicates on re-sync
+            nap_id = uuid5(NAMESPACE_DNS, f"garmin-nap-{start_ts}-{user_id}")
             nap_records.append(
                 {
-                    "id": uuid4(),
+                    "id": nap_id,
                     "user_id": user_id,
                     "provider": self.provider_name,
                     "start_time": start_dt.isoformat(),
@@ -395,7 +397,10 @@ class Garmin247Data(Base247DataTemplate):
                 task="save_sleep_data",
             )
 
-        # Process naps from the raw payload
+        # Process naps from the raw payload.
+        # Naps bypass the merge logic (create_or_merge_sleep) because
+        # find_adjacent_sleep_record does not filter by is_nap, so a
+        # short nap near an overnight session would be incorrectly merged.
         raw_sleep = normalized_sleep.get("raw", {})
         if raw_sleep:
             for nap_normalized in self._extract_naps_from_sleep(raw_sleep, user_id):
@@ -404,9 +409,13 @@ class Garmin247Data(Base247DataTemplate):
                     continue
                 nap_record, nap_detail = nap_result
                 try:
-                    event_record_service.create_or_merge_sleep(
-                        db, user_id, nap_record, nap_detail, settings.sleep_end_gap_minutes
+                    created = event_record_service.crud.create_and_flush(db, nap_record)
+                    event_record_service.event_record_detail_repo.create_and_flush(
+                        db,
+                        nap_detail.model_copy(update={"record_id": created.id}),
+                        detail_type="sleep",
                     )
+                    db.commit()
                 except Exception as e:
                     log_structured(
                         self.logger,
