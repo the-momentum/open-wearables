@@ -119,13 +119,6 @@ The mobile app uses this token to push health data to the SDK sync endpoints:
 
 <CodeGroup>
 
-```bash Auto Health Export
-curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/apple/auto-health-export \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
-  -H "Content-Type: application/json" \
-  -d '{ ... health data ... }'
-```
-
 ```bash Healthion
 curl -X POST http://localhost:8000/api/v1/sdk/users/{user_id}/sync/apple/healthion \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
