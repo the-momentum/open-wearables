@@ -192,8 +192,8 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         Returns:
             Number of workout records saved.
         """
-        start = kwargs.get("start") or kwargs.get("start_date")
-        end = kwargs.get("end") or kwargs.get("end_date")
+        start = kwargs.get("start") or kwargs.get("start_date") or kwargs.get("summary_start_time")
+        end = kwargs.get("end") or kwargs.get("end_date") or kwargs.get("summary_end_time")
 
         if not start:
             start_dt = datetime.now(timezone.utc) - timedelta(days=30)
