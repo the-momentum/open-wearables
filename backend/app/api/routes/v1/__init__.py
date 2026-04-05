@@ -29,42 +29,36 @@ from .vendor_workouts import router as vendor_workouts_router
 
 v1_router = APIRouter()
 
-v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
-v1_router.include_router(developers_router, prefix="/developers", tags=["developers"])
-v1_router.include_router(invitations_router, prefix="/invitations", tags=["invitations"])
-v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
-v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
-# Garmin webhooks for push/ping notifications
-v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["garmin webhooks"])
-# Oura webhooks for data notifications
-v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
-# Strava webhooks for event notifications
-v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
-v1_router.include_router(providers_webhooks_router, prefix="/providers", tags=["providers webhooks"])
-# New unified vendor workouts endpoint
-v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
-v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])
-# Suunto debug endpoints for raw API access
-v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
-v1_router.include_router(users_router, tags=["users"])
-v1_router.include_router(connections_router, tags=["data"])
-v1_router.include_router(import_xml_router, tags=["Apple Health XML import"])
-v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
-v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])
-v1_router.include_router(user_invitation_code_router, tags=["Mobile SDK"])
-v1_router.include_router(applications_router, tags=["applications"])
-v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
-v1_router.include_router(priorities_router, tags=["priorities"])
+# --- External: 3rd party integration endpoints ---
+v1_router.include_router(users_router, tags=["External: Users"])
+v1_router.include_router(connections_router, tags=["External: Connections"])
+v1_router.include_router(summaries_router, tags=["External: Summaries"])
+v1_router.include_router(timeseries_router, tags=["External: Timeseries"])
+v1_router.include_router(events_router, tags=["External: Events"])
+v1_router.include_router(oauth_router, prefix="/oauth")
+v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
+v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["External: Workouts"])
+v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
+v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
+v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
+v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
+v1_router.include_router(token_router, tags=["External: Token"])
 
-# RFC Taxonomy Routes
-v1_router.include_router(summaries_router, tags=["Summaries"])
-v1_router.include_router(timeseries_router, tags=["Timeseries"])
-v1_router.include_router(events_router, tags=["Events"])
+# --- Internal: dashboard endpoints ---
+v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
+v1_router.include_router(developers_router, prefix="/developers", tags=["Internal: Developers"])
+v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
+v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])
+v1_router.include_router(applications_router, tags=["Internal: Applications"])
+v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
+v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
+v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
-# Data lifecycle / archival settings
-v1_router.include_router(archival_router, tags=["Data Lifecycle"])
-
-# Token refresh endpoint
-v1_router.include_router(token_router, tags=["token"])
+# --- System: provider webhooks and debug ---
+v1_router.include_router(garmin_webhooks_router, prefix="/garmin/webhooks", tags=["System: Garmin Webhooks"])
+v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["System: Oura Webhooks"])
+v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["System: Strava Webhooks"])
+v1_router.include_router(providers_webhooks_router, prefix="/providers", tags=["System: Provider Webhooks"])
+v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["System: Debug"])
 
 __all__ = ["v1_router"]

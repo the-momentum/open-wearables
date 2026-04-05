@@ -140,6 +140,104 @@
               "api-reference/guides/provider-setup",
               "api-reference/guides/error-handling"
             ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "POST /api/v1/token/refresh",
+              "POST /api/v1/token/revoke"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "GET /api/v1/users",
+              "POST /api/v1/users",
+              "GET /api/v1/users/{user_id}",
+              "PATCH /api/v1/users/{user_id}",
+              "DELETE /api/v1/users/{user_id}"
+            ]
+          },
+          {
+            "group": "Connections",
+            "pages": [
+              "GET /api/v1/users/{user_id}/connections",
+              "DELETE /api/v1/users/{user_id}/connections/{provider}"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "GET /api/v1/oauth/providers",
+              "GET /api/v1/oauth/{provider}/authorize",
+              "GET /api/v1/oauth/{provider}/callback"
+            ]
+          },
+          {
+            "group": "Data Sync",
+            "pages": [
+              "POST /api/v1/providers/{provider}/users/{user_id}/sync",
+              "GET /api/v1/providers/garmin/users/{user_id}/backfill/status",
+              "POST /api/v1/providers/garmin/users/{user_id}/backfill/cancel",
+              "POST /api/v1/providers/garmin/users/{user_id}/backfill/{type_name}/retry"
+            ]
+          },
+          {
+            "group": "Workouts",
+            "pages": [
+              "GET /api/v1/providers/{provider}/users/{user_id}/workouts",
+              "GET /api/v1/providers/{provider}/users/{user_id}/workouts/{workout_id}"
+            ]
+          },
+          {
+            "group": "Summaries",
+            "pages": [
+              "GET /api/v1/users/{user_id}/summaries/activity",
+              "GET /api/v1/users/{user_id}/summaries/sleep",
+              "GET /api/v1/users/{user_id}/summaries/body",
+              "GET /api/v1/users/{user_id}/summaries/recovery"
+            ]
+          },
+          {
+            "group": "Timeseries",
+            "pages": [
+              "GET /api/v1/users/{user_id}/timeseries"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "GET /api/v1/users/{user_id}/events/workouts",
+              "GET /api/v1/users/{user_id}/events/sleep"
+            ]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Apple Health Import",
+            "pages": [
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3",
+              "POST /api/v1/users/{user_id}/import/apple/xml/direct"
+            ]
+          },
+          {
+            "group": "External Connectors",
+            "pages": [
+              "POST /api/v1/users/{user_id}/import/apple/auto-health-export"
+            ]
+          },
+          {
+            "group": "Mobile SDK",
+            "pages": [
+              "POST /api/v1/sdk/users/{user_id}/sync",
+              "POST /api/v1/users/{user_id}/token",
+              "POST /api/v1/users/{user_id}/invitation-code",
+              "POST /api/v1/invitation-code/redeem"
+            ]
           }
         ]
       }

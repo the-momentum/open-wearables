@@ -31,7 +31,41 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger.handlers.clear()
     _logger.propagate = True
 
-api = FastAPI(title=settings.api_name)
+api = FastAPI(
+    title=settings.api_name,
+    openapi_tags=[
+        # External: 3rd party integration endpoints
+        {"name": "External: Users", "description": "Create and manage end-users"},
+        {"name": "External: Connections", "description": "User-provider connections"},
+        {"name": "External: Summaries", "description": "Daily aggregated health data"},
+        {"name": "External: Timeseries", "description": "Granular time-series health data"},
+        {"name": "External: Events", "description": "Workouts and sleep sessions"},
+        {"name": "External: Providers", "description": "OAuth authorization and provider listing"},
+        {"name": "External: Data Sync", "description": "Trigger data sync from providers"},
+        {"name": "External: Workouts", "description": "Provider-specific workout data"},
+        {"name": "External: Apple Health Import", "description": "Apple Health XML import via S3 or direct upload"},
+        {"name": "External: Connectors", "description": "Third-party data connectors (Auto Health Export)"},
+        {"name": "External: Mobile SDK", "description": "SDK sync, user tokens, and invitation codes"},
+        {"name": "External: Token", "description": "Token refresh and revocation"},
+        {"name": "External: Data Sources", "description": "User data source priorities"},
+        # Internal: dashboard management endpoints
+        {"name": "Internal: Auth", "description": "Dashboard authentication"},
+        {"name": "Internal: Developers", "description": "Developer and team management"},
+        {"name": "Internal: Invitations", "description": "Team invitations"},
+        {"name": "Internal: API Keys", "description": "API key management"},
+        {"name": "Internal: Applications", "description": "Application credentials"},
+        {"name": "Internal: Dashboard", "description": "Dashboard statistics"},
+        {"name": "Internal: Priorities", "description": "Global provider and device type priorities"},
+        {"name": "Internal: Providers", "description": "Provider enable/disable settings"},
+        {"name": "Internal: Data Lifecycle", "description": "Data archival settings"},
+        # System: provider webhooks and debug tools
+        {"name": "System: Garmin Webhooks", "description": "Garmin push/ping webhook receiver"},
+        {"name": "System: Oura Webhooks", "description": "Oura data notification webhook receiver"},
+        {"name": "System: Strava Webhooks", "description": "Strava event notification webhook receiver"},
+        {"name": "System: Provider Webhooks", "description": "Unified provider webhook receiver"},
+        {"name": "System: Debug", "description": "Suunto debug and raw data endpoints"},
+    ],
+)
 celery_app = create_celery()
 init_sentry()
 raw_payload_storage.configure(
