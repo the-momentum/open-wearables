@@ -594,6 +594,41 @@ class EventRecordRepository(
         return aggregates
 
     @handle_exceptions
+    def find_all_adjacent_sleep_records(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        earliest_start: datetime,
+        latest_end: datetime,
+        threshold_minutes: int,
+        source: str | None = None,
+    ) -> list[EventRecord]:
+        """Return all existing sleep sessions that could overlap any candidate in [earliest_start, latest_end].
+
+        Used by batch sleep creation to identify merge candidates in a single query
+        instead of one query per record.
+        """
+        threshold = timedelta(minutes=threshold_minutes)
+        filters = [
+            DataSource.user_id == user_id,
+            self.model.category == "sleep",
+            self.model.type == "sleep_session",
+            self.model.start_datetime <= latest_end + threshold,
+            self.model.end_datetime >= earliest_start - threshold,
+        ]
+        if source is not None:
+            filters.append(DataSource.source == source)
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.detail))
+            .filter(*filters)
+            .order_by(self.model.start_datetime.desc())
+            .with_for_update()
+            .all()
+        )
+
+    @handle_exceptions
     def find_adjacent_sleep_record(
         self,
         db_session: DbSession,
