@@ -33,6 +33,7 @@ from app.schemas.responses.activity import (
     BodySummary,
     HeartRateStats,
     IntensityMinutes,
+    RecoverySummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -42,9 +43,11 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.recovery_score import calculate_master_recovery_score
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
+    decode_cursor,
     encode_activity_cursor,
     encode_cursor,
 )
@@ -65,6 +68,9 @@ METERS_PER_FLOOR = 3.0  # Standard floor height for floors_climbed calculation
 HR_ZONE_LIGHT = (0.50, 0.63)  # 50-63% of max HR
 HR_ZONE_MODERATE = (0.64, 0.76)  # 64-76% of max HR
 HR_ZONE_VIGOROUS = (0.77, 0.93)  # 77-93% of max HR
+
+# Recovery score constants
+RECOVERY_BASELINE_DAYS = 28  # Days of history to use as personal baseline for HRV/RHR z-scores
 
 # Body summary constants
 BP_TIMESTAMP_TOLERANCE_SECONDS = 5  # Max time difference for valid systolic/diastolic pair
@@ -601,6 +607,145 @@ class SummariesService:
                 start_time=start_date,
                 end_time=end_date,
             ),
+        )
+
+    @handle_exceptions
+    def get_recovery_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> PaginatedResponse[RecoverySummary]:
+        """Get daily recovery summaries with computed 0-100 recovery scores.
+
+        Each day's score combines:
+        - HRV (40%): z-score vs personal SDNN baseline
+        - RHR (30%): z-score vs personal resting HR baseline
+        - Sleep (30%): sleep efficiency score from provider
+
+        Missing metrics are handled by redistributing their weight proportionally.
+        A score is not produced when both HRV and RHR are absent.
+
+        Baseline is built from the RECOVERY_BASELINE_DAYS prior to each scored day.
+        """
+        self.logger.debug(f"Fetching recovery summaries for user {user_id} from {start_date} to {end_date}")
+
+        # Fetch sleep summaries for the requested window (used for sleep score + metadata)
+        sleep_results = self.event_record_repo.get_sleep_summaries(
+            db_session, user_id, start_date, end_date, cursor=None, limit=limit + 1
+        )
+        sleep_results = self._filter_by_priority(db_session, user_id, sleep_results, date_key="sleep_date")
+
+        # Apply cursor pagination manually (mirrors sleep summaries pattern)
+        if cursor:
+            cursor_ts, cursor_id, direction = decode_cursor(cursor)
+            cursor_date = cursor_ts.date()
+            if direction == "prev":
+                sleep_results = [
+                    r for r in sleep_results if (r["sleep_date"], str(r["record_id"])) < (cursor_date, str(cursor_id))
+                ]
+                sleep_results = list(reversed(sleep_results))
+            else:
+                sleep_results = [
+                    r for r in sleep_results if (r["sleep_date"], str(r["record_id"])) > (cursor_date, str(cursor_id))
+                ]
+
+        has_more = len(sleep_results) > limit
+        if has_more:
+            sleep_results = sleep_results[:limit]
+
+        if not sleep_results:
+            return PaginatedResponse(
+                data=[],
+                pagination=Pagination(has_more=False, next_cursor=None, previous_cursor=None),
+                metadata=TimeseriesMetadata(sample_count=0, start_time=start_date, end_time=end_date),
+            )
+
+        # Fetch extended HRV and RHR history to build per-day baselines.
+        # We look back RECOVERY_BASELINE_DAYS before the start of the query window.
+        extended_start = start_date - timedelta(days=RECOVERY_BASELINE_DAYS)
+
+        daily_hrv: dict = self.data_point_repo.get_daily_averages_for_series(
+            db_session, user_id, extended_start, end_date, SeriesType.heart_rate_variability_sdnn
+        )
+        daily_rhr: dict = self.data_point_repo.get_daily_averages_for_series(
+            db_session, user_id, extended_start, end_date, SeriesType.resting_heart_rate
+        )
+
+        # Build response
+        data: list[RecoverySummary] = []
+        for result in sleep_results:
+            scored_date: date = result["sleep_date"]
+
+            # Build baselines from all days strictly before this date
+            hrv_history = [v for d, v in daily_hrv.items() if d < scored_date]
+            rhr_history = [v for d, v in daily_rhr.items() if d < scored_date]
+
+            hrv_today = daily_hrv.get(scored_date)
+            rhr_today = daily_rhr.get(scored_date)
+
+            # Sleep score from efficiency (0-100, already scaled by provider)
+            efficiency = result.get("efficiency_percent")
+            sleep_score = int(round(efficiency)) if efficiency is not None else None
+
+            score_result = calculate_master_recovery_score(
+                user_id=str(user_id),
+                daily_sleep_score=sleep_score,
+                daily_hrv=hrv_today,
+                historical_hrv=hrv_history,
+                hrv_metric_type="sdnn",
+                daily_rhr=rhr_today,
+                historical_rhr=rhr_history,
+            )
+
+            # Compute resting HR for display (int bpm)
+            rhr_bpm = int(round(rhr_today)) if rhr_today is not None else None
+
+            # Total sleep in seconds
+            total_duration = result.get("total_duration")
+            sleep_duration_seconds = int(total_duration) if total_duration is not None else None
+
+            summary = RecoverySummary(
+                date=scored_date,
+                source=SourceMetadata(
+                    provider=result["source"] or "unknown",
+                    device=result.get("device_model"),
+                ),
+                sleep_duration_seconds=sleep_duration_seconds,
+                sleep_efficiency_percent=efficiency,
+                resting_heart_rate_bpm=rhr_bpm,
+                avg_hrv_sdnn_ms=round(hrv_today, 1) if hrv_today is not None else None,
+                avg_spo2_percent=None,
+                recovery_score=score_result.get("recovery_score"),
+                component_scores=score_result.get("component_scores") or None,
+                applied_weights=score_result.get("applied_weights") or None,
+            )
+            data.append(summary)
+
+        # Cursors
+        next_cursor: str | None = None
+        previous_cursor: str | None = None
+        if data:
+            last_result = sleep_results[-1]
+            last_date = last_result["sleep_date"]
+            last_id = last_result["record_id"]
+            last_dt = datetime.combine(last_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            if has_more:
+                next_cursor = encode_cursor(last_dt, last_id, "next")
+            if cursor:
+                first_result = sleep_results[0]
+                first_date = first_result["sleep_date"]
+                first_id = first_result["record_id"]
+                first_dt = datetime.combine(first_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+                previous_cursor = encode_cursor(first_dt, first_id, "prev")
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(has_more=has_more, next_cursor=next_cursor, previous_cursor=previous_cursor),
+            metadata=TimeseriesMetadata(sample_count=len(data), start_time=start_date, end_time=end_date),
         )
 
     def _calculate_age(self, birth_date: date, reference_date: date) -> int:
