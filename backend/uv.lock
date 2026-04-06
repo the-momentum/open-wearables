@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-03-29T14:13:39.251041449Z"
+exclude-newer = "2026-04-03T16:44:41.481184Z"
 exclude-newer-span = "P3D"
 
 [[package]]
@@ -913,6 +913,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "testcontainers", extra = ["redis"] },
+    { name = "ty" },
 ]
 
 [package.metadata]
@@ -956,6 +957,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "ruff", specifier = ">=0.14.7" },
     { name = "testcontainers", extras = ["postgres", "redis"], specifier = ">=4.14.2" },
+    { name = "ty", specifier = ">=0.0.14" },
 ]
 
 [[package]]

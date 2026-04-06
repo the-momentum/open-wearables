@@ -11,10 +11,6 @@ import math
 import statistics
 from datetime import datetime
 
-# ---------------------------------------------------------------------------
-# Master config
-# ---------------------------------------------------------------------------
-
 MASTER_WEIGHTS_CONFIG = {
     "duration": 0.40,
     "stages": 0.20,
@@ -42,9 +38,12 @@ INTERRUPTIONS_CONFIG = {
 _FMT = "%Y-%m-%dT%H:%M:%S"
 
 
-# ---------------------------------------------------------------------------
-# Component 1: Duration
-# ---------------------------------------------------------------------------
+def _sigmoid_score(hours: float, k: float, midpoint: float, boundary: float, clamp_min: int = 0) -> int:
+    """Scaled sigmoid that hits exactly 100 at *boundary* and clamps at *clamp_min*."""
+    raw = 100 / (1 + math.exp(k * (hours - midpoint)))
+    scale = 100 / (100 / (1 + math.exp(k * (boundary - midpoint))))
+    return max(clamp_min, int(raw * scale))
+
 
 def calculate_duration_score(day_start_iso: str, day_end_iso: str) -> dict:
     """0-100 duration score using sigmoid curves around the 7–9 h ideal."""
@@ -54,29 +53,16 @@ def calculate_duration_score(day_start_iso: str, day_end_iso: str) -> dict:
 
     if 7.0 <= duration_hours <= 9.0:
         score = 100
-
     elif duration_hours < 7.0:
-        # Midpoint at 5.5h with k=1.8 ensures 6h scores clearly lower than
-        # 10h, matching the intent to penalise undersleeping more harshly.
-        k = 1.8
-        midpoint = 5.5
-        raw = 100 / (1 + math.exp(-k * (duration_hours - midpoint)))
-        scale = 100 / (100 / (1 + math.exp(-k * (7.0 - midpoint))))
-        score = int(raw * scale)
-
+        # k=1.8, midpoint=5.5h: ensures 6h scores clearly lower than 10h,
+        # penalising undersleeping more harshly than oversleeping.
+        score = _sigmoid_score(duration_hours, k=-1.8, midpoint=5.5, boundary=7.0)
     else:
-        k = 0.8
-        midpoint = 11.0
-        raw = 100 / (1 + math.exp(k * (duration_hours - midpoint)))
-        scale = 100 / (100 / (1 + math.exp(k * (9.0 - midpoint))))
-        score = max(50, int(raw * scale))
+        # Gentle drop with a 50-point floor — oversleeping is not heavily penalised.
+        score = _sigmoid_score(duration_hours, k=0.8, midpoint=11.0, boundary=9.0, clamp_min=50)
 
     return {"duration_hours": round(duration_hours, 2), "duration_score": score}
 
-
-# ---------------------------------------------------------------------------
-# Component 2: Sleep stages (deep + REM)
-# ---------------------------------------------------------------------------
 
 def calculate_stage_score(
     stage_duration_minutes: float,
@@ -92,14 +78,8 @@ def calculate_stage_score(
 
 def calculate_total_stages_score(deep_minutes: float, rem_minutes: float) -> int:
     """Combined deep + REM stages score (50/50 weight)."""
-    deep_score = calculate_stage_score(deep_minutes, 90.0)
-    rem_score = calculate_stage_score(rem_minutes, 90.0)
-    return int(deep_score * 0.5 + rem_score * 0.5)
+    return int(calculate_stage_score(deep_minutes) * 0.5 + calculate_stage_score(rem_minutes) * 0.5)
 
-
-# ---------------------------------------------------------------------------
-# Component 3: Bedtime consistency
-# ---------------------------------------------------------------------------
 
 def _time_to_hours_past_noon(dt: datetime) -> float:
     hours = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
@@ -117,14 +97,9 @@ def calculate_bedtime_consistency_score(
     if not historical_bedtimes_iso:
         return int(config["base_score"])
 
-    historical_hours = [
-        _time_to_hours_past_noon(datetime.strptime(bt[:19], _FMT))
-        for bt in historical_bedtimes_iso
-    ]
+    historical_hours = [_time_to_hours_past_noon(datetime.strptime(bt[:19], _FMT)) for bt in historical_bedtimes_iso]
     median_hours = statistics.median(historical_hours)
-
-    tonight_dt = datetime.strptime(tonight_bedtime_iso[:19], _FMT)
-    tonight_hours = _time_to_hours_past_noon(tonight_dt)
+    tonight_hours = _time_to_hours_past_noon(datetime.strptime(tonight_bedtime_iso[:19], _FMT))
 
     diff_minutes = (tonight_hours - median_hours) * 60
     score = config["base_score"]
@@ -133,7 +108,6 @@ def calculate_bedtime_consistency_score(
         late_mins = diff_minutes - config["grace_period_mins"]
         penalty = (late_mins / config["max_late_penalty_window_mins"]) * config["base_score"]
         score = max(0.0, config["base_score"] - penalty)
-
     elif diff_minutes < -config["grace_period_mins"]:
         early_mins = abs(diff_minutes) - config["grace_period_mins"]
         penalty = min(
@@ -145,10 +119,6 @@ def calculate_bedtime_consistency_score(
     return int(score)
 
 
-# ---------------------------------------------------------------------------
-# Component 4: Interruptions (WASO)
-# ---------------------------------------------------------------------------
-
 def calculate_interruptions_score(
     total_awake_minutes: float,
     awakening_durations: list[float],
@@ -156,7 +126,6 @@ def calculate_interruptions_score(
 ) -> int:
     """0-100 interruptions score: WASO duration + significant awakening count."""
     duration_score = config["duration_weight_points"]
-
     if total_awake_minutes > config["grace_period_mins"]:
         excess = total_awake_minutes - config["grace_period_mins"]
         penalty = (excess / config["max_penalty_window_mins"]) * config["duration_weight_points"]
@@ -170,10 +139,6 @@ def calculate_interruptions_score(
     return int(duration_score + freq_score)
 
 
-# ---------------------------------------------------------------------------
-# Stage-interval parser (strips sleep latency + morning lie-in)
-# ---------------------------------------------------------------------------
-
 def parse_wearable_stages_for_interruptions(raw_stage_blocks: list[dict]) -> dict:
     """Extract true WASO from a stage timeline, ignoring latency and lie-in.
 
@@ -183,8 +148,12 @@ def parse_wearable_stages_for_interruptions(raw_stage_blocks: list[dict]) -> dic
     if not raw_stage_blocks:
         return {"total_awake_minutes": 0.0, "awakening_durations": []}
 
-    blocks = []
-    for b in raw_stage_blocks:
+    awake_stages = {"awake", "in_bed"}
+
+    # Single pass: normalise input and track sleep boundary indices simultaneously.
+    blocks: list[tuple[str, float]] = []
+    first_sleep_idx = last_sleep_idx = None
+    for i, b in enumerate(raw_stage_blocks):
         stage = (b.get("stage") or "").lower()
         if "duration_mins" in b:
             duration = float(b["duration_mins"])
@@ -197,33 +166,25 @@ def parse_wearable_stages_for_interruptions(raw_stage_blocks: list[dict]) -> dic
                 duration = 0.0
         else:
             duration = 0.0
-        blocks.append({"stage": stage, "duration_mins": duration})
+        blocks.append((stage, duration))
+        if stage not in awake_stages:
+            if first_sleep_idx is None:
+                first_sleep_idx = i
+            last_sleep_idx = i
 
-    awake_stages = {"awake", "in_bed"}
-
-    first_sleep_idx = next(
-        (i for i, b in enumerate(blocks) if b["stage"] not in awake_stages), 0
-    )
-    last_sleep_idx = next(
-        (i for i in range(len(blocks) - 1, -1, -1) if blocks[i]["stage"] not in awake_stages),
-        len(blocks) - 1,
-    )
-
-    true_period = blocks[first_sleep_idx : last_sleep_idx + 1]
+    if first_sleep_idx is None:
+        return {"total_awake_minutes": 0.0, "awakening_durations": []}
+    assert last_sleep_idx is not None  # set whenever first_sleep_idx is set
 
     waso_total = 0.0
     awakening_durations = []
-    for b in true_period:
-        if b["stage"] in awake_stages:
-            waso_total += b["duration_mins"]
-            awakening_durations.append(b["duration_mins"])
+    for stage, duration in blocks[first_sleep_idx : last_sleep_idx + 1]:
+        if stage in awake_stages:
+            waso_total += duration
+            awakening_durations.append(duration)
 
     return {"total_awake_minutes": waso_total, "awakening_durations": awakening_durations}
 
-
-# ---------------------------------------------------------------------------
-# Overall score
-# ---------------------------------------------------------------------------
 
 def calculate_overall_sleep_score(
     session_start: str,
@@ -236,14 +197,12 @@ def calculate_overall_sleep_score(
     weights: dict = MASTER_WEIGHTS_CONFIG,
 ) -> dict:
     """Compute the overall sleep score and return the full breakdown payload."""
-    duration_res = calculate_duration_score(session_start, session_end)
-    duration_score = duration_res["duration_score"]
-
+    duration_score = calculate_duration_score(session_start, session_end)["duration_score"]
     stages_score = calculate_total_stages_score(deep_minutes, rem_minutes)
     consistency_score = calculate_bedtime_consistency_score(historical_bedtimes, session_start)
     interruptions_score = calculate_interruptions_score(total_awake_minutes, awakening_durations)
 
-    final_score = (
+    overall = int(
         duration_score * weights["duration"]
         + stages_score * weights["stages"]
         + consistency_score * weights["consistency"]
@@ -251,12 +210,7 @@ def calculate_overall_sleep_score(
     )
 
     return {
-        "overall_score": int(final_score),
-        "metrics": {
-            "duration_hours": duration_res["duration_hours"],
-            "total_awake_minutes": total_awake_minutes,
-            "wakes_over_5m": sum(1 for w in awakening_durations if w > 5.0),
-        },
+        "overall_score": overall,
         "breakdown": {
             "duration": {"weight": f"{int(weights['duration'] * 100)}%", "score": duration_score},
             "stages": {"weight": f"{int(weights['stages'] * 100)}%", "score": stages_score},
