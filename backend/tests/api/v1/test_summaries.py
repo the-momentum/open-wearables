@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -1299,3 +1300,171 @@ class TestBodySummaryEndpoint:
 
         # Should use the most recent value
         assert data["slow_changing"]["weight_kg"] == 72.5
+
+
+class TestRecoverySummaryEndpoint:
+    """Test suite for recovery summaries endpoint."""
+
+    def test_no_data_returns_empty(self, client: TestClient, db: Session) -> None:
+        """Returns empty list when user has no sleep or physio data."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/recovery",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-01T00:00:00Z", "end_date": "2025-12-31T00:00:00Z"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == []
+        assert data["pagination"]["has_more"] is False
+
+    def test_sleep_only_returns_null_score(self, client: TestClient, db: Session) -> None:
+        """Recovery score is null when neither HRV nor RHR data is present."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
+        sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
+        event = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            start_datetime=sleep_start,
+            end_datetime=sleep_end,
+            duration_seconds=28800,
+        )
+        SleepDetailsFactory(event_record=event, sleep_efficiency_score=Decimal("85.0"))
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/recovery",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        row = data["data"][0]
+        assert row["recovery_score"] is None
+        assert row["sleep_efficiency_percent"] == pytest.approx(85.0)
+
+    def test_with_hrv_and_rhr_returns_score(self, client: TestClient, db: Session) -> None:
+        """Recovery score is computed when HRV and RHR data are present."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+
+        # Create sleep records across 15 days so there's a baseline
+        hrv_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
+        rhr_type = SeriesTypeDefinitionFactory.get_or_create_resting_heart_rate()
+
+        base = datetime(2025, 12, 1, 0, 0, 0, tzinfo=timezone.utc)
+        for i in range(14):
+            day_start = base + timedelta(days=i, hours=22)
+            day_end = base + timedelta(days=i + 1, hours=6)
+            event = EventRecordFactory(
+                mapping=mapping,
+                category="sleep",
+                start_datetime=day_start,
+                end_datetime=day_end,
+                duration_seconds=28800,
+            )
+            SleepDetailsFactory(event_record=event, sleep_efficiency_score=Decimal("80.0"))
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=hrv_type,
+                recorded_at=day_start + timedelta(hours=2),
+                value=Decimal("45.0"),
+            )
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=rhr_type,
+                recorded_at=day_start + timedelta(hours=2),
+                value=Decimal("60.0"),
+            )
+
+        # Scored day
+        scored_start = base + timedelta(days=14, hours=22)
+        scored_end = base + timedelta(days=15, hours=6)
+        event = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            start_datetime=scored_start,
+            end_datetime=scored_end,
+            duration_seconds=28800,
+        )
+        SleepDetailsFactory(event_record=event, sleep_efficiency_score=Decimal("85.0"))
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=hrv_type,
+            recorded_at=scored_start + timedelta(hours=2),
+            value=Decimal("45.0"),
+        )
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=rhr_type,
+            recorded_at=scored_start + timedelta(hours=2),
+            value=Decimal("60.0"),
+        )
+
+        api_key = ApiKeyFactory()
+        # Query only the scored day (day 15, ending Dec 16) to avoid catching baseline days
+        start = (base + timedelta(days=15)).isoformat().replace("+00:00", "Z")
+        end = (base + timedelta(days=16)).isoformat().replace("+00:00", "Z")
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/recovery",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": start, "end_date": end},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        row = data["data"][0]
+        assert row["recovery_score"] is not None
+        assert 0 <= row["recovery_score"] <= 100
+        assert row["component_scores"] is not None
+        assert "hrv_score" in row["component_scores"]
+        assert "rhr_score" in row["component_scores"]
+
+    def test_response_shape(self, client: TestClient, db: Session) -> None:
+        """Response includes all expected fields."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        sleep_start = datetime(2025, 12, 25, 22, 0, 0, tzinfo=timezone.utc)
+        sleep_end = datetime(2025, 12, 26, 6, 0, 0, tzinfo=timezone.utc)
+        event = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            start_datetime=sleep_start,
+            end_datetime=sleep_end,
+            duration_seconds=28800,
+        )
+        SleepDetailsFactory(event_record=event, sleep_efficiency_score=Decimal("80.0"))
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/recovery",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+        assert response.status_code == 200
+        row = response.json()["data"][0]
+        for field in (
+            "date",
+            "source",
+            "recovery_score",
+            "sleep_efficiency_percent",
+            "resting_heart_rate_bpm",
+            "avg_hrv_sdnn_ms",
+            "sleep_duration_seconds",
+            "component_scores",
+            "applied_weights",
+        ):
+            assert field in row, f"Missing field: {field}"
+
+    def test_requires_api_key(self, client: TestClient, db: Session) -> None:
+        """Endpoint requires valid API key."""
+        user = UserFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/recovery",
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-27T00:00:00Z"},
+        )
+        assert response.status_code in (401, 403)
