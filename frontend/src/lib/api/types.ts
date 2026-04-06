@@ -346,6 +346,10 @@ export interface RecoverySummary {
   avg_hrv_sdnn_ms: number | null;
   avg_spo2_percent: number | null;
   recovery_score: number | null;
+  /** Per-component 0-100 scores: hrv_score, rhr_score, sleep_score */
+  component_scores: Record<string, number> | null;
+  /** Dynamic weights applied after redistributing missing components */
+  applied_weights: Record<string, number> | null;
 }
 
 export interface DataSource {

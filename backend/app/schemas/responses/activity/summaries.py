@@ -158,3 +158,11 @@ class RecoverySummary(BaseModel):
     avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN)")
     avg_spo2_percent: float | None = None
     recovery_score: int | None = Field(None, ge=0, le=100, description="0-100 score")
+    component_scores: dict[str, int] | None = Field(
+        None,
+        description="Per-component scores used to compute recovery_score (hrv_score, rhr_score, sleep_score)",
+    )
+    applied_weights: dict[str, float] | None = Field(
+        None,
+        description="Dynamic weights applied per component after redistributing any missing components",
+    )
