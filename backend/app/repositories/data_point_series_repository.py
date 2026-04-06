@@ -908,6 +908,43 @@ class DataPointSeriesRepository(
 
         return aggregates
 
+    def get_daily_averages_for_series(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        series_type: SeriesType,
+    ) -> dict:
+        """Get the daily average value for a series type, keyed by calendar date.
+
+        Used by the recovery score service to build per-day baselines for HRV and RHR.
+
+        Returns:
+            Dict mapping ``datetime.date`` → average float value for that day.
+        """
+
+        type_id = get_series_type_id(series_type)
+
+        results = (
+            db_session.query(
+                cast(self.model.recorded_at, Date).label("day"),
+                func.avg(self.model.value).label("avg_value"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.series_type_definition_id == type_id,
+                self.model.recorded_at >= start_date,
+                self.model.recorded_at < end_date,
+            )
+            .group_by(cast(self.model.recorded_at, Date))
+            .order_by(cast(self.model.recorded_at, Date))
+            .all()
+        )
+
+        return {row.day: float(row.avg_value) for row in results if row.avg_value is not None}
+
     def get_latest_reading_within_window(
         self,
         db_session: DbSession,
