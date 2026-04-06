@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.database import DbSession
 from app.schemas.responses.activity import (
@@ -66,8 +66,21 @@ def get_recovery_summary(
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[RecoverySummary]:
-    """Returns daily recovery metrics (Sleep + HRV + RHR)."""
-    raise HTTPException(status_code=501, detail="Not implemented")
+    """Returns daily recovery scores combining HRV, resting heart rate, and sleep.
+
+    Recovery score (0-100) is computed per day using a z-score framework:
+    - HRV SDNN (40%): nervous system stress vs personal baseline
+    - Resting HR (30%): cardiovascular load vs personal baseline
+    - Sleep efficiency (30%): provider-reported sleep quality
+
+    Missing metrics are handled by redistributing their weight proportionally.
+    A score is omitted when both HRV and RHR are unavailable for a given day.
+
+    Baselines are built from up to 28 days of prior history.
+    """
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
 @router.get("/users/{user_id}/summaries/body")
