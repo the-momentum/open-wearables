@@ -75,6 +75,8 @@ export const queryKeys = {
       [...queryKeys.health.all, 'sleepSummaries', userId, params] as const,
     activitySummaries: (userId: string, params?: unknown) =>
       [...queryKeys.health.all, 'activitySummaries', userId, params] as const,
+    recoverySummaries: (userId: string, params?: unknown) =>
+      [...queryKeys.health.all, 'recoverySummaries', userId, params] as const,
     bodySummary: (userId: string, params?: unknown) =>
       [...queryKeys.health.all, 'bodySummary', userId, params] as const,
     activity: (userId: string, days: number) =>

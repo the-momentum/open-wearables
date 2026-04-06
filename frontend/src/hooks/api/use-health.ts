@@ -107,6 +107,18 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get recovery summaries for a user
+ * Uses GET /api/v1/users/{user_id}/summaries/recovery
+ */
+export function useRecoverySummaries(userId: string, params: SummaryParams) {
+  return useQuery({
+    queryKey: queryKeys.health.recoverySummaries(userId, params),
+    queryFn: () => healthService.getRecoverySummaries(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
  * Get body summary for a user (static, averaged, latest metrics)
  * Uses GET /api/v1/users/{user_id}/summaries/body
  */

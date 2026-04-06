@@ -12,6 +12,7 @@ import {
   Activity,
   Moon,
   Scale,
+  Heart,
   Smartphone,
   Copy,
   Ellipsis,
@@ -32,6 +33,7 @@ import { SleepSection } from '@/components/user/sleep-section';
 import { ActivitySection } from '@/components/user/activity-section';
 import { BodySection } from '@/components/user/body-section';
 import { WorkoutSection } from '@/components/user/workout-section';
+import { RecoverySection } from '@/components/user/recovery-section';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import {
   AlertDialog,
@@ -90,6 +92,8 @@ function UserDetailPage() {
   const [activityDateRange, setActivityDateRange] =
     useState<DateRangeValue>(30);
   const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
+  const [recoveryDateRange, setRecoveryDateRange] =
+    useState<DateRangeValue>(30);
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
   const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
@@ -153,13 +157,31 @@ function UserDetailPage() {
         ),
       },
       {
+        id: 'recovery',
+        label: 'Recovery',
+        icon: Heart,
+        content: (
+          <RecoverySection
+            userId={userId}
+            dateRange={recoveryDateRange}
+            onDateRangeChange={setRecoveryDateRange}
+          />
+        ),
+      },
+      {
         id: 'body',
         label: 'Body',
         icon: Scale,
         content: <BodySection userId={userId} />,
       },
     ],
-    [userId, workoutDateRange, activityDateRange, sleepDateRange]
+    [
+      userId,
+      workoutDateRange,
+      activityDateRange,
+      sleepDateRange,
+      recoveryDateRange,
+    ]
   );
 
   const handleCopyPairLink = async () => {
