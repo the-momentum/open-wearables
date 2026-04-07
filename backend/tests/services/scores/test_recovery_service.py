@@ -7,6 +7,7 @@ Covers two layers:
   using real Postgres via testcontainers with transaction-rollback isolation.
 """
 
+import logging
 import math
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.algorithms.config_algorithms import recovery_config
 from app.constants.sleep import SleepStageType
+from app.models import DataSource, SeriesTypeDefinition
 from app.services.scores.recovery_service import RecoveryScoreService
 from tests.factories import (
     DataPointSeriesFactory,
@@ -25,8 +27,6 @@ from tests.factories import (
     SleepDetailsFactory,
     UserFactory,
 )
-
-import logging
 
 _log = logging.getLogger(__name__)
 service = RecoveryScoreService(log=_log)
@@ -207,18 +207,21 @@ class TestEmptyDailyScores:
 class TestExtractAsleepWindowsLogic:
     """Tests the window extraction logic using a real DB session."""
 
-    _ASLEEP = frozenset({
-        SleepStageType.SLEEPING,
-        SleepStageType.LIGHT,
-        SleepStageType.DEEP,
-        SleepStageType.REM,
-    })
+    _ASLEEP = frozenset(
+        {
+            SleepStageType.SLEEPING,
+            SleepStageType.LIGHT,
+            SleepStageType.DEEP,
+            SleepStageType.REM,
+        }
+    )
 
     def test_no_records_returns_empty(self, db: Session) -> None:
         user = UserFactory()
         db.flush()
         result = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-03T00:00:00"),
             _utc("2026-03-10T00:00:00"),
             self._ASLEEP,
@@ -241,7 +244,8 @@ class TestExtractAsleepWindowsLogic:
         )
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             self._ASLEEP,
@@ -256,13 +260,17 @@ class TestExtractAsleepWindowsLogic:
         start = _utc("2026-03-09T23:00:00")
         end = _utc("2026-03-10T07:00:00")
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
-            start_datetime=start, end_datetime=end, data_source=ds,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            data_source=ds,
         )
         SleepDetailsFactory(event_record=record, sleep_stages=[])
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             self._ASLEEP,
@@ -276,7 +284,8 @@ class TestExtractAsleepWindowsLogic:
         db.flush()
         stages = _make_stages("2026-03-09T23:00:00", [("awake", 30), ("light", 60)])
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
+            category="sleep",
+            type_="sleep",
             start_datetime=_utc("2026-03-09T23:00:00"),
             end_datetime=_utc("2026-03-10T00:30:00"),
             data_source=ds,
@@ -284,7 +293,8 @@ class TestExtractAsleepWindowsLogic:
         SleepDetailsFactory(event_record=record, sleep_stages=stages)
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             self._ASLEEP,
@@ -298,7 +308,8 @@ class TestExtractAsleepWindowsLogic:
         db.flush()
         stages = [_make_stage_dict("unknown", "2026-03-09T23:00:00", "2026-03-09T23:30:00")]
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
+            category="sleep",
+            type_="sleep",
             start_datetime=_utc("2026-03-09T23:00:00"),
             end_datetime=_utc("2026-03-09T23:30:00"),
             data_source=ds,
@@ -306,7 +317,8 @@ class TestExtractAsleepWindowsLogic:
         SleepDetailsFactory(event_record=record, sleep_stages=stages)
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             self._ASLEEP,
@@ -319,7 +331,8 @@ class TestExtractAsleepWindowsLogic:
         db.flush()
         stages = [_make_stage_dict("deep", "2026-03-09T23:00:00", "2026-03-09T23:00:00")]
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
+            category="sleep",
+            type_="sleep",
             start_datetime=_utc("2026-03-09T23:00:00"),
             end_datetime=_utc("2026-03-09T23:00:00"),
             data_source=ds,
@@ -327,7 +340,8 @@ class TestExtractAsleepWindowsLogic:
         SleepDetailsFactory(event_record=record, sleep_stages=stages)
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             self._ASLEEP,
@@ -341,7 +355,8 @@ class TestExtractAsleepWindowsLogic:
         db.flush()
         stages = _make_stages("2026-03-09T23:00:00", [("light", 30), ("deep", 60), ("rem", 30)])
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
+            category="sleep",
+            type_="sleep",
             start_datetime=_utc("2026-03-09T23:00:00"),
             end_datetime=_utc("2026-03-10T01:00:00"),
             data_source=ds,
@@ -349,7 +364,8 @@ class TestExtractAsleepWindowsLogic:
         SleepDetailsFactory(event_record=record, sleep_stages=stages)
         db.flush()
         windows = service._extract_asleep_windows(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T00:00:00"),
             _utc("2026-03-10T12:00:00"),
             frozenset({SleepStageType.DEEP}),
@@ -368,8 +384,8 @@ class TestGetHrvCvScore:
     def _insert_hrv(
         self,
         db: Session,
-        data_source,
-        series_type,
+        data_source: DataSource,
+        series_type: SeriesTypeDefinition,
         timestamps: list[datetime],
         value: float = 45.0,
     ) -> None:
@@ -385,7 +401,7 @@ class TestGetHrvCvScore:
     def _make_sleep(
         self,
         db: Session,
-        data_source,
+        data_source: DataSource,
         start: datetime,
         end: datetime,
         stages: list[dict] | None = None,
@@ -461,9 +477,15 @@ class TestGetHrvCvScore:
         rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
         ref = date(2026, 3, 10)
 
-        # Insert only 2 days of data (min required is 5 by default)
+        # Insert only 2 days of data (min required is 5 by default).
+        # Each HRV point is at 02:00 on the given day; create a matching sleep window
+        # so the points survive the sleep-filter step.
         for days_back in [1, 2]:
-            ts = datetime.combine(ref - timedelta(days=days_back), time(2), tzinfo=timezone.utc)
+            day = ref - timedelta(days=days_back)
+            sleep_start = datetime.combine(day - timedelta(days=1), time(23), tzinfo=timezone.utc)
+            sleep_end = datetime.combine(day, time(7), tzinfo=timezone.utc)
+            self._make_sleep(db, ds, sleep_start, sleep_end)
+            ts = datetime.combine(day, time(2), tzinfo=timezone.utc)
             DataPointSeriesFactory(data_source=ds, series_type=rmssd_type, recorded_at=ts, value=Decimal("45"))
         db.flush()
 
@@ -488,8 +510,10 @@ class TestGetHrvCvScore:
             # HRV point during sleep
             hrv_ts = datetime.combine(day, time(2), tzinfo=timezone.utc)
             DataPointSeriesFactory(
-                data_source=ds, series_type=rmssd_type,
-                recorded_at=hrv_ts, value=Decimal(str(40 + days_back * 2)),
+                data_source=ds,
+                series_type=rmssd_type,
+                recorded_at=hrv_ts,
+                value=Decimal(str(40 + days_back * 2)),
             )
         db.flush()
 
@@ -556,14 +580,20 @@ class TestGetHrvCvScore:
 
         rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
         ref = date(2026, 3, 10)
-        target_day = ref - timedelta(days=1)
+        target_day = ref - timedelta(days=1)  # 2026-03-09
 
+        # Sleep runs from March 9 23:00 → March 10 07:00.
+        # HRV point must be within the sleep window AND within the query window
+        # [March 3 00:00, March 10 00:00), so place it at 23:30 on March 9.
+        # ts.date() == March 9 == target_day, so it groups under the right day.
         sleep_start = _utc("2026-03-09T23:00:00")
         sleep_end = _utc("2026-03-10T07:00:00")
         self._make_sleep(db, ds, sleep_start, sleep_end)
         DataPointSeriesFactory(
-            data_source=ds, series_type=rmssd_type,
-            recorded_at=_utc("2026-03-10T02:00:00"), value=Decimal("45"),
+            data_source=ds,
+            series_type=rmssd_type,
+            recorded_at=_utc("2026-03-09T23:30:00"),
+            value=Decimal("45"),
         )
         db.flush()
 
@@ -581,21 +611,26 @@ class TestGetHrvCvScore:
 class TestCalculateRmssdOw:
     """Tests for RecoveryScoreService.calculate_rmssd_ow (RMSSD_OW)."""
 
-    def _insert_hr(self, db: Session, data_source, timestamps: list[datetime], value: float = 65.0) -> None:
+    def _insert_hr(self, db: Session, data_source: DataSource, timestamps: list[datetime], value: float = 65.0) -> None:
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         for ts in timestamps:
             DataPointSeriesFactory(
-                data_source=data_source, series_type=hr_type,
-                recorded_at=ts, value=Decimal(str(value)),
+                data_source=data_source,
+                series_type=hr_type,
+                recorded_at=ts,
+                value=Decimal(str(value)),
             )
         db.flush()
 
     def _make_sleep(
-        self, db: Session, data_source, start: datetime, end: datetime, stages: list[dict] | None = None
+        self, db: Session, data_source: DataSource, start: datetime, end: datetime, stages: list[dict] | None = None
     ) -> None:
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
-            start_datetime=start, end_datetime=end, data_source=data_source,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            data_source=data_source,
         )
         SleepDetailsFactory(event_record=record, sleep_stages=stages)
         db.flush()
@@ -604,7 +639,8 @@ class TestCalculateRmssdOw:
         user = UserFactory()
         db.flush()
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -619,7 +655,8 @@ class TestCalculateRmssdOw:
         self._insert_hr(db, ds, [_utc(f"2026-03-10T0{i}:00:00") for i in range(1, 6)], value=65.0)
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T07:00:00"))
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -635,7 +672,8 @@ class TestCalculateRmssdOw:
         self._insert_hr(db, ds, timestamps, value=65.0)
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T07:00:00"))
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -655,7 +693,8 @@ class TestCalculateRmssdOw:
         self._insert_hr(db, ds, timestamps, value=65.0)
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T07:00:00"))
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -667,11 +706,14 @@ class TestCalculateRmssdOw:
         ds = DataSourceFactory(user=user)
         db.flush()
 
-        stages = _make_stages("2026-03-09T23:00:00", [
-            ("light", 60),   # 23:00–00:00
-            ("deep", 120),   # 00:00–02:00
-            ("rem", 60),     # 02:00–03:00
-        ])
+        stages = _make_stages(
+            "2026-03-09T23:00:00",
+            [
+                ("light", 60),  # 23:00–00:00
+                ("deep", 120),  # 00:00–02:00
+                ("rem", 60),  # 02:00–03:00
+            ],
+        )
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T03:00:00"), stages=stages)
 
         # 25 points all during the "light" window
@@ -681,7 +723,8 @@ class TestCalculateRmssdOw:
 
         # With deep_sleep_only=True those points fall outside deep window → None
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
             deep_sleep_only=True,
@@ -696,7 +739,8 @@ class TestCalculateRmssdOw:
         timestamps = [base + timedelta(minutes=10 * i) for i in range(25)]
         self._insert_hr(db, ds, timestamps, value=65.0)
         result = service.calculate_rmssd_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -711,19 +755,24 @@ class TestCalculateRmssdOw:
 class TestCalculateSdnnOw:
     """Tests for RecoveryScoreService.calculate_sdnn_ow (SDNN_OW)."""
 
-    def _insert_hr(self, db: Session, data_source, timestamps: list[datetime], value: float = 65.0) -> None:
+    def _insert_hr(self, db: Session, data_source: DataSource, timestamps: list[datetime], value: float = 65.0) -> None:
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
         for ts in timestamps:
             DataPointSeriesFactory(
-                data_source=data_source, series_type=hr_type,
-                recorded_at=ts, value=Decimal(str(value)),
+                data_source=data_source,
+                series_type=hr_type,
+                recorded_at=ts,
+                value=Decimal(str(value)),
             )
         db.flush()
 
-    def _make_sleep(self, db: Session, data_source, start: datetime, end: datetime) -> None:
+    def _make_sleep(self, db: Session, data_source: DataSource, start: datetime, end: datetime) -> None:
         record = EventRecordFactory(
-            category="sleep", type_="sleep",
-            start_datetime=start, end_datetime=end, data_source=data_source,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            data_source=data_source,
         )
         SleepDetailsFactory(event_record=record)
         db.flush()
@@ -732,7 +781,8 @@ class TestCalculateSdnnOw:
         user = UserFactory()
         db.flush()
         result = service.calculate_sdnn_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -745,7 +795,8 @@ class TestCalculateSdnnOw:
         self._insert_hr(db, ds, [_utc(f"2026-03-10T0{i}:00:00") for i in range(1, 6)], value=65.0)
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T07:00:00"))
         result = service.calculate_sdnn_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -760,7 +811,8 @@ class TestCalculateSdnnOw:
         self._insert_hr(db, ds, timestamps, value=65.0)
         self._make_sleep(db, ds, _utc("2026-03-09T23:00:00"), _utc("2026-03-10T07:00:00"))
         result = service.calculate_sdnn_ow(
-            db, user.id,
+            db,
+            user.id,
             _utc("2026-03-09T22:00:00"),
             _utc("2026-03-10T08:00:00"),
         )
@@ -785,5 +837,6 @@ class TestCalculateSdnnOw:
         rmssd = service.calculate_rmssd_ow(db, user.id, _utc("2026-03-09T22:00:00"), _utc("2026-03-10T08:00:00"))
         sdnn = service.calculate_sdnn_ow(db, user.id, _utc("2026-03-09T22:00:00"), _utc("2026-03-10T08:00:00"))
 
-        assert rmssd is not None and sdnn is not None
+        assert rmssd is not None
+        assert sdnn is not None
         assert rmssd != pytest.approx(sdnn, rel=1e-3)

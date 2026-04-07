@@ -1,7 +1,3 @@
-from .recovery import (
-    DailyHrvScore,
-    HrvCvScoreResult,
-)
 from .data_point_responses import (
     ActiveMinutesResult,
     ActivityAggregateResult,
@@ -14,6 +10,10 @@ from .events import (
     SleepSession,
     Workout,
     WorkoutDetailed,
+)
+from .recovery import (
+    DailyHrvScore,
+    HrvCvScoreResult,
 )
 from .summaries import (
     ActivitySummary,
