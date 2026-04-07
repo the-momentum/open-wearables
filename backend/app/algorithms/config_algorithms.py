@@ -54,3 +54,14 @@ class SleepScoreConfig(BaseModel):
 
 
 sleep_config = SleepScoreConfig()
+
+
+# HRV RECOVERY SCORE
+
+class RecoveryScoreConfig(BaseModel):
+    lookback_days: int = 7
+    min_days_required: int = 5
+    min_rr_samples: int = 20
+
+
+recovery_config = RecoveryScoreConfig()
