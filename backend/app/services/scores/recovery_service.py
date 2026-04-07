@@ -180,9 +180,7 @@ class RecoveryScoreService:
             by_day[ts.date()].append(value)
         return dict(by_day)
 
-    def _empty_daily_scores(
-        self, reference_date: date, lookback_days: int
-    ) -> list[DailyHrvScore]:
+    def _empty_daily_scores(self, reference_date: date, lookback_days: int) -> list[DailyHrvScore]:
         """Build a list of DailyHrvScore with no data for the given lookback window."""
         return [
             DailyHrvScore(
@@ -228,16 +226,12 @@ class RecoveryScoreService:
 
         # 1. Prefer RMSSD; fall back to SDNN
         rmssd_type_id = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
-        hrv_pts = self._query_data_series(
-            db_session, user_id, rmssd_type_id, start_dt, end_dt
-        )
+        hrv_pts = self._query_data_series(db_session, user_id, rmssd_type_id, start_dt, end_dt)
         metric_type: str = "RMSSD"
 
         if not hrv_pts:
             sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
-            hrv_pts = self._query_data_series(
-                db_session, user_id, sdnn_type_id, start_dt, end_dt
-            )
+            hrv_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
             metric_type = "SDNN"
 
         if not hrv_pts:
@@ -246,40 +240,29 @@ class RecoveryScoreService:
                 metric_type=None,
                 days_counted=0,
                 lookback_days=recovery_config.lookback_days,
-                daily_scores=self._empty_daily_scores(
-                    reference_date, recovery_config.lookback_days
-                ),
+                daily_scores=self._empty_daily_scores(reference_date, recovery_config.lookback_days),
             )
 
         # 2. Filter to sleep windows
-        windows = self._extract_asleep_windows(
-            db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES
-        )
+        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES)
         filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
 
         # 3. Daily averages across the lookback window (oldest → newest)
         by_day = self._group_by_day(filtered_hrv)
-        all_days = [
-            reference_date - timedelta(days=i)
-            for i in range(recovery_config.lookback_days, 0, -1)
-        ]
+        all_days = [reference_date - timedelta(days=i) for i in range(recovery_config.lookback_days, 0, -1)]
 
         daily_scores: list[DailyHrvScore] = []
         for d in all_days:
             vals = by_day.get(d, [])
             avg = sum(vals) / len(vals) if vals else None
-            daily_scores.append(
-                DailyHrvScore(date=d, hrv_value_ms=avg, has_data=(avg is not None))
-            )
+            daily_scores.append(DailyHrvScore(date=d, hrv_value_ms=avg, has_data=(avg is not None)))
 
         # 4. Compute HRV-CV if enough days have data
         days_counted = sum(1 for ds in daily_scores if ds.has_data)
         hrv_cv: float | None = None
 
         if days_counted >= recovery_config.min_days_required:
-            valid_avgs = [
-                ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None
-            ]
+            valid_avgs = [ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None]
             raw_cv = calculate_hrv_cv(valid_avgs)
             if not math.isnan(raw_cv):
                 hrv_cv = raw_cv
@@ -331,17 +314,13 @@ class RecoveryScoreService:
             ``hrv_config.min_rr_samples`` HR samples in the filtered windows.
         """
         hr_type_id = get_series_type_id(SeriesType.heart_rate)
-        hr_pts = self._query_data_series(
-            db_session, user_id, hr_type_id, start_dt, end_dt
-        )
+        hr_pts = self._query_data_series(db_session, user_id, hr_type_id, start_dt, end_dt)
 
         if not hr_pts:
             return None
 
         allowed_stages = _DEEP_ONLY_STAGES if deep_sleep_only else _ASLEEP_STAGES
-        windows = self._extract_asleep_windows(
-            db_session, user_id, start_dt, end_dt, allowed_stages
-        )
+        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, allowed_stages)
         filtered = self._filter_points_to_windows(hr_pts, windows)
 
         if len(filtered) < recovery_config.min_rr_samples:
@@ -378,17 +357,13 @@ class RecoveryScoreService:
             ``hrv_config.min_rr_samples`` HR samples in the filtered windows.
         """
         hr_type_id = get_series_type_id(SeriesType.heart_rate)
-        hr_pts = self._query_data_series(
-            db_session, user_id, hr_type_id, start_dt, end_dt
-        )
+        hr_pts = self._query_data_series(db_session, user_id, hr_type_id, start_dt, end_dt)
 
         if not hr_pts:
             return None
 
         allowed_stages = _DEEP_ONLY_STAGES if deep_sleep_only else _ASLEEP_STAGES
-        windows = self._extract_asleep_windows(
-            db_session, user_id, start_dt, end_dt, allowed_stages
-        )
+        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, allowed_stages)
         filtered = self._filter_points_to_windows(hr_pts, windows)
 
         if len(filtered) < recovery_config.min_rr_samples:
