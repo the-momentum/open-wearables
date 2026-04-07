@@ -53,11 +53,11 @@ class RecoveryScoreService:
         """Return a timezone-aware datetime in UTC.
 
         Naive datetimes (no tzinfo) are assumed to be UTC and made aware.
-        Aware datetimes are returned unchanged.
+        Aware datetimes with a non-UTC offset are converted to UTC.
         """
         if dt.tzinfo is None:
             return dt.replace(tzinfo=timezone.utc)
-        return dt
+        return dt.astimezone(timezone.utc)
 
     def _query_data_series(
         self,
@@ -177,7 +177,7 @@ class RecoveryScoreService:
         """Group (timestamp, value) pairs by their UTC calendar date."""
         by_day: dict[date, list[float]] = defaultdict(list)
         for ts, value in data_points:
-            by_day[ts.date()].append(value)
+            by_day[self._ensure_utc(ts).date()].append(value)
         return dict(by_day)
 
     def _empty_daily_scores(self, reference_date: date, lookback_days: int) -> list[DailyHrvScore]:
@@ -224,17 +224,25 @@ class RecoveryScoreService:
         end_dt = datetime.combine(reference_date, time.min, tzinfo=timezone.utc)
         start_dt = end_dt - timedelta(days=recovery_config.lookback_days)
 
-        # 1. Prefer RMSSD; fall back to SDNN
+        # 1. Extract sleep windows once; used for both RMSSD and SDNN filtering.
+        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES)
+
+        # 2. Prefer RMSSD; fall back to SDNN *after* sleep filtering.
+        #    A user wearing multiple devices may have daytime RMSSD from one device
+        #    and overnight SDNN from another — the fallback must happen post-filter
+        #    so that daytime-only RMSSD samples don't block overnight SDNN data.
         rmssd_type_id = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
         hrv_pts = self._query_data_series(db_session, user_id, rmssd_type_id, start_dt, end_dt)
+        filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
         metric_type: str = "RMSSD"
 
-        if not hrv_pts:
+        if not filtered_hrv:
             sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
-            hrv_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
+            sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
+            filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
             metric_type = "SDNN"
 
-        if not hrv_pts:
+        if not filtered_hrv:
             return HrvCvScoreResult(
                 hrv_cv=None,
                 metric_type=None,
@@ -242,10 +250,6 @@ class RecoveryScoreService:
                 lookback_days=recovery_config.lookback_days,
                 daily_scores=self._empty_daily_scores(reference_date, recovery_config.lookback_days),
             )
-
-        # 2. Filter to sleep windows
-        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES)
-        filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
 
         # 3. Daily averages across the lookback window (oldest → newest)
         by_day = self._group_by_day(filtered_hrv)
