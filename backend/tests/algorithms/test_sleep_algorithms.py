@@ -12,6 +12,7 @@ from datetime import datetime
 import pytest
 
 from app.algorithms.config_algorithms import SleepScoreConfig
+from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
 from app.algorithms.sleep import (
     STAGE_SCORE_BOUNDS,
     _calculate_stage_score,
@@ -22,7 +23,6 @@ from app.algorithms.sleep import (
     calculate_overall_sleep_score,
     calculate_total_stages_score,
 )
-from app.algorithms.utils import ScoreBounds, score_sigmoid, time_to_hours_past_noon
 
 # ---------------------------------------------------------------------------
 # app.algorithms.utils

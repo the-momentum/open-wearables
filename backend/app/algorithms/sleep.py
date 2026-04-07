@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import SleepScoreConfig, sleep_config
-from app.algorithms.utils import ScoreBounds, score_sigmoid, time_to_hours_past_noon
+from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
 
 
 class SleepComponentScore(BaseModel):
