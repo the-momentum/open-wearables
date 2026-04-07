@@ -21,18 +21,18 @@ from .event_record_detail import (
     EventRecordDetailResponse,
     EventRecordDetailUpdate,
 )
-from .personal_record import (
-    PersonalRecordBase,
-    PersonalRecordCreate,
-    PersonalRecordResponse,
-    PersonalRecordUpdate,
-)
 from .health_score import (
     HealthScoreBase,
     HealthScoreCreate,
     HealthScoreResponse,
     HealthScoreUpdate,
     ScoreComponent,
+)
+from .personal_record import (
+    PersonalRecordBase,
+    PersonalRecordCreate,
+    PersonalRecordResponse,
+    PersonalRecordUpdate,
 )
 from .sleep import SleepStage
 
