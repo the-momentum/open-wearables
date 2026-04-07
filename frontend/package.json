@@ -63,7 +63,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
-    "jsdom": "^27.0.0",
+    "jsdom": "^28.1.0",
     "oxlint": "^1.57.0",
     "prettier": "3.8.1",
     "typescript": "^5.7.2",
