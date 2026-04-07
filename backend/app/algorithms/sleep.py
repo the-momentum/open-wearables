@@ -166,7 +166,7 @@ def calculate_interruptions_score(
         config.frequency_weight_points * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
     )
 
-    return int(duration_score + freq_score)
+    return max(score_bounds.min, min(score_bounds.max, int(duration_score + freq_score)))
 
 
 def calculate_overall_sleep_score(

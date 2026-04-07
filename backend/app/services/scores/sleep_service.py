@@ -109,7 +109,9 @@ class SleepScoreService:
         latency and morning lie-in). Otherwise awake_minutes is used as a fallback
         for interruption scoring.
 
-        Net sleep = total_sleep_duration_minutes - awake_minutes (clamped to 0).
+        total_sleep_duration_minutes is expected to be net sleep (awake time already
+        excluded), as stored by wearable providers. awake_minutes / stage-derived WASO
+        feeds only the interruptions pillar.
         """
         if not total_sleep_duration_minutes or total_sleep_duration_minutes <= 0:
             raise ValueError(
@@ -126,7 +128,7 @@ class SleepScoreService:
             total_awake = awake_minutes
             awakening_durations = []
 
-        net_sleep_minutes = max(0.0, total_sleep_duration_minutes - total_awake)
+        net_sleep_minutes = total_sleep_duration_minutes
 
         return calculate_overall_sleep_score(
             total_sleep_minutes=net_sleep_minutes,
@@ -188,6 +190,7 @@ class SleepScoreService:
             EventRecordQueryParams(
                 category="sleep",
                 start_datetime=history_start,
+                end_datetime=day_start,
                 sort_by="start_datetime",
                 sort_order="desc",
                 limit=sleep_config.rolling_window_nights + 5,
@@ -196,9 +199,7 @@ class SleepScoreService:
         )
 
         historical_bedtimes = [
-            r.start_datetime
-            for r, _ in hist_records
-            if r.start_datetime.date() < sleep_date and isinstance(r.detail, SleepDetails) and not r.detail.is_nap
+            r.start_datetime for r, _ in hist_records if isinstance(r.detail, SleepDetails) and not r.detail.is_nap
         ][: sleep_config.rolling_window_nights]
 
         sleep_stages: list[dict[str, str]] | None = None

@@ -610,18 +610,6 @@ class TestParseWearableStagesForInterruptions:
 class TestGetSleepScoreEdgeCases:
     """Extra edge cases not covered by TestGetSleepScore."""
 
-    def test_awake_exceeds_total_sleep_clamps_to_zero_then_raises(self) -> None:
-        """If awake_minutes ≥ total_sleep, net sleep=0 → ValueError from algorithm."""
-        with pytest.raises(ValueError, match="total_sleep_minutes must be"):
-            service.get_sleep_score(
-                total_sleep_duration_minutes=30.0,
-                deep_minutes=0.0,
-                rem_minutes=0.0,
-                awake_minutes=60.0,
-                session_start=_utc("2026-03-10T23:00:00"),
-                historical_bedtimes=[],
-            )
-
     def test_sleep_stages_strips_latency_before_scoring(self) -> None:
         """Sleep latency awake at start is not penalised in interruptions."""
         stages_with_latency = _make_stages(
