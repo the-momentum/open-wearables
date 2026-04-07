@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
   EllipsisVertical,
+  History,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -35,6 +37,7 @@ import { cn } from '@/lib/utils';
 import {
   useDisconnectProvider,
   useSynchronizeDataFromProvider,
+  useSyncHistoricalData,
   useGarminBackfillStatus,
   useGarminCancelBackfill,
   useRetryGarminBackfill,
@@ -79,6 +82,9 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
   const { mutate: retryBackfill, isPending: isRetrying } =
     useRetryGarminBackfill(connection.user_id);
+
+  const { mutate: syncHistorical, isPending: isSyncingHistorical } =
+    useSyncHistoricalData(connection.provider, connection.user_id);
 
   // Check if backfill is in progress (includes retry phase)
   const isBackfillInProgress =
@@ -160,7 +166,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                 {connection.provider}
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Last sync:{' '}
+                Last live sync:{' '}
                 {connection.last_synced_at
                   ? formatDistanceToNow(new Date(connection.last_synced_at), {
                       addSuffix: true,
@@ -373,28 +379,102 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             </div>
           )}
 
-        {/* Sync button - only for non-Garmin providers */}
-        {connection.provider !== 'garmin' && (
+        {/* Action buttons */}
+        {connection.status === 'active' && (
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => synchronizeDataFromProvider()}
-              disabled={isSynchronizing}
-            >
-              {isSynchronizing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Now
-                </>
+            {/* Provider with a hard history cap: single constrained button */}
+            {connection.max_historical_days !== null &&
+              connection.max_historical_days !== undefined &&
+              !isBackfillInProgress && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() =>
+                    syncHistorical(connection.max_historical_days as number)
+                  }
+                  disabled={isSyncingHistorical}
+                >
+                  {isSyncingHistorical ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <History className="h-4 w-4" />
+                      Sync {connection.max_historical_days}-day History
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+
+            {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
+            {(connection.max_historical_days === null ||
+              connection.max_historical_days === undefined) && (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      disabled={isSyncingHistorical}
+                    >
+                      {isSyncingHistorical ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Starting...
+                        </>
+                      ) : (
+                        <>
+                          <History className="h-4 w-4" />
+                          Sync History
+                          <ChevronDown className="h-3 w-3 ml-auto opacity-60" />
+                        </>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => syncHistorical(7)}>
+                      Last 7 days
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => syncHistorical(30)}>
+                      Last 30 days
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => syncHistorical(90)}>
+                      Last 3 months
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => syncHistorical(180)}>
+                      Last 6 months
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => syncHistorical(365)}>
+                      Last year
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => synchronizeDataFromProvider()}
+                  disabled={isSynchronizing}
+                >
+                  {isSynchronizing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      Force Live Sync
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
           </div>
         )}
       </CardContent>

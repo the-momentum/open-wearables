@@ -43,8 +43,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         end_date: datetime,
     ) -> list[Any]:
         """Get workouts from Suunto API."""
-        # Suunto uses 'since' parameter
-        since = int(start_date.timestamp())
+        # Suunto uses 'since' parameter in epoch milliseconds
+        since = int(start_date.timestamp() * 1000)
         params = {
             "since": since,
             "limit": 100,
@@ -58,7 +58,11 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         since = kwargs.get("since", 0)
         limit = kwargs.get("limit", 50)
         offset = kwargs.get("offset", 0)
-        filter_by_modification_time = kwargs.get("filter_by_modification_time", True)
+        # Always filter by workout start time, not modification time.
+        # Modification time reflects when the workout was synced to Suunto cloud,
+        # which means ALL workouts appear as "modified" on first OAuth connection,
+        # making the since-cursor useless.
+        filter_by_modification_time = False
 
         params = {
             "since": since,
@@ -221,22 +225,22 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         api_kwargs = kwargs.copy()
 
-        # Convert start_date to 'since' timestamp
+        # Convert start_date to 'since' timestamp (Suunto expects epoch milliseconds)
         if start_date:
             if isinstance(start_date, str):
                 try:
                     start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    api_kwargs["since"] = int(start_dt.timestamp())
+                    api_kwargs["since"] = int(start_dt.timestamp() * 1000)
                 except (ValueError, AttributeError):
                     pass
             elif isinstance(start_date, datetime):
-                api_kwargs["since"] = int(start_date.timestamp())
+                api_kwargs["since"] = int(start_date.timestamp() * 1000)
 
         # Set Suunto-specific defaults
         if "limit" not in api_kwargs:
             api_kwargs["limit"] = 100
-        if "filter_by_modification_time" not in api_kwargs:
-            api_kwargs["filter_by_modification_time"] = True
+        # filter_by_modification_time is hardcoded to False in get_workouts_from_api;
+        # passing it here has no effect but keep for clarity if code is re-read.
 
         response = self.get_workouts_from_api(db, user_id, **api_kwargs)
         workouts_data = response.get("payload", [])

@@ -137,7 +137,7 @@ def process_activity_notification(
             "info",
             "Activity already exists, skipping",
             provider="garmin",
-            trace_id=request_trace_id,
+            trace_id=trace_id,
             activity_id=activity_id,
         )
         return {**base_result, "status": "duplicate"}

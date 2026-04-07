@@ -41,13 +41,12 @@ def process_user_permissions(
         if not connection:
             log_structured(
                 logger,
-                "warning",
-                "No connection found for Garmin user (userPermissions)",
+                "info",
+                "No connection found for Garmin user (userPermissions) — skipping",
                 provider="garmin",
                 trace_id=trace_id,
                 garmin_user_id=garmin_user_id,
             )
-            results["errors"].append(f"User {garmin_user_id} not connected")
             continue
 
         permissions = entry.get("permissions", [])
@@ -97,13 +96,12 @@ def process_deregistrations(
         if not connection:
             log_structured(
                 logger,
-                "warning",
-                "No connection found for Garmin user (deregistration)",
+                "info",
+                "No connection found for Garmin user (deregistration) — skipping",
                 provider="garmin",
                 trace_id=trace_id,
                 garmin_user_id=garmin_user_id,
             )
-            results["errors"].append(f"User {garmin_user_id} not connected")
             continue
 
         connection_repo.mark_as_revoked(db, connection)

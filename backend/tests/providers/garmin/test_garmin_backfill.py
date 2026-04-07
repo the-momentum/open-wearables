@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from app.integrations.celery.tasks.garmin_backfill_task import trigger_backfill_for_type
+from app.integrations.celery.tasks.garmin_backfill_trigger import trigger_backfill_for_type
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
@@ -296,7 +296,10 @@ class TestBackfillTaskStopChain:
     and the backfill service to verify the chain stops on 401/403/412.
     """
 
-    TASK_MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
+    TASK_MODULE = "app.integrations.celery.tasks.garmin_backfill_trigger"
+    ORCHESTRATOR_MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
+    TIMEOUT_MODULE = "app.integrations.celery.tasks.garmin_backfill_timeout"
+    BACKFILL_STATE_MODULE = "app.services.providers.garmin.backfill_state"
     USER_ID = "c079cf7e-70b3-4529-a325-401a658f5cba"
 
     def _run_task(
@@ -313,6 +316,9 @@ class TestBackfillTaskStopChain:
         mock_redis = MagicMock()
         mock_redis.get.return_value = None
         mock_redis.set.return_value = True
+
+        # Shared mock so calls from both trigger and timeout modules are tracked together
+        shared_mark_failed = MagicMock()
 
         backfill_patch_kwargs: dict = {}
         if side_effect is not None:
@@ -335,9 +341,12 @@ class TestBackfillTaskStopChain:
             patch(f"{self.TASK_MODULE}.set_type_trace_id", return_value="test-type-trace"),
             patch(f"{self.TASK_MODULE}.is_retry_phase", return_value=False),
             patch(f"{self.TASK_MODULE}.mark_type_triggered"),
-            patch(f"{self.TASK_MODULE}.mark_type_failed") as mock_mark_failed,
-            patch(f"{self.TASK_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
-            patch(f"{self.TASK_MODULE}.trigger_next_pending_type") as mock_next,
+            patch(f"{self.TASK_MODULE}.mark_type_failed", shared_mark_failed),
+            patch(f"{self.TIMEOUT_MODULE}.mark_type_failed", shared_mark_failed),
+            patch(f"{self.TIMEOUT_MODULE}.persist_window_results"),
+            patch(f"{self.TIMEOUT_MODULE}.complete_backfill"),
+            patch(f"{self.BACKFILL_STATE_MODULE}.get_pending_types", return_value=["dailies", "activities"]),
+            patch(f"{self.ORCHESTRATOR_MODULE}.trigger_next_pending_type") as mock_next,
             patch(f"{self.TASK_MODULE}.get_redis_client", return_value=mock_redis),
             patch(f"{self.TASK_MODULE}.UserConnectionRepository") as mock_conn_repo_cls,
         ):
@@ -358,7 +367,7 @@ class TestBackfillTaskStopChain:
 
             return {
                 "result": result,
-                "mock_mark_failed": mock_mark_failed,
+                "mock_mark_failed": shared_mark_failed,
                 "mock_next": mock_next,
             }
 

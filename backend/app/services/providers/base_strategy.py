@@ -52,6 +52,8 @@ class ProviderCapabilities:
     supports_sdk: bool = False
     supports_xml_import: bool = False
     webhook_notify_only: bool = False
+    max_historical_days: int | None = None
+    """Hard limit on how many days of history the provider allows. None = no known limit."""
 
 
 class BaseProviderStrategy(ABC):

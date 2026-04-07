@@ -1,24 +1,33 @@
+import contextlib
 from uuid import UUID
 
 from fastapi import APIRouter, Response, status
 
 from app.database import DbSession
 from app.schemas.enums import ProviderName
-from app.schemas.model_crud.user_management import UserConnectionRead
+from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
 from app.services import ApiKeyDep, user_connection_service
 from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
+factory = ProviderFactory()
 
 
-@router.get("/users/{user_id}/connections", response_model=list[UserConnectionRead])
+def _with_capabilities(conn: object) -> UserConnectionWithCapabilities:
+    enriched = UserConnectionWithCapabilities.model_validate(conn)
+    with contextlib.suppress(ValueError):
+        enriched.max_historical_days = factory.get_provider(enriched.provider).capabilities.max_historical_days
+    return enriched
+
+
+@router.get("/users/{user_id}/connections", response_model=list[UserConnectionWithCapabilities])
 def get_connections_endpoint(
     user_id: str,
     db: DbSession,
     _api_key: ApiKeyDep,
 ):
-    """Get all connections for a user."""
-    return user_connection_service.get_connections_by_user(db, UUID(user_id))
+    """Get all connections for a user, enriched with provider capability metadata."""
+    return [_with_capabilities(conn) for conn in user_connection_service.get_connections_by_user(db, UUID(user_id))]
 
 
 @router.delete("/users/{user_id}/connections/{provider}")

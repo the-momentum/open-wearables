@@ -123,20 +123,62 @@ class GarminWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="garmin", payload=payload, trace_id=request_trace_id)
 
-        processed_count = 0
-        saved_count = 0
         errors: list[str] = []
-        processed_activities: list[dict[str, Any]] = []
-        wellness_results: dict[str, Any] = {}
         synced_user_ids: set[UUID] = set()
         users_with_new_success: set[str] = set()
 
-        # --- activities -------------------------------------------------
+        # --- data processing -----------------------------------------
+        act_result = self._process_activities(
+            db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
+        )
+        well_result = self._process_wellness(
+            db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
+        )
+
+        # --- commit + update last_synced_at ---------------------------
+        db.commit()
+
+        for uid in synced_user_ids:
+            connection = self.connection_repo.get_active_connection(db, uid, "garmin")
+            if connection:
+                self.connection_repo.update_last_synced_at(db, connection)
+
+        # --- build response -------------------------------------------
+        response: dict[str, Any] = {
+            "processed": act_result["processed_count"],
+            "saved": act_result["saved_count"],
+            "errors": errors,
+            "activities": act_result["details"],
+            "wellness": well_result,
+            "backfill_chained": [],
+        }
+
+        self._process_lifecycle_events(db, payload, response, request_trace_id)
+        response["backfill_chained"] = self._chain_backfills(users_with_new_success, request_trace_id)
+        return response
+
+    # ------------------------------------------------------------------
+    # Private dispatch helpers
+    # ------------------------------------------------------------------
+
+    def _process_activities(
+        self,
+        db: DbSession,
+        payload: dict[str, Any],
+        errors: list[str],
+        synced_user_ids: set[UUID],
+        users_with_new_success: set[str],
+        request_trace_id: str,
+    ) -> dict[str, Any]:
+        processed_count = 0
+        saved_count = 0
+        details: list[dict[str, Any]] = []
+
         for notification in payload.get("activities", []):
             result = process_activity_notification(
                 db, self.connection_repo, self.garmin_workouts, notification, request_trace_id
             )
-            processed_activities.append(result)
+            details.append(result)
             if result["status"] in ("saved", "fetched"):
                 processed_count += 1
             if result["status"] == "saved":
@@ -153,7 +195,19 @@ class GarminWebhookHandler(BaseWebhookHandler):
             elif result["status"] in ("error", "user_not_found"):
                 errors.append(result.get("error", "Unknown error"))
 
-        # --- wellness types --------------------------------------------
+        return {"processed_count": processed_count, "saved_count": saved_count, "details": details}
+
+    def _process_wellness(
+        self,
+        db: DbSession,
+        payload: dict[str, Any],
+        errors: list[str],
+        synced_user_ids: set[UUID],
+        users_with_new_success: set[str],
+        request_trace_id: str,
+    ) -> dict[str, Any]:
+        wellness_results: dict[str, Any] = {}
+
         for data_type in WELLNESS_TYPES:
             if not payload.get(data_type):
                 continue
@@ -178,24 +232,15 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 if mark_type_success(uid_str, data_type):
                     users_with_new_success.add(uid_str)
 
-        # --- commit + update last_synced_at ---------------------------
-        db.commit()
+        return wellness_results
 
-        for uid in synced_user_ids:
-            connection = self.connection_repo.get_active_connection(db, uid, "garmin")
-            if connection:
-                self.connection_repo.update_last_synced_at(db, connection)
-
-        # --- build response -------------------------------------------
-        response: dict[str, Any] = {
-            "processed": processed_count,
-            "saved": saved_count,
-            "errors": errors,
-            "activities": processed_activities,
-            "wellness": wellness_results,
-            "backfill_chained": [],
-        }
-
+    def _process_lifecycle_events(
+        self,
+        db: DbSession,
+        payload: dict[str, Any],
+        response: dict[str, Any],
+        request_trace_id: str,
+    ) -> None:
         if "userPermissionsChange" in payload:
             try:
                 response["userPermissionsChange"] = process_user_permissions(
@@ -228,11 +273,11 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 )
                 response["deregistrations"] = {"revoked": 0, "errors": [str(e)]}
 
-        # --- backfill chaining ----------------------------------------
+    def _chain_backfills(self, users_with_new_success: set[str], request_trace_id: str) -> list[str]:
         backfill_triggered: list[str] = []
         for user_id_str in users_with_new_success:
             backfill_status = get_backfill_status(user_id_str)
-            if backfill_status["overall_status"] == "in_progress":
+            if backfill_status["overall_status"] in ("in_progress", "retry_in_progress"):
                 trace_id = get_trace_id(user_id_str) or request_trace_id
                 log_structured(
                     logger,
@@ -246,9 +291,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 )
                 celery_app.send_task(_TRIGGER_NEXT_TASK, args=[user_id_str])
                 backfill_triggered.append(user_id_str)
-
-        response["backfill_chained"] = backfill_triggered
-        return response
+        return backfill_triggered
 
     def supported_event_types(self) -> list[str]:
         return ["activities", *WELLNESS_TYPES, "userPermissionsChange", "deregistrations"]

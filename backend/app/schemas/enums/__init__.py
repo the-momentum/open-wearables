@@ -2,7 +2,6 @@ from .aggregation_method import (
     AGGREGATION_METHOD_BY_TYPE,
     AggregationMethod,
 )
-from .delivery_mode import DeliveryMode
 from .device_type import (
     DEFAULT_DEVICE_TYPE_PRIORITY,
     DeviceType,
@@ -43,5 +42,4 @@ __all__ = [
     "WORKOUTS_WITH_PACE",
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
-    "DeliveryMode",
 ]

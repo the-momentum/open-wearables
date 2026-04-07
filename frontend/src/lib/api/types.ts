@@ -213,6 +213,7 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
+  max_historical_days?: number | null;
 }
 
 // ============================================================================

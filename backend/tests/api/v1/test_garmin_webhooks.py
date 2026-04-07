@@ -891,7 +891,7 @@ class TestGarminUserPermissionsWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test userPermissionsChange webhook with unknown user returns 200 with error info."""
+        """Test userPermissionsChange webhook with unknown user is a no-op (idempotent)."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
@@ -915,7 +915,7 @@ class TestGarminUserPermissionsWebhook:
         data = response.json()
         assert "userPermissionsChange" in data
         assert data["userPermissionsChange"]["updated"] == 0
-        assert len(data["userPermissionsChange"]["errors"]) == 1
+        assert len(data["userPermissionsChange"]["errors"]) == 0
 
     def test_ping_webhook_user_permissions_updates_scope(
         self,
@@ -1010,7 +1010,7 @@ class TestGarminDeregistrationWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test deregistration webhook with unknown user returns 200 with error info."""
+        """Test deregistration webhook with unknown user is a no-op (idempotent)."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
@@ -1031,4 +1031,4 @@ class TestGarminDeregistrationWebhook:
         data = response.json()
         assert "deregistrations" in data
         assert data["deregistrations"]["revoked"] == 0
-        assert len(data["deregistrations"]["errors"]) == 1
+        assert len(data["deregistrations"]["errors"]) == 0

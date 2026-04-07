@@ -60,6 +60,25 @@ export const healthService = {
   },
 
   /**
+   * Trigger historical data sync for a provider
+   * Garmin: 30-day webhook backfill; others: pull API with date range
+   */
+  async syncHistoricalData(
+    provider: string,
+    userId: string,
+    days?: number
+  ): Promise<{ success: boolean; task_id: string; method: string }> {
+    const params = days ? { days } : undefined;
+    return apiClient.post<{
+      success: boolean;
+      task_id: string;
+      method: string;
+    }>(`/api/v1/providers/${provider}/users/${userId}/sync/historical`, null, {
+      params,
+    });
+  },
+
+  /**
    * Get Garmin backfill status with per-window matrix
    * Returns multi-window sequential sync progress (webhook-based)
    */
