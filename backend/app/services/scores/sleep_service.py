@@ -13,17 +13,71 @@ Processing pipeline (mirrors sleep_analysis.ipynb):
 """
 
 from datetime import date, datetime
+from typing import TypedDict
 
 from pydantic import BaseModel
 
-from app.algorithms.config_algorithms import sleep_consistency_config
-from app.algorithms.sleep import (
-    calculate_overall_sleep_score,
-    convert_stages_to_duration_blocks,
-    parse_wearable_stages_for_interruptions,
-)
+from app.algorithms.config_algorithms import sleep_config
+from app.algorithms.sleep import calculate_overall_sleep_score
 
 _DATETIME_FMT = "%Y-%m-%dT%H:%M:%S"
+
+
+def convert_stages_to_duration_blocks(
+    raw_stages_json: list[dict[str, str]],
+) -> list[dict[str, str | float]]:
+    """Convert start_time/end_time stage blocks to duration_mins format.
+
+    Input:  [{"stage": "...", "start_time": "...", "end_time": "..."}, ...]
+    Output: [{"stage": "...", "duration_mins": float}, ...]
+    """
+    result: list[dict[str, str | float]] = []
+    for block in raw_stages_json:
+        start = datetime.fromisoformat(block["start_time"].rstrip("Z"))
+        end = datetime.fromisoformat(block["end_time"].rstrip("Z"))
+        duration_mins = (end - start).total_seconds() / 60.0
+        result.append({"stage": block["stage"], "duration_mins": duration_mins})
+    return result
+
+
+class _WasoData(TypedDict):
+    total_awake_minutes: float
+    awakening_durations: list[float]
+
+
+def parse_wearable_stages_for_interruptions(
+    raw_stage_blocks: list[dict[str, str | float]],
+) -> _WasoData:
+    """Strip sleep latency and morning lying-in-bed periods to calculate true WASO.
+
+    Expected input: [{"stage": "awake"|"light"|..., "duration_mins": float}, ...]
+    Returns total WASO minutes and individual awakening durations.
+    """
+    if not raw_stage_blocks:
+        return {"total_awake_minutes": 0.0, "awakening_durations": []}
+
+    first_sleep_idx = 0
+    for i, block in enumerate(raw_stage_blocks):
+        if str(block["stage"]).lower() != "awake":
+            first_sleep_idx = i
+            break
+
+    last_sleep_idx = len(raw_stage_blocks) - 1
+    for i in range(len(raw_stage_blocks) - 1, -1, -1):
+        if raw_stage_blocks[i]["stage"].lower() != "awake":
+            last_sleep_idx = i
+            break
+
+    true_sleep_period = raw_stage_blocks[first_sleep_idx : last_sleep_idx + 1]
+
+    waso_total_minutes = 0.0
+    awakening_durations: list[float] = []
+    for block in true_sleep_period:
+        if str(block["stage"]).lower() == "awake":
+            waso_total_minutes += float(block["duration_mins"])
+            awakening_durations.append(float(block["duration_mins"]))
+
+    return {"total_awake_minutes": waso_total_minutes, "awakening_durations": awakening_durations}
 
 
 class SleepSession(BaseModel):
@@ -86,7 +140,7 @@ def score_sleep_sessions(sessions: list[SleepSession]) -> list[SleepScoreRecord]
     for i, session in enumerate(daily):
         # Rolling bedtime history (up to ROLLING_WINDOW prior nights).
         # Night 0 has no history → consistency defaults to 100 (base score).
-        history_start = max(0, i - sleep_consistency_config.rolling_window_nights)
+        history_start = max(0, i - sleep_config.rolling_window_nights)
         historical_bedtimes = [
             daily[j].start_datetime.strftime(_DATETIME_FMT)
             for j in range(history_start, i)
@@ -123,12 +177,12 @@ def score_sleep_sessions(sessions: list[SleepSession]) -> list[SleepScoreRecord]
             SleepScoreRecord(
                 sleep_event_id=session.sleep_event_id,
                 sleep_date=session.end_datetime.date(),
-                overall_score=scored["overall_score"],
-                duration_score=scored["breakdown"]["duration"]["score"],
-                stages_score=scored["breakdown"]["stages"]["score"],
-                consistency_score=scored["breakdown"]["consistency"]["score"],
-                interruptions_score=scored["breakdown"]["interruptions"]["score"],
-                duration_hours=scored["metrics"]["duration_hours"],
+                overall_score=scored.overall_score,
+                duration_score=scored.breakdown.duration.score,
+                stages_score=scored.breakdown.stages.score,
+                consistency_score=scored.breakdown.consistency.score,
+                interruptions_score=scored.breakdown.interruptions.score,
+                duration_hours=scored.metrics.duration_hours,
                 net_sleep_minutes=net_sleep_minutes,
             )
         )

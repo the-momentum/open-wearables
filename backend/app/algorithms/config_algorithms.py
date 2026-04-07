@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 
 class SleepScoreConfig(BaseModel):
-    # SCORE MASTER WEIGHTS
+    # --- SCORE MASTER WEIGHTS ---
     # must add up to 1.0 - weighted average
     duration_impact: float = 0.40
     stages_impact: float = 0.20
@@ -38,6 +38,7 @@ class SleepScoreConfig(BaseModel):
     # INTERRUPTIONS
     duration_weight_points: float = 80.0
     frequency_weight_points: float = 20.0
+    freq_score_fractions: tuple[float, ...] = (1.0, 1.0, 0.75, 0.5, 0.0)
     interruptions_grace_period_mins: float = 20.0
     max_penalty_window_mins: float = 70.0
     significant_wake_threshold_mins: float = 5.0
