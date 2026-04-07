@@ -22,22 +22,22 @@ def _with_capabilities(conn: object) -> UserConnectionWithCapabilities:
 
 @router.get("/users/{user_id}/connections", response_model=list[UserConnectionWithCapabilities])
 def get_connections_endpoint(
-    user_id: str,
+    user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
 ):
     """Get all connections for a user, enriched with provider capability metadata."""
-    return [_with_capabilities(conn) for conn in user_connection_service.get_connections_by_user(db, UUID(user_id))]
+    return [_with_capabilities(conn) for conn in user_connection_service.get_connections_by_user(db, user_id)]
 
 
 @router.delete("/users/{user_id}/connections/{provider}")
 def disconnect_provider_endpoint(
-    user_id: str,
+    user_id: UUID,
     provider: ProviderName,
     db: DbSession,
     _api_key: ApiKeyDep,
 ) -> Response:
     """Disconnect a user from a provider, revoking the connection and clearing tokens."""
     strategy = ProviderFactory().get_provider(provider.value)
-    user_connection_service.disconnect(db, UUID(user_id), provider.value, oauth=strategy.oauth)
+    user_connection_service.disconnect(db, user_id, provider.value, oauth=strategy.oauth)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

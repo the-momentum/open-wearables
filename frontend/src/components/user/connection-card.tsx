@@ -4,6 +4,7 @@ import {
   ChevronDown,
   EllipsisVertical,
   History,
+  Info,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -17,6 +18,11 @@ import { UserConnection } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -225,22 +231,34 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       <CardContent className="space-y-4">
         {/* Show data scope */}
         {scopeItems.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Data scope
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {scopeItems.map((scopeItem) => (
-                <Badge
-                  key={scopeItem}
-                  variant="secondary"
-                  className="text-xs font-normal"
-                >
-                  {scopeItem}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default"
+              >
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                <span>Data scope</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              align="start"
+              className="max-w-sm"
+            >
+              <div className="flex flex-wrap gap-1 py-0.5">
+                {scopeItems.map((scopeItem) => (
+                  <Badge
+                    key={scopeItem}
+                    variant="secondary"
+                    className="text-[11px] font-normal px-1.5 py-0"
+                  >
+                    {scopeItem}
+                  </Badge>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
         )}
 
         {/* Show backfill progress for Garmin */}
@@ -385,7 +403,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             {/* Provider with a hard history cap: single constrained button */}
             {connection.max_historical_days !== null &&
               connection.max_historical_days !== undefined &&
-              !isBackfillInProgress && (
+              !isBackfillInProgress &&
+              !isPermanentlyFailed && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -411,7 +430,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
             {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
             {(connection.max_historical_days === null ||
-              connection.max_historical_days === undefined) && (
+              connection.max_historical_days === undefined) &&
+              !isPermanentlyFailed && (
               <>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

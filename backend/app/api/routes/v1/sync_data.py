@@ -334,7 +334,7 @@ def sync_historical_data(
     """Trigger a historical data sync for a user's connected provider.
 
     - **Garmin**: Triggers a 30-day webhook-based backfill (Garmin limits
-      historical access to 30 days before user registration).
+      historical access to 30 days before the user's consent/connection date).
     - **Other providers**: Dispatches an async pull-API sync with the
       requested date range.
 
@@ -342,9 +342,10 @@ def sync_historical_data(
     at pairing time. Use when the user explicitly wants past data.
     """
     strategy = factory.get_provider(provider.value)
+    caps = strategy.capabilities
 
-    # Garmin: webhook-based backfill
-    if provider == ProviderName.GARMIN:
+    # Webhook-based async export providers (e.g. Garmin)
+    if caps.supports_async_export:
         task = start_garmin_full_backfill.delay(str(user_id))
         return {
             "success": True,
@@ -356,7 +357,7 @@ def sync_historical_data(
         }
 
     # Pull-API providers: dispatch async sync with historical date range
-    if not strategy.has_cloud_api:
+    if not caps.supports_pull:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Provider '{provider.value}' does not support cloud-based historical sync.",

@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from app.database import DbSession
-from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
 from app.schemas.model_crud.data_priority import (
@@ -13,7 +12,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
     ProviderSettingUpdate,
 )
-from app.services import DeveloperDep
+from app.services import DeveloperDep, user_connection_service
 from app.services.provider_settings_service import ProviderSettingsService
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
@@ -87,10 +86,7 @@ def oauth_callback(
     # Stamp last_synced_at=now so the first periodic sync uses it as the
     # live-sync cursor and won't pull all historical data.
     # Historical data must be fetched explicitly via the /sync/historical endpoint.
-    connection_repo = UserConnectionRepository()
-    connection = connection_repo.get_by_user_and_provider(db, oauth_state.user_id, provider.value)
-    if connection:
-        connection_repo.update_last_synced_at(db, connection)
+    user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider.value)
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

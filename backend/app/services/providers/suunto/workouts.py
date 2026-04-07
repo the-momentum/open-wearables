@@ -58,11 +58,7 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         since = kwargs.get("since", 0)
         limit = kwargs.get("limit", 50)
         offset = kwargs.get("offset", 0)
-        # Always filter by workout start time, not modification time.
-        # Modification time reflects when the workout was synced to Suunto cloud,
-        # which means ALL workouts appear as "modified" on first OAuth connection,
-        # making the since-cursor useless.
-        filter_by_modification_time = False
+        filter_by_modification_time = kwargs.get("filter_by_modification_time", True)
 
         params = {
             "since": since,
@@ -239,8 +235,6 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         # Set Suunto-specific defaults
         if "limit" not in api_kwargs:
             api_kwargs["limit"] = 100
-        # filter_by_modification_time is hardcoded to False in get_workouts_from_api;
-        # passing it here has no effect but keep for clarity if code is re-read.
 
         response = self.get_workouts_from_api(db, user_id, **api_kwargs)
         workouts_data = response.get("payload", [])
