@@ -27,6 +27,13 @@ from .personal_record import (
     PersonalRecordResponse,
     PersonalRecordUpdate,
 )
+from .health_score import (
+    HealthScoreBase,
+    HealthScoreCreate,
+    HealthScoreResponse,
+    HealthScoreUpdate,
+    ScoreComponent,
+)
 from .sleep import SleepStage
 
 __all__ = [
@@ -57,4 +64,10 @@ __all__ = [
     "PersonalRecordResponse",
     # Sleep
     "SleepStage",
+    # HealthScore
+    "ScoreComponent",
+    "HealthScoreBase",
+    "HealthScoreCreate",
+    "HealthScoreUpdate",
+    "HealthScoreResponse",
 ]

@@ -16,6 +16,7 @@ class ProviderName(str, Enum):
     FITBIT = "fitbit"
     ULTRAHUMAN = "ultrahuman"
     UNKNOWN = "unknown"
+    INTERNAL = "internal"
 
     @classmethod
     def from_source_string(cls, source: str | None) -> "ProviderName":
