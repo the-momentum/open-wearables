@@ -68,7 +68,7 @@ def _score_duration_hours(
             score_sigmoid(
                 duration_hours,
                 k=config.oversleep_k,
-                base=DURATION_SCORE_BOUNDS.max,
+                base=score_bounds.max,
                 midpoint=config.oversleep_midpoint,
                 anchor=config.optimal_max_hours,
             )

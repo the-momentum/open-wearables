@@ -55,7 +55,7 @@ class TestTimeToHoursPastNoon:
     def test_just_before_noon_wraps(self) -> None:
         """11:59 is < 12 so it adds 24 → 23.983… hours past noon."""
         result = time_to_hours_past_noon(datetime(2026, 3, 10, 11, 59, 0))
-        assert result == pytest.approx(11 + 59 / 60.0, rel=1e-4)
+        assert result == pytest.approx(23 + 59 / 60.0, rel=1e-4)
 
     def test_returns_float(self) -> None:
         result = time_to_hours_past_noon(datetime(2026, 3, 10, 22, 0, 0))

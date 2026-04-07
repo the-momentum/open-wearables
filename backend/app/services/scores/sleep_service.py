@@ -19,6 +19,7 @@ from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
 
 class WasoData(BaseModel):
@@ -62,19 +63,23 @@ class SleepScoreService:
         if not raw_stage_blocks:
             return WasoData(total_awake_minutes=0.0, awakening_durations=[])
 
-        first_sleep_idx = 0
-        for i, block in enumerate(raw_stage_blocks):
-            if str(block["stage"]).lower() != "awake":
-                first_sleep_idx = i
-                break
+        first_sleep_idx = next(
+            (i for i, b in enumerate(raw_stage_blocks) if str(b["stage"]).lower() != "awake"),
+            None,
+        )
+        if first_sleep_idx is None:
+            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
 
-        last_sleep_idx = len(raw_stage_blocks) - 1
-        for i in range(len(raw_stage_blocks) - 1, -1, -1):
-            if str(raw_stage_blocks[i]["stage"]).lower() != "awake":
-                last_sleep_idx = i
-                break
+        last_sleep_idx = next(
+            (
+                i
+                for i in range(len(raw_stage_blocks) - 1, -1, -1)
+                if str(raw_stage_blocks[i]["stage"]).lower() != "awake"
+            ),
+            None,
+        )
 
-        true_sleep_period = raw_stage_blocks[first_sleep_idx : last_sleep_idx + 1]
+        true_sleep_period = raw_stage_blocks[first_sleep_idx : last_sleep_idx + 1]  # type: ignore[operator]
 
         waso_total_minutes = 0.0
         awakening_durations: list[float] = []
@@ -121,7 +126,7 @@ class SleepScoreService:
             total_awake = awake_minutes
             awakening_durations = []
 
-        net_sleep_minutes = max(0.0, total_sleep_duration_minutes - awake_minutes)
+        net_sleep_minutes = max(0.0, total_sleep_duration_minutes - total_awake)
 
         return calculate_overall_sleep_score(
             total_sleep_minutes=net_sleep_minutes,
@@ -133,6 +138,7 @@ class SleepScoreService:
             awakening_durations=awakening_durations,
         )
 
+    @handle_exceptions
     def get_sleep_score_for_user(
         self,
         db_session: DbSession,
@@ -171,7 +177,7 @@ class SleepScoreService:
         ]
 
         if not sessions:
-            raise ValueError(f"No sleep data found for user {user_id} on {sleep_date}")
+            raise ResourceNotFoundError(f"sleep data for user {user_id} on {sleep_date}")
 
         record, detail = max(sessions, key=lambda s: s[1].sleep_total_duration_minutes or 0)
 

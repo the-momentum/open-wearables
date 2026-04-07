@@ -612,7 +612,7 @@ class TestGetSleepScoreEdgeCases:
 
     def test_awake_exceeds_total_sleep_clamps_to_zero_then_raises(self) -> None:
         """If awake_minutes ≥ total_sleep, net sleep=0 → ValueError from algorithm."""
-        with pytest.raises(ValueError, match="total_sleep_duration_minutes must be"):
+        with pytest.raises(ValueError, match="total_sleep_minutes must be"):
             service.get_sleep_score(
                 total_sleep_duration_minutes=30.0,
                 deep_minutes=0.0,
