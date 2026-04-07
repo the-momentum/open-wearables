@@ -68,10 +68,17 @@ class TestEnsureUtc:
         assert result.tzinfo == timezone.utc
         assert result.replace(tzinfo=None) == naive
 
-    def test_already_aware_datetime_unchanged(self) -> None:
+    def test_already_utc_aware_datetime_unchanged(self) -> None:
         aware = datetime(2026, 3, 10, 23, 0, 0, tzinfo=timezone.utc)
         result = service._ensure_utc(aware)
         assert result == aware
+
+    def test_non_utc_aware_datetime_converted_to_utc(self) -> None:
+        tz_plus2 = timezone(timedelta(hours=2))
+        dt_plus2 = datetime(2026, 3, 10, 13, 0, 0, tzinfo=tz_plus2)  # 13:00+02:00 == 11:00 UTC
+        result = service._ensure_utc(dt_plus2)
+        assert result.tzinfo == timezone.utc
+        assert result == datetime(2026, 3, 10, 11, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +180,18 @@ class TestGroupByDay:
 
     def test_empty_input_returns_empty_dict(self) -> None:
         assert service._group_by_day([]) == {}
+
+    def test_naive_timestamp_treated_as_utc(self) -> None:
+        naive_ts = datetime(2026, 3, 10, 2, 0, 0)
+        result = service._group_by_day([(naive_ts, 45.0)])
+        assert result == {date(2026, 3, 10): [45.0]}
+
+    def test_non_utc_aware_timestamp_normalized_before_bucketing(self) -> None:
+        """A +02:00 timestamp at 01:00 local is 2026-03-09 23:00 UTC — buckets under March 9."""
+        tz_plus2 = timezone(timedelta(hours=2))
+        ts_plus2 = datetime(2026, 3, 10, 1, 0, 0, tzinfo=tz_plus2)
+        result = service._group_by_day([(ts_plus2, 45.0)])
+        assert result == {date(2026, 3, 9): [45.0]}
 
 
 # ---------------------------------------------------------------------------
@@ -442,9 +461,17 @@ class TestGetHrvCvScore:
         sdnn_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
 
         ref = date(2026, 3, 10)
-        base = datetime.combine(ref - timedelta(days=3), time.min, tzinfo=timezone.utc)
-        for i in range(6):
-            ts = base + timedelta(days=i, hours=2)
+        # Insert 3 days within the lookback window (ref-3, ref-2, ref-1), each with a
+        # sleep window so the points survive the sleep filter step.
+        for days_back in [1, 2, 3]:
+            day = ref - timedelta(days=days_back)
+            self._make_sleep(
+                db,
+                ds,
+                datetime.combine(day, time(0), tzinfo=timezone.utc),
+                datetime.combine(day, time(8), tzinfo=timezone.utc),
+            )
+            ts = datetime.combine(day, time(2), tzinfo=timezone.utc)
             DataPointSeriesFactory(data_source=ds, series_type=rmssd_type, recorded_at=ts, value=Decimal("45"))
             DataPointSeriesFactory(data_source=ds, series_type=sdnn_type, recorded_at=ts, value=Decimal("30"))
         db.flush()
@@ -459,14 +486,60 @@ class TestGetHrvCvScore:
 
         sdnn_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
         ref = date(2026, 3, 10)
-        base = datetime.combine(ref - timedelta(days=6), time.min, tzinfo=timezone.utc)
-        for i in range(6):
-            ts = base + timedelta(days=i, hours=2)
+        # Insert 6 days within the lookback window, each with a sleep window.
+        for days_back in range(1, 7):
+            day = ref - timedelta(days=days_back)
+            self._make_sleep(
+                db,
+                ds,
+                datetime.combine(day, time(0), tzinfo=timezone.utc),
+                datetime.combine(day, time(8), tzinfo=timezone.utc),
+            )
+            ts = datetime.combine(day, time(2), tzinfo=timezone.utc)
             DataPointSeriesFactory(data_source=ds, series_type=sdnn_type, recorded_at=ts, value=Decimal("30"))
         db.flush()
 
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.metric_type == "SDNN"
+
+    def test_falls_back_to_sdnn_when_rmssd_only_outside_sleep(self, db: Session) -> None:
+        """Daytime RMSSD (no overnight data) + overnight SDNN → SDNN is used."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+
+        rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
+        sdnn_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_sdnn()
+
+        ref = date(2026, 3, 10)
+        day = ref - timedelta(days=1)
+
+        # Sleep window: midnight → 08:00
+        self._make_sleep(
+            db,
+            ds,
+            datetime.combine(day, time(0), tzinfo=timezone.utc),
+            datetime.combine(day, time(8), tzinfo=timezone.utc),
+        )
+        # RMSSD point at 14:00 (outside sleep window)
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=rmssd_type,
+            recorded_at=datetime.combine(day, time(14), tzinfo=timezone.utc),
+            value=Decimal("45"),
+        )
+        # SDNN point at 02:00 (inside sleep window)
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=sdnn_type,
+            recorded_at=datetime.combine(day, time(2), tzinfo=timezone.utc),
+            value=Decimal("30"),
+        )
+        db.flush()
+
+        result = service.get_hrv_cv_score(db, user.id, ref)
+        assert result.metric_type == "SDNN"
+        assert result.days_counted == 1
 
     def test_hrv_cv_none_when_fewer_than_min_days(self, db: Session) -> None:
         """Fewer valid days than min_days_required → hrv_cv stays None."""
@@ -557,7 +630,7 @@ class TestGetHrvCvScore:
         assert result.lookback_days == recovery_config.lookback_days
 
     def test_reference_date_itself_not_included(self, db: Session) -> None:
-        """Data on reference_date (not the day before) must not count."""
+        """Data on reference_date must not count; data from the prior day must count."""
         user = UserFactory()
         ds = DataSourceFactory(user=user)
         db.flush()
@@ -565,13 +638,30 @@ class TestGetHrvCvScore:
         rmssd_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate_variability_rmssd()
         ref = date(2026, 3, 10)
 
-        # Insert HRV exactly at midnight on reference_date
-        ts = datetime.combine(ref, time.min, tzinfo=timezone.utc)
-        DataPointSeriesFactory(data_source=ds, series_type=rmssd_type, recorded_at=ts, value=Decimal("45"))
+        # Overnight sleep session spanning ref-1 into ref
+        sleep_start = _utc("2026-03-09T23:00:00")
+        sleep_end = _utc("2026-03-10T07:00:00")
+        self._make_sleep(db, ds, sleep_start, sleep_end)
+
+        # Point inside the sleep window and inside the query window → must count
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=rmssd_type,
+            recorded_at=_utc("2026-03-09T23:30:00"),
+            value=Decimal("45"),
+        )
+        # Point exactly at reference_date midnight → excluded by query boundary (< end_dt)
+        DataPointSeriesFactory(
+            data_source=ds,
+            series_type=rmssd_type,
+            recorded_at=datetime.combine(ref, time.min, tzinfo=timezone.utc),
+            value=Decimal("45"),
+        )
         db.flush()
 
         result = service.get_hrv_cv_score(db, user.id, ref)
-        assert result.days_counted == 0
+        assert result.days_counted == 1
+        assert any(s.date == date(2026, 3, 9) and s.has_data for s in result.daily_scores)
 
     def test_daily_score_has_data_true_when_hrv_present(self, db: Session) -> None:
         user = UserFactory()

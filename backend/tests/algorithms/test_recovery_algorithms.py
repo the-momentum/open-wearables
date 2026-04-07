@@ -62,6 +62,26 @@ class TestHrToRrIntervalsMs:
         result = hr_to_rr_intervals_ms([200.0])
         assert result.tolist() == pytest.approx([300.0])
 
+    def test_zero_hr_removed(self) -> None:
+        """0 bpm would cause division by zero; it is stripped."""
+        result = hr_to_rr_intervals_ms([0.0, 60.0])
+        assert result.tolist() == pytest.approx([1000.0])
+
+    def test_negative_hr_removed(self) -> None:
+        """Negative HR values are invalid and must be stripped."""
+        result = hr_to_rr_intervals_ms([-10.0, 60.0])
+        assert result.tolist() == pytest.approx([1000.0])
+
+    def test_inf_hr_removed(self) -> None:
+        """Infinite HR values are invalid and must be stripped."""
+        result = hr_to_rr_intervals_ms([float("inf"), 60.0])
+        assert result.tolist() == pytest.approx([1000.0])
+
+    def test_all_invalid_returns_empty(self) -> None:
+        """All-zero/negative/inf → empty array, not inf or error."""
+        result = hr_to_rr_intervals_ms([0.0, -5.0, float("inf")])
+        assert result.size == 0
+
 
 # ---------------------------------------------------------------------------
 # calculate_rmssd
@@ -235,3 +255,26 @@ class TestCalculateHrvCv:
         result = calculate_hrv_cv([40.0, 60.0])
         assert not math.isnan(result)
         assert result > 0.0
+
+    def test_zero_values_removed(self) -> None:
+        """0 ms HRV is non-physiological; zero values are stripped."""
+        result = calculate_hrv_cv([0.0, 50.0, 60.0])
+        expected = calculate_hrv_cv([50.0, 60.0])
+        assert result == pytest.approx(expected, rel=1e-9)
+
+    def test_negative_values_removed(self) -> None:
+        """Negative HRV values are invalid and must be stripped."""
+        result = calculate_hrv_cv([-10.0, 50.0, 60.0])
+        expected = calculate_hrv_cv([50.0, 60.0])
+        assert result == pytest.approx(expected, rel=1e-9)
+
+    def test_inf_values_removed(self) -> None:
+        """Infinite HRV values are invalid and must be stripped."""
+        result = calculate_hrv_cv([float("inf"), 50.0, 60.0])
+        expected = calculate_hrv_cv([50.0, 60.0])
+        assert result == pytest.approx(expected, rel=1e-9)
+
+    def test_all_invalid_returns_nan(self) -> None:
+        """All-zero/negative/inf → NaN, not an error."""
+        result = calculate_hrv_cv([0.0, -5.0, float("inf")])
+        assert math.isnan(result)
