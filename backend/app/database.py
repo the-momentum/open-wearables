@@ -21,7 +21,7 @@ from sqlalchemy.orm import (
 
 from app.config import settings
 from app.schemas.auth import ConnectionStatus, TokenType
-from app.schemas.enums import AggregationMethod, ProviderName
+from app.schemas.enums import AggregationMethod, HealthScoreCategory, ProviderName
 from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.mappings_meta import AutoRelMeta
 
@@ -66,6 +66,7 @@ class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
         ConnectionStatus: String(64),
         InvitationStatus: String(50),
         ProviderName: String(50),
+        HealthScoreCategory: String(32),
         TokenType: String(64),
         AggregationMethod: String(32),
     }

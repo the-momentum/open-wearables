@@ -1,6 +1,6 @@
 """health score table
 
-Revision ID: 02220aec8e0f
+Revision ID: 5643d2210b58
 Revises: f99ae82f0470
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "02220aec8e0f"
+revision: str = "5643d2210b58"
 down_revision: Union[str, None] = "f99ae82f0470"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("qualifier", sa.String(length=32), nullable=True),
         sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("zone_offset", sa.String(length=10), nullable=True),
-        sa.Column("constituents", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("components", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("data_source_id", "category", "recorded_at", name="uq_health_score_source_category_time"),

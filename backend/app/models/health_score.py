@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKDataSource, PrimaryKey, json_binary, numeric_5_2, str_10, str_32
-from app.schemas.enums import ProviderName
+from app.schemas.enums import HealthScoreCategory, ProviderName
 
 
 class HealthScore(BaseDbModel):
@@ -26,11 +26,11 @@ class HealthScore(BaseDbModel):
     data_source_id: Mapped[FKDataSource | None]
     provider: Mapped[ProviderName | None]
 
-    category: Mapped[str_32]
+    category: Mapped[HealthScoreCategory]
     value: Mapped[numeric_5_2 | None]
     qualifier: Mapped[str_32 | None]
 
     recorded_at: Mapped[datetime]
     zone_offset: Mapped[str_10 | None]
 
-    constituents: Mapped[json_binary | None]
+    components: Mapped[json_binary | None]
