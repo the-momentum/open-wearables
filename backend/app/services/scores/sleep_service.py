@@ -1,26 +1,23 @@
 """Sleep score service.
 
-Translates raw overnight sleep sessions into per-night OW sleep scores using
-the four-pillar algorithm (duration 40%, stages 20%, consistency 20%,
-interruptions 20%).
+Exposes two entry points for computing a per-night OW sleep score using the
+four-pillar algorithm (duration, stages, consistency, interruptions):
 
-Processing pipeline (mirrors sleep_analysis.ipynb):
-  1. Filter out naps.
-  2. Deduplicate to one session per night (wake-up date convention; keep longest).
-  3. Sort chronologically.
-  4. For each night: build rolling 14-night bedtime history, parse stage blocks
-     for true WASO, compute net sleep, and score via calculate_overall_sleep_score.
+- get_sleep_score   – pure function; accepts raw sleep parameters for one night
+- get_sleep_score_for_user – DB-backed; fetches data from the database and
+                              delegates to get_sleep_score
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import TypedDict
-
-from pydantic import BaseModel
+from uuid import UUID
 
 from app.algorithms.config_algorithms import sleep_config
-from app.algorithms.sleep import calculate_overall_sleep_score
-
-_DATETIME_FMT = "%Y-%m-%dT%H:%M:%S"
+from app.algorithms.sleep import SleepScoreResult, calculate_overall_sleep_score
+from app.database import DbSession
+from app.models import EventRecord, SleepDetails
+from app.repositories.event_record_repository import EventRecordRepository
+from app.schemas.model_crud.activities import EventRecordQueryParams
 
 
 def convert_stages_to_duration_blocks(
@@ -64,7 +61,7 @@ def parse_wearable_stages_for_interruptions(
 
     last_sleep_idx = len(raw_stage_blocks) - 1
     for i in range(len(raw_stage_blocks) - 1, -1, -1):
-        if raw_stage_blocks[i]["stage"].lower() != "awake":
+        if str(raw_stage_blocks[i]["stage"]).lower() != "awake":
             last_sleep_idx = i
             break
 
@@ -77,114 +74,132 @@ def parse_wearable_stages_for_interruptions(
             waso_total_minutes += float(block["duration_mins"])
             awakening_durations.append(float(block["duration_mins"]))
 
-    return {"total_awake_minutes": waso_total_minutes, "awakening_durations": awakening_durations}
+    return {
+        "total_awake_minutes": waso_total_minutes,
+        "awakening_durations": awakening_durations,
+    }
 
 
-class SleepSession(BaseModel):
-    """A single sleep session as stored in EventRecord + SleepDetails."""
+def get_sleep_score(
+    total_sleep_duration_minutes: float,
+    deep_minutes: float,
+    rem_minutes: float,
+    awake_minutes: float,
+    session_start: datetime,
+    historical_bedtimes: list[datetime],
+    sleep_stages: list[dict[str, str]] | None = None,
+) -> SleepScoreResult:
+    """Calculate a sleep score from raw sleep parameters for a single night.
 
-    sleep_event_id: str
-    start_datetime: datetime
-    end_datetime: datetime
-    is_nap: bool = False
-    sleep_total_duration_minutes: float | None = None
-    sleep_deep_minutes: float | None = None
-    sleep_rem_minutes: float | None = None
-    sleep_awake_minutes: float | None = None
-    # Raw stage blocks: [{"stage": "...", "start_time": "...", "end_time": "..."}, ...]
-    # When present, used to derive true WASO (strips sleep latency & morning lie-in).
-    # When absent, sleep_awake_minutes is used as a fallback.
-    sleep_stages: list[dict[str, str]] | None = None
+    If sleep_stages is provided it is used to derive true WASO (strips sleep
+    latency and morning lie-in). Otherwise awake_minutes is used as a fallback
+    for interruption scoring.
 
-
-class SleepScoreRecord(BaseModel):
-    """Scored result for a single overnight sleep session."""
-
-    sleep_event_id: str
-    sleep_date: date
-    overall_score: int
-    duration_score: int
-    stages_score: int
-    consistency_score: int
-    interruptions_score: int
-    duration_hours: float
-    net_sleep_minutes: float
-
-
-def score_sleep_sessions(sessions: list[SleepSession]) -> list[SleepScoreRecord]:
-    """Score overnight sleep sessions for a single user.
-
-    Args:
-        sessions: All sleep sessions for a user (any order, may include naps).
-
-    Returns:
-        One SleepScoreRecord per night, sorted chronologically.
+    Net sleep = total_sleep_duration_minutes - awake_minutes (clamped to 0).
     """
-    overnight = [s for s in sessions if not s.is_nap]
-    if not overnight:
-        return []
+    if sleep_stages:
+        duration_blocks = convert_stages_to_duration_blocks(sleep_stages)
+        waso = parse_wearable_stages_for_interruptions(duration_blocks)
+        total_awake = waso["total_awake_minutes"]
+        awakening_durations = waso["awakening_durations"]
+    else:
+        total_awake = awake_minutes
+        awakening_durations = []
 
-    # One session per night: use wake-up date (end_datetime) as the sleep date.
-    # When multiple sessions share a date, keep the longest.
-    by_date: dict[date, SleepSession] = {}
-    for s in overnight:
-        d = s.end_datetime.date()
-        if d not in by_date or (s.sleep_total_duration_minutes or 0) > (
-            by_date[d].sleep_total_duration_minutes or 0
-        ):
-            by_date[d] = s
+    net_sleep_minutes = max(0.0, total_sleep_duration_minutes - awake_minutes)
 
-    daily = sorted(by_date.values(), key=lambda s: s.end_datetime.date())
+    return calculate_overall_sleep_score(
+        total_sleep_minutes=net_sleep_minutes,
+        deep_minutes=deep_minutes,
+        rem_minutes=rem_minutes,
+        session_start=session_start.isoformat(),
+        historical_bedtimes=[dt.isoformat() for dt in historical_bedtimes],
+        total_awake_minutes=total_awake,
+        awakening_durations=awakening_durations,
+    )
 
-    results: list[SleepScoreRecord] = []
-    for i, session in enumerate(daily):
-        # Rolling bedtime history (up to ROLLING_WINDOW prior nights).
-        # Night 0 has no history → consistency defaults to 100 (base score).
-        history_start = max(0, i - sleep_config.rolling_window_nights)
-        historical_bedtimes = [
-            daily[j].start_datetime.strftime(_DATETIME_FMT)
-            for j in range(history_start, i)
+
+def get_sleep_score_for_user(
+    db_session: DbSession,
+    user_id: UUID,
+    sleep_date: date,
+) -> SleepScoreResult:
+    """Fetch sleep data for a user on a given date and return their sleep score.
+
+    sleep_date is the calendar date on which the sleep session started (bedtime
+    date). The longest non-nap session that started on that date is used.
+    Historical bedtimes from the prior rolling window are fetched for consistency
+    scoring.
+    """
+    repo = EventRecordRepository(EventRecord)
+    day_start = datetime(sleep_date.year, sleep_date.month, sleep_date.day)
+
+    # Fetch sessions that started on sleep_date (broader window, post-filter below).
+    records, _ = repo.get_records_with_filters(
+        db_session,
+        EventRecordQueryParams(
+            category="sleep",
+            start_datetime=day_start,
+            sort_by="start_datetime",
+            sort_order="asc",
+            limit=20,
+        ),
+        str(user_id),
+    )
+
+    # Keep non-nap sessions that actually started on sleep_date.
+    sessions = [
+        (record, detail)
+        for record, _ in records
+        if record.start_datetime.date() == sleep_date
+        and isinstance((detail := record.detail), SleepDetails)
+        and not detail.is_nap
+    ]
+
+    if not sessions:
+        raise ValueError(f"No sleep data found for user {user_id} on {sleep_date}")
+
+    record, detail = max(sessions, key=lambda s: s[1].sleep_total_duration_minutes or 0)
+
+    # Fetch historical bedtimes for consistency scoring.
+    history_start = day_start - timedelta(days=sleep_config.rolling_window_nights + 1)
+    hist_records, _ = repo.get_records_with_filters(
+        db_session,
+        EventRecordQueryParams(
+            category="sleep",
+            start_datetime=history_start,
+            sort_by="start_datetime",
+            sort_order="desc",
+            limit=sleep_config.rolling_window_nights + 5,
+        ),
+        str(user_id),
+    )
+
+    historical_bedtimes = [
+        r.start_datetime
+        for r, _ in hist_records
+        if r.start_datetime.date() < sleep_date
+        and isinstance(r.detail, SleepDetails)
+        and not r.detail.is_nap
+    ][: sleep_config.rolling_window_nights]
+
+    sleep_stages: list[dict[str, str]] | None = None
+    if detail.sleep_stages:
+        sleep_stages = [
+            {
+                "stage": s["stage"],
+                "start_time": s["start_time"],
+                "end_time": s["end_time"],
+            }
+            for s in detail.sleep_stages
         ]
 
-        # Parse per-stage blocks for true WASO; fall back to aggregated awake minutes.
-        if session.sleep_stages:
-            duration_blocks = convert_stages_to_duration_blocks(session.sleep_stages)
-            interruption_data = parse_wearable_stages_for_interruptions(duration_blocks)
-            total_awake: float = interruption_data["total_awake_minutes"]
-            awakenings: list[float] = interruption_data["awakening_durations"]
-        else:
-            total_awake = session.sleep_awake_minutes or 0.0
-            awakenings = []
-
-        # Net sleep: sleep_total_duration_minutes is canonical; timestamps are display-only.
-        net_sleep_minutes = max(
-            0.0,
-            (session.sleep_total_duration_minutes or 0.0)
-            - (session.sleep_awake_minutes or 0.0),
-        )
-
-        scored = calculate_overall_sleep_score(
-            total_sleep_minutes=net_sleep_minutes,
-            deep_minutes=session.sleep_deep_minutes or 0.0,
-            rem_minutes=session.sleep_rem_minutes or 0.0,
-            session_start=session.start_datetime.strftime(_DATETIME_FMT),
-            historical_bedtimes=historical_bedtimes,
-            total_awake_minutes=total_awake,
-            awakening_durations=awakenings,
-        )
-
-        results.append(
-            SleepScoreRecord(
-                sleep_event_id=session.sleep_event_id,
-                sleep_date=session.end_datetime.date(),
-                overall_score=scored.overall_score,
-                duration_score=scored.breakdown.duration.score,
-                stages_score=scored.breakdown.stages.score,
-                consistency_score=scored.breakdown.consistency.score,
-                interruptions_score=scored.breakdown.interruptions.score,
-                duration_hours=scored.metrics.duration_hours,
-                net_sleep_minutes=net_sleep_minutes,
-            )
-        )
-
-    return results
+    return get_sleep_score(
+        total_sleep_duration_minutes=float(detail.sleep_total_duration_minutes or 0),
+        deep_minutes=float(detail.sleep_deep_minutes or 0),
+        rem_minutes=float(detail.sleep_rem_minutes or 0),
+        awake_minutes=float(detail.sleep_awake_minutes or 0),
+        session_start=record.start_datetime,
+        historical_bedtimes=historical_bedtimes,
+        sleep_stages=sleep_stages,
+    )
