@@ -1,3 +1,7 @@
+from .recovery import (
+    DailyHrvScore,
+    HrvCvScoreResult,
+)
 from .data_point_responses import (
     ActiveMinutesResult,
     ActivityAggregateResult,
@@ -26,6 +30,9 @@ from .summaries import (
 )
 
 __all__ = [
+    # Recovery scores
+    "DailyHrvScore",
+    "HrvCvScoreResult",
     # Data point responses
     "TimeSeriesSample",
     "ActivityAggregateResult",
