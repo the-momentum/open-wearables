@@ -106,6 +106,11 @@ class SleepScoreService:
 
         Net sleep = total_sleep_duration_minutes - awake_minutes (clamped to 0).
         """
+        if not total_sleep_duration_minutes or total_sleep_duration_minutes <= 0:
+            raise ValueError(
+                f"Cannot calculate sleep score: total_sleep_duration_minutes must be > 0, got {total_sleep_duration_minutes}"
+            )
+
         if sleep_stages:
             duration_blocks = self._convert_stages_to_duration_blocks(sleep_stages)
             waso = self._parse_wearable_stages_for_interruptions(duration_blocks)

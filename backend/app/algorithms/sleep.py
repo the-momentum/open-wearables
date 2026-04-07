@@ -132,7 +132,7 @@ def calculate_bedtime_consistency_score(
 ) -> int:
     """Calculate a consistency score based on a rolling median bedtime."""
     if not historical_bedtimes_iso:
-        return score_bounds.max
+        return score_bounds.min
 
     historical_hours = [
         time_to_hours_past_noon(datetime.fromisoformat(bt))
@@ -203,6 +203,11 @@ def calculate_overall_sleep_score(
 
     Returns a dict with keys: overall_score, metrics, breakdown.
     """
+    if not total_sleep_minutes or total_sleep_minutes <= 0:
+        raise ValueError(
+            f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}"
+        )
+
     duration_hours = total_sleep_minutes / 60.0
     duration_score = _score_duration_hours(
         duration_hours, DURATION_SCORE_BOUNDS, config
