@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.utils.dates import ZoneOffset
@@ -42,6 +42,8 @@ class HealthScoreUpdate(HealthScoreBase): ...
 
 
 class HealthScoreResponse(HealthScoreBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     data_source_id: UUID | None
     provider: ProviderName | None
