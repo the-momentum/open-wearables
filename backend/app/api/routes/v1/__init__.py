@@ -6,6 +6,7 @@ from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
+from .data_sources import router as data_sources_router
 from .developers import router as developers_router
 from .events import router as events_router
 from .garmin_webhooks import router as garmin_webhooks_router
@@ -43,6 +44,7 @@ v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
 v1_router.include_router(token_router, tags=["External: Token"])
+v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
