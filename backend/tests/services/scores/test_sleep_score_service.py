@@ -11,6 +11,7 @@ no side-effects.
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
+from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.data_source import DataSource
@@ -353,7 +354,7 @@ class TestGetSleepScoreForUser:
         assert result.metrics.duration_hours > 4.0
 
     def test_only_nap_no_main_sleep_raises(self, db: Session) -> None:
-        """When only nap records exist, no main sleep → ValueError."""
+        """When only nap records exist, no main sleep → 404."""
         user = UserFactory()
         ds = DataSourceFactory(user=user)
         db.flush()
@@ -369,16 +370,18 @@ class TestGetSleepScoreForUser:
         )
         db.flush()
 
-        with pytest.raises(ValueError, match="No sleep data found"):
+        with pytest.raises(HTTPException) as exc_info:
             service.get_sleep_score_for_user(db, user.id, sleep_date)
+        assert exc_info.value.status_code == 404
 
     def test_no_sleep_record_raises(self, db: Session) -> None:
-        """No records at all for the date → ValueError."""
+        """No records at all for the date → 404."""
         user = UserFactory()
         db.flush()
 
-        with pytest.raises(ValueError, match="No sleep data found"):
+        with pytest.raises(HTTPException) as exc_info:
             service.get_sleep_score_for_user(db, user.id, date(2026, 3, 10))
+        assert exc_info.value.status_code == 404
 
     def test_zero_duration_in_db_raises(self, db: Session) -> None:
         """A DB record with sleep_total_duration_minutes=0 must raise ValueError."""

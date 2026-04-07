@@ -1,7 +1,7 @@
 """Unit tests for sleep score algorithm functions.
 
 Covers every public (and key private) function in:
-  - app.algorithms.utils   (ScoreBounds, time_to_hours_past_noon, score_sigmoid)
+  - app.algorithms.scoring_primitives   (ScoreBounds, time_to_hours_past_noon, score_sigmoid)
   - app.algorithms.sleep   (all scoring sub-functions and the top-level combiner)
 
 These tests exercise pure-Python logic only — no database, no factories.
@@ -25,7 +25,7 @@ from app.algorithms.sleep import (
 )
 
 # ---------------------------------------------------------------------------
-# app.algorithms.utils
+# app.algorithms.scoring_primitives
 # ---------------------------------------------------------------------------
 
 
@@ -434,7 +434,7 @@ class TestCalculateOverallSleepScore:
             )
 
     def test_negative_sleep_minutes_raises(self) -> None:
-        with pytest.raises(ValueError, match="total_sleep_duration_minutes must be"):
+        with pytest.raises(ValueError, match="total_sleep_minutes must be"):
             calculate_overall_sleep_score(
                 total_sleep_minutes=-30.0,
                 deep_minutes=0.0,

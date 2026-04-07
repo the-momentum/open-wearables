@@ -113,7 +113,8 @@ def calculate_total_stages_score(
     """Combine Deep and REM into a single stages score using configured targets and weights."""
     deep_score = _calculate_stage_score(deep_minutes, config.deep_target_mins, score_bounds)
     rem_score = _calculate_stage_score(rem_minutes, config.rem_target_mins, score_bounds)
-    return int((deep_score * config.deep_weight) + (rem_score * config.rem_weight))
+    total = (deep_score * config.deep_weight) + (rem_score * config.rem_weight)
+    return max(score_bounds.min, min(score_bounds.max, int(total)))
 
 
 def calculate_bedtime_consistency_score(
@@ -184,8 +185,7 @@ def calculate_overall_sleep_score(
 
     Uses total_sleep_minutes (pre-computed net sleep) for duration scoring.
     session_start is the bedtime ISO string used only for consistency scoring.
-
-    Returns a dict with keys: overall_score, metrics, breakdown.
+    Returns a SleepScoreResult.
     """
     if not total_sleep_minutes or total_sleep_minutes <= 0:
         raise ValueError(f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}")
@@ -200,18 +200,14 @@ def calculate_overall_sleep_score(
         total_awake_minutes, awakening_durations, INTERRUPTIONS_SCORE_BOUNDS, config
     )
 
-    overall = max(
-        score_bounds.min,
-        min(
-            score_bounds.max,
-            int(
-                duration_score * config.duration_impact
-                + stages_score * config.stages_impact
-                + consistency_score * config.consistency_impact
-                + interruptions_score * config.interruptions_impact
-            ),
-        ),
+    weighted_fraction = (
+        (duration_score / DURATION_SCORE_BOUNDS.max) * config.duration_impact
+        + (stages_score / STAGE_SCORE_BOUNDS.max) * config.stages_impact
+        + (consistency_score / CONSISTENCY_SCORE_BOUNDS.max) * config.consistency_impact
+        + (interruptions_score / INTERRUPTIONS_SCORE_BOUNDS.max) * config.interruptions_impact
     )
+    scaled = score_bounds.min + (score_bounds.max - score_bounds.min) * weighted_fraction
+    overall = max(score_bounds.min, min(score_bounds.max, int(scaled)))
 
     return SleepScoreResult(
         overall_score=overall,

@@ -198,9 +198,24 @@ class SleepScoreService:
             str(user_id),
         )
 
-        historical_bedtimes = [
-            r.start_datetime for r, _ in hist_records if isinstance(r.detail, SleepDetails) and not r.detail.is_nap
-        ][: sleep_config.rolling_window_nights]
+        # Deduplicate by calendar date so multiple sessions on one night (e.g. two
+        # sources syncing the same sleep, or a split session) don't crowd out earlier
+        # nights in the rolling window.
+        # TODO: this is a simplification — a user may have genuinely separate sleep
+        # periods on one night (woke up fully, went back to bed, or switched devices).
+        # Device priority (already used elsewhere in the codebase) could help pick the
+        # most trustworthy record per night. Revisit when we have a smarter
+        # session-merging / source-priority strategy.
+        seen_nights: set[date] = set()
+        historical_bedtimes: list[datetime] = []
+        for r, _ in hist_records:
+            if isinstance(r.detail, SleepDetails) and not r.detail.is_nap:
+                night = r.start_datetime.date()
+                if night not in seen_nights:
+                    seen_nights.add(night)
+                    historical_bedtimes.append(r.start_datetime)
+            if len(historical_bedtimes) >= sleep_config.rolling_window_nights:
+                break
 
         sleep_stages: list[dict[str, str]] | None = None
         if detail.sleep_stages:
