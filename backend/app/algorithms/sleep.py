@@ -76,18 +76,14 @@ def _score_duration_hours(
     )
 
 
-def calculate_duration_score(
-    day_start_iso: str, day_end_iso: str, awake_minutes: float = 0.0
-) -> int:
+def calculate_duration_score(day_start_iso: str, day_end_iso: str, awake_minutes: float = 0.0) -> int:
     """Calculate a sleep duration score (0-100) based on actual sleep hours.
 
     Subtracts awake_minutes (WASO) from the raw session length before scoring.
     """
     start_time = datetime.fromisoformat(day_start_iso)
     end_time = datetime.fromisoformat(day_end_iso)
-    duration_hours = (
-        end_time - start_time
-    ).total_seconds() / 3600 - awake_minutes / 60.0
+    duration_hours = (end_time - start_time).total_seconds() / 3600 - awake_minutes / 60.0
     return _score_duration_hours(duration_hours)
 
 
@@ -115,12 +111,8 @@ def calculate_total_stages_score(
     config: SleepScoreConfig = sleep_config,
 ) -> int:
     """Combine Deep and REM into a single stages score using configured targets and weights."""
-    deep_score = _calculate_stage_score(
-        deep_minutes, config.deep_target_mins, score_bounds
-    )
-    rem_score = _calculate_stage_score(
-        rem_minutes, config.rem_target_mins, score_bounds
-    )
+    deep_score = _calculate_stage_score(deep_minutes, config.deep_target_mins, score_bounds)
+    rem_score = _calculate_stage_score(rem_minutes, config.rem_target_mins, score_bounds)
     return int((deep_score * config.deep_weight) + (rem_score * config.rem_weight))
 
 
@@ -134,10 +126,7 @@ def calculate_bedtime_consistency_score(
     if not historical_bedtimes_iso:
         return score_bounds.min
 
-    historical_hours = [
-        time_to_hours_past_noon(datetime.fromisoformat(bt))
-        for bt in historical_bedtimes_iso
-    ]
+    historical_hours = [time_to_hours_past_noon(datetime.fromisoformat(bt)) for bt in historical_bedtimes_iso]
     median_hours_past_noon = statistics.median(historical_hours)
 
     tonight_hours = time_to_hours_past_noon(datetime.fromisoformat(tonight_bedtime_iso))
@@ -170,16 +159,11 @@ def calculate_interruptions_score(
         excess_awake_mins = total_awake_minutes - config.interruptions_grace_period_mins
         penalty_ratio = excess_awake_mins / config.max_penalty_window_mins
         duration_penalty = penalty_ratio * config.duration_weight_points
-        duration_score = max(
-            score_bounds.min, config.duration_weight_points - duration_penalty
-        )
+        duration_score = max(score_bounds.min, config.duration_weight_points - duration_penalty)
 
-    n = sum(
-        1 for d in awakening_durations if d > config.significant_wake_threshold_mins
-    )
+    n = sum(1 for d in awakening_durations if d > config.significant_wake_threshold_mins)
     freq_score = (
-        config.frequency_weight_points
-        * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
+        config.frequency_weight_points * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
     )
 
     return int(duration_score + freq_score)
@@ -204,17 +188,11 @@ def calculate_overall_sleep_score(
     Returns a dict with keys: overall_score, metrics, breakdown.
     """
     if not total_sleep_minutes or total_sleep_minutes <= 0:
-        raise ValueError(
-            f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}"
-        )
+        raise ValueError(f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}")
 
     duration_hours = total_sleep_minutes / 60.0
-    duration_score = _score_duration_hours(
-        duration_hours, DURATION_SCORE_BOUNDS, config
-    )
-    stages_score = calculate_total_stages_score(
-        deep_minutes, rem_minutes, STAGE_SCORE_BOUNDS, config
-    )
+    duration_score = _score_duration_hours(duration_hours, DURATION_SCORE_BOUNDS, config)
+    stages_score = calculate_total_stages_score(deep_minutes, rem_minutes, STAGE_SCORE_BOUNDS, config)
     consistency_score = calculate_bedtime_consistency_score(
         historical_bedtimes, session_start, CONSISTENCY_SCORE_BOUNDS, config
     )

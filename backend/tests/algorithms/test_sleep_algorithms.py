@@ -7,16 +7,12 @@ Covers every public (and key private) function in:
 These tests exercise pure-Python logic only — no database, no factories.
 """
 
-import math
 from datetime import datetime
 
 import pytest
 
-from app.algorithms.config_algorithms import SleepScoreConfig, sleep_config
+from app.algorithms.config_algorithms import SleepScoreConfig
 from app.algorithms.sleep import (
-    CONSISTENCY_SCORE_BOUNDS,
-    DURATION_SCORE_BOUNDS,
-    INTERRUPTIONS_SCORE_BOUNDS,
     STAGE_SCORE_BOUNDS,
     _calculate_stage_score,
     _score_duration_hours,
@@ -27,7 +23,6 @@ from app.algorithms.sleep import (
     calculate_total_stages_score,
 )
 from app.algorithms.utils import ScoreBounds, score_sigmoid, time_to_hours_past_noon
-
 
 # ---------------------------------------------------------------------------
 # app.algorithms.utils
@@ -162,16 +157,12 @@ class TestCalculateDurationScore:
 
     def test_subtracts_awake_minutes(self) -> None:
         """8 h window minus 60 min awake = 7 h net — still optimal."""
-        score = calculate_duration_score(
-            "2026-03-10T23:00:00", "2026-03-11T07:00:00", awake_minutes=60.0
-        )
+        score = calculate_duration_score("2026-03-10T23:00:00", "2026-03-11T07:00:00", awake_minutes=60.0)
         assert score == 100  # 7 h is within [7, 9]
 
     def test_excessive_awake_drops_score(self) -> None:
         """8 h window minus 2.5 h awake = 5.5 h net — well below optimal."""
-        score = calculate_duration_score(
-            "2026-03-10T23:00:00", "2026-03-11T07:00:00", awake_minutes=150.0
-        )
+        score = calculate_duration_score("2026-03-10T23:00:00", "2026-03-11T07:00:00", awake_minutes=150.0)
         assert score < 100
 
     def test_very_short_session_is_low(self) -> None:
@@ -443,7 +434,7 @@ class TestCalculateOverallSleepScore:
             )
 
     def test_negative_sleep_minutes_raises(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="total_sleep_duration_minutes must be"):
             calculate_overall_sleep_score(
                 total_sleep_minutes=-30.0,
                 deep_minutes=0.0,

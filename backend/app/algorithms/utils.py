@@ -16,16 +16,10 @@ def time_to_hours_past_noon(dt: datetime) -> float:
     return hours - 12.0
 
 
-def score_sigmoid(
-    x: float, k: float, base: float, midpoint: float, anchor: float
-) -> float:
+def score_sigmoid(x: float, k: float, base: float, midpoint: float, anchor: float) -> float:
     """Scaled sigmoid that equals base exactly at anchor.
 
     Pass a negative k for a rising curve (under-sleeping) and a positive k for
     a falling curve (over-sleeping).
     """
-    return (
-        base
-        * (1 + math.exp(k * (anchor - midpoint)))
-        / (1 + math.exp(k * (x - midpoint)))
-    )
+    return base * (1 + math.exp(k * (anchor - midpoint))) / (1 + math.exp(k * (x - midpoint)))

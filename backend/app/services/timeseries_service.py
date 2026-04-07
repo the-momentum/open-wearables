@@ -40,18 +40,12 @@ class TimeSeriesService(
     """Coordinated access to unified device time series samples."""
 
     def __init__(self, log: Logger):
-        super().__init__(
-            crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log
-        )
+        super().__init__(crud_model=DataPointSeriesRepository, model=DataPointSeries, log=log)
 
     def bulk_create_samples(
         self,
         db_session: DbSession,
-        samples: (
-            list[TimeSeriesSampleCreate]
-            | list[HeartRateSampleCreate]
-            | list[StepSampleCreate]
-        ),
+        samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
         self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
 
@@ -59,9 +53,7 @@ class TimeSeriesService(
         """Get total count of all data points."""
         return self.crud.get_total_count(db_session)
 
-    def get_count_in_range(
-        self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime
-    ) -> int:
+    def get_count_in_range(self, db_session: DbSession, start_datetime: datetime, end_datetime: datetime) -> int:
         """Get count of data points within a datetime range."""
         return self.crud.get_count_in_range(db_session, start_datetime, end_datetime)
 
@@ -78,9 +70,7 @@ class TimeSeriesService(
         """Get count of data points grouped by series type ID."""
         return self.crud.get_count_by_series_type(db_session)
 
-    def get_count_by_source(
-        self, db_session: DbSession
-    ) -> list[tuple[str | None, int]]:
+    def get_count_by_source(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of data points grouped by source."""
         return self.crud.get_count_by_source(db_session)
 
@@ -112,9 +102,7 @@ class TimeSeriesService(
             # Always generate next_cursor if has_more
             if has_more:
                 last_sample = samples[-1][0]
-                next_cursor = encode_cursor(
-                    last_sample.recorded_at, last_sample.id, "next"
-                )
+                next_cursor = encode_cursor(last_sample.recorded_at, last_sample.id, "next")
 
             # Generate previous_cursor only if:
             # 1. We used a cursor to get here (not the first page)
@@ -125,14 +113,10 @@ class TimeSeriesService(
                 if is_backward:
                     if has_more:
                         first_sample = samples[0][0]
-                        previous_cursor = encode_cursor(
-                            first_sample.recorded_at, first_sample.id, "prev"
-                        )
+                        previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
                 else:
                     first_sample = samples[0][0]
-                    previous_cursor = encode_cursor(
-                        first_sample.recorded_at, first_sample.id, "prev"
-                    )
+                    previous_cursor = encode_cursor(first_sample.recorded_at, first_sample.id, "prev")
 
         # Map to response format
         data = []

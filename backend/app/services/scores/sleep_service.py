@@ -108,7 +108,8 @@ class SleepScoreService:
         """
         if not total_sleep_duration_minutes or total_sleep_duration_minutes <= 0:
             raise ValueError(
-                f"Cannot calculate sleep score: total_sleep_duration_minutes must be > 0, got {total_sleep_duration_minutes}"
+                "Cannot calculate sleep score: total_sleep_duration_minutes must be"
+                f" > 0, got {total_sleep_duration_minutes}"
             )
 
         if sleep_stages:
@@ -191,9 +192,7 @@ class SleepScoreService:
         historical_bedtimes = [
             r.start_datetime
             for r, _ in hist_records
-            if r.start_datetime.date() < sleep_date
-            and isinstance(r.detail, SleepDetails)
-            and not r.detail.is_nap
+            if r.start_datetime.date() < sleep_date and isinstance(r.detail, SleepDetails) and not r.detail.is_nap
         ][: sleep_config.rolling_window_nights]
 
         sleep_stages: list[dict[str, str]] | None = None

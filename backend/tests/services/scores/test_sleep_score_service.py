@@ -13,6 +13,8 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy.orm import Session
 
+from app.models.data_source import DataSource
+from app.models.event_record import EventRecord
 from app.services.scores.sleep_service import SleepScoreService
 from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
 
@@ -23,6 +25,7 @@ service = SleepScoreService(log=_log)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _utc(iso: str) -> datetime:
     return datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
@@ -37,11 +40,13 @@ def _make_stages(
     current = _utc(start_iso)
     for stage, mins in blocks:
         end = current + timedelta(minutes=mins)
-        stages.append({
-            "stage": stage,
-            "start_time": current.isoformat(),
-            "end_time": end.isoformat(),
-        })
+        stages.append(
+            {
+                "stage": stage,
+                "start_time": current.isoformat(),
+                "end_time": end.isoformat(),
+            }
+        )
         current = end
     return stages
 
@@ -50,21 +55,25 @@ def _make_stages(
 # Pure-calculation tests (no DB)
 # ---------------------------------------------------------------------------
 
+
 class TestGetSleepScore:
     """Tests for SleepScoreService.get_sleep_score (pure calculation)."""
 
     def test_happy_path_full_stages(self) -> None:
         """Good night's sleep with full stage data returns sensible scores."""
-        stages = _make_stages("2026-03-10T23:00:00", [
-            ("light", 30),
-            ("deep", 90),
-            ("rem", 60),
-            ("awake", 10),
-            ("deep", 60),
-            ("light", 60),
-            ("rem", 50),
-            ("light", 30),
-        ])
+        stages = _make_stages(
+            "2026-03-10T23:00:00",
+            [
+                ("light", 30),
+                ("deep", 90),
+                ("rem", 60),
+                ("awake", 10),
+                ("deep", 60),
+                ("light", 60),
+                ("rem", 50),
+                ("light", 30),
+            ],
+        )
         result = service.get_sleep_score(
             total_sleep_duration_minutes=390.0,
             deep_minutes=150.0,
@@ -100,9 +109,7 @@ class TestGetSleepScore:
 
     def test_consistency_score_with_history(self) -> None:
         """Consistent bedtime over prior nights yields a non-zero consistency score."""
-        history = [
-            _utc(f"2026-03-0{d}T23:00:00") for d in range(1, 8)
-        ]
+        history = [_utc(f"2026-03-0{d}T23:00:00") for d in range(1, 8)]
         result = service.get_sleep_score(
             total_sleep_duration_minutes=450.0,
             deep_minutes=90.0,
@@ -198,13 +205,14 @@ class TestGetSleepScore:
 # DB-backed E2E tests
 # ---------------------------------------------------------------------------
 
+
 class TestGetSleepScoreForUser:
     """E2E tests for SleepScoreService.get_sleep_score_for_user (hits real DB)."""
 
     def _make_sleep_record(
         self,
         db: Session,
-        data_source,
+        data_source: DataSource,
         sleep_date: date,
         start_hour: int = 23,
         duration_minutes: int = 480,
@@ -213,11 +221,16 @@ class TestGetSleepScoreForUser:
         awake_minutes: int = 20,
         sleep_stages: list[dict] | None = None,
         is_nap: bool = False,
-    ):
+    ) -> EventRecord:
         """Create an EventRecord + SleepDetails for the given data_source and date."""
         start = datetime(
-            sleep_date.year, sleep_date.month, sleep_date.day,
-            start_hour, 0, 0, tzinfo=timezone.utc,
+            sleep_date.year,
+            sleep_date.month,
+            sleep_date.day,
+            start_hour,
+            0,
+            0,
+            tzinfo=timezone.utc,
         )
         end = start + timedelta(minutes=duration_minutes + awake_minutes)
 
@@ -235,9 +248,7 @@ class TestGetSleepScoreForUser:
             sleep_deep_minutes=deep_minutes,
             sleep_rem_minutes=rem_minutes,
             sleep_awake_minutes=awake_minutes,
-            sleep_light_minutes=(
-                max(0, duration_minutes - (deep_minutes or 0) - (rem_minutes or 0))
-            ),
+            sleep_light_minutes=(max(0, duration_minutes - (deep_minutes or 0) - (rem_minutes or 0))),
             is_nap=is_nap,
             sleep_stages=sleep_stages,
         )
@@ -267,18 +278,23 @@ class TestGetSleepScoreForUser:
         db.flush()
 
         sleep_date = date(2026, 3, 11)
-        stages = _make_stages("2026-03-11T23:00:00", [
-            ("light", 30),
-            ("deep", 90),
-            ("rem", 60),
-            ("awake", 15),
-            ("light", 60),
-            ("deep", 60),
-            ("rem", 45),
-            ("light", 30),
-        ])
+        stages = _make_stages(
+            "2026-03-11T23:00:00",
+            [
+                ("light", 30),
+                ("deep", 90),
+                ("rem", 60),
+                ("awake", 15),
+                ("light", 60),
+                ("deep", 60),
+                ("rem", 45),
+                ("light", 30),
+            ],
+        )
         self._make_sleep_record(
-            db, ds, sleep_date,
+            db,
+            ds,
+            sleep_date,
             duration_minutes=375,
             deep_minutes=150,
             rem_minutes=105,
@@ -321,8 +337,12 @@ class TestGetSleepScoreForUser:
         sleep_date = date(2026, 3, 10)
         # Plant a nap — should be ignored
         self._make_sleep_record(
-            db, ds, sleep_date,
-            start_hour=14, duration_minutes=30, is_nap=True,
+            db,
+            ds,
+            sleep_date,
+            start_hour=14,
+            duration_minutes=30,
+            is_nap=True,
         )
         # Plant the main sleep — should be used
         self._make_sleep_record(db, ds, sleep_date, start_hour=23)
@@ -340,8 +360,12 @@ class TestGetSleepScoreForUser:
 
         sleep_date = date(2026, 3, 10)
         self._make_sleep_record(
-            db, ds, sleep_date,
-            start_hour=14, duration_minutes=30, is_nap=True,
+            db,
+            ds,
+            sleep_date,
+            start_hour=14,
+            duration_minutes=30,
+            is_nap=True,
         )
         db.flush()
 
@@ -392,15 +416,23 @@ class TestGetSleepScoreForUser:
         sleep_date = date(2026, 3, 10)
         # Short session
         self._make_sleep_record(
-            db, ds, sleep_date,
-            start_hour=22, duration_minutes=120,
-            deep_minutes=20, rem_minutes=20,
+            db,
+            ds,
+            sleep_date,
+            start_hour=22,
+            duration_minutes=120,
+            deep_minutes=20,
+            rem_minutes=20,
         )
         # Long session
         self._make_sleep_record(
-            db, ds, sleep_date,
-            start_hour=23, duration_minutes=480,
-            deep_minutes=120, rem_minutes=90,
+            db,
+            ds,
+            sleep_date,
+            start_hour=23,
+            duration_minutes=480,
+            deep_minutes=120,
+            rem_minutes=90,
         )
         db.flush()
 
@@ -459,7 +491,7 @@ class TestConvertStagesToDurationBlocks:
         """Each block gets its own duration_mins entry."""
         raw = [
             {"stage": "light", "start_time": "2026-03-10T23:00:00", "end_time": "2026-03-10T23:30:00"},
-            {"stage": "deep",  "start_time": "2026-03-10T23:30:00", "end_time": "2026-03-11T01:00:00"},
+            {"stage": "deep", "start_time": "2026-03-10T23:30:00", "end_time": "2026-03-11T01:00:00"},
             {"stage": "awake", "start_time": "2026-03-11T01:00:00", "end_time": "2026-03-11T01:15:00"},
         ]
         result = service._convert_stages_to_duration_blocks(raw)
@@ -546,11 +578,11 @@ class TestParseWearableStagesForInterruptions:
     def test_leading_and_trailing_stripped_middle_counted(self) -> None:
         """All three edge types in one session — only middle awake counts."""
         blocks = self._blocks(
-            ("awake", 15),   # latency — stripped
+            ("awake", 15),  # latency — stripped
             ("light", 30),
-            ("awake", 12),   # WASO — counted
+            ("awake", 12),  # WASO — counted
             ("deep", 90),
-            ("awake", 10),   # morning — stripped
+            ("awake", 10),  # morning — stripped
         )
         result = service._parse_wearable_stages_for_interruptions(blocks)
         assert result.total_awake_minutes == pytest.approx(12.0)
@@ -580,7 +612,7 @@ class TestGetSleepScoreEdgeCases:
 
     def test_awake_exceeds_total_sleep_clamps_to_zero_then_raises(self) -> None:
         """If awake_minutes ≥ total_sleep, net sleep=0 → ValueError from algorithm."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="total_sleep_duration_minutes must be"):
             service.get_sleep_score(
                 total_sleep_duration_minutes=30.0,
                 deep_minutes=0.0,
@@ -592,19 +624,25 @@ class TestGetSleepScoreEdgeCases:
 
     def test_sleep_stages_strips_latency_before_scoring(self) -> None:
         """Sleep latency awake at start is not penalised in interruptions."""
-        stages_with_latency = _make_stages("2026-03-10T23:00:00", [
-            ("awake", 30),   # latency
-            ("light", 60),
-            ("deep", 90),
-            ("rem", 90),
-            ("light", 30),
-        ])
-        stages_no_latency = _make_stages("2026-03-10T23:00:00", [
-            ("light", 60),
-            ("deep", 90),
-            ("rem", 90),
-            ("light", 30),
-        ])
+        stages_with_latency = _make_stages(
+            "2026-03-10T23:00:00",
+            [
+                ("awake", 30),  # latency
+                ("light", 60),
+                ("deep", 90),
+                ("rem", 90),
+                ("light", 30),
+            ],
+        )
+        stages_no_latency = _make_stages(
+            "2026-03-10T23:00:00",
+            [
+                ("light", 60),
+                ("deep", 90),
+                ("rem", 90),
+                ("light", 30),
+            ],
+        )
         result_with = service.get_sleep_score(
             total_sleep_duration_minutes=300.0,
             deep_minutes=90.0,
