@@ -55,6 +55,7 @@ class UserConnectionService(
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
 
+    @handle_exceptions
     def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
         """Stamp last_synced_at=now on the user's connection for the given provider.
 
