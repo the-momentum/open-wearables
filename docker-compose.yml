@@ -164,4 +164,14 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /Users/headless/docker-volumes/ow-postgres
   redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /Users/headless/docker-volumes/ow-redis
