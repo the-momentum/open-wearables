@@ -83,9 +83,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP)
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.RECOVERY)
 
-        results, total = repo.get_with_filters(
-            db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP)
-        )
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(category=HealthScoreCategory.SLEEP))
 
         assert total == 2
         assert all(s.category == HealthScoreCategory.SLEEP for s in results)
@@ -96,9 +94,7 @@ class TestHealthScoreRepositoryGetWithFilters:
         HealthScoreFactory(data_source=data_source, provider=ProviderName.GARMIN)
         HealthScoreFactory(data_source=data_source, provider=ProviderName.OURA)
 
-        results, total = repo.get_with_filters(
-            db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN)
-        )
+        results, total = repo.get_with_filters(db, user.id, HealthScoreQueryParams(provider=ProviderName.GARMIN))
 
         assert total == 1
         assert results[0].provider == ProviderName.GARMIN
@@ -138,8 +134,15 @@ class TestHealthScoreRepositoryLatest:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
-        HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=2), value=Decimal("70.00"))
-        latest = HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now, value=Decimal("85.00"))
+        HealthScoreFactory(
+            data_source=data_source,
+            category=HealthScoreCategory.SLEEP,
+            recorded_at=now - timedelta(days=2),
+            value=Decimal("70.00"),
+        )
+        latest = HealthScoreFactory(
+            data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now, value=Decimal("85.00")
+        )
 
         result = repo.get_latest_by_category(db, user.id, HealthScoreCategory.SLEEP)
 
@@ -158,7 +161,9 @@ class TestHealthScoreRepositoryLatest:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
-        HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=1))
+        HealthScoreFactory(
+            data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=1)
+        )
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now)
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.RECOVERY, recorded_at=now)
 

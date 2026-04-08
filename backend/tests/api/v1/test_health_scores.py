@@ -111,7 +111,7 @@ class TestHealthScoresEndpoint:
 
         response = client.get(f"/api/v1/users/{user.id}/health-scores")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_list_health_scores_only_returns_own_user_scores(self, client: TestClient, db: Session) -> None:
         user_a = UserFactory()

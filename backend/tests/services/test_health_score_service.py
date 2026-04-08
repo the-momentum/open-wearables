@@ -57,8 +57,15 @@ class TestHealthScoreServiceLatest:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
-        HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=1), value=Decimal("70.00"))
-        latest = HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now, value=Decimal("90.00"))
+        HealthScoreFactory(
+            data_source=data_source,
+            category=HealthScoreCategory.SLEEP,
+            recorded_at=now - timedelta(days=1),
+            value=Decimal("70.00"),
+        )
+        latest = HealthScoreFactory(
+            data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now, value=Decimal("90.00")
+        )
 
         result = health_score_service.get_latest_by_category(db, user.id, HealthScoreCategory.SLEEP)
 
@@ -78,7 +85,9 @@ class TestHealthScoreServiceLatest:
         user = UserFactory()
         data_source = DataSourceFactory(user=user)
         now = datetime.now(timezone.utc)
-        HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=1))
+        HealthScoreFactory(
+            data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now - timedelta(days=1)
+        )
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.SLEEP, recorded_at=now)
         HealthScoreFactory(data_source=data_source, category=HealthScoreCategory.RECOVERY, recorded_at=now)
 
@@ -91,6 +100,7 @@ class TestHealthScoreServiceLatest:
 class TestHealthScoreServiceBulkCreate:
     def test_bulk_create(self, db: Session) -> None:
         from uuid import uuid4
+
         from app.schemas.model_crud.activities import HealthScoreCreate
 
         data_source = DataSourceFactory()
