@@ -1,12 +1,12 @@
-"""Recovery score service: HRV-CV calculation and overnight HRV helpers.
+"""Resilience score service: HRV-CV calculation and overnight HRV helpers.
 
 Exposes two categories of functionality:
 
-- RecoveryScoreService.get_hrv_cv_score – DB-backed; computes a multi-day
+- ResilienceScoreService.get_hrv_cv_score – DB-backed; computes a multi-day
   HRV coefficient of variation using only samples recorded during sleep.
-- RecoveryScoreService.calculate_rmssd_ow (RMSSD_OW) – overnight RMSSD from
+- ResilienceScoreService.calculate_rmssd_ow (RMSSD_OW) – overnight RMSSD from
   raw HR data filtered to sleep windows; intended for scheduled tasks.
-- RecoveryScoreService.calculate_sdnn_ow  (SDNN_OW) – same as RMSSD_OW but
+- ResilienceScoreService.calculate_sdnn_ow  (SDNN_OW) – same as RMSSD_OW but
   for SDNN.
 """
 
@@ -16,15 +16,15 @@ from datetime import date, datetime, time, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
-from app.algorithms.config_algorithms import recovery_config
-from app.algorithms.recovery import calculate_hrv_cv, calculate_rmssd, calculate_sdnn
+from app.algorithms.config_algorithms import resilience_config
+from app.algorithms.resilience import calculate_hrv_cv, calculate_rmssd, calculate_sdnn
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import DataPointSeriesRepository, EventRecordRepository
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities.sleep import SleepStage
-from app.schemas.responses.activity.recovery import DailyHrvScore, HrvCvScoreResult
+from app.schemas.responses.activity.resilience import DailyHrvScore, HrvCvScoreResult
 
 # Stages that represent actual sleep (not just in-bed or awake)
 _ASLEEP_STAGES: frozenset[SleepStageType] = frozenset(
@@ -40,8 +40,8 @@ _ASLEEP_STAGES: frozenset[SleepStageType] = frozenset(
 _DEEP_ONLY_STAGES: frozenset[SleepStageType] = frozenset({SleepStageType.DEEP})
 
 
-class RecoveryScoreService:
-    """Service for computing HRV-based recovery scores."""
+class ResilienceScoreService:
+    """Service for computing HRV-based resilience scores."""
 
     def __init__(self, log: Logger):
         self.logger = log
@@ -198,7 +198,7 @@ class RecoveryScoreService:
             HrvCvScoreResult with per-day scores and a summary CV value.
         """
         end_dt = datetime.combine(reference_date, time.min, tzinfo=timezone.utc)
-        start_dt = end_dt - timedelta(days=recovery_config.lookback_days)
+        start_dt = end_dt - timedelta(days=resilience_config.lookback_days)
 
         # 1. Extract sleep windows once; used for both RMSSD and SDNN filtering.
         windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES)
@@ -223,13 +223,13 @@ class RecoveryScoreService:
                 hrv_cv=None,
                 metric_type=None,
                 days_counted=0,
-                lookback_days=recovery_config.lookback_days,
-                daily_scores=self._empty_daily_scores(reference_date, recovery_config.lookback_days),
+                lookback_days=resilience_config.lookback_days,
+                daily_scores=self._empty_daily_scores(reference_date, resilience_config.lookback_days),
             )
 
         # 3. Daily averages across the lookback window (oldest → newest)
         by_day = self._group_by_day(filtered_hrv)
-        all_days = [reference_date - timedelta(days=i) for i in range(recovery_config.lookback_days, 0, -1)]
+        all_days = [reference_date - timedelta(days=i) for i in range(resilience_config.lookback_days, 0, -1)]
 
         daily_scores: list[DailyHrvScore] = []
         for d in all_days:
@@ -241,7 +241,7 @@ class RecoveryScoreService:
         days_counted = sum(1 for ds in daily_scores if ds.has_data)
         hrv_cv: float | None = None
 
-        if days_counted >= recovery_config.min_days_required:
+        if days_counted >= resilience_config.min_days_required:
             valid_avgs = [ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None]
             raw_cv = calculate_hrv_cv(valid_avgs)
             if not math.isnan(raw_cv):
@@ -260,7 +260,7 @@ class RecoveryScoreService:
             hrv_cv=hrv_cv,
             metric_type=metric_type,
             days_counted=days_counted,
-            lookback_days=recovery_config.lookback_days,
+            lookback_days=resilience_config.lookback_days,
             daily_scores=daily_scores,
         )
 
@@ -303,7 +303,7 @@ class RecoveryScoreService:
         windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, allowed_stages)
         filtered = self._filter_points_to_windows(hr_pts, windows)
 
-        if len(filtered) < recovery_config.min_rr_samples:
+        if len(filtered) < resilience_config.min_rr_samples:
             return None
 
         result = calculate_rmssd([v for _, v in filtered])
@@ -346,11 +346,11 @@ class RecoveryScoreService:
         windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, allowed_stages)
         filtered = self._filter_points_to_windows(hr_pts, windows)
 
-        if len(filtered) < recovery_config.min_rr_samples:
+        if len(filtered) < resilience_config.min_rr_samples:
             return None
 
         result = calculate_sdnn([v for _, v in filtered])
         return None if math.isnan(result) else result
 
 
-recovery_score_service = RecoveryScoreService(log=getLogger(__name__))
+resilience_score_service = ResilienceScoreService(log=getLogger(__name__))

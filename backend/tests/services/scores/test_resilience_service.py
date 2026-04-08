@@ -1,4 +1,4 @@
-"""Tests for RecoveryScoreService.
+"""Tests for ResilienceScoreService.
 
 Covers two layers:
 - Pure helpers (_ensure_utc, _filter_points_to_windows, _group_by_day,
@@ -15,10 +15,10 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.orm import Session
 
-from app.algorithms.config_algorithms import recovery_config
+from app.algorithms.config_algorithms import resilience_config
 from app.constants.sleep import SleepStageType
 from app.models import DataSource, SeriesTypeDefinition
-from app.services.scores.recovery_service import RecoveryScoreService
+from app.services.scores.resilience_service import ResilienceScoreService
 from tests.factories import (
     DataPointSeriesFactory,
     DataSourceFactory,
@@ -29,7 +29,7 @@ from tests.factories import (
 )
 
 _log = logging.getLogger(__name__)
-service = RecoveryScoreService(log=_log)
+service = ResilienceScoreService(log=_log)
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ class TestExtractAsleepWindowsLogic:
 
 
 class TestGetHrvCvScore:
-    """E2E tests for RecoveryScoreService.get_hrv_cv_score."""
+    """E2E tests for ResilienceScoreService.get_hrv_cv_score."""
 
     def _insert_hrv(
         self,
@@ -443,7 +443,7 @@ class TestGetHrvCvScore:
         assert result.hrv_cv is None
         assert result.metric_type is None
         assert result.days_counted == 0
-        assert len(result.daily_scores) == recovery_config.lookback_days
+        assert len(result.daily_scores) == resilience_config.lookback_days
 
     def test_all_daily_scores_have_no_data_when_empty(self, db: Session) -> None:
         user = UserFactory()
@@ -593,7 +593,7 @@ class TestGetHrvCvScore:
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.hrv_cv is not None
         assert not math.isnan(result.hrv_cv)
-        assert result.days_counted >= recovery_config.min_days_required
+        assert result.days_counted >= resilience_config.min_days_required
 
     def test_hrv_outside_sleep_windows_not_counted(self, db: Session) -> None:
         """HRV data points outside sleep periods are excluded from daily averages."""
@@ -627,7 +627,7 @@ class TestGetHrvCvScore:
         user = UserFactory()
         db.flush()
         result = service.get_hrv_cv_score(db, user.id, date(2026, 3, 10))
-        assert result.lookback_days == recovery_config.lookback_days
+        assert result.lookback_days == resilience_config.lookback_days
 
     def test_reference_date_itself_not_included(self, db: Session) -> None:
         """Data on reference_date must not count; data from the prior day must count."""
@@ -699,7 +699,7 @@ class TestGetHrvCvScore:
 
 
 class TestCalculateRmssdOw:
-    """Tests for RecoveryScoreService.calculate_rmssd_ow (RMSSD_OW)."""
+    """Tests for ResilienceScoreService.calculate_rmssd_ow (RMSSD_OW)."""
 
     def _insert_hr(self, db: Session, data_source: DataSource, timestamps: list[datetime], value: float = 65.0) -> None:
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()
@@ -843,7 +843,7 @@ class TestCalculateRmssdOw:
 
 
 class TestCalculateSdnnOw:
-    """Tests for RecoveryScoreService.calculate_sdnn_ow (SDNN_OW)."""
+    """Tests for ResilienceScoreService.calculate_sdnn_ow (SDNN_OW)."""
 
     def _insert_hr(self, db: Session, data_source: DataSource, timestamps: list[datetime], value: float = 65.0) -> None:
         hr_type = SeriesTypeDefinitionFactory.get_or_create_heart_rate()

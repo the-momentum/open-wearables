@@ -1,6 +1,6 @@
-"""Unit tests for HRV recovery algorithm functions.
+"""Unit tests for HRV resilience algorithm functions.
 
-Covers every function in app.algorithms.recovery:
+Covers every function in app.algorithms.resilience:
   - hr_to_rr_intervals_ms
   - calculate_rmssd
   - calculate_sdnn
@@ -14,7 +14,7 @@ import math
 import numpy as np
 import pytest
 
-from app.algorithms.recovery import (
+from app.algorithms.resilience import (
     calculate_hrv_cv,
     calculate_rmssd,
     calculate_sdnn,
