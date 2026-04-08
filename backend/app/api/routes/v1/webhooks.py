@@ -69,7 +69,7 @@ async def _read_body(request: Request) -> bytes:
     return await request.body()
 
 
-@router.post("/{provider}/webhooks")
+@router.post("")
 def handle_provider_webhook(
     provider: str,
     request: Request,
@@ -89,7 +89,7 @@ def handle_provider_webhook(
     return handler.handle(request, body, db)
 
 
-@router.get("/{provider}/webhooks")
+@router.get("")
 def verify_provider_webhook(provider: str, request: Request) -> dict:
     """Handle GET-based subscription verification challenges.
 

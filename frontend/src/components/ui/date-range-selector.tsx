@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type DateRangeValue = 7 | 30 | 90 | 365;
+export type DateRangeValue = 7 | 30 | 90 | 180 | 365;
 
 interface DateRangeSelectorProps {
   value: DateRangeValue;
@@ -13,7 +13,7 @@ export function DateRangeSelector({
   onChange,
   className,
 }: DateRangeSelectorProps) {
-  const ranges: DateRangeValue[] = [7, 30, 90, 365];
+  const ranges: DateRangeValue[] = [7, 30, 90, 180, 365];
 
   return (
     <div

@@ -55,6 +55,18 @@ class UserConnectionService(
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
 
+    @handle_exceptions
+    def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
+        """Stamp last_synced_at=now on the user's connection for the given provider.
+
+        Used after OAuth completion so the first periodic sync uses the connection
+        timestamp as its live-sync cursor and won't attempt to pull all historical data.
+        No-op if the connection does not exist.
+        """
+        connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
+        if connection:
+            self.crud.update_last_synced_at(db_session, connection)
+
     def _deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate
     ) -> None:

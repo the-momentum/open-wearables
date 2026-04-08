@@ -9,23 +9,31 @@ This guide walks you through the process of adding a new fitness data provider (
 
 ## Architecture Overview
 
-Before diving into implementation, understand the three main components:
+Before diving into implementation, understand the main components:
 
-1. **Strategy** - Defines the provider's capabilities and configuration
-2. **Strategy Factory** - Central managment of strategies initialisation (used by routes)
-2. **OAuth Handler** - Manages authentication flow (if the provider uses cloud API)
-3. **Workouts Handler** - Fetches and normalizes workout data
-4. more in the future...
+1. **Strategy** - Defines the provider's identity, capabilities, and wires together all components
+2. **Strategy Factory** - Central management of strategy instantiation (used by routes)
+3. **OAuth Handler** - Manages authentication flow (if provider uses cloud API)
+4. **Workouts Handler** - Fetches and normalizes workout/activity data
+5. **247 Data Handler** - Fetches continuous health metrics (sleep, recovery, HR, etc.)
+6. **Webhook Handler** - Receives and processes incoming push events from the provider
 
-Each provider supports one or both data flow patterns:
-- **PULL**: Fetch data from provider's cloud API using OAuth tokens
-- **PUSH**: Receive data via webhooks or file uploads
+Each provider declares its data delivery modes via `ProviderCapabilities`:
+
+| Capability | Description | Example providers |
+|---|---|---|
+| `supports_pull` | REST API polling (OAuth) | Garmin, Oura, Whoop, Strava |
+| `supports_push` | Incoming webhooks | Garmin, Oura, Strava, Suunto, Polar |
+| `supports_async_export` | Provider initiates async export delivered via webhook | Garmin |
+| `supports_sdk` | Data from mobile SDK client | Apple, Samsung, Google |
+| `supports_xml_import` | File-based data import | Apple Health |
+| `webhook_notify_only` | Webhook is a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit |
 
 <Note>
-For reference: Suunto and Polar are PUSH-only, while Garmin supports both PULL and PUSH patterns.
+For reference: Garmin sends the **full data payload** inside every webhook (`webhook_notify_only=False`). Oura and Strava send only a notification and you must fetch actual data via REST (`webhook_notify_only=True`).
 </Note>
 
-<img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture" />
+<img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture showing Strategy, OAuth, Workouts, 247 Data, and Webhook Handler components" />
 
 ---
 
@@ -72,9 +80,11 @@ For a provider named **Suunto**, create:
 ```bash
 backend/app/services/providers/suunto/
 ├── __init__.py
-├── strategy.py     # Provider strategy implementation
-├── oauth.py        # OAuth handler (skip if PUSH-only)
-└── workouts.py     # Workouts data handler
+├── strategy.py        # Provider strategy + capabilities declaration
+├── oauth.py           # OAuth handler (skip if PUSH-only with no REST API)
+├── workouts.py        # Workout/activity data handler
+├── data_247.py        # 24/7 continuous health data (optional)
+└── webhook_handler.py # Incoming webhook handler (optional, if supports_push)
 ```
 
 <Tip>
@@ -85,12 +95,12 @@ Use lowercase for the provider name in directory and file names to maintain cons
 
 ## Step 2: Implement the Strategy Class
 
-The strategy class is the entry point for your provider. It defines the provider's identity and initializes its components.
+The strategy class is the entry point for your provider. It defines the provider's identity, declares its **capabilities**, and initializes its components.
 
 Create `backend/app/services/providers/suunto/strategy.py`:
 
 ```python
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 
@@ -101,7 +111,7 @@ class SuuntoStrategy(BaseProviderStrategy):
     def __init__(self):
         super().__init__()
         
-        # Initialize OAuth component (skip if PUSH-only provider)
+        # Initialize OAuth component (skip for SDK/XML-only providers)
         self.oauth = SuuntoOAuth(
             user_repo=self.user_repo,
             connection_repo=self.connection_repo,
@@ -115,8 +125,11 @@ class SuuntoStrategy(BaseProviderStrategy):
             connection_repo=self.connection_repo,
             provider_name=self.name,
             api_base_url=self.api_base_url,
-            oauth=self.oauth,  # Pass None for PUSH-only providers
+            oauth=self.oauth,
         )
+
+        # Webhook handler — only set if supports_push=True (see below)
+        # self.webhooks = SuuntoWebhookHandler(...)
 
     @property
     def name(self) -> str:
@@ -127,6 +140,15 @@ class SuuntoStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
         return "https://cloudapi.suunto.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Declare what data delivery modes this provider supports."""
+        return ProviderCapabilities(
+            supports_pull=True,
+            supports_push=True,
+            webhook_notify_only=True,  # Suunto sends notifications, not full payloads
+        )
 ```
 
 ### Key Points:
@@ -134,9 +156,11 @@ class SuuntoStrategy(BaseProviderStrategy):
 - `name`: Must be unique and lowercase (used in URLs and database)
 - `api_base_url`: Used by the API client to construct requests
 - `display_name`: Optional, shown in UI (defaults to `name.capitalize()`)
-- Set `self.oauth = None` for PUSH-only providers like Apple Health
+- `capabilities`: **Required** — tells the unified router and sync scheduler how this provider delivers data
+- Set `self.webhooks = None` (default) if your provider has no incoming webhooks
+- Set `self.oauth = None` for SDK/file-upload-only providers like Apple Health
 
-<img src="/images/providers/provider-strategy.png" alt="Custom providers strategy" />
+<img src="/images/providers/provider-strategy.png" alt="Provider strategy class diagram showing capabilities, components, and their relationships" />
 
 <Check>
 Inherited `BaseProviderStrategy` will init all required repositories so you don't need to take care about database manipulations. You can read more about repositories role in our [System Overview](/architecture/system-overview).
@@ -539,110 +563,140 @@ tail -f logs/app.log
 
 ---
 
-## Advanced: Webhook Support (PUSH Flow)
+## Step 9 (Optional): Implement Webhook Handler (PUSH flow)
 
-If your provider supports webhooks, implement webhook handling:
+If your provider delivers data via incoming webhooks, implement a `BaseWebhookHandler` subclass and wire it into your strategy.
 
-### 1. Create Webhook Endpoint
+The unified router at `POST /api/v1/providers/{provider}/webhooks` automatically delegates all requests to `strategy.webhooks` — no new routes needed.
 
-Create `backend/app/api/routes/v1/strava_webhooks.py`:
+### Understand the delivery mode
+
+First decide how your provider delivers webhook data:
+
+<CardGroup cols={2}>
+  <Card title="Full payload (push)" icon="download">
+    Provider sends the complete data in the webhook body. `dispatch()` saves records directly.
+    **Example: Garmin**
+  </Card>
+  <Card title="Notify-only" icon="bell">
+    Provider sends a lightweight notification with user ID + event type. You must fetch actual data via REST inside `dispatch()`.
+    **Example: Oura, Strava, Fitbit**
+  </Card>
+</CardGroup>
+
+Reflect this in `capabilities` inside your strategy:
 
 ```python
-"""Strava webhook endpoints."""
+# Full-payload push (Garmin-style)
+return ProviderCapabilities(supports_push=True, webhook_notify_only=False)
 
-from fastapi import APIRouter, Request, HTTPException
+# Notify-only (Oura/Strava-style)
+return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+```
+
+### Create the webhook handler
+
+Create `backend/app/services/providers/suunto/webhook_handler.py`:
+
+```python
+from typing import Any
+
+from fastapi import HTTPException, Request
+
+from app.config import settings
 from app.database import DbSession
-from app.services.providers.factory import ProviderFactory
-
-router = APIRouter()
-factory = ProviderFactory()
+from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 
 
-@router.get("/webhook")
-async def strava_webhook_verification(
-    hub_mode: str,
-    hub_verify_token: str,
-    hub_challenge: str,
-):
-    """
-    Handle Strava webhook subscription verification.
-    
-    Strava sends a GET request to verify the webhook endpoint.
-    """
-    # Verify the token matches your configuration
-    if hub_verify_token != "YOUR_VERIFY_TOKEN":
-        raise HTTPException(status_code=403, detail="Invalid verify token")
-    
-    # Echo back the challenge
-    return {"hub.challenge": hub_challenge}
+class SuuntoWebhookHandler(BaseWebhookHandler):
+    """Webhook handler for Suunto push events."""
 
+    def __init__(self):
+        super().__init__("suunto")
 
-@router.post("/webhook")
-async def strava_webhook_handler(
-    request: Request,
-    db: DbSession,
-):
-    """
-    Handle Strava webhook events.
-    
-    Strava sends POST requests when new activities are created or updated.
-    """
-    payload = await request.json()
-    
-    # Strava webhook event structure:
-    # {
-    #   "object_type": "activity",
-    #   "object_id": 12345,
-    #   "aspect_type": "create",
-    #   "owner_id": 67890,
-    #   "subscription_id": 1,
-    #   "event_time": 1516126040
-    # }
-    
-    if payload["object_type"] == "activity":
-        if payload["aspect_type"] in ["create", "update"]:
-            # Get the user connection
-            from app.repositories import UserConnectionRepository
-            repo = UserConnectionRepository()
-            connection = repo.get_by_provider_user_id(
-                db, 
-                "strava", 
-                str(payload["owner_id"])
-            )
-            
-            if connection:
-                # Fetch the activity details
-                strategy = factory.get_provider("strava")
-                activity = strategy.workouts.get_workout_detail_from_api(
-                    db,
-                    connection.user_id,
-                    str(payload["object_id"])
-                )
-                
-                # Normalize and save
-                record, detail = strategy.workouts._normalize_workout(
-                    activity,
-                    connection.user_id
-                )
-                strategy.workouts._save_workout(db, record, detail)
-    
-    return {"status": "success"}
+    def verify_signature(self, request: Request, body: bytes) -> bool:
+        """Verify the incoming request is authentically from Suunto.
+        
+        Use the appropriate scheme for your provider:
+        - HMAC-SHA256: use self._verify_hmac_sha256(secret, body, provided_sig)
+        - Plain token: use self._verify_token(expected, provided)
+        - Header check: inspect request.headers directly
+        """
+        token = request.headers.get("x-suunto-token", "")
+        return self._verify_token(settings.suunto_webhook_secret or "", token)
+
+    def parse_payload(self, body: bytes) -> dict[str, Any]:
+        """Parse the raw webhook body into a Python dict / Pydantic model."""
+        import json
+        try:
+            return json.loads(body)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+
+    def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
+        """Route the payload to the appropriate service method.
+        
+        For notify-only webhooks: schedule a Celery task or call the REST API here.
+        For full-payload webhooks: save data directly.
+        """
+        # Example for notify-only:
+        user_id = payload.get("user_id")
+        event_type = payload.get("event_type")
+        
+        # Trigger async fetch of actual data
+        # celery_app.send_task("app.tasks.suunto.fetch_data", args=[user_id, event_type])
+        
+        return {"received": True, "event_type": event_type}
+
+    def supported_event_types(self) -> list[str]:
+        return ["workout_create", "workout_update"]
+
+    def handle_challenge(self, request: Request) -> dict[str, Any]:
+        """Handle GET-based subscription verification (if your provider requires it).
+        
+        Override only if your provider uses a GET challenge/response handshake
+        (like Strava hub.challenge or Oura verification_token).
+        Default raises 501.
+        """
+        token = request.query_params.get("verification_token", "")
+        if token != settings.suunto_webhook_verify_token:
+            raise HTTPException(status_code=403, detail="Invalid verification token")
+        return {"verification_token": token}
 ```
 
-### 2. Register Webhook Route
+<Info>
+`BaseWebhookHandler` provides two signature-verification helpers so you never reimplement cryptographic primitives:
+- `_verify_hmac_sha256(secret, body, provided_signature)` — for HMAC-SHA256 providers (Oura, Fitbit)
+- `_verify_token(expected, provided)` — for plain shared-secret header/query-param verification
+</Info>
 
-Add to `backend/app/api/routes/v1/__init__.py`:
+### Wire the handler into your strategy
 
 ```python
-from .strava_webhooks import router as strava_webhooks_router
+# In suunto/strategy.py
+from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
 
-# In your main router setup
-api_router.include_router(
-    strava_webhooks_router,
-    prefix="/webhooks/strava",
-    tags=["webhooks"],
-)
+class SuuntoStrategy(BaseProviderStrategy):
+    def __init__(self):
+        super().__init__()
+        # ... other components ...
+        self.webhooks = SuuntoWebhookHandler()
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            supports_pull=True,
+            supports_push=True,
+            webhook_notify_only=True,
+        )
 ```
+
+That's all — no new route files needed. The unified router at `/api/v1/providers/suunto/webhooks` will route all POST and GET requests to your handler automatically.
+
+<Note>
+`GET /api/v1/providers/{provider}/webhooks` → `strategy.webhooks.handle_challenge(request)`  
+`POST /api/v1/providers/{provider}/webhooks` → `strategy.webhooks.handle(request, body, db)`
+</Note>
 
 ---
 
@@ -670,9 +724,11 @@ api_router.include_router(
 Use this checklist to ensure you've completed all steps:
 
 - [ ] Created provider directory structure (`strategy.py`, `oauth.py`, `workouts.py`)
-- [ ] Implemented `ProviderStrategy` with required properties
+- [ ] Implemented `ProviderStrategy` with required properties and **`capabilities`** declaration
 - [ ] Implemented `ProviderOAuth` with endpoints, credentials, and user info fetch
 - [ ] Implemented `ProviderWorkouts` with normalization logic
+- [ ] Implemented `ProviderWebhookHandler` extending `BaseWebhookHandler` (if `supports_push=True`)
+- [ ] Wired `self.webhooks` in strategy (or left as `None` if no webhooks)
 - [ ] Created workout type mapping file
 - [ ] Registered provider in `ProviderFactory`
 - [ ] Added provider to `ProviderName` enum
@@ -681,7 +737,8 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Tested OAuth flow end-to-end
 - [ ] Tested data synchronization
 - [ ] Verified data in database
-- [ ] Set up webhook handling (if applicable)
+- [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
+- [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

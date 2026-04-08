@@ -158,6 +158,37 @@ export function useSynchronizeDataFromProvider(
 }
 
 /**
+ * Trigger historical data sync for a provider
+ * Garmin: 30-day webhook backfill; others: pull API with date range
+ */
+export function useSyncHistoricalData(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: (days?: number) =>
+      healthService.syncHistoricalData(provider, userId, days),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      if (data.method === 'webhook_backfill') {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.garmin.backfillStatus(userId),
+        });
+        toast.success('Historical backfill started');
+      } else {
+        toast.success('Historical sync queued');
+      }
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to start historical sync';
+      toast.error(message);
+    },
+  });
+}
+
+/**
  * Get Garmin backfill status (webhook-based, 30-day sync)
  * Polls every 10 seconds while backfill is in progress
  */
