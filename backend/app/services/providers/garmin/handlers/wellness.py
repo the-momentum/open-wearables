@@ -67,7 +67,6 @@ def process_wellness_items(
             continue
 
         user_id = connection.user_id
-        trace_id = get_trace_id(user_id) or request_trace_id
 
         if "callbackURL" in notification:
             # PING not supported; Garmin must be configured for PUSH-only delivery.

@@ -36,6 +36,7 @@ from app.services.providers.garmin.handlers.wellness import process_wellness_ite
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -141,9 +142,17 @@ class GarminWebhookHandler(BaseWebhookHandler):
             db.commit()
 
             for uid in synced_user_ids:
-                connection = self.connection_repo.get_active_connection(db, uid, "garmin")
-                if connection:
-                    self.connection_repo.update_last_synced_at(db, connection)
+                try:
+                    connection = self.connection_repo.get_active_connection(db, uid, "garmin")
+                    if connection:
+                        self.connection_repo.update_last_synced_at(db, connection)
+                except Exception as e:
+                    log_and_capture_error(
+                        e,
+                        logger,
+                        f"Failed to update last_synced_at for user {uid}",
+                        extra={"user_id": str(uid), "provider": "garmin"},
+                    )
 
             # --- build response -------------------------------------------
             response: dict[str, Any] = {
