@@ -370,13 +370,13 @@ class TestGarminPushWebhookWellness:
         assert data["wellness"]["hrv"]["processed"] == 1
         assert data["wellness"]["hrv"]["saved"] > 0
 
-    def test_push_webhook_pulseox_alias_data(
+    def test_push_webhook_pulseox_data(
         self,
         client: TestClient,
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test push webhook accepts lowercase pulseox payload key."""
+        """Test push webhook processes pulseox payload key."""
         # Arrange
         user = UserFactory()
         UserConnectionFactory(

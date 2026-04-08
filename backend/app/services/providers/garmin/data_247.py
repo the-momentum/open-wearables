@@ -1581,7 +1581,7 @@ class Garmin247Data(Base247DataTemplate):
                         all_samples.extend(self._build_stress_samples(user_id, item))
                     case "respiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
-                    case "pulseOx":
+                    case "pulseox":
                         all_samples.extend(self._build_pulse_ox_samples(user_id, item))
                     case "bloodPressures":
                         all_samples.extend(self._build_blood_pressure_samples(user_id, item))

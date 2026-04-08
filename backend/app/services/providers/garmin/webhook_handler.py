@@ -49,7 +49,7 @@ WELLNESS_TYPES: list[str] = [
     "hrv",
     "stressDetails",
     "respiration",
-    "pulseOx",
+    "pulseox",
     "healthSnapshot",
     "skinTemp",
     "moveiq",
