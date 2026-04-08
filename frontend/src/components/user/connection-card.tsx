@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
   EllipsisVertical,
+  History,
+  Info,
   Loader2,
   RefreshCw,
   RotateCcw,
@@ -15,6 +18,11 @@ import { UserConnection } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +43,7 @@ import { cn } from '@/lib/utils';
 import {
   useDisconnectProvider,
   useSynchronizeDataFromProvider,
+  useSyncHistoricalData,
   useGarminBackfillStatus,
   useGarminCancelBackfill,
   useRetryGarminBackfill,
@@ -79,6 +88,9 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
 
   const { mutate: retryBackfill, isPending: isRetrying } =
     useRetryGarminBackfill(connection.user_id);
+
+  const { mutate: syncHistorical, isPending: isSyncingHistorical } =
+    useSyncHistoricalData(connection.provider, connection.user_id);
 
   // Check if backfill is in progress (includes retry phase)
   const isBackfillInProgress =
@@ -160,7 +172,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                 {connection.provider}
               </h3>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Last sync:{' '}
+                Last live sync:{' '}
                 {connection.last_synced_at
                   ? formatDistanceToNow(new Date(connection.last_synced_at), {
                       addSuffix: true,
@@ -219,22 +231,30 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       <CardContent className="space-y-4">
         {/* Show data scope */}
         {scopeItems.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Data scope
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {scopeItems.map((scopeItem) => (
-                <Badge
-                  key={scopeItem}
-                  variant="secondary"
-                  className="text-xs font-normal"
-                >
-                  {scopeItem}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default"
+              >
+                <Info className="h-3.5 w-3.5 shrink-0" />
+                <span>Data scope</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-sm">
+              <div className="flex flex-wrap gap-1 py-0.5">
+                {scopeItems.map((scopeItem) => (
+                  <Badge
+                    key={scopeItem}
+                    variant="secondary"
+                    className="text-[11px] font-normal px-1.5 py-0"
+                  >
+                    {scopeItem}
+                  </Badge>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
         )}
 
         {/* Show backfill progress for Garmin */}
@@ -373,28 +393,104 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             </div>
           )}
 
-        {/* Sync button - only for non-Garmin providers */}
-        {connection.provider !== 'garmin' && (
+        {/* Action buttons */}
+        {connection.status === 'active' && (
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => synchronizeDataFromProvider()}
-              disabled={isSynchronizing}
-            >
-              {isSynchronizing ? (
+            {/* Provider with a hard history cap: single constrained button */}
+            {connection.max_historical_days !== null &&
+              connection.max_historical_days !== undefined &&
+              !isBackfillInProgress &&
+              !isPermanentlyFailed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() =>
+                    syncHistorical(connection.max_historical_days as number)
+                  }
+                  disabled={isSyncingHistorical}
+                >
+                  {isSyncingHistorical ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <History className="h-4 w-4" />
+                      Sync {connection.max_historical_days}-day History
+                    </>
+                  )}
+                </Button>
+              )}
+
+            {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
+            {(connection.max_historical_days === null ||
+              connection.max_historical_days === undefined) &&
+              !isPermanentlyFailed && (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4" />
-                  Sync Now
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={isSyncingHistorical}
+                      >
+                        {isSyncingHistorical ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <History className="h-4 w-4" />
+                            Sync History
+                            <ChevronDown className="h-3 w-3 ml-auto opacity-60" />
+                          </>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => syncHistorical(7)}>
+                        Last 7 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(30)}>
+                        Last 30 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(90)}>
+                        Last 3 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(180)}>
+                        Last 6 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(365)}>
+                        Last year
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => synchronizeDataFromProvider()}
+                    disabled={isSynchronizing}
+                  >
+                    {isSynchronizing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        Force Live Sync
+                      </>
+                    )}
+                  </Button>
                 </>
               )}
-            </Button>
           </div>
         )}
       </CardContent>

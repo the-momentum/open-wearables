@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, cast
 from uuid import UUID
@@ -12,6 +12,7 @@ from app.integrations.celery.tasks import (
     get_garmin_backfill_status,
     reset_garmin_type_status,
     set_garmin_cancel_flag,
+    start_garmin_full_backfill,
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
@@ -305,4 +306,82 @@ def retry_garmin_backfill_type(
         "type": type_name,
         "status": "triggered",
         "message": f"Retry triggered for {type_name}. Data will arrive via webhook.",
+    }
+
+
+# =============================================================================
+# Historical Sync — user-initiated, provider-agnostic
+# =============================================================================
+
+DEFAULT_HISTORICAL_DAYS = 90
+
+
+@router.post("/{provider}/users/{user_id}/sync/historical")
+def sync_historical_data(
+    provider: Annotated[ProviderName, Path(description="Data provider")],
+    user_id: UUID,
+    _api_key: ApiKeyDep,
+    days: Annotated[
+        int,
+        Query(
+            description="Days of historical data to fetch (default: 90, max: 365). "
+            "Ignored for Garmin (uses its own 30-day limit).",
+            ge=1,
+            le=365,
+        ),
+    ] = DEFAULT_HISTORICAL_DAYS,
+) -> dict[str, Any]:
+    """Trigger a historical data sync for a user's connected provider.
+
+    - **Garmin**: Triggers a 30-day webhook-based backfill (Garmin limits
+      historical access to 30 days before the user's consent/connection date).
+    - **Other providers**: Dispatches an async pull-API sync with the
+      requested date range.
+
+    This is user-initiated and separate from the live sync that starts
+    at pairing time. Use when the user explicitly wants past data.
+    """
+    strategy = factory.get_provider(provider.value)
+    caps = strategy.capabilities
+
+    # Webhook-based async export providers (e.g. Garmin)
+    if caps.supports_async_export:
+        task = start_garmin_full_backfill.delay(str(user_id))
+        return {
+            "success": True,
+            "provider": provider.value,
+            "user_id": str(user_id),
+            "method": "webhook_backfill",
+            "task_id": task.id,
+            "message": "Garmin 30-day backfill started. Progress available via backfill/status.",
+        }
+
+    # Pull-API providers: dispatch async sync with historical date range
+    if not caps.supports_pull:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provider '{provider.value}' does not support cloud-based historical sync.",
+        )
+
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+
+    task = sync_vendor_data.delay(
+        user_id=str(user_id),
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        providers=[provider.value],
+        is_historical=True,
+    )
+
+    return {
+        "success": True,
+        "provider": provider.value,
+        "user_id": str(user_id),
+        "method": "pull_api",
+        "task_id": task.id,
+        "days": days,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "message": f"Historical sync queued for {days} days of {provider.value} data.",
     }

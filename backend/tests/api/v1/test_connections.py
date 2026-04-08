@@ -202,16 +202,16 @@ class TestConnectionsEndpoints:
         assert response.status_code == 401
 
     def test_get_connections_invalid_user_id(self, client: TestClient, db: Session) -> None:
-        """Test handling of invalid user ID format raises ValueError."""
+        """Test handling of invalid user ID format returns 400."""
         # Arrange
-        import pytest
-
         api_key = ApiKeyFactory()
         headers = api_key_headers(api_key.id)
 
-        # Act & Assert - Invalid UUID causes ValueError with message from UUID parsing
-        with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
-            client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
+        # Act - FastAPI/Starlette validates UUID path params and returns 400 Bad Request
+        response = client.get("/api/v1/users/not-a-uuid/connections", headers=headers)
+
+        # Assert
+        assert response.status_code == 400
 
     def test_get_connections_nonexistent_user(self, client: TestClient, db: Session) -> None:
         """Test retrieving connections for a user that doesn't exist."""

@@ -25,6 +25,7 @@ from app.models import (
     Developer,
     EventRecord,
     EventRecordDetail,
+    HealthScore,
     PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
@@ -34,7 +35,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import ProviderName
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.utils.security import get_password_hash
 
 
@@ -478,6 +479,33 @@ class DataPointSeriesFactory(BaseFactory):
         if "value" in kwargs and not isinstance(kwargs["value"], Decimal):
             kwargs["value"] = Decimal(str(kwargs["value"]))
 
+        return super()._create(model_class, *args, **kwargs)
+
+
+class HealthScoreFactory(BaseFactory):
+    """Factory for HealthScore model."""
+
+    class Meta:
+        model = HealthScore
+
+    id = LazyFunction(uuid4)
+    category = HealthScoreCategory.SLEEP
+    value = LazyFunction(lambda: Decimal("75.00"))
+    qualifier = "GOOD"
+    recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
+    zone_offset = None
+    provider = ProviderName.GARMIN
+    components = None
+
+    @classmethod
+    def _create(cls, model_class: type[HealthScore], *args: Any, **kwargs: Any) -> HealthScore:
+        if "data_source_id" in kwargs:
+            kwargs.pop("data_source", None)
+        else:
+            data_source = kwargs.pop("data_source", None)
+            if data_source is None:
+                data_source = DataSourceFactory()
+            kwargs["data_source_id"] = data_source.id
         return super()._create(model_class, *args, **kwargs)
 
 

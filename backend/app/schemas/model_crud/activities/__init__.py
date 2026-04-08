@@ -21,6 +21,14 @@ from .event_record_detail import (
     EventRecordDetailResponse,
     EventRecordDetailUpdate,
 )
+from .health_score import (
+    HealthScoreBase,
+    HealthScoreCreate,
+    HealthScoreQueryParams,
+    HealthScoreResponse,
+    HealthScoreUpdate,
+    ScoreComponent,
+)
 from .personal_record import (
     PersonalRecordBase,
     PersonalRecordCreate,
@@ -57,4 +65,11 @@ __all__ = [
     "PersonalRecordResponse",
     # Sleep
     "SleepStage",
+    # HealthScore
+    "ScoreComponent",
+    "HealthScoreBase",
+    "HealthScoreCreate",
+    "HealthScoreUpdate",
+    "HealthScoreResponse",
+    "HealthScoreQueryParams",
 ]

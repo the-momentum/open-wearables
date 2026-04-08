@@ -1,5 +1,5 @@
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any, cast
 from uuid import UUID
@@ -21,15 +21,20 @@ def sync_vendor_data(
     start_date: str | None = None,
     end_date: str | None = None,
     providers: list[str] | None = None,
+    is_historical: bool = False,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
 
     Args:
         user_id: UUID of the user to sync data for
-        start_date: ISO 8601 date string for start of sync period (None = full history)
+        start_date: ISO 8601 date string for start of sync period.
+            When None, defaults to connection.last_synced_at (or now for first-ever sync)
+            so that live syncs never re-pull history.
         end_date: ISO 8601 date string for end of sync period (None = current time)
         providers: Optional list of provider names to sync (None = all active providers)
+        is_historical: When True, skips updating last_synced_at so the live-sync
+            cursor is not clobbered by a user-initiated historical pull.
 
     Returns:
         dict with sync results per provider
@@ -109,9 +114,22 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
+                    # Resolve effective start: explicit arg > last_synced_at > now
+                    # This ensures live syncs never re-pull history.
+                    effective_start = start_date
+                    if effective_start is None:
+                        last = connection.last_synced_at
+                        if last is not None:
+                            if last.tzinfo is None:
+                                last = last.replace(tzinfo=timezone.utc)
+                            effective_start = last.isoformat()
+                        else:
+                            # First ever sync — start from now, historical must be explicit
+                            effective_start = datetime.now(timezone.utc).isoformat()
+
                     # Sync workouts
                     if strategy.workouts:
-                        params = _build_sync_params(provider_name, start_date, end_date)
+                        params = _build_sync_params(provider_name, effective_start, end_date)
                         try:
                             success = strategy.workouts.load_data(db, user_uuid, **params)
                             provider_result.params["workouts"] = {"success": success, **params}
@@ -133,16 +151,12 @@ def sync_vendor_data(
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
-                        # Determine if this is first sync (max timeframe) or subsequent sync
+                        # Determine if this is first sync (for API compatibility with providers)
                         is_first_sync = connection.last_synced_at is None
 
-                        # Parse dates
-                        start_dt = datetime.now() - timedelta(days=30)
-                        end_dt = datetime.now()
-
-                        if start_date:
-                            with suppress(ValueError):
-                                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                        # effective_start is always set above; parse into datetime objects
+                        start_dt = datetime.fromisoformat(effective_start.replace("Z", "+00:00"))
+                        end_dt = datetime.now(timezone.utc)
                         if end_date:
                             with suppress(ValueError):
                                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
@@ -191,7 +205,8 @@ def sync_vendor_data(
                             )
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
 
-                    user_connection_repo.update_last_synced_at(db, connection)
+                    if not is_historical:
+                        user_connection_repo.update_last_synced_at(db, connection)
 
                     result.providers_synced[provider_name] = provider_result
                     log_structured(

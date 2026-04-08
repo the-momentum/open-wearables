@@ -1,17 +1,16 @@
 """
-Tests for Garmin webhook endpoints.
+Tests for Garmin webhook handling via the unified provider webhook router.
 
-Tests the /api/v1/garmin/webhooks endpoints including:
-- POST /api/v1/garmin/webhooks/ping - test ping webhook
-- POST /api/v1/garmin/webhooks/push - test push webhook
-- GET /api/v1/garmin/webhooks/health - test health check
+Tests the /api/v1/providers/garmin/webhooks endpoint including:
+- POST /api/v1/providers/garmin/webhooks - PUSH events
+- GET /api/v1/providers/garmin/webhooks - subscription challenge (501 for Garmin)
 - Authentication and authorization
 - Error cases
 - userPermissions webhooks
 - deregistrations webhooks
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -20,17 +19,16 @@ from app.schemas.auth import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
 
-class TestGarminPingWebhook:
-    """Test suite for Garmin ping webhook endpoint."""
+class TestGarminCallbackUrlNotification:
+    """Garmin PING (callbackURL) is not supported — notifications are skipped."""
 
-    def test_ping_webhook_success(
+    def test_callback_url_activity_is_skipped(
         self,
         client: TestClient,
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test successfully receiving Garmin ping notification."""
-        # Arrange
+        """Activity notification with callbackURL must return status='skipped'."""
         user = UserFactory()
         UserConnectionFactory(
             user=user,
@@ -42,256 +40,41 @@ class TestGarminPingWebhook:
             "activities": [
                 {
                     "userId": "garmin_user_123",
-                    "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?uploadStartTimeInSeconds=1234567890&uploadEndTimeInSeconds=1234567900&token=abc123",
+                    "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=abc",
                 },
             ],
         }
 
-        # Mock httpx response for callback URL
-        mock_httpx = mock_external_apis["httpx"]
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = [
-            {
-                "activityId": 12345,
-                "activityName": "Morning Run",
-                "startTimeInSeconds": 1234567890,
-            },
-        ]
-        mock_client = mock_httpx.return_value.__aenter__.return_value
-        mock_client.get = AsyncMock(return_value=mock_response)
+        response = client.post("/api/v1/providers/garmin/webhooks", headers=headers, json=payload)
 
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
-
-        # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "processed" in data
-        assert "errors" in data
-        assert "activities" in data
+        assert data["processed"] == 0
+        assert data["saved"] == 0
+        assert data["activities"][0]["status"] == "skipped"
 
-    def test_ping_webhook_missing_client_id(self, client: TestClient, db: Session) -> None:
-        """Test that ping webhook requires garmin-client-id header."""
-        # Arrange
-        payload = {
-            "activities": [
-                {
-                    "userId": "garmin_user_123",
-                    "callbackURL": "https://example.com/callback",
-                },
-            ],
-        }
-
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            json=payload,
-        )
-
-        # Assert
+    def test_callback_url_missing_auth_returns_401(self, client: TestClient, db: Session) -> None:
+        """Garmin-client-id is still required even for callbackURL notifications."""
+        payload = {"activities": [{"userId": "garmin_user_123", "callbackURL": "https://example.com/cb"}]}
+        response = client.post("/api/v1/providers/garmin/webhooks", json=payload)
         assert response.status_code == 401
 
-    def test_ping_webhook_unknown_user(
+    def test_callback_url_unknown_user_returns_error(
         self,
         client: TestClient,
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test ping webhook with unknown Garmin user."""
-        # Arrange
+        """Unknown Garmin user is reported in errors before callbackURL check."""
         headers = {"garmin-client-id": "test-client-id"}
-        payload = {
-            "activities": [
-                {
-                    "userId": "unknown_garmin_user",
-                    "callbackURL": "https://example.com/callback",
-                },
-            ],
-        }
+        payload = {"activities": [{"userId": "unknown_user", "callbackURL": "https://example.com/cb"}]}
 
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
+        response = client.post("/api/v1/providers/garmin/webhooks", headers=headers, json=payload)
 
-        # Assert
         assert response.status_code == 200
         data = response.json()
-        assert "errors" in data
         assert len(data["errors"]) > 0
-
-    def test_ping_webhook_no_callback_url(
-        self,
-        client: TestClient,
-        db: Session,
-        mock_external_apis: dict[str, MagicMock],
-    ) -> None:
-        """Test ping webhook with missing callback URL."""
-        # Arrange
-        user = UserFactory()
-        UserConnectionFactory(
-            user=user,
-            provider="garmin",
-            provider_user_id="garmin_user_123",
-        )
-        headers = {"garmin-client-id": "test-client-id"}
-        payload = {
-            "activities": [
-                {
-                    "userId": "garmin_user_123",
-                    # Missing callbackURL
-                },
-            ],
-        }
-
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "processed" in data
-
-    def test_ping_webhook_multiple_activities(
-        self,
-        client: TestClient,
-        db: Session,
-        mock_external_apis: dict[str, MagicMock],
-    ) -> None:
-        """Test ping webhook with multiple activities."""
-        # Arrange
-        user1 = UserFactory()
-        user2 = UserFactory()
-        UserConnectionFactory(
-            user=user1,
-            provider="garmin",
-            provider_user_id="garmin_user_1",
-        )
-        UserConnectionFactory(
-            user=user2,
-            provider="garmin",
-            provider_user_id="garmin_user_2",
-        )
-        headers = {"garmin-client-id": "test-client-id"}
-        payload = {
-            "activities": [
-                {
-                    "userId": "garmin_user_1",
-                    "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=token1",
-                },
-                {
-                    "userId": "garmin_user_2",
-                    "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=token2",
-                },
-            ],
-        }
-
-        # Mock httpx response
-        mock_httpx = mock_external_apis["httpx"]
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = [{"activityId": 12345}]
-        mock_client = mock_httpx.return_value.__aenter__.return_value
-        mock_client.get = AsyncMock(return_value=mock_response)
-
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "processed" in data
-        assert "activities" in data
-
-    def test_ping_webhook_with_summary_types(
-        self,
-        client: TestClient,
-        db: Session,
-        mock_external_apis: dict[str, MagicMock],
-    ) -> None:
-        """Test ping webhook with different summary types."""
-        # Arrange
-        user = UserFactory()
-        UserConnectionFactory(
-            user=user,
-            provider="garmin",
-            provider_user_id="garmin_user_123",
-        )
-        headers = {"garmin-client-id": "test-client-id"}
-        payload = {
-            "activities": [],
-            "activityDetails": [{"userId": "garmin_user_123"}],
-            "dailies": [{"userId": "garmin_user_123"}],
-            "sleeps": [{"userId": "garmin_user_123"}],
-        }
-
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-
-    def test_ping_webhook_callback_fetch_error(
-        self,
-        client: TestClient,
-        db: Session,
-        mock_external_apis: dict[str, MagicMock],
-    ) -> None:
-        """Test ping webhook when callback URL fetch fails."""
-        # Arrange
-        user = UserFactory()
-        UserConnectionFactory(
-            user=user,
-            provider="garmin",
-            provider_user_id="garmin_user_123",
-        )
-        headers = {"garmin-client-id": "test-client-id"}
-        payload = {
-            "activities": [
-                {
-                    "userId": "garmin_user_123",
-                    "callbackURL": "https://apis.garmin.com/wellness-api/rest/activities?token=abc123",
-                },
-            ],
-        }
-
-        # Mock httpx to raise an error
-        import httpx
-
-        mock_httpx = mock_external_apis["httpx"]
-        mock_client = mock_httpx.return_value.__aenter__.return_value
-        mock_client.get = AsyncMock(side_effect=httpx.HTTPError("Connection failed"))
-
-        # Act
-        response = client.post(
-            "/api/v1/garmin/webhooks/ping",
-            headers=headers,
-            json=payload,
-        )
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert "errors" in data
+        assert data["activities"][0]["status"] == "user_not_found"
 
 
 class TestGarminPushWebhook:
@@ -332,7 +115,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -372,7 +155,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -403,7 +186,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             json=payload,
         )
 
@@ -454,7 +237,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -498,7 +281,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -522,7 +305,7 @@ class TestGarminPushWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -574,7 +357,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -586,6 +369,51 @@ class TestGarminPushWebhookWellness:
         assert "hrv" in data["wellness"]
         assert data["wellness"]["hrv"]["processed"] == 1
         assert data["wellness"]["hrv"]["saved"] > 0
+
+    def test_push_webhook_pulseox_data(
+        self,
+        client: TestClient,
+        db: Session,
+        mock_external_apis: dict[str, MagicMock],
+    ) -> None:
+        """Test push webhook processes pulseox payload key."""
+        # Arrange
+        user = UserFactory()
+        UserConnectionFactory(
+            user=user,
+            provider="garmin",
+            provider_user_id="garmin_user_123",
+        )
+        headers = {"garmin-client-id": "test-client-id"}
+        payload = {
+            "pulseox": [
+                {
+                    "userId": "garmin_user_123",
+                    "summaryId": "pulseox-123",
+                    "startTimeInSeconds": 1768340715,
+                    "startTimeOffsetInSeconds": 3600,
+                    "timeOffsetSpo2Values": {
+                        "0": 94,
+                        "60": 93,
+                    },
+                },
+            ],
+        }
+
+        # Act
+        response = client.post(
+            "/api/v1/garmin/webhooks/push",
+            headers=headers,
+            json=payload,
+        )
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert "wellness" in data
+        assert "pulseox" in data["wellness"]
+        assert data["wellness"]["pulseox"]["processed"] == 1
+        assert data["wellness"]["pulseox"]["saved"] > 0
 
     def test_push_webhook_epochs_batch_logging(
         self,
@@ -625,7 +453,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -681,7 +509,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -724,7 +552,7 @@ class TestGarminPushWebhookWellness:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -737,40 +565,22 @@ class TestGarminPushWebhookWellness:
         assert data["wellness"]["sleeps"]["processed"] == 1
 
 
-class TestGarminWebhookHealth:
-    """Test suite for Garmin webhook health check endpoint."""
+class TestGarminWebhookRouting:
+    """Test suite for Garmin webhook routing via the unified provider router."""
 
-    def test_health_check_success(self, client: TestClient, db: Session) -> None:
-        """Test that health check returns OK."""
-        # Act
-        response = client.get("/api/v1/garmin/webhooks/health")
+    def test_get_challenge_returns_501(self, client: TestClient, db: Session) -> None:
+        """Garmin does not support GET subscription challenges — expect 501."""
+        response = client.get("/api/v1/providers/garmin/webhooks")
+        assert response.status_code == 501
 
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert "service" in data
-        assert data["service"] == "garmin-webhooks"
-
-    def test_health_check_no_auth_required(self, client: TestClient, db: Session) -> None:
-        """Test that health check doesn't require authentication."""
-        # Act - no headers
-        response = client.get("/api/v1/garmin/webhooks/health")
-
-        # Assert
-        assert response.status_code == 200
-
-    def test_health_check_response_structure(self, client: TestClient, db: Session) -> None:
-        """Test health check response structure."""
-        # Act
-        response = client.get("/api/v1/garmin/webhooks/health")
-
-        # Assert
-        assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, dict)
-        assert "status" in data
-        assert "service" in data
+    def test_unknown_provider_returns_404(self, client: TestClient, db: Session) -> None:
+        """Unknown provider names return 404."""
+        response = client.post(
+            "/api/v1/providers/unknown_provider/webhooks",
+            headers={"garmin-client-id": "x"},
+            json={},
+        )
+        assert response.status_code == 404
 
 
 class TestGarminUserPermissionsWebhook:
@@ -803,7 +613,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -846,7 +656,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -889,7 +699,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -910,7 +720,7 @@ class TestGarminUserPermissionsWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test userPermissionsChange webhook with unknown user returns 200 with error info."""
+        """Test userPermissionsChange webhook with unknown user is a no-op (idempotent)."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
@@ -924,7 +734,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -934,7 +744,7 @@ class TestGarminUserPermissionsWebhook:
         data = response.json()
         assert "userPermissionsChange" in data
         assert data["userPermissionsChange"]["updated"] == 0
-        assert len(data["userPermissionsChange"]["errors"]) == 1
+        assert len(data["userPermissionsChange"]["errors"]) == 0
 
     def test_ping_webhook_user_permissions_updates_scope(
         self,
@@ -963,7 +773,7 @@ class TestGarminUserPermissionsWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/ping",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -1007,7 +817,7 @@ class TestGarminDeregistrationWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -1029,7 +839,7 @@ class TestGarminDeregistrationWebhook:
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test deregistration webhook with unknown user returns 200 with error info."""
+        """Test deregistration webhook with unknown user is a no-op (idempotent)."""
         # Arrange
         headers = {"garmin-client-id": "test-client-id"}
         payload = {
@@ -1040,7 +850,7 @@ class TestGarminDeregistrationWebhook:
 
         # Act
         response = client.post(
-            "/api/v1/garmin/webhooks/push",
+            "/api/v1/providers/garmin/webhooks",
             headers=headers,
             json=payload,
         )
@@ -1050,4 +860,4 @@ class TestGarminDeregistrationWebhook:
         data = response.json()
         assert "deregistrations" in data
         assert data["deregistrations"]["revoked"] == 0
-        assert len(data["deregistrations"]["errors"]) == 1
+        assert len(data["deregistrations"]["errors"]) == 0
