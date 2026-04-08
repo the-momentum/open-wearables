@@ -8,8 +8,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-import httpx
-
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.services.providers.garmin.backfill_state import get_trace_id
@@ -72,39 +70,10 @@ def process_wellness_items(
         trace_id = get_trace_id(user_id) or request_trace_id
 
         if "callbackURL" in notification:
-            # PING: fetch records from provider
-            callback_url = notification["callbackURL"]
-            try:
-                response = httpx.get(callback_url, timeout=30.0)
-                response.raise_for_status()
-                data = response.json()
-                if not isinstance(data, list):
-                    data = [data]
-                log_structured(
-                    logger,
-                    "info",
-                    "Fetched wellness items",
-                    provider="garmin",
-                    trace_id=trace_id,
-                    summary_type=summary_type,
-                    item_count=len(data),
-                    user_id=str(user_id),
-                )
-                user_items.setdefault(user_id, []).extend(data)
-            except httpx.HTTPError as e:
-                log_structured(
-                    logger,
-                    "error",
-                    "HTTP error fetching wellness data",
-                    provider="garmin",
-                    trace_id=trace_id,
-                    summary_type=summary_type,
-                    error=str(e),
-                )
-                errors.append(f"HTTP error: {e}")
-        else:
-            # PUSH: inline data
-            user_items.setdefault(user_id, []).append(notification)
+            # PING not supported; Garmin must be configured for PUSH-only delivery.
+            continue
+        # PUSH: inline data
+        user_items.setdefault(user_id, []).append(notification)
 
     total_processed = sum(len(items) for items in user_items.values())
     total_saved = 0
@@ -115,9 +84,8 @@ def process_wellness_items(
         try:
             count = garmin_247.process_items_batch(db, uid, summary_type, items)
             total_saved += count
-            if count > 0:
-                synced_user_ids.add(uid)
-                succeeded_users.append(str(uid))
+            synced_user_ids.add(uid)
+            succeeded_users.append(str(uid))
             log_structured(
                 logger,
                 "info",

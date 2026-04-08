@@ -190,6 +190,12 @@ class GarminWebhookHandler(BaseWebhookHandler):
                         users_with_new_success.add(uid_str)
             elif result["status"] == "fetched":
                 uid_str = result.get("internal_user_id")
+                if uid_str:
+                    synced_user_ids.add(UUID(uid_str))
+                    if mark_type_success(uid_str, "activities"):
+                        users_with_new_success.add(uid_str)
+            elif result["status"] == "duplicate":
+                uid_str = result.get("internal_user_id")
                 if uid_str and mark_type_success(uid_str, "activities"):
                     users_with_new_success.add(uid_str)
             elif result["status"] in ("error", "user_not_found"):

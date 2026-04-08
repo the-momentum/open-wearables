@@ -6,6 +6,7 @@ from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
+from .deprecated_webhooks import router as deprecated_webhooks_router
 from .developers import router as developers_router
 from .events import router as events_router
 from .import_xml import router as import_xml_router
@@ -13,7 +14,6 @@ from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .priorities import router as priorities_router
-from .providers_webhooks import router as providers_webhooks_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
 from .strava_webhooks import router as strava_webhooks_router
@@ -25,6 +25,7 @@ from .token import router as token_router
 from .user_invitation_code import router as user_invitation_code_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
+from .webhooks import router as webhooks_router
 
 v1_router = APIRouter()
 
@@ -33,15 +34,12 @@ v1_router.include_router(developers_router, prefix="/developers", tags=["develop
 v1_router.include_router(invitations_router, prefix="/invitations", tags=["invitations"])
 v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
 v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
-# Oura webhooks for data notifications
-v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["oura webhooks"])
-# Strava webhooks for event notifications
-v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["strava webhooks"])
-v1_router.include_router(providers_webhooks_router, prefix="/providers", tags=["providers webhooks"])
-# New unified vendor workouts endpoint
+v1_router.include_router(oura_webhooks_router, prefix="/providers/oura/webhooks", tags=["oura webhooks"])
+v1_router.include_router(strava_webhooks_router, prefix="/providers/strava/webhooks", tags=["strava webhooks"])
+v1_router.include_router(webhooks_router, prefix="/providers", tags=["providers webhooks"])
+v1_router.include_router(deprecated_webhooks_router, tags=["webhooks deprecated"], deprecated=True)
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])
-# Suunto debug endpoints for raw API access
 v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
 v1_router.include_router(users_router, tags=["users"])
 v1_router.include_router(connections_router, tags=["data"])

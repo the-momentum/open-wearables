@@ -7,7 +7,6 @@ PING (callbackURL to fetch from Garmin).
 import logging
 from typing import Any
 
-import httpx
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
@@ -60,42 +59,8 @@ def process_activity_notification(
     trace_id = get_trace_id(internal_user_id) or request_trace_id
 
     if "callbackURL" in notification:
-        # PING: fetch activities from the callback URL (no DB save at this stage)
-        callback_url = notification["callbackURL"]
-        log_structured(
-            logger,
-            "info",
-            "Activity callback URL received",
-            provider="garmin",
-            trace_id=trace_id,
-            garmin_user_id=garmin_user_id,
-            internal_user_id=str(internal_user_id),
-        )
-        try:
-            response = httpx.get(callback_url, timeout=30.0)
-            response.raise_for_status()
-            activities_data = response.json()
-            activities_count = len(activities_data) if isinstance(activities_data, list) else 1
-            log_structured(
-                logger,
-                "info",
-                "Fetched activities from callback",
-                provider="garmin",
-                trace_id=trace_id,
-                internal_user_id=str(internal_user_id),
-                activities_count=activities_count,
-            )
-            return {**base_result, "internal_user_id": str(internal_user_id), "status": "fetched"}
-        except httpx.HTTPError as e:
-            log_structured(
-                logger,
-                "error",
-                "Failed to fetch activity data from callback URL",
-                provider="garmin",
-                trace_id=trace_id,
-                error=str(e),
-            )
-            return {**base_result, "status": "error", "error": f"HTTP error: {e}"}
+        # PING not supported; Garmin must be configured for PUSH-only delivery.
+        return {**base_result, "status": "skipped"}
 
     # PUSH: parse and save inline data
     log_structured(
@@ -140,7 +105,7 @@ def process_activity_notification(
             trace_id=trace_id,
             activity_id=activity_id,
         )
-        return {**base_result, "status": "duplicate"}
+        return {**base_result, "internal_user_id": str(internal_user_id), "status": "duplicate"}
 
     log_structured(
         logger,
