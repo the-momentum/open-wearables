@@ -153,6 +153,8 @@ class Whoop247Data(Base247DataTemplate):
         # Extract score data (may be None if not scored yet)
         score = raw_sleep.get("score", {}) or {}
         stage_summary = score.get("stage_summary", {}) or {}
+        import logging as _logging
+        _logging.getLogger(__name__).info("WHOOP stage_summary raw: %s", stage_summary)
 
         # Time conversions: Whoop provides durations in milliseconds
         # Convert to seconds for our schema
