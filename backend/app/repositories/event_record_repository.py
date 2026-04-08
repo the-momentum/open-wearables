@@ -409,8 +409,16 @@ class EventRecordRepository(
                 # Main sleep times (exclude naps)
                 func.min(case((is_main_sleep, EventRecord.start_datetime), else_=None)).label("min_start_time"),
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
-                # Main sleep duration (exclude naps)
-                func.sum(case((is_main_sleep, EventRecord.duration_seconds), else_=0)).label("total_duration"),
+                # Main sleep duration (exclude naps).
+                # Prefer sleep_total_duration_minutes from SleepDetails (= deep + light + rem,
+                # i.e. actual hours of sleep) over EventRecord.duration_seconds which for some
+                # providers (e.g. Whoop) stores time-in-bed rather than true sleep duration.
+                func.sum(case((is_main_sleep,
+                    func.coalesce(
+                        SleepDetails.sleep_total_duration_minutes * 60,
+                        EventRecord.duration_seconds,
+                    )
+                ), else_=0)).label("total_duration"),
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
