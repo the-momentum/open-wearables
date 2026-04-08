@@ -47,12 +47,18 @@ For production deployments, replace with your server URL.
 | Create user | POST | `/api/v1/users` |
 | Get user | GET | `/api/v1/users/{user_id}` |
 | Get connections | GET | `/api/v1/users/{user_id}/connections` |
+| Get activity summary | GET | `/api/v1/users/{user_id}/summaries/activity` |
+| Get sleep summary | GET | `/api/v1/users/{user_id}/summaries/sleep` |
+| Get body summary | GET | `/api/v1/users/{user_id}/summaries/body` |
+| Get recovery summary | GET | `/api/v1/users/{user_id}/summaries/recovery` |
 | Get timeseries | GET | `/api/v1/users/{user_id}/timeseries` |
 | Get workouts | GET | `/api/v1/users/{user_id}/events/workouts` |
 | Get sleep sessions | GET | `/api/v1/users/{user_id}/events/sleep` |
-| OAuth authorize | GET | `/api/v1/oauth/{provider}/authorize?user_id={user_id}` |
+| Get data sources | GET | `/api/v1/users/{user_id}/data-sources` |
 | List providers | GET | `/api/v1/oauth/providers` |
+| OAuth authorize | GET | `/api/v1/oauth/{provider}/authorize?user_id={user_id}` |
 | Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
+| Get provider workouts | GET | `/api/v1/providers/{provider}/users/{user_id}/workouts` |
 
 ## Authentication
 
