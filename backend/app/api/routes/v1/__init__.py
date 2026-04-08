@@ -6,6 +6,7 @@ from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
+from .data_sources import router as data_sources_router
 from .deprecated_webhooks import router as deprecated_webhooks_router
 from .developers import router as developers_router
 from .events import router as events_router
@@ -25,41 +26,43 @@ from .token import router as token_router
 from .user_invitation_code import router as user_invitation_code_router
 from .users import router as users_router
 from .vendor_workouts import router as vendor_workouts_router
-from .webhooks import router as webhooks_router
+from .webhooks import router as providers_webhooks_router
 
 v1_router = APIRouter()
 
-v1_router.include_router(auth_router, prefix="/auth", tags=["auth"])
-v1_router.include_router(developers_router, prefix="/developers", tags=["developers"])
-v1_router.include_router(invitations_router, prefix="/invitations", tags=["invitations"])
-v1_router.include_router(api_keys_router, prefix="/developer", tags=["api-keys"])
-v1_router.include_router(oauth_router, prefix="/oauth", tags=["providers oauth"])
-v1_router.include_router(oura_webhooks_router, prefix="/providers/oura/webhooks", tags=["oura webhooks"])
-v1_router.include_router(strava_webhooks_router, prefix="/providers/strava/webhooks", tags=["strava webhooks"])
-v1_router.include_router(webhooks_router, prefix="/providers", tags=["providers webhooks"])
-v1_router.include_router(deprecated_webhooks_router, tags=["webhooks deprecated"], deprecated=True)
-v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["providers workouts"])
-v1_router.include_router(sync_data_router, prefix="/providers", tags=["sync data"])
-v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["debug"])
-v1_router.include_router(users_router, tags=["users"])
-v1_router.include_router(connections_router, tags=["data"])
-v1_router.include_router(import_xml_router, tags=["Apple Health XML import"])
-v1_router.include_router(sdk_sync_router, tags=["Mobile SDK"])
-v1_router.include_router(sdk_token_router, tags=["Mobile SDK"])
-v1_router.include_router(user_invitation_code_router, tags=["Mobile SDK"])
-v1_router.include_router(applications_router, tags=["applications"])
-v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["dashboard"])
-v1_router.include_router(priorities_router, tags=["priorities"])
+# --- External: 3rd party integration endpoints ---
+v1_router.include_router(users_router, tags=["External: Users"])
+v1_router.include_router(connections_router, tags=["External: Connections"])
+v1_router.include_router(summaries_router, tags=["External: Summaries"])
+v1_router.include_router(timeseries_router, tags=["External: Timeseries"])
+v1_router.include_router(events_router, tags=["External: Events"])
+v1_router.include_router(oauth_router, prefix="/oauth")
+v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
+v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["External: Workouts"])
+v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
+v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
+v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
+v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
+v1_router.include_router(token_router, tags=["External: Token"])
+v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
 
-# RFC Taxonomy Routes
-v1_router.include_router(summaries_router, tags=["Summaries"])
-v1_router.include_router(timeseries_router, tags=["Timeseries"])
-v1_router.include_router(events_router, tags=["Events"])
+# --- Internal: dashboard endpoints ---
+v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])
+v1_router.include_router(developers_router, prefix="/developers", tags=["Internal: Developers"])
+v1_router.include_router(invitations_router, prefix="/invitations", tags=["Internal: Invitations"])
+v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: API Keys"])
+v1_router.include_router(applications_router, tags=["Internal: Applications"])
+v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
+v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
+v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
-# Data lifecycle / archival settings
-v1_router.include_router(archival_router, tags=["Data Lifecycle"])
-
-# Token refresh endpoint
-v1_router.include_router(token_router, tags=["token"])
+# --- System: provider webhooks and debug ---
+v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["System: Oura Webhooks"])
+v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["System: Strava Webhooks"])
+v1_router.include_router(
+    providers_webhooks_router, prefix="/providers/{provider}/webhooks", tags=["System: Provider Webhooks"]
+)
+v1_router.include_router(deprecated_webhooks_router, tags=["System: Provider Webhooks (Deprecated)"], deprecated=True)
+v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["System: Debug"])
 
 __all__ = ["v1_router"]
