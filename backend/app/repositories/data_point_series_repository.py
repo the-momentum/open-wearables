@@ -455,6 +455,69 @@ class DataPointSeriesRepository(
 
         return averages
 
+    def get_averages_for_time_ranges_batch(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        time_ranges: list[tuple[str, datetime, datetime]],
+        series_types: list[SeriesType],
+    ) -> dict[str, dict[SeriesType, float | None]]:
+        """Batch version: get average values for multiple time ranges in a single query.
+
+        Args:
+            time_ranges: List of (key, start_time, end_time) tuples. Key is used to index results.
+            series_types: Series types to average.
+
+        Returns dict mapping key -> {SeriesType: avg_value}.
+        """
+        if not time_ranges:
+            return {}
+        if not series_types:
+            raise ValueError("series_types cannot be empty")
+
+        overall_start = min(start_time for _, start_time, _ in time_ranges)
+        overall_end = max(end_time for _, _, end_time in time_ranges)
+        type_id_to_series_type = {get_series_type_id(series_type): series_type for series_type in series_types}
+
+        results = (
+            db_session.query(
+                self.model.recorded_at,
+                self.model.series_type_definition_id,
+                self.model.value,
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at >= overall_start,
+                self.model.recorded_at < overall_end,
+                self.model.series_type_definition_id.in_(list(type_id_to_series_type)),
+            )
+            .all()
+        )
+
+        averages: dict[str, dict[SeriesType, float | None]] = {
+            key: {series_type: None for series_type in series_types} for key, _, _ in time_ranges
+        }
+        accumulators: dict[str, dict[SeriesType, tuple[float, int]]] = {}
+
+        for recorded_at, type_id, value in results:
+            series_type = type_id_to_series_type.get(type_id)
+            if series_type is None:
+                continue
+
+            for key, start_time, end_time in time_ranges:
+                if start_time <= recorded_at < end_time:
+                    key_accumulators = accumulators.setdefault(key, {})
+                    total, count = key_accumulators.get(series_type, (0.0, 0))
+                    key_accumulators[series_type] = (total + float(value), count + 1)
+
+        for key, series_totals in accumulators.items():
+            for series_type, (total, count) in series_totals.items():
+                if count > 0:
+                    averages[key][series_type] = total / count
+
+        return averages
+
     def get_daily_activity_aggregates(
         self,
         db_session: DbSession,

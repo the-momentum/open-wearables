@@ -293,6 +293,22 @@ class SummariesService:
 
         # Transform to schema
         data = []
+        # Batch-fetch heart rate averages for all sleep windows (fixes N+1 query #493)
+        sleep_windows: list[tuple[str, datetime, datetime]] = []
+        for r in results:
+            s, e = r.get("min_start_time"), r.get("max_end_time")
+            if s and e:
+                sleep_windows.append((str(r["sleep_date"]), s, e))
+
+        batch_physio: dict[str, dict[SeriesType, float | None]] = {}
+        if sleep_windows:
+            try:
+                batch_physio = self.data_point_repo.get_averages_for_time_ranges_batch(
+                    db_session, user_id, sleep_windows, SLEEP_PHYSIO_SERIES_TYPES
+                )
+            except Exception as e:
+                log_structured(self.logger, "warning", f"Failed to batch-fetch sleep physiology: {e}")
+
         for result in results:
             # Build sleep stages if any stage data is available
             stages = None
@@ -307,31 +323,11 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            # Fetch average heart rate during the sleep period
-            # TODO: Add HRV, respiratory rate, and SpO2 when ready
+            # Look up pre-fetched heart rate average
             avg_hr: int | None = None
-
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        sleep_start,
-                        sleep_end,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch heart rate metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
-                    )
+            physio = batch_physio.get(str(result["sleep_date"]), {})
+            hr_avg = physio.get(SeriesType.heart_rate)
+            avg_hr = int(round(hr_avg)) if hr_avg is not None else None
 
             summary = SleepSummary(
                 date=result["sleep_date"],
