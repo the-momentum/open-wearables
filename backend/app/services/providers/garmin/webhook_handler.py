@@ -10,6 +10,7 @@ Both modes are handled by a single ``dispatch()`` which detects PING vs PUSH
 per data-type by checking whether items contain a ``callbackURL`` field.
 """
 
+import contextlib
 import json
 import logging
 from typing import Any
@@ -123,39 +124,61 @@ class GarminWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="garmin", payload=payload, trace_id=request_trace_id)
 
-        errors: list[str] = []
-        synced_user_ids: set[UUID] = set()
-        users_with_new_success: set[str] = set()
+        try:
+            errors: list[str] = []
+            synced_user_ids: set[UUID] = set()
+            users_with_new_success: set[str] = set()
 
-        # --- data processing -----------------------------------------
-        act_result = self._process_activities(
-            db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
-        )
-        well_result = self._process_wellness(
-            db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
-        )
+            # --- data processing -----------------------------------------
+            act_result = self._process_activities(
+                db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
+            )
+            well_result = self._process_wellness(
+                db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
+            )
 
-        # --- commit + update last_synced_at ---------------------------
-        db.commit()
+            # --- commit + update last_synced_at ---------------------------
+            db.commit()
 
-        for uid in synced_user_ids:
-            connection = self.connection_repo.get_active_connection(db, uid, "garmin")
-            if connection:
-                self.connection_repo.update_last_synced_at(db, connection)
+            for uid in synced_user_ids:
+                connection = self.connection_repo.get_active_connection(db, uid, "garmin")
+                if connection:
+                    self.connection_repo.update_last_synced_at(db, connection)
 
-        # --- build response -------------------------------------------
-        response: dict[str, Any] = {
-            "processed": act_result["processed_count"],
-            "saved": act_result["saved_count"],
-            "errors": errors,
-            "activities": act_result["details"],
-            "wellness": well_result,
-            "backfill_chained": [],
-        }
+            # --- build response -------------------------------------------
+            response: dict[str, Any] = {
+                "processed": act_result["processed_count"],
+                "saved": act_result["saved_count"],
+                "errors": errors,
+                "activities": act_result["details"],
+                "wellness": well_result,
+                "backfill_chained": [],
+            }
 
-        self._process_lifecycle_events(db, payload, response, request_trace_id)
-        response["backfill_chained"] = self._chain_backfills(users_with_new_success, request_trace_id)
-        return response
+            self._process_lifecycle_events(db, payload, response, request_trace_id)
+            response["backfill_chained"] = self._chain_backfills(users_with_new_success, request_trace_id)
+            return response
+
+        except Exception as exc:
+            log_structured(
+                logger,
+                "error",
+                "Unexpected error in Garmin webhook dispatch",
+                provider="garmin",
+                trace_id=request_trace_id,
+                error=str(exc),
+                exc_info=True,
+            )
+            with contextlib.suppress(Exception):
+                db.rollback()
+            return {
+                "processed": 0,
+                "saved": 0,
+                "errors": [str(exc)],
+                "activities": [],
+                "wellness": {},
+                "backfill_chained": [],
+            }
 
     # ------------------------------------------------------------------
     # Private dispatch helpers
@@ -179,26 +202,20 @@ class GarminWebhookHandler(BaseWebhookHandler):
                 db, self.connection_repo, self.garmin_workouts, notification, request_trace_id
             )
             details.append(result)
-            if result["status"] in ("saved", "fetched"):
+            status = result.get("status")
+            uid_str = result.get("internal_user_id")
+            if status in ("saved", "fetched"):
                 processed_count += 1
-            if result["status"] == "saved":
-                saved_count += len(result.get("record_ids", []))
-                uid_str = result.get("internal_user_id")
+                if status == "saved":
+                    saved_count += len(result.get("record_ids", []))
                 if uid_str:
                     synced_user_ids.add(UUID(uid_str))
                     if mark_type_success(uid_str, "activities"):
                         users_with_new_success.add(uid_str)
-            elif result["status"] == "fetched":
-                uid_str = result.get("internal_user_id")
-                if uid_str:
-                    synced_user_ids.add(UUID(uid_str))
-                    if mark_type_success(uid_str, "activities"):
-                        users_with_new_success.add(uid_str)
-            elif result["status"] == "duplicate":
-                uid_str = result.get("internal_user_id")
+            elif status == "duplicate":
                 if uid_str and mark_type_success(uid_str, "activities"):
                     users_with_new_success.add(uid_str)
-            elif result["status"] in ("error", "user_not_found"):
+            elif status in ("error", "user_not_found"):
                 errors.append(result.get("error", "Unknown error"))
 
         return {"processed_count": processed_count, "saved_count": saved_count, "details": details}

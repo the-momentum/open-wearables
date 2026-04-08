@@ -31,7 +31,8 @@ _factory = ProviderFactory()
 
 def _get_garmin_handler() -> BaseWebhookHandler:
     strategy = _factory.get_provider("garmin")
-    assert strategy.webhooks is not None, "Garmin webhook handler not initialised"  # noqa: S101
+    if strategy.webhooks is None:
+        raise RuntimeError("Garmin webhook handler not initialised")
     return strategy.webhooks
 
 
