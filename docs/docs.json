@@ -211,6 +211,12 @@
             ]
           },
           {
+            "group": "Health Scores",
+            "pages": [
+              "GET /api/v1/users/{user_id}/health-scores"
+            ]
+          },
+          {
             "group": "Data Sources",
             "pages": [
               "GET /api/v1/users/{user_id}/data-sources"
@@ -221,12 +227,6 @@
             "pages": [
               "POST /api/v1/users/{user_id}/import/apple/xml/s3",
               "POST /api/v1/users/{user_id}/import/apple/xml/direct"
-            ]
-          },
-          {
-            "group": "External Connectors",
-            "pages": [
-              "POST /api/v1/users/{user_id}/import/apple/auto-health-export"
             ]
           },
           {

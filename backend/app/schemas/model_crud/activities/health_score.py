@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.utils.dates import ZoneOffset
@@ -39,6 +39,22 @@ class HealthScoreCreate(HealthScoreBase):
 
 
 class HealthScoreUpdate(HealthScoreBase): ...
+
+
+class HealthScoreQueryParams(BaseModel):
+    start_datetime: datetime | None = None
+    end_datetime: datetime | None = None
+    category: HealthScoreCategory | None = None
+    provider: ProviderName | None = None
+    data_source_id: UUID | None = None
+    limit: int = Field(50, ge=1, le=1000)
+    offset: int = Field(0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "HealthScoreQueryParams":
+        if self.start_datetime and self.end_datetime and self.start_datetime >= self.end_datetime:
+            raise ValueError("start_datetime must be before end_datetime")
+        return self
 
 
 class HealthScoreResponse(HealthScoreBase):
