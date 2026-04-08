@@ -47,7 +47,8 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         return results, total_count
 
     def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
-        """Bulk insert health scores, updating on conflict with the unique constraint."""
+        """Bulk insert health scores, doing nothing on conflict with the unique constraint.
+        """
         if not creators:
             return
 
