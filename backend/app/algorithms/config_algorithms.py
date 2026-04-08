@@ -4,10 +4,10 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
-# HRV RECOVERY SCORE
+# HRV RESILIENCE SCORE
 
 
-class RecoveryScoreConfig(BaseModel):
+class ResilienceScoreConfig(BaseModel):
     lookback_days: int = Field(default=7, ge=1)
     min_days_required: int = Field(default=5, ge=2)
     min_rr_samples: int = Field(default=20, ge=2)
@@ -20,4 +20,4 @@ class RecoveryScoreConfig(BaseModel):
         return self
 
 
-recovery_config = RecoveryScoreConfig()
+resilience_config = ResilienceScoreConfig()

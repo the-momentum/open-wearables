@@ -11,7 +11,7 @@ from .events import (
     Workout,
     WorkoutDetailed,
 )
-from .recovery import (
+from .resilience import (
     DailyHrvScore,
     HrvCvScoreResult,
 )
@@ -30,7 +30,7 @@ from .summaries import (
 )
 
 __all__ = [
-    # Recovery scores
+    # Resilience scores
     "DailyHrvScore",
     "HrvCvScoreResult",
     # Data point responses
