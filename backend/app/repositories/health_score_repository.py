@@ -25,10 +25,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         user_id: UUID,
         params: HealthScoreQueryParams,
     ) -> tuple[list[HealthScore], int]:
-        query = (
-            db_session.query(HealthScore)
-            .join(DataSource, HealthScore.data_source_id == DataSource.id)
-        )
+        query = db_session.query(HealthScore).join(DataSource, HealthScore.data_source_id == DataSource.id)
 
         filters = [DataSource.user_id == user_id]
 
@@ -46,13 +43,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         query = query.filter(and_(*filters))
 
         total_count = query.count()
-        results = (
-            query
-            .order_by(desc(HealthScore.recorded_at))
-            .offset(params.offset)
-            .limit(params.limit)
-            .all()
-        )
+        results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
         return results, total_count
 
     def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
@@ -62,16 +53,10 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
 
         values = [c.model_dump() for c in creators]
 
-        stmt = insert(HealthScore).values(values)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["data_source_id", "category", "recorded_at"],
-            set_={
-                "value": stmt.excluded.value,
-                "qualifier": stmt.excluded.qualifier,
-                "components": stmt.excluded.components,
-                "provider": stmt.excluded.provider,
-                "zone_offset": stmt.excluded.zone_offset,
-            },
+        stmt = (
+            insert(HealthScore)
+            .values(values)
+            .on_conflict_do_nothing(index_elements=["data_source_id", "category", "recorded_at"])
         )
         db_session.execute(stmt)
         # Caller is responsible for commit — allows batching with other operations
