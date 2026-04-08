@@ -20,7 +20,8 @@ from app.algorithms.config_algorithms import recovery_config
 from app.algorithms.recovery import calculate_hrv_cv, calculate_rmssd, calculate_sdnn
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, DataSource, EventRecord, SleepDetails
+from app.models import DataPointSeries, EventRecord
+from app.repositories import DataPointSeriesRepository, EventRecordRepository
 from app.schemas.enums import SeriesType, get_series_type_id
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity.recovery import DailyHrvScore, HrvCvScoreResult
@@ -44,6 +45,8 @@ class RecoveryScoreService:
 
     def __init__(self, log: Logger):
         self.logger = log
+        self._data_point_repo = DataPointSeriesRepository(DataPointSeries)
+        self._event_record_repo = EventRecordRepository(EventRecord)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -67,24 +70,8 @@ class RecoveryScoreService:
         start_dt: datetime,
         end_dt: datetime,
     ) -> list[tuple[datetime, float]]:
-        """Query raw (recorded_at, value) pairs from DataPointSeries.
-
-        Filters by user (via DataSource), series type, and half-open interval
-        [start_dt, end_dt).
-        """
-        results = (
-            db_session.query(DataPointSeries.recorded_at, DataPointSeries.value)
-            .join(DataSource, DataPointSeries.data_source_id == DataSource.id)
-            .filter(
-                DataSource.user_id == user_id,
-                DataPointSeries.series_type_definition_id == type_id,
-                DataPointSeries.recorded_at >= start_dt,
-                DataPointSeries.recorded_at < end_dt,
-            )
-            .order_by(DataPointSeries.recorded_at)
-            .all()
-        )
-        return [(row.recorded_at, float(row.value)) for row in results]
+        """Query raw (recorded_at, value) pairs from DataPointSeries via the repository."""
+        return self._data_point_repo.query_series(db_session, user_id, type_id, start_dt, end_dt)
 
     def _extract_asleep_windows(
         self,
@@ -96,24 +83,13 @@ class RecoveryScoreService:
     ) -> list[tuple[datetime, datetime]]:
         """Return time windows during which the user was in an allowed sleep stage.
 
-        Queries all sleep EventRecords overlapping [start_dt, end_dt) and extracts
-        stage-level windows from SleepDetails.sleep_stages JSONB.
+        Fetches sleep EventRecords overlapping [start_dt, end_dt) via the repository
+        and extracts stage-level windows from SleepDetails.sleep_stages JSONB.
 
         If a session has no stage data, its full session window is used as a single
         asleep window (conservative fallback).
         """
-        records = (
-            db_session.query(EventRecord, SleepDetails)
-            .join(DataSource, EventRecord.data_source_id == DataSource.id)
-            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
-            .filter(
-                DataSource.user_id == user_id,
-                EventRecord.category == "sleep",
-                EventRecord.end_datetime >= start_dt,
-                EventRecord.start_datetime < end_dt,
-            )
-            .all()
-        )
+        records = self._event_record_repo.get_sleep_records_with_details(db_session, user_id, start_dt, end_dt)
 
         windows: list[tuple[datetime, datetime]] = []
 
