@@ -1,10 +1,12 @@
 from uuid import UUID
 
 from sqlalchemy import and_, desc
+from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
 from app.models import DataSource, HealthScore
 from app.repositories.repositories import CrudRepository
+from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 
 
@@ -52,3 +54,57 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             .all()
         )
         return results, total_count
+
+    def bulk_create(self, db_session: DbSession, creators: list[HealthScoreCreate]) -> None:
+        """Bulk insert health scores, updating on conflict with the unique constraint."""
+        if not creators:
+            return
+
+        values = [c.model_dump() for c in creators]
+
+        stmt = insert(HealthScore).values(values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["data_source_id", "category", "recorded_at"],
+            set_={
+                "value": stmt.excluded.value,
+                "qualifier": stmt.excluded.qualifier,
+                "components": stmt.excluded.components,
+                "provider": stmt.excluded.provider,
+                "zone_offset": stmt.excluded.zone_offset,
+            },
+        )
+        db_session.execute(stmt)
+        # Caller is responsible for commit — allows batching with other operations
+
+    def get_latest_by_category(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        category: HealthScoreCategory,
+    ) -> HealthScore | None:
+        """Return the most recent health score for a given category and user."""
+        return (
+            db_session.query(HealthScore)
+            .join(DataSource, HealthScore.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, HealthScore.category == category)
+            .order_by(desc(HealthScore.recorded_at))
+            .first()
+        )
+
+    def get_latest_per_category(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+    ) -> list[HealthScore]:
+        """Return the most recent score for each category for a given user.
+
+        Uses PostgreSQL DISTINCT ON (category) for efficiency.
+        """
+        return (
+            db_session.query(HealthScore)
+            .join(DataSource, HealthScore.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .distinct(HealthScore.category)
+            .order_by(HealthScore.category, desc(HealthScore.recorded_at))
+            .all()
+        )

@@ -4,6 +4,7 @@ from uuid import UUID
 from app.database import DbSession
 from app.models import HealthScore
 from app.repositories import HealthScoreRepository
+from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
 from app.services.services import AppService
 
@@ -21,6 +22,24 @@ class HealthScoreService(
 
     def get_by_any_component(self, db_session: DbSession, components: list[str]) -> list[HealthScore]:
         return self.crud.get_by_any_component(db_session, components)
+
+    def bulk_create(self, db_session: DbSession, scores: list[HealthScoreCreate]) -> None:
+        self.crud.bulk_create(db_session, scores)
+
+    def get_latest_by_category(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        category: HealthScoreCategory,
+    ) -> HealthScore | None:
+        return self.crud.get_latest_by_category(db_session, user_id, category)
+
+    def get_latest_per_category(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+    ) -> list[HealthScore]:
+        return self.crud.get_latest_per_category(db_session, user_id)
 
     def get_scores_with_filters(
         self,
