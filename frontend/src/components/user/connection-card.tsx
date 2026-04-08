@@ -241,11 +241,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                 <span>Data scope</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              align="start"
-              className="max-w-sm"
-            >
+            <TooltipContent side="bottom" align="start" className="max-w-sm">
               <div className="flex flex-wrap gap-1 py-0.5">
                 {scopeItems.map((scopeItem) => (
                   <Badge
@@ -432,69 +428,69 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             {(connection.max_historical_days === null ||
               connection.max_historical_days === undefined) &&
               !isPermanentlyFailed && (
-              <>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      disabled={isSyncingHistorical}
-                    >
-                      {isSyncingHistorical ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        <>
-                          <History className="h-4 w-4" />
-                          Sync History
-                          <ChevronDown className="h-3 w-3 ml-auto opacity-60" />
-                        </>
-                      )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => syncHistorical(7)}>
-                      Last 7 days
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => syncHistorical(30)}>
-                      Last 30 days
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => syncHistorical(90)}>
-                      Last 3 months
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => syncHistorical(180)}>
-                      Last 6 months
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => syncHistorical(365)}>
-                      Last year
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={isSyncingHistorical}
+                      >
+                        {isSyncingHistorical ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <History className="h-4 w-4" />
+                            Sync History
+                            <ChevronDown className="h-3 w-3 ml-auto opacity-60" />
+                          </>
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => syncHistorical(7)}>
+                        Last 7 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(30)}>
+                        Last 30 days
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(90)}>
+                        Last 3 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(180)}>
+                        Last 6 months
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => syncHistorical(365)}>
+                        Last year
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => synchronizeDataFromProvider()}
-                  disabled={isSynchronizing}
-                >
-                  {isSynchronizing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Syncing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4" />
-                      Force Live Sync
-                    </>
-                  )}
-                </Button>
-              </>
-            )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => synchronizeDataFromProvider()}
+                    disabled={isSynchronizing}
+                  >
+                    {isSynchronizing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Syncing...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        Force Live Sync
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
           </div>
         )}
       </CardContent>
