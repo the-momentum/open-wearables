@@ -77,9 +77,7 @@ def sync_vendor_data(
             # Only sync providers that support REST polling (pull-based).
             # Push-only providers (Garmin webhooks, Apple/Google/Samsung SDK) deliver
             # data via process_payload and should not be polled here.
-            connections = [
-                c for c in connections if factory.get_provider(c.provider).capabilities.supports_pull
-            ]
+            connections = [c for c in connections if factory.get_provider(c.provider).capabilities.supports_pull]
 
             if not connections:
                 log_structured(
