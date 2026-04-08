@@ -31,7 +31,7 @@ const menuItems = [
   },
   {
     title: 'Documentation',
-    url: 'https://docs.openwearables.io/',
+    url: 'https://openwearables.io/docs',
     icon: FileText,
     external: true,
   },

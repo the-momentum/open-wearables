@@ -121,29 +121,6 @@ def sample_suunto_samples() -> dict:
 
 
 @pytest.fixture
-def sample_apple_auto_export_workout() -> dict:
-    """Sample Apple Auto Export workout JSON data."""
-    return {
-        "id": "apple-workout-123",
-        "name": "Running",
-        "start": "2024-01-15T08:00:00-05:00",
-        "end": "2024-01-15T09:00:00-05:00",
-        "duration": 3600.0,
-        "distance": {"qty": 10000.0, "units": "m"},
-        "activeEnergy": {"qty": 650.0, "units": "kcal"},
-        "heartRateData": [
-            {"date": "2024-01-15T08:00:00-05:00", "qty": 120.0},
-            {"date": "2024-01-15T08:01:00-05:00", "qty": 135.0},
-            {"date": "2024-01-15T08:02:00-05:00", "qty": 145.0},
-        ],
-        "stepCount": [
-            {"date": "2024-01-15T08:00:00-05:00", "qty": 100.0},
-            {"date": "2024-01-15T08:01:00-05:00", "qty": 95.0},
-        ],
-    }
-
-
-@pytest.fixture
 def sample_apple_healthkit_workout() -> dict:
     """Sample Apple HealthKit workout JSON data."""
     return {

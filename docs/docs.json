@@ -39,6 +39,12 @@
             ]
           },
           {
+            "group": "Open Wearables Mobile App",
+            "pages": [
+              "app/introduction"
+            ]
+          },
+          {
             "group": "Sync SDK",
             "pages": [
               "sdk/index",
@@ -62,8 +68,8 @@
                 "group": "Flutter",
                 "pages": [
                   "sdk/flutter/index",
-                  "sdk/flutter/example-app",
                   "sdk/flutter/integration",
+                  "sdk/flutter/example-app",
                   "sdk/flutter/troubleshooting"
                 ]
               },
@@ -71,8 +77,8 @@
                 "group": "React Native",
                 "pages": [
                   "sdk/react-native/index",
-                  "sdk/react-native/example-app",
                   "sdk/react-native/integration",
+                  "sdk/react-native/example-app",
                   "sdk/react-native/troubleshooting"
                 ]
               }

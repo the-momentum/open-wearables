@@ -8,6 +8,7 @@ from .device_type import (
     infer_device_type_from_model,
     infer_device_type_from_source_name,
 )
+from .health_score_category import HealthScoreCategory
 from .provider import (
     DEFAULT_PROVIDER_PRIORITY,
     ProviderName,
@@ -42,4 +43,5 @@ __all__ = [
     "WORKOUTS_WITH_PACE",
     "ProviderName",
     "DEFAULT_PROVIDER_PRIORITY",
+    "HealthScoreCategory",
 ]
