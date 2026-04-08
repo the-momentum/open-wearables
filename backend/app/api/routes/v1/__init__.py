@@ -9,8 +9,8 @@ from .dashboard import router as dashboard_router
 from .data_sources import router as data_sources_router
 from .developers import router as developers_router
 from .events import router as events_router
-from .health_scores import router as health_scores_router
 from .garmin_webhooks import router as garmin_webhooks_router
+from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
