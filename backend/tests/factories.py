@@ -499,11 +499,13 @@ class HealthScoreFactory(BaseFactory):
 
     @classmethod
     def _create(cls, model_class: type[HealthScore], *args: Any, **kwargs: Any) -> HealthScore:
-        data_source = kwargs.pop("data_source", None)
-        kwargs.pop("data_source_id", None)
-        if data_source is None:
-            data_source = DataSourceFactory()
-        kwargs["data_source_id"] = data_source.id
+        if "data_source_id" in kwargs:
+            kwargs.pop("data_source", None)
+        else:
+            data_source = kwargs.pop("data_source", None)
+            if data_source is None:
+                data_source = DataSourceFactory()
+            kwargs["data_source_id"] = data_source.id
         return super()._create(model_class, *args, **kwargs)
 
 

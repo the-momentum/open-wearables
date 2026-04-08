@@ -10,11 +10,12 @@ Tests cover:
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.schemas.enums import HealthScoreCategory, ProviderName
-from app.schemas.model_crud.activities import HealthScoreQueryParams
+from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams
 from app.services.health_score_service import health_score_service
 from tests.factories import DataSourceFactory, HealthScoreFactory, UserFactory
 
@@ -99,10 +100,6 @@ class TestHealthScoreServiceLatest:
 
 class TestHealthScoreServiceBulkCreate:
     def test_bulk_create(self, db: Session) -> None:
-        from uuid import uuid4
-
-        from app.schemas.model_crud.activities import HealthScoreCreate
-
         data_source = DataSourceFactory()
         now = datetime.now(timezone.utc)
         scores = [
