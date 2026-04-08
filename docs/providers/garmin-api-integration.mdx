@@ -112,6 +112,10 @@ Once you get access to the Developer Portal, you’ll find the full docs, includ
     https://<your-ngrok-id>.ngrok-free.app/api/v1/garmin/webhooks/push
     ```
 
+    <Warning>
+    **Paid ngrok plan required.** The free ngrok plan shows an [interstitial page](https://ngrok.com/docs/pricing-limits/free-plan-limits#removing-the-interstitial-page) before forwarding requests. This breaks Garmin webhook delivery and OAuth callbacks. You need a paid ngrok plan to remove the interstitial.
+    </Warning>
+
     - Set delivery type to **push** (dropdown on the right)
     - Check **enabled** for each endpoint you want to activate
     - All endpoints use the **same URL** — Garmin distinguishes data types internally and sends the appropriate payload to this single endpoint

@@ -5,6 +5,10 @@ description: "Quick setup guide for testing webhooks, OAuth flows (Garmin), and 
 
 When testing webhooks (Garmin OAuth callback, Garmin data push) or the Apple Health SDK, you need to expose your local backend to the internet. ngrok provides a simple solution with minimal configuration.
 
+<Warning>
+**Paid ngrok plan required.** The free ngrok plan shows an [interstitial page](https://ngrok.com/docs/pricing-limits/free-plan-limits#removing-the-interstitial-page) before forwarding requests. This breaks webhook delivery and OAuth callbacks because the provider never reaches your backend. You need a paid ngrok plan to remove the interstitial.
+</Warning>
+
 <Note>
 Why might ngrok be needed for the OAuth flow? Because Garmin's OAuth callback requires HTTPS. Other currently supported cloud providers work with HTTP, so localhost is fine.
 </Note>
