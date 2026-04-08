@@ -83,4 +83,8 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+
+  // Seed data endpoints
+  seedGenerate: '/api/v1/settings/seed',
+  seedPresets: '/api/v1/settings/seed/presets',
 } as const;

@@ -152,4 +152,9 @@ export const queryKeys = {
     lists: () => [...queryKeys.invitations.all, 'list'] as const,
     list: () => [...queryKeys.invitations.lists()] as const,
   },
+
+  seedData: {
+    all: ['seedData'] as const,
+    presets: () => [...queryKeys.seedData.all, 'presets'] as const,
+  },
 } as const;
