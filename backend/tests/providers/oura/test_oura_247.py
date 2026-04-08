@@ -114,7 +114,8 @@ class TestOura247ReadinessNormalization:
 
     def test_normalize_readiness_score(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
+        recovery_metrics, health_scores = data_247.normalize_readiness([sample_oura_readiness], user_id)
+        result = recovery_metrics[0]
 
         assert result["recovery_score"] == 82
         assert result["provider"] == "oura"
@@ -122,13 +123,13 @@ class TestOura247ReadinessNormalization:
 
     def test_normalize_readiness_temperature(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
-        assert result["temperature_deviation"] == 0.15
+        recovery_metrics, _ = data_247.normalize_readiness([sample_oura_readiness], user_id)
+        assert recovery_metrics[0]["temperature_deviation"] == 0.15
 
     def test_normalize_readiness_timestamp(self, data_247: Oura247Data, sample_oura_readiness: dict) -> None:
         user_id = uuid4()
-        result = data_247.normalize_readiness([sample_oura_readiness], user_id)[0]
-        assert result["timestamp"] is not None
+        recovery_metrics, _ = data_247.normalize_readiness([sample_oura_readiness], user_id)
+        assert recovery_metrics[0]["timestamp"] is not None
 
 
 class TestOura247ActivityNormalization:
