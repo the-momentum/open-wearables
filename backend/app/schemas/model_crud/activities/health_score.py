@@ -41,6 +41,16 @@ class HealthScoreCreate(HealthScoreBase):
 class HealthScoreUpdate(HealthScoreBase): ...
 
 
+class HealthScoreQueryParams(BaseModel):
+    start_datetime: datetime | None = None
+    end_datetime: datetime | None = None
+    category: HealthScoreCategory | None = None
+    provider: ProviderName | None = None
+    data_source_id: UUID | None = None
+    limit: int = Field(50, ge=1, le=1000)
+    offset: int = Field(0, ge=0)
+
+
 class HealthScoreResponse(HealthScoreBase):
     model_config = ConfigDict(from_attributes=True)
 

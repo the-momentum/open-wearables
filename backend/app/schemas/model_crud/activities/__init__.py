@@ -24,6 +24,7 @@ from .event_record_detail import (
 from .health_score import (
     HealthScoreBase,
     HealthScoreCreate,
+    HealthScoreQueryParams,
     HealthScoreResponse,
     HealthScoreUpdate,
     ScoreComponent,
@@ -70,4 +71,5 @@ __all__ = [
     "HealthScoreCreate",
     "HealthScoreUpdate",
     "HealthScoreResponse",
+    "HealthScoreQueryParams",
 ]
