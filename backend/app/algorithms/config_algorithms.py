@@ -1,6 +1,8 @@
 """Default configuration values for health score algorithms."""
 
-from pydantic import BaseModel
+from typing import Self
+
+from pydantic import BaseModel, model_validator
 
 # SLEEP SCORE
 
@@ -12,6 +14,14 @@ class SleepScoreConfig(BaseModel):
     stages_impact: float = 0.20
     consistency_impact: float = 0.20
     interruptions_impact: float = 0.20
+
+    @model_validator(mode="after")
+    def validate_impacts_sum_to_one(self) -> Self:
+        total = self.duration_impact + self.stages_impact + self.consistency_impact + self.interruptions_impact
+        if abs(total - 1.0) > 1e-9:
+            msg = f"Pillar impacts must sum to 1.0, got {total}"
+            raise ValueError(msg)
+        return self
 
     # SLEEP DURATION
     optimal_min_hours: float = 7.0

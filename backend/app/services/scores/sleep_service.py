@@ -7,7 +7,7 @@ four-pillar algorithm (duration, stages, consistency, interruptions):
 - SleepScoreService.get_sleep_score_for_user – DB-backed; fetches data from the database
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
@@ -33,6 +33,23 @@ class SleepScoreService:
     def __init__(self, log: Logger):
         self.logger = log
         self.event_record_repo = EventRecordRepository(EventRecord)
+
+    @staticmethod
+    def _apply_zone_offset(dt: datetime, zone_offset: str | None) -> datetime:
+        """Return dt converted to local time using the stored zone_offset string.
+
+        Falls back to the original value when zone_offset is unavailable so that
+        providers that omit it continue to work unchanged.
+        """
+        if zone_offset is None:
+            return dt
+        sign = 1 if zone_offset[0] == "+" else -1
+        hours, minutes = int(zone_offset[1:3]), int(zone_offset[4:6])
+        offset = timedelta(hours=sign * hours, minutes=sign * minutes)
+        tz = timezone(offset)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(tz)
 
     def _convert_stages_to_duration_blocks(
         self,
@@ -169,11 +186,11 @@ class SleepScoreService:
             str(user_id),
         )
 
-        # Keep non-nap sessions that actually started on sleep_date.
+        # Keep non-nap sessions that actually started on sleep_date (local time).
         sessions = [
             (record, detail)
             for record, _ in records
-            if record.start_datetime.date() == sleep_date
+            if self._apply_zone_offset(record.start_datetime, record.zone_offset).date() == sleep_date
             and isinstance((detail := record.detail), SleepDetails)
             and not detail.is_nap
         ]
@@ -193,7 +210,9 @@ class SleepScoreService:
                 end_datetime=day_start,
                 sort_by="start_datetime",
                 sort_order="desc",
-                limit=sleep_config.rolling_window_nights + 5,
+                # Use a generous multiplier so deduplication always has enough
+                # raw records even when multiple sources sync the same night.
+                limit=sleep_config.rolling_window_nights * 4,
             ),
             str(user_id),
         )
@@ -210,10 +229,11 @@ class SleepScoreService:
         historical_bedtimes: list[datetime] = []
         for r, _ in hist_records:
             if isinstance(r.detail, SleepDetails) and not r.detail.is_nap:
-                night = r.start_datetime.date()
+                local_start = self._apply_zone_offset(r.start_datetime, r.zone_offset)
+                night = local_start.date()
                 if night not in seen_nights:
                     seen_nights.add(night)
-                    historical_bedtimes.append(r.start_datetime)
+                    historical_bedtimes.append(local_start)
             if len(historical_bedtimes) >= sleep_config.rolling_window_nights:
                 break
 
@@ -233,7 +253,7 @@ class SleepScoreService:
             deep_minutes=float(detail.sleep_deep_minutes or 0),
             rem_minutes=float(detail.sleep_rem_minutes or 0),
             awake_minutes=float(detail.sleep_awake_minutes or 0),
-            session_start=record.start_datetime,
+            session_start=self._apply_zone_offset(record.start_datetime, record.zone_offset),
             historical_bedtimes=historical_bedtimes,
             sleep_stages=sleep_stages,
         )

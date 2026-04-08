@@ -52,18 +52,18 @@ def _score_duration_hours(
         return score_bounds.max
 
     if duration_hours < config.optimal_min_hours:
-        return int(
-            score_sigmoid(
-                duration_hours,
-                k=-config.undersleep_k,
-                base=score_bounds.max,
-                midpoint=config.undersleep_midpoint,
-                anchor=config.optimal_min_hours,
-            )
+        raw = score_sigmoid(
+            duration_hours,
+            k=-config.undersleep_k,
+            base=score_bounds.max,
+            midpoint=config.undersleep_midpoint,
+            anchor=config.optimal_min_hours,
         )
+        return max(score_bounds.min, min(score_bounds.max, int(raw)))
 
-    return max(
-        int(score_bounds.max / 2),
+    oversleep_floor = max(score_bounds.min, int(score_bounds.max / 2))
+    oversleep_raw = min(
+        score_bounds.max,
         int(
             score_sigmoid(
                 duration_hours,
@@ -74,6 +74,7 @@ def _score_duration_hours(
             )
         ),
     )
+    return max(oversleep_floor, oversleep_raw)
 
 
 def calculate_duration_score(day_start_iso: str, day_end_iso: str, awake_minutes: float = 0.0) -> int:
@@ -155,17 +156,21 @@ def calculate_interruptions_score(
     config: SleepScoreConfig = sleep_config,
 ) -> int:
     """Calculate an interruptions score based on WASO and awakening frequency."""
-    duration_score = config.duration_weight_points
+    # Scale weight points proportionally to score_bounds.max so the result stays
+    # within bounds regardless of the configured scale (e.g. ScoreBounds(0, 50)).
+    scale = score_bounds.max / 100.0
+    dur_full = config.duration_weight_points * scale
+    freq_full = config.frequency_weight_points * scale
+
+    duration_score = dur_full
     if total_awake_minutes > config.interruptions_grace_period_mins:
         excess_awake_mins = total_awake_minutes - config.interruptions_grace_period_mins
         penalty_ratio = excess_awake_mins / config.max_penalty_window_mins
-        duration_penalty = penalty_ratio * config.duration_weight_points
-        duration_score = max(score_bounds.min, config.duration_weight_points - duration_penalty)
+        duration_penalty = penalty_ratio * dur_full
+        duration_score = max(score_bounds.min, dur_full - duration_penalty)
 
     n = sum(1 for d in awakening_durations if d > config.significant_wake_threshold_mins)
-    freq_score = (
-        config.frequency_weight_points * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
-    )
+    freq_score = freq_full * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
 
     return max(score_bounds.min, min(score_bounds.max, int(duration_score + freq_score)))
 
