@@ -247,12 +247,13 @@ class Garmin247Data(Base247DataTemplate):
 
         # Extract sleep score if available
         sleep_score = None
+        sleep_qualifier = None
         overall_score = raw_sleep.get("overallSleepScore")
         if overall_score and isinstance(overall_score, dict):
             sleep_score = overall_score.get("value")
             sleep_qualifier = overall_score.get("qualifier")
 
-        sleep_scores = raw_sleep.get("sleepScores", [])
+        sleep_scores = raw_sleep.get("sleepScores") or {}
         sleep_score_components = {
             key: ScoreComponent(qualifier=value.get("qualifierKey")) for key, value in sleep_scores.items()
         }
@@ -405,7 +406,8 @@ class Garmin247Data(Base247DataTemplate):
             return scores
 
         avg_stress = normalized_daily.get("avg_stress")
-        stress_qualifier = normalized_daily.get("stress_qualifier", "").replace("_", " ").title()
+        raw_qualifier = normalized_daily.get("stress_qualifier")
+        stress_qualifier = raw_qualifier.replace("_", " ").title() if raw_qualifier else None
         # averageStressLevel is -1 when there is not enough data to calculate
         if avg_stress is not None and avg_stress != -1:
             scores.append(
