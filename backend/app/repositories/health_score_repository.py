@@ -49,7 +49,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if not creators:
             return
 
-        values = [c.model_dump(mode="json") for c in creators]
+        values = [c.model_dump() for c in creators]
 
         stmt = (
             insert(HealthScore)
