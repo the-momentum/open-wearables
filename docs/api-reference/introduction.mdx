@@ -59,6 +59,7 @@ For production deployments, replace with your server URL.
 | List providers | GET | `/api/v1/oauth/providers` |
 | OAuth authorize | GET | `/api/v1/oauth/{provider}/authorize?user_id={user_id}` |
 | Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
+| Historical sync | POST | `/api/v1/providers/{provider}/users/{user_id}/sync/historical` |
 | Get provider workouts | GET | `/api/v1/providers/{provider}/users/{user_id}/workouts` |
 
 ## Authentication

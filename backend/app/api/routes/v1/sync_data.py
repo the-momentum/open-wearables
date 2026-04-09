@@ -331,15 +331,16 @@ def sync_historical_data(
         ),
     ] = DEFAULT_HISTORICAL_DAYS,
 ) -> dict[str, Any]:
-    """Trigger a historical data sync for a user's connected provider.
+    """Trigger a historical sync of the user's data from a connected provider.
 
     - **Garmin**: Triggers a 30-day webhook-based backfill (Garmin limits
       historical access to 30 days before the user's consent/connection date).
     - **Other providers**: Dispatches an async pull-API sync with the
       requested date range.
 
-    This is user-initiated and separate from the live sync that starts
-    at pairing time. Use when the user explicitly wants past data.
+    Historical sync is not automatically triggered when a provider is
+    connected - it must be explicitly requested via this endpoint.
+    (Changed in v0.4.2.)
     """
     strategy = factory.get_provider(provider.value)
     caps = strategy.capabilities
