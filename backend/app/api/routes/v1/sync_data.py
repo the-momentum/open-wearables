@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, Query, status
@@ -19,12 +19,30 @@ from app.integrations.celery.tasks import (
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
-from app.services.providers.templates.base_247_data import Base247DataTemplate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 factory = ProviderFactory()
+DEFAULT_HISTORICAL_DAYS = 90
+
+
+def _queue_pull_sync(
+    user_id: UUID,
+    provider_value: str,
+    start_date: str | None,
+    end_date: str | None,
+    *,
+    is_historical: bool = False,
+) -> Any:
+    """Enqueue a pull-API sync task and return the Celery AsyncResult."""
+    return sync_vendor_data.delay(
+        user_id=str(user_id),
+        start_date=start_date,
+        end_date=end_date,
+        providers=[provider_value],
+        is_historical=is_historical,
+    )
 
 
 class SyncDataType(str, Enum):
@@ -102,34 +120,22 @@ def sync_user_data(
 
     Requires valid API key and active connection for the user.
     """
-    # Async mode: dispatch to Celery and return immediately
     if run_async:
-        # Convert since timestamp to ISO date if provided
-        start_date_iso = None
+        start_date_iso: str | None = None
         if since > 0:
             start_date_iso = datetime.fromtimestamp(since).isoformat()
         elif summary_start_time:
             start_date_iso = summary_start_time
 
-        end_date_iso = summary_end_time  # May be None
-
-        task = sync_vendor_data.delay(
-            user_id=str(user_id),
-            start_date=start_date_iso,
-            end_date=end_date_iso,
-            providers=[provider.value],
-        )
-
-        response: dict[str, Any] = {
+        task = _queue_pull_sync(user_id, provider.value, start_date_iso, summary_end_time)
+        return {
             "success": True,
             "async": True,
             "task_id": task.id,
             "message": f"Sync task queued for {provider.value}. Check task status for results.",
         }
 
-        return response
-
-    # Synchronous mode (original behavior)
+    # Synchronous mode
     strategy = factory.get_provider(provider.value)
 
     results: dict[str, Any] = {}
@@ -157,32 +163,14 @@ def sync_user_data(
                 detail=f"Provider '{provider.value}' does not support workouts",
             )
 
-    # Sync 247 data if requested (Suunto-specific)
     if data_type in (SyncDataType.DATA_247, SyncDataType.ALL):
         if strategy.data_247:
-            data_provider = cast(Base247DataTemplate, strategy.data_247)
-            start_dt = datetime.now() - timedelta(days=30)
+            start_dt = datetime.fromtimestamp(since) if since else datetime.now() - timedelta(days=30)
             end_dt = datetime.now()
-
-            if since:
-                start_dt = datetime.fromtimestamp(since)
-
-            # Use load_and_save_all if available (Suunto), otherwise fallback to load_all_247_data
-            provider_any = cast(Any, data_provider)
-            if hasattr(provider_any, "load_and_save_all"):
-                results["data_247"] = provider_any.load_and_save_all(
-                    db,
-                    user_id,
-                    start_time=start_dt,
-                    end_time=end_dt,
-                )
-            else:
-                results["data_247"] = provider_any.load_all_247_data(
-                    db,
-                    user_id,
-                    start_time=start_dt,
-                    end_time=end_dt,
-                )
+            load_fn = getattr(strategy.data_247, "load_and_save_all", None) or getattr(
+                strategy.data_247, "load_all_247_data"
+            )
+            results["data_247"] = load_fn(db, user_id, start_time=start_dt, end_time=end_dt)
         elif data_type == SyncDataType.DATA_247:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -313,8 +301,6 @@ def retry_garmin_backfill_type(
 # Historical Sync — user-initiated, provider-agnostic
 # =============================================================================
 
-DEFAULT_HISTORICAL_DAYS = 90
-
 
 @router.post("/{provider}/users/{user_id}/sync/historical")
 def sync_historical_data(
@@ -366,11 +352,11 @@ def sync_historical_data(
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
-    task = sync_vendor_data.delay(
-        user_id=str(user_id),
-        start_date=start_date.isoformat(),
-        end_date=end_date.isoformat(),
-        providers=[provider.value],
+    task = _queue_pull_sync(
+        user_id,
+        provider.value,
+        start_date.isoformat(),
+        end_date.isoformat(),
         is_historical=True,
     )
 
