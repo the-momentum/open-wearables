@@ -7,5 +7,6 @@ class HealthScoreCategory(StrEnum):
     READINESS = "readiness"
     ACTIVITY = "activity"
     STRESS = "stress"
+    RESILIENCE = "resilience"
     BODY_BATTERY = "body_battery"
     STRAIN = "strain"

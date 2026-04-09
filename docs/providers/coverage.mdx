@@ -14,6 +14,7 @@ This guide provides a comprehensive overview of data type support across all int
 | **Sleep** | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **24/7 Data** | ✅ | ✅ | ❌ | ✅ | ✅ | ◐ | ✅ | ❌ |
 | **Timeseries** | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **Health Scores** | ❌ | 🔜 | ❌ | ❌ | ✅ | 🔜 | ❌ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Fully implemented and collecting data
@@ -223,6 +224,31 @@ All providers that support workouts provide these common fields:
 <Note>
   Workout types are normalized to a unified taxonomy. See [Data Types](/architecture/data-types#workout-types) for the full list of supported workout types.
 </Note>
+
+---
+
+## Health Scores Coverage
+
+Health scores are composite metrics that summarize a specific aspect of health into a single number. Open Wearables persists scores natively reported by providers and additionally calculates its own provider-independent scores from raw data.
+
+| Score | Internal | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|-------|:--------:|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| Sleep score | 🔜 | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Readiness score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Activity score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Recovery score | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Resilience score | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Stress score | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Body battery | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Strain score | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+<Note>
+  **Internal scores** are calculated by Open Wearables from raw data, independent of any provider. They are available for any provider that reports the required underlying data.
+</Note>
+
+<Info>
+  🔜 = Coming soon. For provider columns: score is exposed in the provider API but ingestion is not yet implemented. For the Internal column: Open Wearables-calculated score is planned but not yet implemented.
+</Info>
 
 ---
 
