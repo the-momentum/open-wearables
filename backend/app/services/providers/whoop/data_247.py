@@ -304,23 +304,98 @@ class Whoop247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> int:
-        """Load sleep data from API and save to database."""
+        """Load sleep data from API and save to database using batch creation."""
         raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
-        count = 0
+        items: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
+                pair = self._build_sleep_record_pair(user_id, normalized)
+                if pair is not None:
+                    items.append(pair)
             except Exception as e:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Failed to save sleep data: {e}",
+                    f"Failed to normalize sleep data: {e}",
                     provider="whoop",
                     task="load_and_save_sleep",
                 )
-        return count
+        return event_record_service.create_or_merge_sleep_batch(
+            db, user_id, items, settings.sleep_end_gap_minutes,
+        )
+
+    def _build_sleep_record_pair(
+        self,
+        user_id: UUID,
+        normalized_sleep: dict[str, Any],
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate] | None:
+        """Build an (EventRecordCreate, EventRecordDetailCreate) pair from normalized sleep data."""
+        sleep_id = normalized_sleep["id"]
+
+        start_dt = None
+        end_dt = None
+        if normalized_sleep.get("start_time"):
+            start_time = normalized_sleep["start_time"]
+            if isinstance(start_time, str):
+                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            elif isinstance(start_time, datetime):
+                start_dt = start_time
+
+        if normalized_sleep.get("end_time"):
+            end_time = normalized_sleep["end_time"]
+            if isinstance(end_time, str):
+                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            elif isinstance(end_time, datetime):
+                end_dt = end_time
+
+        if not start_dt or not end_dt:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Skipping sleep record {sleep_id}: missing start/end time",
+                provider="whoop",
+                task="save_sleep_data",
+            )
+            return None
+
+        record = EventRecordCreate(
+            id=sleep_id,
+            category="sleep",
+            type="sleep_session",
+            source_name="Whoop",
+            device_model=None,
+            duration_seconds=normalized_sleep.get("duration_seconds"),
+            start_datetime=start_dt,
+            end_datetime=end_dt,
+            zone_offset=normalized_sleep.get("zone_offset"),
+            external_id=str(normalized_sleep.get("whoop_sleep_id")) if normalized_sleep.get("whoop_sleep_id") else None,
+            source=self.provider_name,
+            user_id=user_id,
+        )
+
+        stages = normalized_sleep.get("stages", {})
+        total_sleep_seconds = (
+            stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+        )
+        total_sleep_minutes = total_sleep_seconds // 60
+        time_in_bed_minutes = normalized_sleep.get("duration_seconds", 0) // 60
+
+        detail = EventRecordDetailCreate(
+            record_id=sleep_id,
+            sleep_total_duration_minutes=total_sleep_minutes,
+            sleep_time_in_bed_minutes=time_in_bed_minutes,
+            sleep_efficiency_score=Decimal(str(normalized_sleep.get("efficiency_percent", 0)))
+            if normalized_sleep.get("efficiency_percent") is not None
+            else None,
+            sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
+            sleep_light_minutes=stages.get("light_seconds", 0) // 60,
+            sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
+            sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
+            is_nap=normalized_sleep.get("is_nap", False),
+        )
+
+        return record, detail
 
     def load_and_save_all(
         self,

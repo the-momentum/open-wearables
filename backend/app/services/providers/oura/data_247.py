@@ -501,8 +501,14 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_items: list[dict[str, Any]],
     ) -> int:
-        """Save normalized sleep data to database as EventRecord with SleepDetails."""
-        count = 0
+        """Save normalized sleep data using batch creation to avoid N+1 queries.
+
+        Collects all (record, detail) pairs first, then delegates to
+        create_or_merge_sleep_batch which resolves data sources and detects
+        adjacents in bulk.
+        """
+        items: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
+
         for normalized_sleep in normalized_items:
             sleep_id = normalized_sleep["id"]
 
@@ -570,19 +576,11 @@ class Oura247Data(Base247DataTemplate):
                 sleep_stages=normalized_sleep.get("stage_timestamps", []),
             )
 
-            try:
-                event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
-                count += 1
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "error",
-                    "Error saving sleep record",
-                    action="oura_sleep_save_error",
-                    sleep_id=str(sleep_id),
-                    error=str(e),
-                )
-        return count
+            items.append((record, detail))
+
+        return event_record_service.create_or_merge_sleep_batch(
+            db, user_id, items, settings.sleep_end_gap_minutes,
+        )
 
     # -------------------------------------------------------------------------
     # Daily SpO2 Data

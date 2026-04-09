@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
@@ -311,6 +311,107 @@ class EventRecordService(
         )
         db_session.commit()
         return created_record
+
+    def create_or_merge_sleep_batch(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        items: list[tuple[EventRecordCreate, EventRecordDetailCreate]],
+        threshold_minutes: int,
+    ) -> int:
+        """Batch-aware sleep creation that avoids N+1 queries.
+
+        Fetches all potentially adjacent *existing* records in a single query,
+        then also checks for adjacency among the *new* items themselves.
+        Items adjacent to anything (existing DB records OR other new items)
+        are routed through the sequential ``create_or_merge_sleep`` path so
+        the merge logic sees each prior insert.  The remaining independent
+        items are bulk-inserted in one shot.
+
+        Returns the number of records successfully created or merged.
+        """
+        if not items:
+            return 0
+
+        source = items[0][0].source
+        earliest_start = min(r.start_datetime for r, _ in items)
+        latest_end = max(r.end_datetime for r, _ in items)
+
+        # 1. Batch-fetch all existing adjacent sleep records (1 query)
+        existing_records = self.crud.find_all_adjacent_sleep_records(
+            db_session, user_id, earliest_start, latest_end, threshold_minutes, source=source,
+        )
+
+        # 2. Check adjacency against existing DB records AND other new items.
+        #    Sort by start_datetime so the sequential path processes earlier
+        #    sessions first (matching the old loop order).
+        threshold = timedelta(minutes=threshold_minutes)
+        sorted_items = sorted(items, key=lambda pair: pair[0].start_datetime)
+
+        merge_items: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
+        bulk_items: list[tuple[EventRecordCreate, EventRecordDetailCreate]] = []
+
+        # Mark indices that are adjacent to an existing DB record
+        adjacent_to_existing: set[int] = set()
+        for idx, (record, _) in enumerate(sorted_items):
+            if any(
+                existing.start_datetime <= record.end_datetime + threshold
+                and existing.end_datetime >= record.start_datetime - threshold
+                for existing in existing_records
+            ):
+                adjacent_to_existing.add(idx)
+
+        # Mark indices that are adjacent to another *new* item in this batch
+        adjacent_to_sibling: set[int] = set()
+        for i in range(len(sorted_items)):
+            for j in range(i + 1, len(sorted_items)):
+                ri = sorted_items[i][0]
+                rj = sorted_items[j][0]
+                if (
+                    ri.start_datetime <= rj.end_datetime + threshold
+                    and ri.end_datetime >= rj.start_datetime - threshold
+                ):
+                    adjacent_to_sibling.add(i)
+                    adjacent_to_sibling.add(j)
+
+        needs_merge = adjacent_to_existing | adjacent_to_sibling
+        for idx, pair in enumerate(sorted_items):
+            if idx in needs_merge:
+                merge_items.append(pair)
+            else:
+                bulk_items.append(pair)
+
+        count = 0
+
+        # 3. Handle merge cases sequentially so each insert is visible to the next.
+        #    Each create_or_merge_sleep call commits internally, keeping the
+        #    transaction boundaries identical to the old per-item loop.
+        for record, detail in merge_items:
+            try:
+                self.create_or_merge_sleep(db_session, user_id, record, detail, threshold_minutes)
+                count += 1
+            except Exception:
+                self.logger.exception("Failed to merge sleep record %s", record.id)
+
+        # 4. Bulk-insert independent records (uses batch_ensure_data_sources)
+        if bulk_items:
+            bulk_records = [r for r, _ in bulk_items]
+            inserted_ids = self.crud.bulk_create(db_session, bulk_records)
+            inserted_set = set(inserted_ids)
+
+            bulk_details = [
+                d.model_copy(update={"record_id": r.id})
+                for r, d in bulk_items
+                if r.id in inserted_set
+            ]
+            if bulk_details:
+                self.event_record_detail_repo.bulk_create(
+                    db_session, bulk_details, detail_type="sleep",
+                )
+            db_session.commit()
+            count += len(inserted_ids)
+
+        return count
 
     def bulk_create(
         self,
