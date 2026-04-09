@@ -9,7 +9,7 @@ from app.services.sdk_token_service import create_sdk_user_token
 from tests.factories import ApiKeyFactory
 
 USER_ID = "123e4567-e89b-12d3-a456-426614174000"
-ENDPOINT = "/api/v1/sdk/users/{user_id}/logs/"
+ENDPOINT = "/api/v1/sdk/users/{user_id}/logs"
 
 SYNC_START_EVENT = {
     "eventType": "historical_data_sync_start",
