@@ -216,7 +216,7 @@ class Garmin247Data(Base247DataTemplate):
             components=sleep_score_components,
         )
 
-    def normalize_sleep(
+    def normalize_sleep(  # type: ignore[override]
         self,
         raw_sleep: dict[str, Any],
         user_id: UUID,
@@ -253,7 +253,9 @@ class Garmin247Data(Base247DataTemplate):
             sleep_qualifier = overall_score.get("qualifier")
 
         sleep_scores = raw_sleep.get("sleepScores", [])
-        sleep_score_components = {key: ScoreComponent(qualifier=value.get("qualifierKey")) for key, value in sleep_scores.items()}
+        sleep_score_components = {
+            key: ScoreComponent(qualifier=value.get("qualifierKey")) for key, value in sleep_scores.items()
+        }
 
         normalized = {
             "id": uuid4(),
@@ -445,7 +447,6 @@ class Garmin247Data(Base247DataTemplate):
             "stress_qualifier": raw_daily.get("stressQualifier"),
             "moderate_intensity_minutes": (raw_daily.get("moderateIntensityDurationInSeconds") or 0) // 60,
             "vigorous_intensity_minutes": (raw_daily.get("vigorousIntensityDurationInSeconds") or 0) // 60,
-
             "heart_rate_samples": raw_daily.get("timeOffsetHeartRateSamples"),
             "garmin_summary_id": raw_daily.get("summaryId"),
         }
@@ -1792,7 +1793,7 @@ class Garmin247Data(Base247DataTemplate):
         """Use dailies for daily stats."""
         return self.get_dailies_data(db, user_id, start_date, end_date)
 
-    def normalize_daily_activity(
+    def normalize_daily_activity(  # type: ignore[override]
         self,
         raw_stats: dict[str, Any],
         user_id: UUID,

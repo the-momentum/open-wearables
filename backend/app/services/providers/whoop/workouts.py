@@ -212,7 +212,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             components=components or None,
         )
 
-    def _normalize_workout(
+    def _normalize_workout(  # type: ignore[override]
         self,
         raw_workout: WhoopWorkoutJSON,
         user_id: UUID,
