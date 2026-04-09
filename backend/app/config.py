@@ -178,7 +178,7 @@ class Settings(BaseSettings):
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
 
-    def oauth_redirect_uri(self, provider: "ProviderName") -> str:
+    def oauth_redirect_uri(self, provider: ProviderName) -> str:
         """Build OAuth redirect URI for a provider.
 
         Uses the legacy per-provider *_REDIRECT_URI env var if set,
