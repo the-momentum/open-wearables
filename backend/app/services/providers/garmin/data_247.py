@@ -986,7 +986,7 @@ class Garmin247Data(Base247DataTemplate):
         zone_offset = offset_to_iso(raw_stress.get("startTimeOffsetInSeconds"))
 
         # Stress level values (negative values are special states: off-wrist, motion, etc.)
-        stress_values = raw_stress.get("timeOffsetStressLevelValues", {})
+        stress_values = raw_stress.get("timeOffsetStressLevelValues") or raw_stress.get("stressLevelValues", {})
         if stress_values and isinstance(stress_values, dict):
             for offset_str, stress_value in stress_values.items():
                 try:
@@ -1009,7 +1009,7 @@ class Garmin247Data(Base247DataTemplate):
                     pass
 
         # Body battery values
-        battery_values = raw_stress.get("timeOffsetBodyBatteryValues", {})
+        battery_values = raw_stress.get("timeOffsetBodyBatteryValues") or raw_stress.get("bodyBatteryValues", {})
         if battery_values and isinstance(battery_values, dict):
             for offset_str, battery_value in battery_values.items():
                 try:
