@@ -4,7 +4,7 @@ from sqlalchemy import and_, desc
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
-from app.models import DataSource, HealthScore
+from app.models import HealthScore
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
@@ -25,9 +25,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         user_id: UUID,
         params: HealthScoreQueryParams,
     ) -> tuple[list[HealthScore], int]:
-        query = db_session.query(HealthScore).join(DataSource, HealthScore.data_source_id == DataSource.id)
-
-        filters = [DataSource.user_id == user_id]
+        filters = [HealthScore.user_id == user_id]
 
         if params.category:
             filters.append(HealthScore.category == params.category)
@@ -40,7 +38,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if params.end_datetime:
             filters.append(HealthScore.recorded_at < params.end_datetime)
 
-        query = query.filter(and_(*filters))
+        query = db_session.query(HealthScore).filter(and_(*filters))
 
         total_count = query.count()
         results = query.order_by(desc(HealthScore.recorded_at)).offset(params.offset).limit(params.limit).all()
@@ -51,12 +49,12 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         if not creators:
             return
 
-        values = [c.model_dump() for c in creators]
+        values = [c.model_dump(mode="json") for c in creators]
 
         stmt = (
             insert(HealthScore)
             .values(values)
-            .on_conflict_do_nothing(index_elements=["data_source_id", "category", "recorded_at"])
+            .on_conflict_do_nothing(index_elements=["user_id", "provider", "category", "recorded_at"])
         )
         db_session.execute(stmt)
         # Caller is responsible for commit — allows batching with other operations
@@ -70,8 +68,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         """Return the most recent health score for a given category and user."""
         return (
             db_session.query(HealthScore)
-            .join(DataSource, HealthScore.data_source_id == DataSource.id)
-            .filter(DataSource.user_id == user_id, HealthScore.category == category)
+            .filter(HealthScore.user_id == user_id, HealthScore.category == category)
             .order_by(desc(HealthScore.recorded_at))
             .first()
         )
@@ -87,8 +84,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         """
         return (
             db_session.query(HealthScore)
-            .join(DataSource, HealthScore.data_source_id == DataSource.id)
-            .filter(DataSource.user_id == user_id)
+            .filter(HealthScore.user_id == user_id)
             .distinct(HealthScore.category)
             .order_by(HealthScore.category, desc(HealthScore.recorded_at))
             .all()

@@ -402,6 +402,7 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -612,15 +613,11 @@ class Oura247Data(Base247DataTemplate):
 
             recorded_at = None
             if readiness.timestamp:
-                try:
+                with suppress(ValueError, AttributeError):
                     recorded_at = datetime.fromisoformat(readiness.timestamp.replace("Z", "+00:00"))
-                except (ValueError, AttributeError):
-                    pass
             if recorded_at is None and readiness.day:
-                try:
+                with suppress(ValueError, AttributeError):
                     recorded_at = datetime.strptime(readiness.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except (ValueError, AttributeError):
-                    pass
 
             if recorded_at is None:
                 continue
@@ -628,14 +625,15 @@ class Oura247Data(Base247DataTemplate):
             components = None
             if readiness.contributors and isinstance(readiness.contributors, dict):
                 components = {
-                    k: ScoreComponent(value=Decimal(str(v))) for k, v in readiness.contributors.items() if v is not None
+                    k: ScoreComponent(value=int(v)) for k, v in readiness.contributors.items() if v is not None
                 }
 
             result.append(
                 HealthScoreCreate(
                     id=uuid4(),
+                    user_id=user_id,
                     category=HealthScoreCategory.READINESS,
-                    value=Decimal(str(readiness.score)),
+                    value=readiness.score,
                     provider=ProviderName.OURA,
                     recorded_at=recorded_at,
                     components=components or None,
@@ -672,14 +670,15 @@ class Oura247Data(Base247DataTemplate):
             components = None
             if activity.contributors and isinstance(activity.contributors, dict):
                 components = {
-                    k: ScoreComponent(value=Decimal(str(v))) for k, v in activity.contributors.items() if v is not None
+                    k: ScoreComponent(value=int(v)) for k, v in activity.contributors.items() if v is not None
                 }
 
             result.append(
                 HealthScoreCreate(
                     id=uuid4(),
+                    user_id=user_id,
                     category=HealthScoreCategory.ACTIVITY,
-                    value=Decimal(str(activity.score)),
+                    value=activity.score,
                     provider=ProviderName.OURA,
                     recorded_at=recorded_at,
                     components=components or None,
@@ -696,6 +695,7 @@ class Oura247Data(Base247DataTemplate):
         """Save activity scores via health_score_service."""
         if normalized:
             health_score_service.bulk_create(db, normalized)
+            db.commit()
         return len(normalized)
 
     # -------------------------------------------------------------------------
@@ -731,30 +731,25 @@ class Oura247Data(Base247DataTemplate):
 
             recorded_at = None
             if sleep.timestamp:
-                try:
+                with suppress(ValueError, AttributeError):
                     recorded_at = datetime.fromisoformat(sleep.timestamp.replace("Z", "+00:00"))
-                except (ValueError, AttributeError):
-                    pass
             if recorded_at is None and sleep.day:
-                try:
+                with suppress(ValueError, AttributeError):
                     recorded_at = datetime.strptime(sleep.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except (ValueError, AttributeError):
-                    pass
 
             if recorded_at is None:
                 continue
 
             components = None
             if sleep.contributors and isinstance(sleep.contributors, dict):
-                components = {
-                    k: ScoreComponent(value=Decimal(str(v))) for k, v in sleep.contributors.items() if v is not None
-                }
+                components = {k: ScoreComponent(value=int(v)) for k, v in sleep.contributors.items() if v is not None}
 
             result.append(
                 HealthScoreCreate(
                     id=uuid4(),
+                    user_id=user_id,
                     category=HealthScoreCategory.SLEEP,
-                    value=Decimal(sleep.score),
+                    value=sleep.score,
                     provider=ProviderName.OURA,
                     recorded_at=recorded_at,
                     components=components or None,
@@ -771,6 +766,7 @@ class Oura247Data(Base247DataTemplate):
         """Save daily sleep scores via health_score_service."""
         if normalized:
             health_score_service.bulk_create(db, normalized)
+            db.commit()
         return len(normalized)
 
     # -------------------------------------------------------------------------

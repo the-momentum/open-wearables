@@ -1,6 +1,6 @@
 """health score table
 
-Revision ID: 5643d2210b58
+Revision ID: c67245a41199
 Revises: f99ae82f0470
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "5643d2210b58"
+revision: str = "c67245a41199"
 down_revision: Union[str, None] = "f99ae82f0470"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -23,8 +23,9 @@ def upgrade() -> None:
     op.create_table(
         "health_score",
         sa.Column("id", sa.UUID(), nullable=False),
+        sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("data_source_id", sa.UUID(), nullable=True),
-        sa.Column("provider", sa.String(length=50), nullable=True),
+        sa.Column("provider", sa.String(length=50), nullable=False),
         sa.Column("category", sa.String(length=32), nullable=False),
         sa.Column("value", sa.Numeric(precision=5, scale=2), nullable=True),
         sa.Column("qualifier", sa.String(length=32), nullable=True),
@@ -32,8 +33,11 @@ def upgrade() -> None:
         sa.Column("zone_offset", sa.String(length=10), nullable=True),
         sa.Column("components", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.ForeignKeyConstraint(["data_source_id"], ["data_source.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["user.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("data_source_id", "category", "recorded_at", name="uq_health_score_source_category_time"),
+        sa.UniqueConstraint(
+            "user_id", "provider", "category", "recorded_at", name="uq_health_score_user_provider_category_time"
+        ),
     )
     # ### end Alembic commands ###
 

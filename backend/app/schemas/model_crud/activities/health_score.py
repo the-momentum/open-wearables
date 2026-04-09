@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,7 +12,7 @@ from app.utils.dates import ZoneOffset
 class ScoreComponent(BaseModel):
     """A single constituent of a health score (e.g. deep sleep percentage)."""
 
-    value: Decimal | None = Field(
+    value: float | int | None = Field(
         None,
         description="Numeric score value. Range varies by provider and category — see HEALTH_SCORE_RANGES for scale.",
     )
@@ -22,7 +21,7 @@ class ScoreComponent(BaseModel):
 
 class HealthScoreBase(BaseModel):
     category: HealthScoreCategory
-    value: Decimal | None = Field(
+    value: float | int | None = Field(
         None,
         description="Overall numeric score. Range varies by provider and category — see HEALTH_SCORE_RANGES for scale.",
     )
@@ -34,8 +33,9 @@ class HealthScoreBase(BaseModel):
 
 class HealthScoreCreate(HealthScoreBase):
     id: UUID
+    user_id: UUID
     data_source_id: UUID | None = None
-    provider: ProviderName | None = None
+    provider: ProviderName
 
 
 class HealthScoreUpdate(HealthScoreBase): ...

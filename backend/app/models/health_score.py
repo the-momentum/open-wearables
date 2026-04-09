@@ -5,7 +5,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKDataSource, PrimaryKey, json_binary, numeric_5_2, str_10, str_32
+from app.mappings import FKDataSource, FKUser, PrimaryKey, json_binary, numeric_5_2, str_10, str_32
 from app.schemas.enums import HealthScoreCategory, ProviderName
 
 
@@ -15,16 +15,18 @@ class HealthScore(BaseDbModel):
     __tablename__ = "health_score"
     __table_args__ = (
         UniqueConstraint(
-            "data_source_id",
+            "user_id",
+            "provider",
             "category",
             "recorded_at",
-            name="uq_health_score_source_category_time",
+            name="uq_health_score_user_provider_category_time",
         ),
     )
 
     id: Mapped[PrimaryKey[UUID]]
+    user_id: Mapped[FKUser]
     data_source_id: Mapped[FKDataSource | None]
-    provider: Mapped[ProviderName | None]
+    provider: Mapped[ProviderName]
 
     category: Mapped[HealthScoreCategory]
     value: Mapped[numeric_5_2 | None]

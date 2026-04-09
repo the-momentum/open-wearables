@@ -506,6 +506,8 @@ class HealthScoreFactory(BaseFactory):
             if data_source is None:
                 data_source = DataSourceFactory()
             kwargs["data_source_id"] = data_source.id
+            if "user_id" not in kwargs:
+                kwargs["user_id"] = data_source.user_id
         return super()._create(model_class, *args, **kwargs)
 
 

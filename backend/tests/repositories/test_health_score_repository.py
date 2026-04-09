@@ -33,6 +33,7 @@ class TestHealthScoreRepositoryCreate:
         data_source = DataSourceFactory()
         score = HealthScoreCreate(
             id=uuid4(),
+            user_id=data_source.user_id,
             data_source_id=data_source.id,
             provider=ProviderName.GARMIN,
             category=HealthScoreCategory.SLEEP,
@@ -53,6 +54,7 @@ class TestHealthScoreRepositoryCreate:
         data_source = DataSourceFactory()
         score = HealthScoreCreate(
             id=uuid4(),
+            user_id=data_source.user_id,
             data_source_id=data_source.id,
             provider=ProviderName.GARMIN,
             category=HealthScoreCategory.SLEEP,
@@ -63,6 +65,7 @@ class TestHealthScoreRepositoryCreate:
 
         duplicate = HealthScoreCreate(
             id=uuid4(),
+            user_id=data_source.user_id,
             data_source_id=data_source.id,
             provider=ProviderName.GARMIN,
             category=HealthScoreCategory.SLEEP,
@@ -181,6 +184,7 @@ class TestHealthScoreRepositoryBulkCreate:
         scores = [
             HealthScoreCreate(
                 id=uuid4(),
+                user_id=data_source.user_id,
                 data_source_id=data_source.id,
                 provider=ProviderName.GARMIN,
                 category=HealthScoreCategory.SLEEP,
@@ -201,6 +205,7 @@ class TestHealthScoreRepositoryBulkCreate:
         recorded_at = datetime.now(timezone.utc)
         original = HealthScoreCreate(
             id=uuid4(),
+            user_id=data_source.user_id,
             data_source_id=data_source.id,
             provider=ProviderName.GARMIN,
             category=HealthScoreCategory.SLEEP,
@@ -212,6 +217,7 @@ class TestHealthScoreRepositoryBulkCreate:
 
         duplicate = HealthScoreCreate(
             id=uuid4(),
+            user_id=data_source.user_id,
             data_source_id=data_source.id,
             provider=ProviderName.GARMIN,
             category=HealthScoreCategory.SLEEP,
