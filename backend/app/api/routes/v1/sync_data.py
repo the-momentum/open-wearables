@@ -121,6 +121,29 @@ def sync_user_data(
     Requires valid API key and active connection for the user.
     """
     if run_async:
+        # The async worker (sync_vendor_data) always syncs all data types and
+        # does not accept per-type or provider-specific flags. Reject requests
+        # that would silently be ignored by the task.
+        non_default_params = {
+            "data_type": data_type != SyncDataType.ALL,
+            "since": since != 0,
+            "limit": limit != 50,
+            "offset": offset != 0,
+            "filter_by_modification_time": not filter_by_modification_time,
+            "samples": samples,
+            "zones": zones,
+            "route": route,
+        }
+        unsupported = [k for k, v in non_default_params.items() if v]
+        if unsupported:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Parameters {unsupported} are not supported in async mode. "
+                    "Use async=false or omit provider-specific parameters."
+                ),
+            )
+
         start_date_iso: str | None = None
         if since > 0:
             start_date_iso = datetime.fromtimestamp(since).isoformat()
@@ -165,12 +188,15 @@ def sync_user_data(
 
     if data_type in (SyncDataType.DATA_247, SyncDataType.ALL):
         if strategy.data_247:
-            start_dt = datetime.fromtimestamp(since) if since else datetime.now() - timedelta(days=30)
-            end_dt = datetime.now()
             load_fn = getattr(strategy.data_247, "load_and_save_all", None) or getattr(
-                strategy.data_247, "load_all_247_data"
+                strategy.data_247, "load_all_247_data", None
             )
-            results["data_247"] = load_fn(db, user_id, start_time=start_dt, end_time=end_dt)
+            if load_fn is None:
+                results["data_247"] = None
+            else:
+                start_dt = datetime.fromtimestamp(since) if since else datetime.now() - timedelta(days=30)
+                end_dt = datetime.now()
+                results["data_247"] = load_fn(db, user_id, start_time=start_dt, end_time=end_dt)
         elif data_type == SyncDataType.DATA_247:
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
