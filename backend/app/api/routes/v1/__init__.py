@@ -16,6 +16,7 @@ from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .priorities import router as priorities_router
+from .sdk_logs import router as sdk_logs_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
 from .strava_webhooks import router as strava_webhooks_router
@@ -42,6 +43,7 @@ v1_router.include_router(oauth_router, prefix="/oauth")
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["External: Workouts"])
 v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
+v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
