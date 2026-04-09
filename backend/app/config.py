@@ -1,6 +1,12 @@
+from __future__ import annotations
+
+import warnings
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.schemas.enums import ProviderName
 
 from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -77,48 +83,51 @@ class Settings(BaseSettings):
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
 
+    # API SETTINGS
+    api_base_url: str = "http://localhost:8000"
+
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
     suunto_client_secret: SecretStr | None = None
-    suunto_redirect_uri: str = "http://localhost:8000/api/v1/oauth/suunto/callback"
+    suunto_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     suunto_subscription_key: SecretStr | None = None
     suunto_default_scope: str = ""
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None
     garmin_client_secret: SecretStr | None = None
-    garmin_redirect_uri: str = "http://localhost:8000/api/v1/oauth/garmin/callback"
+    garmin_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     garmin_default_scope: str = ""  # Scope is managed at app creation in Garmin Developer Portal
 
     # POLAR OAUTH SETTINGS
     polar_client_id: str | None = None
     polar_client_secret: SecretStr | None = None
-    polar_redirect_uri: str = "http://localhost:8000/api/v1/oauth/polar/callback"
+    polar_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     polar_default_scope: str = "accesslink.read_all"
 
     # WHOOP OAUTH SETTINGS
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
-    whoop_redirect_uri: str = "http://localhost:8000/api/v1/oauth/whoop/callback"
+    whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
 
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None
     fitbit_client_secret: SecretStr | None = None
-    fitbit_redirect_uri: str = "http://localhost:8000/api/v1/oauth/fitbit/callback"
+    fitbit_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     fitbit_default_scope: str = "activity heartrate sleep profile"
 
     # OURA OAUTH SETTINGS
     oura_client_id: str | None = None
     oura_client_secret: SecretStr | None = None
-    oura_redirect_uri: str = "http://localhost:8000/api/v1/oauth/oura/callback"
+    oura_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration heart_health"
     oura_webhook_verification_token: SecretStr | None = None
 
     # STRAVA OAUTH SETTINGS
     strava_client_id: str | None = None
     strava_client_secret: SecretStr | None = None
-    strava_redirect_uri: str = "http://localhost:8000/api/v1/oauth/strava/callback"
+    strava_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     strava_default_scope: str = "activity:read_all,profile:read_all"
     strava_webhook_verify_token: str = "open-wearables-strava-verify"
     # Strava API max is 200 activities per page
@@ -127,7 +136,7 @@ class Settings(BaseSettings):
     # ULTRAHUMAN OAUTH SETTINGS
     ultrahuman_client_id: str | None = None
     ultrahuman_client_secret: SecretStr | None = None
-    ultrahuman_redirect_uri: str = "http://localhost:8000/api/v1/oauth/ultrahuman/callback"
+    ultrahuman_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     ultrahuman_default_scope: str = "ring_data cgm_data profile"
 
     # EMAIL SETTINGS (Resend)
@@ -168,6 +177,23 @@ class Settings(BaseSettings):
 
         # This should never be reached given the type annotation, but ensures type safety
         raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
+
+    def oauth_redirect_uri(self, provider: ProviderName) -> str:
+        """Build OAuth redirect URI for a provider.
+
+        Uses the legacy per-provider *_REDIRECT_URI env var if set,
+        otherwise builds the URI from API_BASE_URL.
+        """
+        legacy_attr = f"{provider.value}_redirect_uri"
+        legacy_value = getattr(self, legacy_attr, None)
+        if legacy_value is not None:
+            warnings.warn(
+                f"{legacy_attr.upper()} is deprecated, use API_BASE_URL instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return legacy_value
+        return f"{self.api_base_url}/api/v1/oauth/{provider.value}/callback"
 
     @property
     def redis_url(self) -> str:
