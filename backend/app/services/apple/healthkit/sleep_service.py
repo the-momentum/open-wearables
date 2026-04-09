@@ -1,3 +1,4 @@
+import contextlib
 import json
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
@@ -124,12 +125,20 @@ def _apply_transition(
 ) -> SleepState:
     """Apply a transition to the sleep state."""
 
-    last_start_timestamp = state.last_start_timestamp
-    last_end_timestamp = state.last_end_timestamp
-
-    delta_seconds = min(
-        abs((start_time - last_start_timestamp).total_seconds()), abs((end_time - last_end_timestamp).total_seconds())
-    )
+    # Compute the gap using session boundaries (start_time / end_time) rather than
+    # the timestamps of the last-processed sample.  This correctly handles payloads
+    # that arrive out of chronological order: a sample that chains directly onto an
+    # earlier part of the night will have a near-zero distance to the session window
+    # even if it was enqueued after a later-night payload was already processed.
+    if start_time <= state.end_time and end_time >= state.start_time:
+        # New sample overlaps with the current session window → same session.
+        delta_seconds = 0.0
+    elif end_time <= state.start_time:
+        # New sample is entirely before the session start.
+        delta_seconds = (state.start_time - end_time).total_seconds()
+    else:
+        # New sample is entirely after the session end.
+        delta_seconds = (start_time - state.end_time).total_seconds()
 
     if delta_seconds > settings.sleep_end_gap_minutes * 60:
         finish_sleep(db_session, user_id, state)
@@ -194,8 +203,15 @@ def handle_sleep_data(
     Sleep sessions are tracked in Redis and automatically finalized to the database when
     a gap of more than 2 hours (configurable) is detected between consecutive sleep records.
 
-    Handles bidirectional gaps between records - the service works fine whether the SDK
-    sends records in chronological order or reverse chronological order.
+    A per-user Redis lock serializes concurrent calls so that parallel Celery tasks
+    (e.g. from a bulk historical upload) accumulate stages into the same session instead
+    of overwriting each other's state.
+
+    Stale detection uses ``end_time`` (the last sleep-sample timestamp).  When a bulk
+    historical upload finalizes a session whose ``end_time`` is in the past, the new
+    session is merged with any adjacent record already in the database, so consecutive
+    payloads within the same night are combined into a single session rather than being
+    stored as separate fragments.
 
     Args:
         db_session: Database session for persisting finalized sleep records
@@ -203,82 +219,105 @@ def handle_sleep_data(
         user_id: User identifier for associating sleep data
 
     Flow:
+        - Acquire a per-user Redis lock to prevent concurrent state corruption
         - Deduplicate incoming data based on start/end/stage/source
         - If no active session exists: Create new session in Redis (only for valid start states)
-        - If active session exists: Check gap between last record's end and current record's start
+        - If active session exists: Check gap between new sample and the session window
           * Gap > 2 hours: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
+        - Persist state once after the whole batch; dispatch the stale-sleep task
     """
-    current_state = load_sleep_state(user_id)
-    provider = request.provider
+    redis_client = get_redis_client()
+    lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=15)
 
-    # Deduplicate and sort
-    seen = set()
-    unique_data = []
+    try:
+        acquired = lock.acquire()
+        if not acquired:
+            logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
+            return
 
-    # Sort first by startDate to ensure chronological processing
-    sorted_raw = sorted(request.data.sleep, key=lambda x: x.startDate)
+        current_state = load_sleep_state(user_id)
+        provider = request.provider
 
-    for item in sorted_raw:
-        # Create a unique key for deduplication
-        # SourceInfo is not hashable, use JSON dump
-        source_key = item.source.model_dump_json() if item.source else None
-        key_tuple = (item.startDate, item.endDate, item.stage, source_key)
+        # Deduplicate and sort
+        seen = set()
+        unique_data = []
 
-        if key_tuple not in seen:
-            seen.add(key_tuple)
-            unique_data.append(item)
+        # Sort first by startDate to ensure chronological processing
+        sorted_raw = sorted(request.data.sleep, key=lambda x: x.startDate)
 
-    for sjson in unique_data:
-        # Extract device info
-        device_model, software_version, original_source_name = extract_device_info(sjson.source)
+        for item in sorted_raw:
+            # Create a unique key for deduplication
+            # SourceInfo is not hashable, use JSON dump
+            source_key = item.source.model_dump_json() if item.source else None
+            key_tuple = (item.startDate, item.endDate, item.stage, source_key)
 
-        sleep_phase = get_apple_sleep_phase(sjson.stage)
+            if key_tuple not in seen:
+                seen.add(key_tuple)
+                unique_data.append(item)
 
-        if sleep_phase is None:
-            continue
+        for sjson in unique_data:
+            # Extract device info
+            device_model, software_version, original_source_name = extract_device_info(sjson.source)
 
-        if not current_state:
-            if sleep_phase not in SLEEP_START_STATES:
+            sleep_phase = get_apple_sleep_phase(sjson.stage)
+
+            if sleep_phase is None:
                 continue
 
-            current_state = _create_new_sleep_state(
-                sjson.startDate, sjson.endDate, sjson.id, provider, original_source_name, device_model, sjson.zoneOffset
+            if not current_state:
+                if sleep_phase not in SLEEP_START_STATES:
+                    continue
+
+                current_state = _create_new_sleep_state(
+                    sjson.startDate,
+                    sjson.endDate,
+                    sjson.id,
+                    provider,
+                    original_source_name,
+                    device_model,
+                    sjson.zoneOffset,
+                )
+
+            current_state = _apply_transition(
+                db_session,
+                user_id,
+                current_state,
+                sleep_phase,
+                sjson.startDate,
+                sjson.endDate,
+                provider,
+                sjson.id,
+                original_source_name,
+                device_model,
+                sjson.zoneOffset,
             )
 
-        current_state = _apply_transition(
-            db_session,
-            user_id,
-            current_state,
-            sleep_phase,
-            sjson.startDate,
-            sjson.endDate,
-            provider,
-            sjson.id,
-            original_source_name,
-            device_model,
-            sjson.zoneOffset,
-        )
-        save_sleep_state(user_id, current_state)
+        # Persist the accumulated state to Redis only once after processing the entire batch
+        if current_state:
+            save_sleep_state(user_id, current_state)
 
-    # Finalize the remaining session synchronously if it is already stale.
-    # With chronological sorting, the most recent night is always processed last
-    # and left in Redis. If it ended more than sleep_end_gap_minutes ago it can
-    # be persisted right away instead of waiting for the periodic Celery beat.
-    if current_state:
-        end_time = current_state.end_time
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
-            finish_sleep(db_session, user_id, current_state)
-            current_state = None
+        # Finalise synchronously if the session is already stale.  Historical
+        # uploads have end_time far in the past so this fires immediately, but
+        # finish_sleep now merges the result with any adjacent record already in
+        # the DB — so each payload extends the growing record rather than
+        # creating a separate session.
+        if current_state:
+            session_end = current_state.end_time
+            if session_end.tzinfo is None:
+                session_end = session_end.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - session_end >= timedelta(minutes=settings.sleep_end_gap_minutes):
+                finish_sleep(db_session, user_id, current_state)
+
+    finally:
+        with contextlib.suppress(Exception):
+            lock.release()
 
     # import not at module level in order to avoid circular import
     from app.integrations.celery.tasks.finalize_stale_sleep_task import finalize_stale_sleeps
 
-    # Dispatch async task for any other active users or if this session
-    # was too fresh to finalize synchronously above.
+    # Dispatch the stale-sleep task so sessions that have gone quiet (including
+    # other users' sessions) are finalised promptly without waiting for the next beat.
     finalize_stale_sleeps.delay()
 
 
@@ -383,7 +422,17 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
 
 
 def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None:
-    """Finish a sleep session and save the record to the database."""
+    """Finish a sleep session and save the record to the database.
+
+    Before creating a new record the function checks whether an existing adjacent
+    sleep session is already in the database (gap ≤ ``sleep_end_gap_minutes``).
+    When found, the two sessions are merged: the existing record is deleted and a
+    new record is created from the combined stages.  This handles the Apple SDK
+    pattern of sending one night's sleep as many consecutive small payloads — each
+    payload is finalized immediately (historical data is available right away) and
+    each merge step extends the accumulated DB record until the whole night is
+    represented as a single session.
+    """
 
     # Recalculate metrics from stages to handle overlaps/duplicates
     # state.stages is a list[SleepStateStage]
@@ -395,6 +444,40 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     else:
         end_time = state.end_time
         start_time = state.start_time
+
+    # --- Merge with an adjacent existing session if one exists ---
+    adjacent = event_record_service.find_adjacent_sleep_record(
+        db_session,
+        UUID(user_id),
+        start_time,
+        end_time,
+        settings.sleep_end_gap_minutes,
+        source=state.provider,
+    )
+
+    if adjacent is not None:
+        # Deserialise the stored stages back to SleepStateStage so we can feed
+        # them into _calculate_final_metrics together with the new stages.
+        existing_state_stages: list[SleepStateStage] = []
+        if adjacent.detail and adjacent.detail.sleep_stages:
+            for s in adjacent.detail.sleep_stages:
+                with contextlib.suppress(Exception):
+                    existing_state_stages.append(SleepStateStage.model_validate(s))
+
+        # Recalculate from the union of both stage lists.
+        metrics, cleaned_stages = _calculate_final_metrics(existing_state_stages + state.stages)
+
+        # Expand the session window to cover both records.
+        start_time = min(adjacent.start_datetime, start_time)
+        end_time = max(adjacent.end_datetime, end_time)
+        if cleaned_stages:
+            start_time = min(start_time, cleaned_stages[0].start_time)
+            end_time = max(end_time, cleaned_stages[-1].end_time)
+
+        # Remove the old record before creating the merged one (cascade deletes detail).
+        event_record_service.delete(db_session, adjacent.id)
+
+    # ---
 
     total_duration = (end_time - start_time).total_seconds()
     total_sleep_seconds = (

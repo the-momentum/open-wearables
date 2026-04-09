@@ -15,7 +15,7 @@ router = APIRouter()
 logger = getLogger(__name__)
 
 
-@router.get("/webhook")
+@router.get("")
 def strava_webhook_verification(
     hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
     hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
@@ -30,7 +30,7 @@ def strava_webhook_verification(
     return handle_webhook_verification(hub_mode, hub_challenge, hub_verify_token)
 
 
-@router.post("/webhook")
+@router.post("")
 def strava_webhook_event(
     payload: dict,
     db: DbSession,

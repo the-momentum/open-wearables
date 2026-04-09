@@ -91,8 +91,9 @@ export function formatBedtime(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) return '-';
   // Handle wrap-around for late nights
   const normalizedMinutes = minutes >= 1440 ? minutes - 1440 : minutes;
-  const hours = Math.floor(normalizedMinutes / 60);
-  const mins = Math.round(normalizedMinutes % 60);
+  const totalMinutes = Math.round(normalizedMinutes);
+  const hours = Math.floor(totalMinutes / 60) % 24;
+  const mins = totalMinutes % 60;
   const period = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
   return `${displayHours}:${mins.toString().padStart(2, '0')} ${period}`;

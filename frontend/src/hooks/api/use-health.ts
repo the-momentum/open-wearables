@@ -38,11 +38,11 @@ export function useDisconnectProvider(provider: string, userId: string) {
  * Get user connections for a user
  * Uses GET /api/v1/users/{user_id}/connections
  */
-export function useUserConnections(userId: string) {
+export function useUserConnections(userId: string, enabled: boolean = true) {
   return useQuery({
     queryKey: queryKeys.connections.all(userId),
     queryFn: () => healthService.getUserConnections(userId),
-    enabled: !!userId,
+    enabled: !!userId && enabled,
   });
 }
 
@@ -152,6 +152,37 @@ export function useSynchronizeDataFromProvider(
     onError: (error: unknown) => {
       const message =
         error instanceof Error ? error.message : 'Failed to synchronize data';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Trigger historical data sync for a provider
+ * Garmin: 30-day webhook backfill; others: pull API with date range
+ */
+export function useSyncHistoricalData(provider: string, userId: string) {
+  return useMutation({
+    mutationFn: (days?: number) =>
+      healthService.syncHistoricalData(provider, userId, days),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.connections.all(userId),
+      });
+      if (data.method === 'webhook_backfill') {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.garmin.backfillStatus(userId),
+        });
+        toast.success('Historical backfill started');
+      } else {
+        toast.success('Historical sync queued');
+      }
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to start historical sync';
       toast.error(message);
     },
   });

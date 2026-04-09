@@ -1,5 +1,5 @@
 from app.services.providers.apple.workouts import AppleWorkouts
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 
 
 class AppleStrategy(BaseProviderStrategy):
@@ -20,3 +20,9 @@ class AppleStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return ""  # Apple Health doesn't have a cloud API
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Apple Health data arrives exclusively via XML export or HealthKit SDK.
+        # No cloud OAuth, no REST polling, no server-side webhooks.
+        return ProviderCapabilities(supports_sdk=True, supports_xml_import=True)

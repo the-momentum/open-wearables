@@ -16,6 +16,7 @@ class ProviderName(str, Enum):
     FITBIT = "fitbit"
     ULTRAHUMAN = "ultrahuman"
     UNKNOWN = "unknown"
+    INTERNAL = "internal"
 
     @classmethod
     def from_source_string(cls, source: str | None) -> "ProviderName":
@@ -33,7 +34,7 @@ class ProviderName(str, Enum):
         source_lower = source.lower()
         # Check each provider (except UNKNOWN) to see if it appears in the source string
         for provider in cls:
-            if provider == cls.UNKNOWN:
+            if provider in (cls.UNKNOWN, cls.INTERNAL):
                 continue
             if provider.value in source_lower:
                 return provider

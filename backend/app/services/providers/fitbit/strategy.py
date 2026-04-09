@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.fitbit.oauth import FitbitOAuth
 from app.services.providers.fitbit.workouts import FitbitWorkouts
 
@@ -32,3 +32,10 @@ class FitbitStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the Fitbit Web API."""
         return "https://api.fitbit.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Fitbit Web API supports REST polling and a subscription-based webhook
+        # system.  The webhook notification contains the user_id and collection
+        # type; actual data must be fetched via the REST API.
+        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)

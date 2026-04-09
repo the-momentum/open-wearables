@@ -30,7 +30,7 @@ class TestProviderSettingsServiceGetAllProviders:
         # Assert
         provider_names = {p.provider for p in providers}
         # Exclude 'unknown' - all other providers have active strategy implementations
-        expected_names = {p.value for p in ProviderName if p.value not in ("unknown",)}
+        expected_names = {p.value for p in ProviderName if p.value not in ("unknown", "internal")}
         assert provider_names == expected_names
 
     def test_get_all_providers_includes_display_name(self, db: Session) -> None:
@@ -228,8 +228,8 @@ class TestProviderSettingsServiceBulkUpdateProviders:
 
         # Assert
         # Should return all providers with their current settings
-        # Subtract 1 for 'unknown' which has no strategy implementation
-        assert len(results) == len(list(ProviderName)) - 1
+        # Subtract 2 for 'unknown' and 'internal' which have no strategy implementation
+        assert len(results) == len(list(ProviderName)) - 2
 
     def test_bulk_update_providers_single_update(self, db: Session) -> None:
         """Should handle single provider update."""
@@ -261,7 +261,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         # Assert
         # Should return all provider types (excluding unknown which has no strategy)
         provider_names = {p.provider for p in results}
-        expected_names = {p.value for p in ProviderName if p.value not in ("unknown",)}
+        expected_names = {p.value for p in ProviderName if p.value not in ("unknown", "internal")}
         assert provider_names == expected_names
 
     def test_bulk_update_providers_validates_first_then_updates(self, db: Session) -> None:

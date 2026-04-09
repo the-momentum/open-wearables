@@ -170,11 +170,19 @@ class OuraWebhookService:
         """
         if notification.data_type in ("sleep", "daily_sleep") and oura_strategy.data_247:
             oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            return oura_247.load_and_save_sleep(db, user_id, start_time, end_time)
+            return oura_247.save_sleep_data(
+                db,
+                user_id,
+                oura_247.normalize_sleeps(oura_247.get_sleep_data(db, user_id, start_time, end_time), user_id),
+            )
 
         if notification.data_type == "daily_readiness" and oura_strategy.data_247:
             oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            return oura_247.load_and_save_recovery(db, user_id, start_time, end_time)
+            return oura_247.save_readiness_data(
+                db,
+                user_id,
+                oura_247.normalize_readiness(oura_247.get_readiness_data(db, user_id, start_time, end_time), user_id),
+            )
 
         if notification.data_type == "daily_activity" and oura_strategy.data_247:
             oura_247 = cast(Oura247Data, oura_strategy.data_247)

@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Date, String, asc, case, cast, func, literal_column, tuple_
+from sqlalchemy import Date, String, asc, case, cast, func, literal_column, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
@@ -355,6 +355,58 @@ class DataPointSeriesRepository(
             .all()
         )
         return [(source, count) for source, count in results]
+
+    def get_avg_hr_for_workout_batch(
+        self,
+        db_session: DbSession,
+        workouts: list[tuple[UUID, UUID, datetime, datetime]],
+    ) -> dict[UUID, int]:
+        """Batch-compute average HR from series data for multiple workout windows.
+
+        Issues a single query using a VALUES CTE joined against data_point_series.
+        Filters by data_source_id so HR data comes from the same device as the workout.
+
+        Args:
+            workouts: List of (record_id, data_source_id, start_time, end_time) tuples.
+
+        Returns:
+            Dict mapping record_id to rounded avg HR. Workouts with no HR data are omitted.
+        """
+        if not workouts:
+            return {}
+
+        hr_type_id = get_series_type_id(SeriesType.heart_rate)
+
+        values_parts = []
+        params: dict[str, object] = {"hr_type_id": hr_type_id}
+        for i, (record_id, data_source_id, start_time, end_time) in enumerate(workouts):
+            values_parts.append(f"""(
+                CAST(:record_id_{i} AS uuid),
+                CAST(:ds_id_{i} AS uuid),
+                CAST(:start_{i} AS timestamptz),
+                CAST(:end_{i} AS timestamptz)
+            )""")
+            params[f"record_id_{i}"] = str(record_id)
+            params[f"ds_id_{i}"] = str(data_source_id)
+            params[f"start_{i}"] = start_time
+            params[f"end_{i}"] = end_time
+
+        sql = text(f"""
+            WITH workout_windows(record_id, data_source_id, start_time, end_time) AS (
+                VALUES {", ".join(values_parts)}
+            )
+            SELECT ww.record_id, ROUND(AVG(dps.value))::int
+            FROM workout_windows ww
+            JOIN data_point_series dps
+                ON dps.data_source_id = ww.data_source_id
+                AND dps.series_type_definition_id = :hr_type_id
+                AND dps.recorded_at >= ww.start_time
+                AND dps.recorded_at < ww.end_time
+            GROUP BY ww.record_id
+        """)
+
+        rows = db_session.execute(sql, params).fetchall()
+        return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
 
     def get_averages_for_time_range(
         self,

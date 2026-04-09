@@ -28,7 +28,7 @@ class ProviderSettingsService:
         for provider_enum in ProviderName:
             provider_key = provider_enum.value
             # Skip providers without active strategies
-            if provider_key in ("unknown",):
+            if provider_key in ("unknown", "internal"):
                 continue
             strategy = self.factory.get_provider(provider_key)
 

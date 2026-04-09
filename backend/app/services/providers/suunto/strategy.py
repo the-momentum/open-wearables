@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.workouts import SuuntoWorkouts
@@ -36,3 +36,11 @@ class SuuntoStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return "https://cloudapi.suunto.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Suunto Sports Tracker API supports REST polling via transaction-based
+        # endpoints and a webhook subscription mechanism.  The webhook delivers
+        # a lightweight notification; actual workout data must still be fetched
+        # via the transaction REST API.
+        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)

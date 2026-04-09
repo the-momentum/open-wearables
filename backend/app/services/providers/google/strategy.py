@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.google.workouts import GoogleWorkouts
 
 
@@ -24,3 +24,8 @@ class GoogleStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return ""  # Google Health Connect doesn't have a cloud API
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Google Health Connect data arrives exclusively via the mobile SDK (no cloud API).
+        return ProviderCapabilities(supports_sdk=True)

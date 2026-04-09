@@ -15,6 +15,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.oura import OuraWorkoutCollectionJSON, OuraWorkoutJSON
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 
@@ -45,6 +46,13 @@ class OuraWorkouts(BaseWorkoutsTemplate):
 
             try:
                 response = self._make_api_request(db, user_id, "/v2/usercollection/workout", params=params)
+                store_raw_payload(
+                    source="api_response",
+                    provider="oura",
+                    payload=response,
+                    user_id=str(user_id),
+                    trace_id="/v2/usercollection/workout",
+                )
 
                 if isinstance(response, dict):
                     collection = OuraWorkoutCollectionJSON(**response)

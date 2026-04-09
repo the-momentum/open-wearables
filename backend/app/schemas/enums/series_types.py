@@ -36,6 +36,8 @@ class SeriesType(str, Enum):
     respiratory_rate = "respiratory_rate"
     sleeping_breathing_disturbances = "sleeping_breathing_disturbances"
 
+    breathing_disturbance_index = "breathing_disturbance_index"
+
     # Blood & Respiratory - Extended
     blood_alcohol_content = "blood_alcohol_content"
     peripheral_perfusion_index = "peripheral_perfusion_index"
@@ -53,6 +55,8 @@ class SeriesType(str, Enum):
     lean_body_mass = "lean_body_mass"
     body_temperature = "body_temperature"
     skin_temperature = "skin_temperature"
+    skin_temperature_deviation = "skin_temperature_deviation"
+    skin_temperature_trend_deviation = "skin_temperature_trend_deviation"
 
     # Body Composition - Extended
     waist_circumference = "waist_circumference"
@@ -64,6 +68,7 @@ class SeriesType(str, Enum):
     # =========================================================================
     vo2_max = "vo2_max"
     six_minute_walk_test_distance = "six_minute_walk_test_distance"
+    cardiovascular_age = "cardiovascular_age"
 
     # =========================================================================
     # ACTIVITY - Basic (IDs 80-99)
@@ -189,6 +194,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (28, SeriesType.forced_vital_capacity, "liters"),
     (29, SeriesType.forced_expiratory_volume_1, "liters"),
     (30, SeriesType.peak_expiratory_flow_rate, "liters"),
+    (31, SeriesType.breathing_disturbance_index, "score"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Body Composition (IDs 40-59)
     # -------------------------------------------------------------------------
@@ -202,11 +208,14 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (47, SeriesType.waist_circumference, "cm"),
     (48, SeriesType.body_fat_mass, "kg"),
     (49, SeriesType.skeletal_muscle_mass, "kg"),
+    (50, SeriesType.skin_temperature_deviation, "celsius"),
+    (51, SeriesType.skin_temperature_trend_deviation, "celsius"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Fitness Metrics (IDs 60-79)
     # -------------------------------------------------------------------------
     (60, SeriesType.vo2_max, "ml_kg_min"),
     (61, SeriesType.six_minute_walk_test_distance, "meters"),
+    (62, SeriesType.cardiovascular_age, "years"),
     # -------------------------------------------------------------------------
     # ACTIVITY - Basic (IDs 80-99)
     # -------------------------------------------------------------------------

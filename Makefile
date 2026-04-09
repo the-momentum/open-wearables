@@ -27,7 +27,6 @@ down:	## Kills running instance
 	$(DOCKER_COMMAND) down
 
 test:	## Run the tests.
-	export ENV=backend/config/.env.test && \
 	cd backend && uv run pytest -v --cov=app
 
 migrate:  ## Apply all migrations

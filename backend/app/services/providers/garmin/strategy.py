@@ -1,6 +1,7 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
+from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
 from app.services.providers.garmin.workouts import GarminWorkouts
 
 
@@ -34,6 +35,10 @@ class GarminStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
+        self.webhooks = GarminWebhookHandler(
+            garmin_workouts=self.workouts,
+            garmin_247=self.data_247,
+        )
 
     @property
     def name(self) -> str:
@@ -42,3 +47,11 @@ class GarminStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return "https://apis.garmin.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Garmin delivers the full data payload inside every webhook (PUSH) and
+        # also supports an async backfill flow (PING → callback URL fetch).
+        # There is no plain REST polling path for wellness data; all data
+        # arrives via the push/backfill mechanism.
+        return ProviderCapabilities(supports_push=True, supports_async_export=True, max_historical_days=30)

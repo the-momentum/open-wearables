@@ -38,11 +38,11 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=6.2.1",
     "freezegun>=1.5.0",
-    "setuptools>=75.0.0",
     "factory-boy>=3.3.0",
     "faker>=33.1.0",
     "psycopg-binary>=3.3.2",
     "ruff>=0.14.7",
+    "testcontainers[postgres,redis]>=4.14.2",
 ]
 
 [tool.ruff]
@@ -97,6 +97,10 @@ addopts = "-v --tb=short"
 [build-system]
 requires = ["uv_build"]
 build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.9.17"
+exclude-newer= "3 days"
 
 [tool.uv.build-backend]
 module-root = ""

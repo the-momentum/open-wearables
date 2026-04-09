@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+from app.config import settings
+from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
@@ -14,6 +16,7 @@ from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    SleepStage,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
@@ -148,6 +151,36 @@ class Garmin247Data(Base247DataTemplate):
         """Fetch sleep data from Garmin /wellness-api/rest/sleeps."""
         return self._fetch_in_chunks(db, user_id, "/wellness-api/rest/sleeps", start_time, end_time)
 
+    def _extract_sleep_stages_from_map(self, sleep_map: dict) -> list[SleepStage]:
+        """Extract sleep stage intervals from Garmin sleepLevelsMap."""
+        stages: list[SleepStage] = []
+        for stage_key, intervals in sleep_map.items():
+            try:
+                stage_type = SleepStageType(stage_key)
+            except ValueError:
+                continue
+            for iv in intervals:
+                try:
+                    stages.append(
+                        SleepStage(
+                            stage=stage_type,
+                            start_time=datetime.fromtimestamp(iv["startTimeInSeconds"], tz=timezone.utc),
+                            end_time=datetime.fromtimestamp(iv["endTimeInSeconds"], tz=timezone.utc),
+                        )
+                    )
+                except (KeyError, TypeError, ValueError):
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Invalid sleep stage interval data",
+                        interval_data=iv,
+                        provider="garmin",
+                        task="extract_sleep_stages_from_map",
+                    )
+                    continue
+
+        return sorted(stages, key=lambda s: s.start_time)
+
     def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
@@ -167,6 +200,15 @@ class Garmin247Data(Base247DataTemplate):
         light_seconds = raw_sleep.get("lightSleepDurationInSeconds") or 0
         rem_seconds = raw_sleep.get("remSleepInSeconds") or 0
         awake_seconds = raw_sleep.get("awakeDurationInSeconds") or 0
+
+        sleep_stages: list[SleepStage] | None = None
+        if sleep_map := raw_sleep.get("sleepLevelsMap"):
+            sleep_stages = self._extract_sleep_stages_from_map(sleep_map)
+            if sleep_stages:
+                last_stage_end = max(int(s.end_time.timestamp()) for s in sleep_stages)
+                end_ts = max(end_ts, last_stage_end)
+                duration = end_ts - start_ts
+                end_dt = self._from_epoch_seconds(end_ts)
 
         # Extract sleep score if available
         sleep_score = None
@@ -188,6 +230,7 @@ class Garmin247Data(Base247DataTemplate):
                 "rem_seconds": rem_seconds,
                 "awake_seconds": awake_seconds,
             },
+            "stage_timestamps": sleep_stages,
             "avg_heart_rate_bpm": raw_sleep.get("averageHeartRate"),
             "min_heart_rate_bpm": raw_sleep.get("lowestHeartRate"),
             "avg_respiration": raw_sleep.get("respirationAvg"),
@@ -240,9 +283,10 @@ class Garmin247Data(Base247DataTemplate):
         )
 
         stages = normalized_sleep.get("stages", {})
+        asleep_seconds = stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
-            sleep_total_duration_minutes=normalized_sleep.get("duration_seconds", 0) // 60,
+            sleep_total_duration_minutes=asleep_seconds // 60,
             sleep_efficiency_score=Decimal(str(normalized_sleep.get("sleep_score", 0)))
             if normalized_sleep.get("sleep_score")
             else None,
@@ -255,6 +299,7 @@ class Garmin247Data(Base247DataTemplate):
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
             heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
+            sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
 
         return record, detail
@@ -272,9 +317,7 @@ class Garmin247Data(Base247DataTemplate):
 
         record, detail = result
         try:
-            created_record = event_record_service.create(db, record)
-            detail.record_id = created_record.id
-            event_record_service.create_detail(db, detail, detail_type="sleep")
+            event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
         except Exception as e:
             log_structured(
                 self.logger,
@@ -713,7 +756,7 @@ class Garmin247Data(Base247DataTemplate):
                     recorded_at=recorded_at,
                     zone_offset=zone_offset,
                     value=Decimal(str(last_night_avg)),
-                    series_type=SeriesType.heart_rate_variability_sdnn,
+                    series_type=SeriesType.heart_rate_variability_rmssd,
                     external_id=summary_id,
                 )
             )
@@ -733,7 +776,7 @@ class Garmin247Data(Base247DataTemplate):
                         recorded_at=recorded_at,
                         zone_offset=zone_offset,
                         value=Decimal(str(hrv_ms)),
-                        series_type=SeriesType.heart_rate_variability_sdnn,
+                        series_type=SeriesType.heart_rate_variability_rmssd,
                         external_id=f"{summary_id}:{offset_str}" if summary_id else None,
                     )
                     samples.append(sample)
@@ -1289,9 +1332,10 @@ class Garmin247Data(Base247DataTemplate):
         recorded_at = self._from_epoch_seconds(start_ts)
         zone_offset = offset_to_iso(raw_snapshot.get("startTimeOffsetInSeconds"))
 
+        summaries = {s["summaryType"]: s for s in raw_snapshot.get("summaries", []) if "summaryType" in s}
+
         # Heart rate from snapshot
-        heart_rate = raw_snapshot.get("heartRate")
-        if heart_rate:
+        if heart_rate := summaries.get("heart_rate", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1305,9 +1349,8 @@ class Garmin247Data(Base247DataTemplate):
                 )
             )
 
-        # HRV from snapshot
-        hrv = raw_snapshot.get("hrv")
-        if hrv:
+        # RMSSD HRV from snapshot
+        if rmssd := summaries.get("rmssd_hrv", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1315,14 +1358,30 @@ class Garmin247Data(Base247DataTemplate):
                     source=self.provider_name,
                     recorded_at=recorded_at,
                     zone_offset=zone_offset,
-                    value=Decimal(str(hrv)),
+                    value=Decimal(str(rmssd)),
+                    series_type=SeriesType.heart_rate_variability_rmssd,
+                    external_id=f"{summary_id}:rmssd_hrv" if summary_id else None,
+                )
+            )
+
+        # SDNN HRV from snapshot
+        if sdrr := summaries.get("sdrr_hrv", {}).get("avgValue"):
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=recorded_at,
+                    zone_offset=zone_offset,
+                    value=Decimal(str(sdrr)),
                     series_type=SeriesType.heart_rate_variability_sdnn,
-                    external_id=f"{summary_id}:hrv" if summary_id else None,
+                    external_id=f"{summary_id}:sdrr_hrv" if summary_id else None,
                 )
             )
 
         # Stress from snapshot
-        stress = raw_snapshot.get("stress")
+        stress_summary = summaries.get("stress", {})
+        stress = stress_summary.get("avgValue")
         if stress is not None and stress >= 0:
             samples.append(
                 TimeSeriesSampleCreate(
@@ -1338,8 +1397,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # SpO2 from snapshot
-        spo2 = raw_snapshot.get("spo2")
-        if spo2:
+        if spo2 := summaries.get("pulse_ox", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1354,8 +1412,7 @@ class Garmin247Data(Base247DataTemplate):
             )
 
         # Respiration from snapshot
-        respiration = raw_snapshot.get("respiration")
-        if respiration:
+        if respiration := summaries.get("respiration", {}).get("avgValue"):
             samples.append(
                 TimeSeriesSampleCreate(
                     id=uuid4(),
@@ -1524,7 +1581,7 @@ class Garmin247Data(Base247DataTemplate):
                         all_samples.extend(self._build_stress_samples(user_id, item))
                     case "respiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
-                    case "pulseOx":
+                    case "pulseox":
                         all_samples.extend(self._build_pulse_ox_samples(user_id, item))
                     case "bloodPressures":
                         all_samples.extend(self._build_blood_pressure_samples(user_id, item))

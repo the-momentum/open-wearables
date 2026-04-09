@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
@@ -33,8 +33,8 @@ class EventRecordRepository(
         super().__init__(model)
         self.data_source_repo = DataSourceRepository()
 
-    @handle_exceptions
-    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+    def _build_creation(self, db_session: DbSession, creator: EventRecordCreate) -> tuple[UUID, EventRecord]:
+        """Resolve the data source and build the ORM object without touching the session."""
         if creator.data_source_id:
             data_source_id = creator.data_source_id
         else:
@@ -64,9 +64,22 @@ class EventRecordRepository(
             "software_version",
         ):
             creation_data.pop(redundant_key, None)
+        return data_source_id, self.model(**creation_data)
 
-        creation = self.model(**creation_data)
+    def _fetch_existing(self, db_session: DbSession, data_source_id: UUID, creation: EventRecord) -> EventRecord | None:
+        return (
+            db_session.query(self.model)
+            .filter(
+                self.model.data_source_id == data_source_id,
+                self.model.start_datetime == creation.start_datetime,
+                self.model.end_datetime == creation.end_datetime,
+            )
+            .one_or_none()
+        )
 
+    @handle_exceptions
+    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+        data_source_id, creation = self._build_creation(db_session, creator)
         try:
             db_session.add(creation)
             db_session.commit()
@@ -74,16 +87,26 @@ class EventRecordRepository(
             return creation
         except IntegrityError:
             db_session.rollback()
-            existing = (
-                db_session.query(self.model)
-                .filter(
-                    self.model.data_source_id == data_source_id,
-                    self.model.start_datetime == creation.start_datetime,
-                    self.model.end_datetime == creation.end_datetime,
-                )
-                .one_or_none()
-            )
-            if existing:
+            if existing := self._fetch_existing(db_session, data_source_id, creation):
+                return existing
+            raise
+
+    def create_and_flush(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
+        """Like create() but flushes instead of committing; caller is responsible for the commit.
+
+        Uses a savepoint for IntegrityError handling so a conflict rolls back only
+        the INSERT and leaves the outer transaction intact.
+        """
+        data_source_id, creation = self._build_creation(db_session, creator)
+        nested = db_session.begin_nested()
+        try:
+            db_session.add(creation)
+            db_session.flush()
+            nested.commit()
+            return creation
+        except IntegrityError:
+            nested.rollback()
+            if existing := self._fetch_existing(db_session, data_source_id, creation):
                 return existing
             raise
 
@@ -569,3 +592,44 @@ class EventRecordRepository(
                 }
             )
         return aggregates
+
+    @handle_exceptions
+    def find_adjacent_sleep_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+        threshold_minutes: int,
+        source: str | None = None,
+    ) -> EventRecord | None:
+        """Return the most-recent sleep session adjacent to [start_time, end_time].
+
+        A record is adjacent when its window overlaps or is within
+        *threshold_minutes* of the candidate window.  The detail relationship
+        is eagerly loaded so callers can read ``sleep_stages`` without an extra
+        query.
+
+        When *source* is provided the query is restricted to records whose
+        DataSource has the same source string, preventing cross-provider merges
+        (e.g. Oura sessions being merged with Garmin sessions).
+        """
+        threshold = timedelta(minutes=threshold_minutes)
+        filters = [
+            DataSource.user_id == user_id,
+            self.model.category == "sleep",
+            self.model.type == "sleep_session",
+            self.model.start_datetime <= end_time + threshold,
+            self.model.end_datetime >= start_time - threshold,
+        ]
+        if source is not None:
+            filters.append(DataSource.source == source)
+        return (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .options(selectinload(self.model.detail))
+            .filter(*filters)
+            .order_by(self.model.start_datetime.desc())
+            .with_for_update()
+            .first()
+        )

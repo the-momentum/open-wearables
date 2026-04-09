@@ -334,6 +334,13 @@ class BaseOAuthTemplate(ABC):
 
     def deregister_user(self, access_token: str) -> None:
         """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
+        log_structured(
+            logger,
+            "warning",
+            "Deregistering not supported",
+            provider=self.provider_name,
+            action="deregister_user",
+        )
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts provider user info. Default implementation returns None."""
