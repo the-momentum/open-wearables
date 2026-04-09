@@ -105,6 +105,7 @@ class TestHealthScoreServiceBulkCreate:
         scores = [
             HealthScoreCreate(
                 id=uuid4(),
+                user_id=data_source.user_id,
                 data_source_id=data_source.id,
                 provider=ProviderName.GARMIN,
                 category=HealthScoreCategory.SLEEP,

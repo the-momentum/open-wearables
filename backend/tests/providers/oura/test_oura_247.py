@@ -152,19 +152,19 @@ class TestOura247ActivityNormalization:
                 "timestamp": "2024-01-15T23:59:59+00:00",
             },
         ]
-        result = data_247.normalize_activity_samples(raw, user_id)
+        samples, _ = data_247.normalize_activity_samples(raw, user_id)
 
-        assert len(result["steps"]) == 1
-        assert result["steps"][0]["value"] == 8500
-        assert len(result["energy"]) == 1
-        assert result["energy"][0]["value"] == 350
-        assert len(result["distance"]) == 1
-        assert result["distance"][0]["value"] == 6500
+        assert len(samples["steps"]) == 1
+        assert samples["steps"][0]["value"] == 8500
+        assert len(samples["energy"]) == 1
+        assert samples["energy"][0]["value"] == 350
+        assert len(samples["distance"]) == 1
+        assert samples["distance"][0]["value"] == 6500
 
     def test_normalize_activity_empty(self, data_247: Oura247Data) -> None:
         user_id = uuid4()
-        result = data_247.normalize_activity_samples([], user_id)
+        samples, _ = data_247.normalize_activity_samples([], user_id)
 
-        assert result["steps"] == []
-        assert result["energy"] == []
-        assert result["distance"] == []
+        assert samples["steps"] == []
+        assert samples["energy"] == []
+        assert samples["distance"] == []
