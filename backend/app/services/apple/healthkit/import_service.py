@@ -97,7 +97,7 @@ class ImportService:
                 zone_offset=wjson.zoneOffset,
                 id=workout_id,
                 external_id=external_id,
-                source=provider,
+                source=original_source_name,
                 software_version=software_version,
                 provider=provider,
                 user_id=user_uuid,
