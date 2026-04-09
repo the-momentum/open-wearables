@@ -454,6 +454,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         end_time,
         settings.sleep_end_gap_minutes,
         source=source_for_lookup,
+        provider=state.provider,
     )
 
     if adjacent is not None:

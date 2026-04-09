@@ -115,10 +115,11 @@ class EventRecordService(
         end_time: datetime,
         threshold_minutes: int,
         source: str | None = None,
+        provider: str | None = None,
     ) -> EventRecord | None:
         """Find an existing sleep session adjacent to [start_time, end_time]."""
         return self.crud.find_adjacent_sleep_record(
-            db_session, user_id, start_time, end_time, threshold_minutes, source=source
+            db_session, user_id, start_time, end_time, threshold_minutes, source=source, provider=provider
         )
 
     def create_or_merge_sleep(
@@ -146,6 +147,7 @@ class EventRecordService(
             record.end_datetime,
             threshold_minutes,
             source=record.source,
+            provider=record.provider,
         )
 
         if adjacent is not None:
