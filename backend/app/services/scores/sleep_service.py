@@ -15,10 +15,12 @@ from pydantic import BaseModel
 
 from app.algorithms.config_algorithms import sleep_config
 from app.algorithms.sleep import SleepScoreResult, calculate_overall_sleep_score
+from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
 
 
@@ -51,59 +53,33 @@ class SleepScoreService:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(tz)
 
-    def _convert_stages_to_duration_blocks(
-        self,
-        raw_stages_json: list[dict[str, str]],
-    ) -> list[dict[str, str | float]]:
-        """Convert start_time/end_time stage blocks to duration_mins format.
-
-        Input:  [{"stage": "...", "start_time": "...", "end_time": "..."}, ...]
-        Output: [{"stage": "...", "duration_mins": float}, ...]
-        """
-        result: list[dict[str, str | float]] = []
-        for block in raw_stages_json:
-            start = datetime.fromisoformat(block["start_time"].rstrip("Z"))
-            end = datetime.fromisoformat(block["end_time"].rstrip("Z"))
-            duration_mins = (end - start).total_seconds() / 60.0
-            result.append({"stage": block["stage"], "duration_mins": duration_mins})
-        return result
-
     def _parse_wearable_stages_for_interruptions(
         self,
-        raw_stage_blocks: list[dict[str, str | float]],
+        sleep_stages: list[SleepStage],
     ) -> WasoData:
         """Strip sleep latency and morning lying-in-bed periods to calculate true WASO.
 
-        Expected input: [{"stage": "awake"|"light"|..., "duration_mins": float}, ...]
         Returns total WASO minutes and individual awakening durations.
         """
-        if not raw_stage_blocks:
+        if not sleep_stages:
             return WasoData(total_awake_minutes=0.0, awakening_durations=[])
 
-        first_sleep_idx = next(
-            (i for i, b in enumerate(raw_stage_blocks) if str(b["stage"]).lower() != "awake"),
-            None,
-        )
-        if first_sleep_idx is None:
+        sleep_indices = [i for i, s in enumerate(sleep_stages) if s.stage != SleepStageType.AWAKE]
+        if not sleep_indices:
             return WasoData(total_awake_minutes=0.0, awakening_durations=[])
 
-        last_sleep_idx = next(
-            (
-                i
-                for i in range(len(raw_stage_blocks) - 1, -1, -1)
-                if str(raw_stage_blocks[i]["stage"]).lower() != "awake"
-            ),
-            None,
-        )
+        first_sleep_idx = sleep_indices[0]
+        last_sleep_idx = sleep_indices[-1]
 
-        true_sleep_period = raw_stage_blocks[first_sleep_idx : last_sleep_idx + 1]  # type: ignore[operator]
+        true_sleep_period = sleep_stages[first_sleep_idx : last_sleep_idx + 1]
 
         waso_total_minutes = 0.0
         awakening_durations: list[float] = []
         for block in true_sleep_period:
-            if str(block["stage"]).lower() == "awake":
-                waso_total_minutes += float(block["duration_mins"])
-                awakening_durations.append(float(block["duration_mins"]))
+            if block.stage == SleepStageType.AWAKE:
+                duration_mins = (block.end_time - block.start_time).total_seconds() / 60.0
+                waso_total_minutes += duration_mins
+                awakening_durations.append(duration_mins)
 
         return WasoData(
             total_awake_minutes=waso_total_minutes,
@@ -118,7 +94,7 @@ class SleepScoreService:
         awake_minutes: float,
         session_start: datetime,
         historical_bedtimes: list[datetime],
-        sleep_stages: list[dict[str, str]] | None = None,
+        sleep_stages: list[SleepStage] | None = None,
     ) -> SleepScoreResult:
         """Calculate a sleep score from raw sleep parameters for a single night.
 
@@ -137,18 +113,15 @@ class SleepScoreService:
             )
 
         if sleep_stages:
-            duration_blocks = self._convert_stages_to_duration_blocks(sleep_stages)
-            waso = self._parse_wearable_stages_for_interruptions(duration_blocks)
+            waso = self._parse_wearable_stages_for_interruptions(sleep_stages)
             total_awake = waso.total_awake_minutes
             awakening_durations = waso.awakening_durations
         else:
             total_awake = awake_minutes
             awakening_durations = []
 
-        net_sleep_minutes = total_sleep_duration_minutes
-
         return calculate_overall_sleep_score(
-            total_sleep_minutes=net_sleep_minutes,
+            total_sleep_minutes=total_sleep_duration_minutes,
             deep_minutes=deep_minutes,
             rem_minutes=rem_minutes,
             session_start=session_start.isoformat(),
@@ -237,16 +210,9 @@ class SleepScoreService:
             if len(historical_bedtimes) >= sleep_config.rolling_window_nights:
                 break
 
-        sleep_stages: list[dict[str, str]] | None = None
+        sleep_stages: list[SleepStage] | None = None
         if detail.sleep_stages:
-            sleep_stages = [
-                {
-                    "stage": s["stage"],
-                    "start_time": s["start_time"],
-                    "end_time": s["end_time"],
-                }
-                for s in detail.sleep_stages
-            ]
+            sleep_stages = [SleepStage(**s) for s in detail.sleep_stages]
 
         return self.get_sleep_score(
             total_sleep_duration_minutes=float(detail.sleep_total_duration_minutes or 0),

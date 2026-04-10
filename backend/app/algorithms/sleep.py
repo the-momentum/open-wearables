@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.algorithms.config_algorithms import SleepScoreConfig, sleep_config
+from app.algorithms.config_algorithms import sleep_config
 from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
 
 
@@ -38,39 +38,35 @@ INTERRUPTIONS_SCORE_BOUNDS = ScoreBounds(0, 100)
 OVERALL_SCORE_BOUNDS = ScoreBounds(0, 100)
 
 
-def _score_duration_hours(
-    duration_hours: float,
-    score_bounds: ScoreBounds = DURATION_SCORE_BOUNDS,
-    config: SleepScoreConfig = sleep_config,
-) -> int:
+def _score_duration_hours(duration_hours: float) -> int:
     """Score a sleep duration (in hours) on a set scale.
 
     Perfect score within the optimal range. Steep sigmoid drop-off for
     under-sleeping, gentler drop-off for over-sleeping (floor at half max bound).
     """
-    if config.optimal_min_hours <= duration_hours <= config.optimal_max_hours:
-        return score_bounds.max
+    if sleep_config.optimal_min_hours <= duration_hours <= sleep_config.optimal_max_hours:
+        return DURATION_SCORE_BOUNDS.max
 
-    if duration_hours < config.optimal_min_hours:
+    if duration_hours < sleep_config.optimal_min_hours:
         raw = score_sigmoid(
             duration_hours,
-            k=-config.undersleep_k,
-            base=score_bounds.max,
-            midpoint=config.undersleep_midpoint,
-            anchor=config.optimal_min_hours,
+            k=-sleep_config.undersleep_k,
+            base=DURATION_SCORE_BOUNDS.max,
+            midpoint=sleep_config.undersleep_midpoint,
+            anchor=sleep_config.optimal_min_hours,
         )
-        return max(score_bounds.min, min(score_bounds.max, int(raw)))
+        return max(DURATION_SCORE_BOUNDS.min, min(DURATION_SCORE_BOUNDS.max, int(raw)))
 
-    oversleep_floor = max(score_bounds.min, int(score_bounds.max / 2))
+    oversleep_floor = max(DURATION_SCORE_BOUNDS.min, int(DURATION_SCORE_BOUNDS.max / 2))
     oversleep_raw = min(
-        score_bounds.max,
+        DURATION_SCORE_BOUNDS.max,
         int(
             score_sigmoid(
                 duration_hours,
-                k=config.oversleep_k,
-                base=score_bounds.max,
-                midpoint=config.oversleep_midpoint,
-                anchor=config.optimal_max_hours,
+                k=sleep_config.oversleep_k,
+                base=DURATION_SCORE_BOUNDS.max,
+                midpoint=sleep_config.oversleep_midpoint,
+                anchor=sleep_config.optimal_max_hours,
             )
         ),
     )
@@ -88,45 +84,34 @@ def calculate_duration_score(day_start_iso: str, day_end_iso: str, awake_minutes
     return _score_duration_hours(duration_hours)
 
 
-def _calculate_stage_score(
-    stage_duration_minutes: float,
-    optimal_target_minutes: float,
-    score_bounds: ScoreBounds = STAGE_SCORE_BOUNDS,
-) -> int:
+def _calculate_stage_score(stage_duration_minutes: float, optimal_target_minutes: float) -> int:
     """Calculate a bounded score for a sleep stage based on absolute duration.
 
     Uses linear drop-off below the target
     (e.g. 45 min out of 90 min target = 50 points).
     """
     if stage_duration_minutes >= optimal_target_minutes:
-        return score_bounds.max
+        return STAGE_SCORE_BOUNDS.max
     if stage_duration_minutes <= 0:
-        return score_bounds.min
-    return int((stage_duration_minutes / optimal_target_minutes) * score_bounds.max)
+        return STAGE_SCORE_BOUNDS.min
+    return int((stage_duration_minutes / optimal_target_minutes) * STAGE_SCORE_BOUNDS.max)
 
 
-def calculate_total_stages_score(
-    deep_minutes: float,
-    rem_minutes: float,
-    score_bounds: ScoreBounds = STAGE_SCORE_BOUNDS,
-    config: SleepScoreConfig = sleep_config,
-) -> int:
+def calculate_total_stages_score(deep_minutes: float, rem_minutes: float) -> int:
     """Combine Deep and REM into a single stages score using configured targets and weights."""
-    deep_score = _calculate_stage_score(deep_minutes, config.deep_target_mins, score_bounds)
-    rem_score = _calculate_stage_score(rem_minutes, config.rem_target_mins, score_bounds)
-    total = (deep_score * config.deep_weight) + (rem_score * config.rem_weight)
-    return max(score_bounds.min, min(score_bounds.max, int(total)))
+    deep_score = _calculate_stage_score(deep_minutes, sleep_config.deep_target_mins)
+    rem_score = _calculate_stage_score(rem_minutes, sleep_config.rem_target_mins)
+    total = (deep_score * sleep_config.deep_weight) + (rem_score * sleep_config.rem_weight)
+    return max(STAGE_SCORE_BOUNDS.min, min(STAGE_SCORE_BOUNDS.max, int(total)))
 
 
 def calculate_bedtime_consistency_score(
     historical_bedtimes_iso: list[str],
     tonight_bedtime_iso: str,
-    score_bounds: ScoreBounds = CONSISTENCY_SCORE_BOUNDS,
-    config: SleepScoreConfig = sleep_config,
 ) -> int:
     """Calculate a consistency score based on a rolling median bedtime."""
     if not historical_bedtimes_iso:
-        return score_bounds.min
+        return CONSISTENCY_SCORE_BOUNDS.min
 
     historical_hours = [time_to_hours_past_noon(datetime.fromisoformat(bt)) for bt in historical_bedtimes_iso]
     median_hours_past_noon = statistics.median(historical_hours)
@@ -135,44 +120,42 @@ def calculate_bedtime_consistency_score(
     diff_minutes = (tonight_hours - median_hours_past_noon) * 60
     penalty = 0.0
 
-    if diff_minutes > config.consistency_grace_period_mins:
-        late_mins = diff_minutes - config.consistency_grace_period_mins
-        penalty = (late_mins / config.max_late_penalty_window_mins) * score_bounds.max
+    if diff_minutes > sleep_config.consistency_grace_period_mins:
+        late_mins = diff_minutes - sleep_config.consistency_grace_period_mins
+        penalty = (late_mins / sleep_config.max_late_penalty_window_mins) * CONSISTENCY_SCORE_BOUNDS.max
 
-    elif diff_minutes < -config.consistency_grace_period_mins:
-        early_mins = abs(diff_minutes) - config.consistency_grace_period_mins
+    elif diff_minutes < -sleep_config.consistency_grace_period_mins:
+        early_mins = abs(diff_minutes) - sleep_config.consistency_grace_period_mins
         penalty = min(
-            config.max_early_penalty_points,
-            (early_mins / config.max_early_penalty_window_mins) * score_bounds.max,
+            sleep_config.max_early_penalty_points,
+            (early_mins / sleep_config.max_early_penalty_window_mins) * CONSISTENCY_SCORE_BOUNDS.max,
         )
 
-    return max(score_bounds.min, int(score_bounds.max - penalty))
+    return max(CONSISTENCY_SCORE_BOUNDS.min, int(CONSISTENCY_SCORE_BOUNDS.max - penalty))
 
 
 def calculate_interruptions_score(
     total_awake_minutes: float,
     awakening_durations: list[float],
-    score_bounds: ScoreBounds = INTERRUPTIONS_SCORE_BOUNDS,
-    config: SleepScoreConfig = sleep_config,
 ) -> int:
     """Calculate an interruptions score based on WASO and awakening frequency."""
     # Scale weight points proportionally to score_bounds.max so the result stays
     # within bounds regardless of the configured scale (e.g. ScoreBounds(0, 50)).
-    scale = score_bounds.max / 100.0
-    dur_full = config.duration_weight_points * scale
-    freq_full = config.frequency_weight_points * scale
+    scale = INTERRUPTIONS_SCORE_BOUNDS.max / 100.0
+    dur_full = sleep_config.duration_weight_points * scale
+    freq_full = sleep_config.frequency_weight_points * scale
 
     duration_score = dur_full
-    if total_awake_minutes > config.interruptions_grace_period_mins:
-        excess_awake_mins = total_awake_minutes - config.interruptions_grace_period_mins
-        penalty_ratio = excess_awake_mins / config.max_penalty_window_mins
+    if total_awake_minutes > sleep_config.interruptions_grace_period_mins:
+        excess_awake_mins = total_awake_minutes - sleep_config.interruptions_grace_period_mins
+        penalty_ratio = excess_awake_mins / sleep_config.max_penalty_window_mins
         duration_penalty = penalty_ratio * dur_full
-        duration_score = max(score_bounds.min, dur_full - duration_penalty)
+        duration_score = max(INTERRUPTIONS_SCORE_BOUNDS.min, dur_full - duration_penalty)
 
-    n = sum(1 for d in awakening_durations if d > config.significant_wake_threshold_mins)
-    freq_score = freq_full * config.freq_score_fractions[min(n, len(config.freq_score_fractions) - 1)]
+    n = sum(1 for d in awakening_durations if d > sleep_config.significant_wake_threshold_mins)
+    freq_score = freq_full * sleep_config.freq_score_fractions[min(n, len(sleep_config.freq_score_fractions) - 1)]
 
-    return max(score_bounds.min, min(score_bounds.max, int(duration_score + freq_score)))
+    return max(INTERRUPTIONS_SCORE_BOUNDS.min, min(INTERRUPTIONS_SCORE_BOUNDS.max, int(duration_score + freq_score)))
 
 
 def calculate_overall_sleep_score(
@@ -183,8 +166,6 @@ def calculate_overall_sleep_score(
     historical_bedtimes: list[str],
     total_awake_minutes: float,
     awakening_durations: list[float],
-    score_bounds: ScoreBounds = OVERALL_SCORE_BOUNDS,
-    config: SleepScoreConfig = sleep_config,
 ) -> SleepScoreResult:
     """Combine all four pillars into a single overall sleep score.
 
@@ -196,23 +177,19 @@ def calculate_overall_sleep_score(
         raise ValueError(f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}")
 
     duration_hours = total_sleep_minutes / 60.0
-    duration_score = _score_duration_hours(duration_hours, DURATION_SCORE_BOUNDS, config)
-    stages_score = calculate_total_stages_score(deep_minutes, rem_minutes, STAGE_SCORE_BOUNDS, config)
-    consistency_score = calculate_bedtime_consistency_score(
-        historical_bedtimes, session_start, CONSISTENCY_SCORE_BOUNDS, config
-    )
-    interruptions_score = calculate_interruptions_score(
-        total_awake_minutes, awakening_durations, INTERRUPTIONS_SCORE_BOUNDS, config
-    )
+    duration_score = _score_duration_hours(duration_hours)
+    stages_score = calculate_total_stages_score(deep_minutes, rem_minutes)
+    consistency_score = calculate_bedtime_consistency_score(historical_bedtimes, session_start)
+    interruptions_score = calculate_interruptions_score(total_awake_minutes, awakening_durations)
 
     weighted_fraction = (
-        (duration_score / DURATION_SCORE_BOUNDS.max) * config.duration_impact
-        + (stages_score / STAGE_SCORE_BOUNDS.max) * config.stages_impact
-        + (consistency_score / CONSISTENCY_SCORE_BOUNDS.max) * config.consistency_impact
-        + (interruptions_score / INTERRUPTIONS_SCORE_BOUNDS.max) * config.interruptions_impact
+        (duration_score / DURATION_SCORE_BOUNDS.max) * sleep_config.duration_impact
+        + (stages_score / STAGE_SCORE_BOUNDS.max) * sleep_config.stages_impact
+        + (consistency_score / CONSISTENCY_SCORE_BOUNDS.max) * sleep_config.consistency_impact
+        + (interruptions_score / INTERRUPTIONS_SCORE_BOUNDS.max) * sleep_config.interruptions_impact
     )
-    scaled = score_bounds.min + (score_bounds.max - score_bounds.min) * weighted_fraction
-    overall = max(score_bounds.min, min(score_bounds.max, int(scaled)))
+    scaled = OVERALL_SCORE_BOUNDS.min + (OVERALL_SCORE_BOUNDS.max - OVERALL_SCORE_BOUNDS.min) * weighted_fraction
+    overall = max(OVERALL_SCORE_BOUNDS.min, min(OVERALL_SCORE_BOUNDS.max, int(scaled)))
 
     return SleepScoreResult(
         overall_score=overall,

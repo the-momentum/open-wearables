@@ -8,18 +8,21 @@ All DB tests use the transaction-rollback fixture from conftest so they leave
 no side-effects.
 """
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.exceptions import HTTPException
 from sqlalchemy.orm import Session
 
+from app.constants.sleep import SleepStageType
 from app.models.data_source import DataSource
 from app.models.event_record import EventRecord
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.services.scores.sleep_service import SleepScoreService
 from tests.factories import DataSourceFactory, EventRecordFactory, SleepDetailsFactory, UserFactory
 
-_log = __import__("logging").getLogger(__name__)
+_log = logging.getLogger(__name__)
 service = SleepScoreService(log=_log)
 
 
@@ -35,19 +38,13 @@ def _utc(iso: str) -> datetime:
 def _make_stages(
     start_iso: str,
     blocks: list[tuple[str, int]],  # (stage, duration_mins)
-) -> list[dict]:
-    """Build a list of stage dicts with contiguous start/end times."""
+) -> list[SleepStage]:
+    """Build a list of SleepStage with contiguous start/end times."""
     stages = []
     current = _utc(start_iso)
     for stage, mins in blocks:
         end = current + timedelta(minutes=mins)
-        stages.append(
-            {
-                "stage": stage,
-                "start_time": current.isoformat(),
-                "end_time": end.isoformat(),
-            }
-        )
+        stages.append(SleepStage(stage=SleepStageType(stage), start_time=current, end_time=end))
         current = end
     return stages
 
@@ -220,7 +217,7 @@ class TestGetSleepScoreForUser:
         deep_minutes: int | None = 120,
         rem_minutes: int | None = 90,
         awake_minutes: int = 20,
-        sleep_stages: list[dict] | None = None,
+        sleep_stages: list[SleepStage] | None = None,
         is_nap: bool = False,
     ) -> EventRecord:
         """Create an EventRecord + SleepDetails for the given data_source and date."""
@@ -251,7 +248,7 @@ class TestGetSleepScoreForUser:
             sleep_awake_minutes=awake_minutes,
             sleep_light_minutes=(max(0, duration_minutes - (deep_minutes or 0) - (rem_minutes or 0))),
             is_nap=is_nap,
-            sleep_stages=sleep_stages,
+            sleep_stages=[s.model_dump(mode="json") for s in sleep_stages] if sleep_stages else None,
         )
         db.flush()
         return record
@@ -475,57 +472,6 @@ class TestGetSleepScoreForUser:
 
 
 # ---------------------------------------------------------------------------
-# Helper: _convert_stages_to_duration_blocks
-# ---------------------------------------------------------------------------
-
-
-class TestConvertStagesToDurationBlocks:
-    """Tests for SleepScoreService._convert_stages_to_duration_blocks."""
-
-    def test_single_block_computes_duration(self) -> None:
-        """A 30-minute block should produce duration_mins=30.0."""
-        raw = [{"stage": "light", "start_time": "2026-03-10T23:00:00", "end_time": "2026-03-10T23:30:00"}]
-        result = service._convert_stages_to_duration_blocks(raw)
-        assert len(result) == 1
-        assert result[0]["stage"] == "light"
-        assert result[0]["duration_mins"] == pytest.approx(30.0)
-
-    def test_multiple_blocks_all_converted(self) -> None:
-        """Each block gets its own duration_mins entry."""
-        raw = [
-            {"stage": "light", "start_time": "2026-03-10T23:00:00", "end_time": "2026-03-10T23:30:00"},
-            {"stage": "deep", "start_time": "2026-03-10T23:30:00", "end_time": "2026-03-11T01:00:00"},
-            {"stage": "awake", "start_time": "2026-03-11T01:00:00", "end_time": "2026-03-11T01:15:00"},
-        ]
-        result = service._convert_stages_to_duration_blocks(raw)
-        assert len(result) == 3
-        assert result[0]["duration_mins"] == pytest.approx(30.0)
-        assert result[1]["duration_mins"] == pytest.approx(90.0)
-        assert result[2]["duration_mins"] == pytest.approx(15.0)
-
-    def test_z_suffix_stripped_correctly(self) -> None:
-        """ISO timestamps ending with 'Z' should be parsed without error."""
-        raw = [{"stage": "rem", "start_time": "2026-03-10T23:00:00Z", "end_time": "2026-03-10T23:45:00Z"}]
-        result = service._convert_stages_to_duration_blocks(raw)
-        assert result[0]["duration_mins"] == pytest.approx(45.0)
-
-    def test_empty_list_returns_empty(self) -> None:
-        assert service._convert_stages_to_duration_blocks([]) == []
-
-    def test_cross_midnight_block(self) -> None:
-        """A block spanning midnight should still compute the correct duration."""
-        raw = [{"stage": "deep", "start_time": "2026-03-10T23:45:00", "end_time": "2026-03-11T00:15:00"}]
-        result = service._convert_stages_to_duration_blocks(raw)
-        assert result[0]["duration_mins"] == pytest.approx(30.0)
-
-    def test_stage_label_preserved(self) -> None:
-        """The stage string should be carried through unchanged."""
-        raw = [{"stage": "REM", "start_time": "2026-03-10T23:00:00", "end_time": "2026-03-10T23:10:00"}]
-        result = service._convert_stages_to_duration_blocks(raw)
-        assert result[0]["stage"] == "REM"
-
-
-# ---------------------------------------------------------------------------
 # Helper: _parse_wearable_stages_for_interruptions
 # ---------------------------------------------------------------------------
 
@@ -533,8 +479,15 @@ class TestConvertStagesToDurationBlocks:
 class TestParseWearableStagesForInterruptions:
     """Tests for SleepScoreService._parse_wearable_stages_for_interruptions."""
 
-    def _blocks(self, *pairs: tuple[str, float]) -> list[dict[str, str | float]]:
-        return [{"stage": stage, "duration_mins": mins} for stage, mins in pairs]
+    def _stages(self, *pairs: tuple[str, int]) -> list[SleepStage]:
+        """Build SleepStage objects with contiguous times from (stage, duration_mins) pairs."""
+        result = []
+        current = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        for stage_name, mins in pairs:
+            end = current + timedelta(minutes=mins)
+            result.append(SleepStage(stage=SleepStageType(stage_name), start_time=current, end_time=end))
+            current = end
+        return result
 
     def test_empty_blocks_returns_zero(self) -> None:
         result = service._parse_wearable_stages_for_interruptions([])
@@ -542,65 +495,59 @@ class TestParseWearableStagesForInterruptions:
         assert result.awakening_durations == []
 
     def test_no_awake_blocks_returns_zero_waso(self) -> None:
-        blocks = self._blocks(("light", 30), ("deep", 90), ("rem", 60))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        stages = self._stages(("light", 30), ("deep", 90), ("rem", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == 0.0
         assert result.awakening_durations == []
 
     def test_leading_awake_stripped_as_sleep_latency(self) -> None:
         """An awake block at the start (latency) must not count as WASO."""
-        blocks = self._blocks(("awake", 20), ("light", 30), ("deep", 90))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        stages = self._stages(("awake", 20), ("light", 30), ("deep", 90))
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == 0.0
 
     def test_trailing_awake_stripped_as_morning_lying_in(self) -> None:
         """An awake block at the end must not count as WASO."""
-        blocks = self._blocks(("light", 30), ("deep", 90), ("awake", 15))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        stages = self._stages(("light", 30), ("deep", 90), ("awake", 15))
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == 0.0
 
     def test_middle_awake_counted_as_waso(self) -> None:
         """Awake block sandwiched between sleep stages counts as WASO."""
-        blocks = self._blocks(("light", 30), ("awake", 15), ("rem", 60))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        stages = self._stages(("light", 30), ("awake", 15), ("rem", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == pytest.approx(15.0)
         assert result.awakening_durations == [15.0]
 
     def test_multiple_middle_awakes_all_counted(self) -> None:
-        blocks = self._blocks(
+        stages = self._stages(
             ("light", 30),
             ("awake", 10),
             ("deep", 60),
             ("awake", 20),
             ("rem", 45),
         )
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == pytest.approx(30.0)
         assert result.awakening_durations == [10.0, 20.0]
 
     def test_leading_and_trailing_stripped_middle_counted(self) -> None:
         """All three edge types in one session — only middle awake counts."""
-        blocks = self._blocks(
+        stages = self._stages(
             ("awake", 15),  # latency — stripped
             ("light", 30),
             ("awake", 12),  # WASO — counted
             ("deep", 90),
             ("awake", 10),  # morning — stripped
         )
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert result.total_awake_minutes == pytest.approx(12.0)
         assert result.awakening_durations == [12.0]
 
-    def test_case_insensitive_stage_names(self) -> None:
-        """Stage names like 'Awake' or 'AWAKE' should be treated the same as 'awake'."""
-        blocks = self._blocks(("light", 30), ("AWAKE", 15), ("deep", 60))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
-        assert result.total_awake_minutes == pytest.approx(15.0)
-
     def test_waso_data_model_fields(self) -> None:
         """Result must expose total_awake_minutes and awakening_durations."""
-        blocks = self._blocks(("light", 30), ("awake", 10), ("rem", 60))
-        result = service._parse_wearable_stages_for_interruptions(blocks)
+        stages = self._stages(("light", 30), ("awake", 10), ("rem", 60))
+        result = service._parse_wearable_stages_for_interruptions(stages)
         assert hasattr(result, "total_awake_minutes")
         assert hasattr(result, "awakening_durations")
 
