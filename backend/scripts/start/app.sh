@@ -1,10 +1,6 @@
 #!/bin/bash
 set -e -x
 
-# Create Svix database in shared Postgres (before anything else touches the DB)
-echo 'Creating svix database...'
-uv run python scripts/init/seed_svix_db.py
-
 # Init database
 echo 'Applying migrations...'
 uv run alembic upgrade head

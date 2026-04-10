@@ -38,7 +38,15 @@ def emit_webhook_event(
     added later to narrow the audience.
     """
     with SessionLocal() as db:
-        developers = developer_service.crud.get_all(db, filters={}, offset=0, limit=1000, sort_by=None)
+        page_size = 100
+        offset = 0
+        developers = []
+        while True:
+            batch = developer_service.crud.get_all(db, filters={}, offset=offset, limit=page_size, sort_by=None)
+            developers.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
 
     sent = 0
     errors: list[str] = []

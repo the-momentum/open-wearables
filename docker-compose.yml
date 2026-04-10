@@ -16,6 +16,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
+  db-svix-init:
+    image: postgres:18
+    environment:
+      PGPASSWORD: open-wearables
+    command: >
+      sh -c "createdb -h db -U open-wearables svix || true"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
   app:
     build:
         context: ./backend
@@ -140,6 +151,8 @@ services:
   svix-server:
     container_name: svix-server__open-wearables
     image: svix/svix-server:v1
+    env_file:
+      - ./backend/config/.env
     environment:
       SVIX_DB_DSN: "postgresql://open-wearables:open-wearables@db:5432/svix"
       SVIX_JWT_SECRET: "${SVIX_JWT_SECRET}"
@@ -149,12 +162,12 @@ services:
     ports:
       - "8071:8071"
     depends_on:
-      db:
-        condition: service_healthy
+      db-svix-init:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "svix-server healthcheck http://localhost:8071"]
+      test: ["CMD", "svix-server", "healthcheck", "http://localhost:8071"]
       interval: 5s
       timeout: 3s
       retries: 20
