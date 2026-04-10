@@ -5,7 +5,7 @@ dashboard-driven data generation with configurable profiles.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -14,6 +14,7 @@ import yaml
 from faker import Faker
 from sqlalchemy.orm import Session
 
+from app.constants.sleep import SleepStageType
 from app.models import EventRecordDetail, PersonalRecord, UserConnection
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
@@ -25,6 +26,7 @@ from app.schemas.model_crud.activities import (
     PersonalRecordCreate,
     TimeSeriesSampleCreate,
 )
+from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.model_crud.user_management import (
     UserConnectionCreate,
     UserConnectionUpdate,
@@ -127,6 +129,73 @@ SERIES_VALUES_RANGES, SERIES_TYPE_PERCENTAGES = _load_series_type_config()
 # ---------------------------------------------------------------------------
 
 
+def _resolve_date_bounds(
+    date_from: date | None,
+    date_to: date | None,
+    date_range_months: int,
+    last_synced_at: datetime,
+) -> tuple[datetime, datetime]:
+    """Return (start_bound, end_bound) as tz-aware datetimes.
+
+    If explicit dates are provided they take priority; otherwise fall back to
+    ``date_range_months`` relative to ``last_synced_at``.
+    """
+    if date_from is not None and date_to is not None:
+        start_bound = datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc)
+        end_bound = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59, tzinfo=timezone.utc)
+    else:
+        start_bound = last_synced_at - timedelta(days=date_range_months * 30)
+        end_bound = last_synced_at
+
+    return start_bound, end_bound
+
+
+def _generate_sleep_stages(
+    start_datetime: datetime,
+    deep_minutes: int,
+    rem_minutes: int,
+    light_minutes: int,
+    awake_minutes: int,
+    fake: Faker,
+) -> list[SleepStage]:
+    """Generate contiguous sleep stage intervals whose totals match the aggregate columns."""
+
+    def _split_minutes(total: int, min_block: int, max_block: int) -> list[int]:
+        """Split *total* minutes into a list of random-sized blocks."""
+        if total <= 0:
+            return []
+        blocks: list[int] = []
+        remaining = total
+        while remaining > 0:
+            size = min(fake.random_int(min=min_block, max=max_block), remaining)
+            blocks.append(size)
+            remaining -= size
+        return blocks
+
+    # Build pool of (stage_type, duration_minutes) blocks
+    pool: list[tuple[SleepStageType, int]] = []
+    for mins, stage, lo, hi in [
+        (deep_minutes, SleepStageType.DEEP, 5, 25),
+        (rem_minutes, SleepStageType.REM, 3, 35),
+        (light_minutes, SleepStageType.LIGHT, 3, 20),
+        (awake_minutes, SleepStageType.AWAKE, 1, 5),
+    ]:
+        for block in _split_minutes(mins, lo, hi):
+            pool.append((stage, block))
+
+    fake.random.shuffle(pool)
+
+    # Assign contiguous timestamps
+    stages: list[SleepStage] = []
+    cursor = start_datetime
+    for stage_type, block_minutes in pool:
+        block_end = cursor + timedelta(minutes=block_minutes)
+        stages.append(SleepStage(stage=stage_type, start_time=cursor, end_time=block_end))
+        cursor = block_end
+
+    return stages
+
+
 def _generate_workout(
     user_id: UUID,
     fake: Faker,
@@ -137,8 +206,17 @@ def _generate_workout(
     provider = fake.random.choice(list(provider_sync_times.keys()))
     last_synced_at = provider_sync_times[provider]
 
-    start_date_str = f"-{config.date_range_months}M"
-    start_datetime = fake.date_time_between(start_date=start_date_str, end_date=last_synced_at, tzinfo=timezone.utc)
+    start_bound, end_bound = _resolve_date_bounds(
+        config.date_from,
+        config.date_to,
+        config.date_range_months,
+        last_synced_at,
+    )
+    start_datetime = fake.date_time_between(
+        start_date=start_bound,
+        end_date=end_bound,
+        tzinfo=timezone.utc,
+    )
 
     duration_minutes = fake.random_int(min=config.duration_min_minutes, max=config.duration_max_minutes)
     duration_seconds = duration_minutes * 60
@@ -201,8 +279,17 @@ def _generate_sleep(
     provider = fake.random.choice(list(provider_sync_times.keys()))
     last_synced_at = provider_sync_times[provider]
 
-    start_date_str = f"-{config.date_range_months}M"
-    base_datetime = fake.date_time_between(start_date=start_date_str, end_date=last_synced_at, tzinfo=timezone.utc)
+    start_bound, end_bound = _resolve_date_bounds(
+        config.date_from,
+        config.date_to,
+        config.date_range_months,
+        last_synced_at,
+    )
+    base_datetime = fake.date_time_between(
+        start_date=start_bound,
+        end_date=end_bound,
+        tzinfo=timezone.utc,
+    )
 
     # Sleep typically starts between 9 PM and 1 AM
     start_hour = fake.random_int(min=21, max=25) % 24
@@ -227,13 +314,17 @@ def _generate_sleep(
 
     time_in_bed_minutes = sleep_duration_minutes + fake.random_int(min=15, max=60)
 
-    deep_minutes = fake.random_int(min=60, max=120)
-    rem_minutes = fake.random_int(min=80, max=140)
-    light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - fake.random_int(min=10, max=40)
-    awake_minutes = fake.random_int(min=5, max=30)
+    # Stage durations - must sum exactly to sleep_duration_minutes
+    awake_minutes = fake.random_int(min=5, max=min(30, sleep_duration_minutes // 6))
+    deep_minutes = fake.random_int(min=60, max=min(120, (sleep_duration_minutes - awake_minutes) // 2))
+    rem_minutes = fake.random_int(min=60, max=min(140, sleep_duration_minutes - awake_minutes - deep_minutes - 30))
+    light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - awake_minutes
 
     sleep_efficiency = Decimal(sleep_duration_minutes) / Decimal(time_in_bed_minutes) * 100
     is_nap = fake.boolean(chance_of_getting_true=config.nap_chance_pct)
+
+    # Generate contiguous sleep stage intervals
+    sleep_stages = _generate_sleep_stages(start_datetime, deep_minutes, rem_minutes, light_minutes, awake_minutes, fake)
 
     sleep_id = uuid4()
     prov_config = PROVIDER_CONFIGS[provider]
@@ -272,6 +363,7 @@ def _generate_sleep(
         sleep_light_minutes=light_minutes,
         sleep_awake_minutes=awake_minutes,
         is_nap=is_nap,
+        sleep_stages=sleep_stages,
     )
 
     return record, detail

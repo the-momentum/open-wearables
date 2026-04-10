@@ -1,5 +1,7 @@
 """Schemas for seed data generation via the dashboard."""
 
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 from app.schemas.enums import ProviderName, WorkoutType
@@ -19,6 +21,8 @@ class WorkoutConfig(BaseModel):
     steps_range: tuple[int, int] = (500, 20_000)
     time_series_chance_pct: int = Field(30, ge=0, le=100)
     date_range_months: int = Field(6, ge=1, le=24)
+    date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
+    date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
 
 
 class SleepConfig(BaseModel):
@@ -30,6 +34,8 @@ class SleepConfig(BaseModel):
     nap_chance_pct: int = Field(10, ge=0, le=100)
     weekend_catchup: bool = Field(False, description="If True, weekday sleep is shorter and weekend sleep is longer.")
     date_range_months: int = Field(6, ge=1, le=24)
+    date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
+    date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
 
 
 class SeedProfileConfig(BaseModel):

@@ -14,6 +14,8 @@ export interface WorkoutConfig {
   steps_range: [number, number];
   time_series_chance_pct: number;
   date_range_months: number;
+  date_from: string | null;
+  date_to: string | null;
 }
 
 export interface SleepConfig {
@@ -23,6 +25,8 @@ export interface SleepConfig {
   nap_chance_pct: number;
   weekend_catchup: boolean;
   date_range_months: number;
+  date_from: string | null;
+  date_to: string | null;
 }
 
 export interface SeedProfileConfig {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSeedPresets, useGenerateSeedData } from '@/hooks/api/use-seed-data';
 import type {
   SeedProfileConfig,
@@ -16,11 +16,29 @@ import {
   Users,
   Wifi,
   Play,
+  CalendarDays,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Default state
 // ---------------------------------------------------------------------------
+
+/** Format a Date as YYYY-MM-DD for <input type="date">. */
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Number of calendar days between two YYYY-MM-DD strings (inclusive). */
+function daysBetween(from: string | null, to: string | null): number | null {
+  if (!from || !to) return null;
+  const diff = new Date(to).getTime() - new Date(from).getTime();
+  return Math.floor(diff / 86_400_000) + 1;
+}
+
+const DEFAULT_DATE_FROM = toISODate(
+  new Date(Date.now() - 6 * 30 * 86_400_000)
+);
+const DEFAULT_DATE_TO = toISODate(new Date());
 
 const DEFAULT_PROFILE: SeedProfileConfig = {
   preset: null,
@@ -39,6 +57,8 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
     steps_range: [500, 20000],
     time_series_chance_pct: 30,
     date_range_months: 6,
+    date_from: DEFAULT_DATE_FROM,
+    date_to: DEFAULT_DATE_TO,
   },
   sleep_config: {
     count: 20,
@@ -47,6 +67,8 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
     nap_chance_pct: 10,
     weekend_catchup: false,
     date_range_months: 6,
+    date_from: DEFAULT_DATE_FROM,
+    date_to: DEFAULT_DATE_TO,
   },
 };
 
@@ -84,10 +106,23 @@ export function SeedDataTab() {
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [profile, setProfile] = useState<SeedProfileConfig>(DEFAULT_PROFILE);
 
-  // Apply a preset to the form
+  // Apply a preset to the form, filling in date defaults for fields the preset
+  // may not include (backend presets use date_range_months instead).
   const applyPreset = (preset: SeedPreset) => {
     setActivePreset(preset.id);
-    setProfile(preset.profile);
+    setProfile({
+      ...preset.profile,
+      workout_config: {
+        ...preset.profile.workout_config,
+        date_from: preset.profile.workout_config.date_from ?? DEFAULT_DATE_FROM,
+        date_to: preset.profile.workout_config.date_to ?? DEFAULT_DATE_TO,
+      },
+      sleep_config: {
+        ...preset.profile.sleep_config,
+        date_from: preset.profile.sleep_config.date_from ?? DEFAULT_DATE_FROM,
+        date_to: preset.profile.sleep_config.date_to ?? DEFAULT_DATE_TO,
+      },
+    });
   };
 
   const resetToDefault = () => {
@@ -101,6 +136,18 @@ export function SeedDataTab() {
       profile,
     });
   };
+
+  // Sleep count validation: cannot exceed days in the selected date range
+  const sleepDays = useMemo(
+    () =>
+      daysBetween(
+        profile.sleep_config.date_from,
+        profile.sleep_config.date_to
+      ),
+    [profile.sleep_config.date_from, profile.sleep_config.date_to]
+  );
+  const sleepCountExceedsDays =
+    sleepDays !== null && profile.sleep_config.count > sleepDays;
 
   // Workout type checkbox helpers
   const selectedWorkoutTypes = profile.workout_config.workout_types;
@@ -300,6 +347,51 @@ export function SeedDataTab() {
             </div>
 
             <div>
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
+                <Label className="text-xs text-zinc-500">Date range</Label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Input
+                    type="date"
+                    value={profile.workout_config.date_from ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        workout_config: {
+                          ...profile.workout_config,
+                          date_from: e.target.value || null,
+                        },
+                      });
+                      setActivePreset(null);
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Input
+                    type="date"
+                    value={profile.workout_config.date_to ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        workout_config: {
+                          ...profile.workout_config,
+                          date_to: e.target.value || null,
+                        },
+                      });
+                      setActivePreset(null);
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
               <Label className="text-xs text-zinc-500 mb-2 block">
                 Workout types{' '}
                 <span className="text-zinc-600">
@@ -409,6 +501,58 @@ export function SeedDataTab() {
                   className="mt-1"
                 />
               </div>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
+                <Label className="text-xs text-zinc-500">Date range</Label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Input
+                    type="date"
+                    value={profile.sleep_config.date_from ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        sleep_config: {
+                          ...profile.sleep_config,
+                          date_from: e.target.value || null,
+                        },
+                      });
+                      setActivePreset(null);
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Input
+                    type="date"
+                    value={profile.sleep_config.date_to ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        sleep_config: {
+                          ...profile.sleep_config,
+                          date_to: e.target.value || null,
+                        },
+                      });
+                      setActivePreset(null);
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              {sleepCountExceedsDays && (
+                <p className="text-xs text-red-400 mt-2">
+                  Sleep count ({profile.sleep_config.count}) exceeds the number
+                  of days in the selected range ({sleepDays}). Each day can have
+                  at most one sleep record.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -558,7 +702,7 @@ export function SeedDataTab() {
       <div className="flex items-center gap-4">
         <Button
           onClick={handleGenerate}
-          disabled={generateMutation.isPending}
+          disabled={generateMutation.isPending || sleepCountExceedsDays}
           className="gap-2"
         >
           {generateMutation.isPending ? (
