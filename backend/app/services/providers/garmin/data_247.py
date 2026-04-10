@@ -971,6 +971,31 @@ class Garmin247Data(Base247DataTemplate):
     # Stress Data - /wellness-api/rest/stressDetails
     # -------------------------------------------------------------------------
 
+    def _normalize_body_battery_health_score(
+        self,
+        user_id: UUID,
+        raw_stress: dict[str, Any],
+    ) -> HealthScoreCreate | None:
+        """Extract peak body battery health score from a stressDetails record."""
+        start_ts = raw_stress.get("startTimeInSeconds", 0)
+        if not start_ts:
+            return None
+        battery_values = raw_stress.get("timeOffsetBodyBatteryValues") or raw_stress.get("bodyBatteryValues", {})
+        if not battery_values or not isinstance(battery_values, dict):
+            return None
+        valid = [v for v in battery_values.values() if v is not None and v >= 0]
+        if not valid:
+            return None
+        return HealthScoreCreate(
+            id=uuid4(),
+            user_id=user_id,
+            provider=ProviderName.GARMIN,
+            category=HealthScoreCategory.BODY_BATTERY,
+            value=max(valid),
+            recorded_at=self._from_epoch_seconds(start_ts),
+            zone_offset=offset_to_iso(raw_stress.get("startTimeOffsetInSeconds")),
+        )
+
     def _build_stress_samples(
         self,
         user_id: UUID,
@@ -1039,10 +1064,14 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         raw_stress: dict[str, Any],
     ) -> int:
-        """Save individual stress level and body battery timeseries from a stressDetails record."""
+        """Save individual stress/body battery timeseries
+        and peak body battery health score from a stressDetails record."""
         samples = self._build_stress_samples(user_id, raw_stress)
         if samples:
             self.data_point_repo.bulk_create(db, samples)
+        if score := self._normalize_body_battery_health_score(user_id, raw_stress):
+            health_score_service.bulk_create(db, [score])
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1663,6 +1692,8 @@ class Garmin247Data(Base247DataTemplate):
                         all_samples.extend(self._build_hrv_samples(user_id, item))
                     case "stressDetails":
                         all_samples.extend(self._build_stress_samples(user_id, item))
+                        if score := self._normalize_body_battery_health_score(user_id, item):
+                            all_health_scores.append(score)
                     case "respiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
                     case "pulseox":
