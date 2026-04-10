@@ -18,6 +18,7 @@ from app.services.providers.garmin.backfill_state import (
 )
 
 from .archival_task import run_daily_archival
+from .emit_webhook_event_task import emit_webhook_event
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
     start_full_backfill as start_garmin_full_backfill,
@@ -62,4 +63,6 @@ __all__ = [
     "sync_vendor_data",
     "sync_all_users",
     "send_invitation_email_task",
+    # Outgoing webhooks
+    "emit_webhook_event",
 ]

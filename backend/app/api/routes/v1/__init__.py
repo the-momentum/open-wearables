@@ -15,6 +15,7 @@ from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
+from .outgoing_webhooks import router as outgoing_webhooks_router
 from .priorities import router as priorities_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
@@ -47,6 +48,7 @@ v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
 v1_router.include_router(token_router, tags=["External: Token"])
 v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
+v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["External: Webhooks"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])

@@ -167,6 +167,13 @@ class Settings(BaseSettings):
     raw_payload_s3_prefix: str = "raw-payloads"
     raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
 
+    # SVIX WEBHOOK SETTINGS
+    svix_server_url: str = "http://svix-server:8071"
+    # Signing secret used by the Svix server to verify JWTs.  Must match SVIX_JWT_SECRET in docker-compose.
+    svix_jwt_secret: SecretStr | None = None
+    # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
+    svix_auth_token: SecretStr | None = None
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:

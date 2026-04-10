@@ -36,6 +36,7 @@ from app.schemas.utils import (
 from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
+from app.services.outgoing_webhooks.events import on_activity_created, on_sleep_created, on_workout_created
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -51,6 +52,38 @@ class EventRecordService(
         self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
+
+    # ------------------------------------------------------------------
+    # Create with outgoing-webhook emit
+    # ------------------------------------------------------------------
+
+    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:  # type: ignore[override]
+        record = super().create(db_session, creator)
+        self._emit_event_record_webhook(creator)
+        return record
+
+    @staticmethod
+    def _emit_event_record_webhook(creator: EventRecordCreate) -> None:
+        """Schedule an outgoing webhook event based on the record category."""
+        common = {
+            "record_id": creator.id,
+            "user_id": creator.user_id,
+            "provider": creator.provider or creator.source_name,
+            "start_datetime": creator.start_datetime.isoformat(),
+            "end_datetime": creator.end_datetime.isoformat(),
+            "duration_seconds": creator.duration_seconds,
+        }
+        if creator.category == "workout":
+            on_workout_created(workout_type=creator.type, **common)
+        elif creator.category == "sleep":
+            on_sleep_created(
+                **{k: v for k, v in common.items() if k != "duration_seconds"},
+                duration_seconds=common["duration_seconds"],
+            )
+        else:
+            on_activity_created(
+                activity_type=creator.type, **{k: v for k, v in common.items() if k != "duration_seconds"}
+            )
 
     def _resolve_avg_hr(
         self,
@@ -139,6 +172,25 @@ class EventRecordService(
         first, and the old record is deleted only after a successful insert — so a failure
         never loses the original data.
         """
+        result = self._create_or_merge_sleep_inner(db_session, user_id, record, detail, threshold_minutes)
+        on_sleep_created(
+            record_id=result.id,
+            user_id=user_id,
+            provider=record.provider or record.source_name,
+            start_datetime=result.start_datetime.isoformat(),
+            end_datetime=result.end_datetime.isoformat(),
+            duration_seconds=record.duration_seconds,
+        )
+        return result
+
+    def _create_or_merge_sleep_inner(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record: EventRecordCreate,
+        detail: EventRecordDetailCreate,
+        threshold_minutes: int,
+    ) -> EventRecord:
         adjacent = self.find_adjacent_sleep_record(
             db_session,
             user_id,
@@ -312,13 +364,50 @@ class EventRecordService(
         db_session.commit()
         return created_record
 
+    @staticmethod
+    def _emit_event_record_webhook(record: EventRecordCreate) -> None:
+        """Fire the appropriate outgoing webhook for a newly created event record."""
+        category = (record.category or "").lower()
+        provider = record.provider or record.source_name
+        if category == "sleep":
+            on_sleep_created(
+                record_id=record.id,
+                user_id=record.user_id,
+                provider=provider,
+                start_datetime=record.start_datetime.isoformat(),
+                end_datetime=record.end_datetime.isoformat(),
+                duration_seconds=record.duration_seconds,
+            )
+        elif category == "workout":
+            on_workout_created(
+                record_id=record.id,
+                user_id=record.user_id,
+                provider=provider,
+                workout_type=record.type,
+                start_datetime=record.start_datetime.isoformat(),
+                end_datetime=record.end_datetime.isoformat(),
+                duration_seconds=record.duration_seconds,
+            )
+        else:
+            on_activity_created(
+                record_id=record.id,
+                user_id=record.user_id,
+                provider=provider,
+                activity_type=record.type,
+                start_datetime=record.start_datetime.isoformat(),
+                end_datetime=record.end_datetime.isoformat(),
+            )
+
     def bulk_create(
         self,
         db_session: DbSession,
         records: list[EventRecordCreate],
     ) -> list[UUID]:
         """Bulk create event records with batch data source resolution."""
-        return self.crud.bulk_create(db_session, records)
+        ids = self.crud.bulk_create(db_session, records)
+        for creator in records:
+            self._emit_event_record_webhook(creator)
+        return ids
 
     def bulk_create_details(
         self,

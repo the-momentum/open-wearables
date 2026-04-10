@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e -x
 
+# Create Svix database in shared Postgres (before anything else touches the DB)
+echo 'Creating svix database...'
+uv run python scripts/init/seed_svix_db.py
+
 # Init database
 echo 'Applying migrations...'
 uv run alembic upgrade head
@@ -24,6 +28,10 @@ uv run python scripts/init/seed_series_types.py
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
+
+# Register webhook event types with Svix
+echo 'Registering webhook event types...'
+uv run python scripts/init/seed_webhook_event_types.py
 
 # Init app
 echo "Starting the FastAPI application..."
