@@ -134,6 +134,10 @@ class SeedDataRequest(BaseModel):
 
     num_users: int = Field(1, ge=1, le=10)
     profile: SeedProfileConfig = SeedProfileConfig()
+    random_seed: int | None = Field(
+        None,
+        description="Seed for reproducible generation. None = random.",
+    )
 
 
 class SeedDataResponse(BaseModel):
@@ -141,6 +145,7 @@ class SeedDataResponse(BaseModel):
 
     task_id: str
     status: str
+    seed_used: int | None = None
 
 
 class SeedPresetInfo(BaseModel):

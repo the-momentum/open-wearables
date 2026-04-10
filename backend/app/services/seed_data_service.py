@@ -5,6 +5,7 @@ dashboard-driven data generation with configurable profiles.
 """
 
 import logging
+import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -493,7 +494,9 @@ class SeedDataService:
         Returns a summary dict with counts of created entities.
         """
         profile = request.profile
+        seed = request.random_seed if request.random_seed is not None else random.randint(0, 2**31 - 1)
         fake = Faker()
+        Faker.seed(seed)
 
         personal_record_repo = CrudRepository(PersonalRecord)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
@@ -580,6 +583,7 @@ class SeedDataService:
                 summary["time_series_samples"],
             )
 
+        summary["seed_used"] = seed
         return summary
 
 

@@ -1,5 +1,7 @@
 """API endpoints for dashboard-driven seed data generation."""
 
+import random
+
 from fastapi import APIRouter, status
 
 from app.integrations.celery.tasks.seed_data_task import generate_seed_data
@@ -25,8 +27,11 @@ def dispatch_seed_generation(
     _developer: DeveloperDep,
     request: SeedDataRequest,
 ) -> SeedDataResponse:
+    # Resolve seed before dispatching so we can return it immediately
+    seed = request.random_seed if request.random_seed is not None else random.randint(0, 2**31 - 1)
+    request.random_seed = seed
     result = generate_seed_data.delay(request.model_dump(mode="json"))
-    return SeedDataResponse(task_id=result.id, status="dispatched")
+    return SeedDataResponse(task_id=result.id, status="dispatched", seed_used=seed)
 
 
 @router.get(

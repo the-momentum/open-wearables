@@ -58,11 +58,13 @@ export interface SeedProfileConfig {
 export interface SeedDataRequest {
   num_users: number;
   profile: SeedProfileConfig;
+  random_seed: number | null;
 }
 
 export interface SeedDataResponse {
   task_id: string;
   status: string;
+  seed_used: number | null;
 }
 
 export interface SeedPreset {

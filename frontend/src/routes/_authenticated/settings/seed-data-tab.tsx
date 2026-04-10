@@ -129,6 +129,8 @@ export function SeedDataTab() {
   const generateMutation = useGenerateSeedData();
 
   const [numUsers, setNumUsers] = useState(1);
+  const [randomSeed, setRandomSeed] = useState('');
+  const [lastSeedUsed, setLastSeedUsed] = useState<number | null>(null);
   const [activePreset, setActivePreset] = useState<string | null>(null);
   const [profile, setProfile] = useState<SeedProfileConfig>(DEFAULT_PROFILE);
 
@@ -162,10 +164,21 @@ export function SeedDataTab() {
   };
 
   const handleGenerate = () => {
-    generateMutation.mutate({
-      num_users: numUsers,
-      profile,
-    });
+    const parsedSeed = randomSeed ? parseInt(randomSeed) : null;
+    generateMutation.mutate(
+      {
+        num_users: numUsers,
+        profile,
+        random_seed: parsedSeed && !isNaN(parsedSeed) ? parsedSeed : null,
+      },
+      {
+        onSuccess: (result) => {
+          if (result.seed_used != null) {
+            setLastSeedUsed(result.seed_used);
+          }
+        },
+      }
+    );
   };
 
   // Sleep count validation: cannot exceed days in the selected date range
@@ -923,29 +936,51 @@ export function SeedDataTab() {
         </div>
       </div>
 
-      {/* Generate button */}
-      <div className="flex items-center gap-4">
-        <Button
-          onClick={handleGenerate}
-          disabled={
-            generateMutation.isPending ||
-            sleepCountExceedsDays ||
-            stageDistInvalid
-          }
-          className="gap-2"
-        >
-          {generateMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
+      {/* Seed & Generate */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Label className="text-xs text-zinc-500 whitespace-nowrap">
+            Random seed
+          </Label>
+          <Input
+            type="number"
+            placeholder="Leave empty for random"
+            value={randomSeed}
+            onChange={(e) => setRandomSeed(e.target.value)}
+            className="w-48"
+          />
+          {lastSeedUsed != null && (
+            <button
+              onClick={() => setRandomSeed(String(lastSeedUsed))}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+            >
+              Reuse last: {lastSeedUsed}
+            </button>
           )}
-          {generateMutation.isPending
-            ? 'Dispatching...'
-            : `Generate ${numUsers} user${numUsers > 1 ? 's' : ''}`}
-        </Button>
-        <span className="text-xs text-zinc-600">
-          Data generation runs in the background via Celery.
-        </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={handleGenerate}
+            disabled={
+              generateMutation.isPending ||
+              sleepCountExceedsDays ||
+              stageDistInvalid
+            }
+            className="gap-2"
+          >
+            {generateMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {generateMutation.isPending
+              ? 'Dispatching...'
+              : `Generate ${numUsers} user${numUsers > 1 ? 's' : ''}`}
+          </Button>
+          <span className="text-xs text-zinc-600">
+            Data generation runs in the background via Celery.
+          </span>
+        </div>
       </div>
     </div>
   );
