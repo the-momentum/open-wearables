@@ -162,7 +162,11 @@ export function SeedDataTab() {
             min={1}
             max={10}
             value={numUsers}
-            onChange={(e) => setNumUsers(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+            onChange={(e) =>
+              setNumUsers(
+                Math.max(1, Math.min(10, parseInt(e.target.value) || 1))
+              )
+            }
             className="w-20"
           />
         </div>
@@ -529,9 +533,7 @@ export function SeedDataTab() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <Label className="text-xs text-zinc-500">
-            Connections per user
-          </Label>
+          <Label className="text-xs text-zinc-500">Connections per user</Label>
           <Input
             type="number"
             min={1}
