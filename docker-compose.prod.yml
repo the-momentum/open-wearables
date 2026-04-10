@@ -22,9 +22,7 @@ services:
     environment:
       PGPASSWORD: open-wearables
     command: >
-      psql -h db -U open-wearables -d postgres -c
-      "SELECT 'CREATE DATABASE svix'::text WHERE NOT EXISTS
-       (SELECT FROM pg_database WHERE datname = 'svix')\gexec"
+      sh -c "createdb -h db -U open-wearables svix || true"
     depends_on:
       db:
         condition: service_healthy
