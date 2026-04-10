@@ -48,7 +48,7 @@ from app.utils.pagination import (
     encode_activity_cursor,
     encode_cursor,
 )
-from app.utils.structured_logging import log_structured
+from app.utils.sentry_helpers import log_and_capture_error
 
 # Series types needed for sleep physiological metrics
 # TODO: Add HRV, respiratory rate, and SpO2 when ready
@@ -307,7 +307,7 @@ class SummariesService:
                     db_session, user_id, sleep_windows, SLEEP_PHYSIO_SERIES_TYPES
                 )
             except Exception as e:
-                log_structured(self.logger, "warning", f"Failed to batch-fetch sleep physiology: {e}")
+                log_and_capture_error(e, self.logger, f"Failed to batch-fetch sleep physiology: {e}", level="warning")
 
         for result in results:
             # Build sleep stages if any stage data is available

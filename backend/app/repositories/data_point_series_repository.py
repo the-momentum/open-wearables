@@ -495,17 +495,27 @@ class DataPointSeriesRepository(
             .all()
         )
 
-        averages: dict[str, dict[SeriesType, float | None]] = {
-            key: {series_type: None for series_type in series_types} for key, _, _ in time_ranges
-        }
+        seen_keys: set[str] = set()
+        averages: dict[str, dict[SeriesType, float | None]] = {}
+        for key, _, _ in time_ranges:
+            if key in seen_keys:
+                raise ValueError(f"Duplicate key in time_ranges: {key!r}")
+            seen_keys.add(key)
+            averages[key] = {series_type: None for series_type in series_types}
+
         accumulators: dict[str, dict[SeriesType, tuple[float, int]]] = {}
+
+        # Build a sorted list of windows for bisect-based bucketing
+        sorted_ranges = sorted(time_ranges, key=lambda r: r[1])
 
         for recorded_at, type_id, value in results:
             series_type = type_id_to_series_type.get(type_id)
             if series_type is None:
                 continue
 
-            for key, start_time, end_time in time_ranges:
+            for key, start_time, end_time in sorted_ranges:
+                if recorded_at < start_time:
+                    break
                 if start_time <= recorded_at < end_time:
                     key_accumulators = accumulators.setdefault(key, {})
                     total, count = key_accumulators.get(series_type, (0.0, 0))
