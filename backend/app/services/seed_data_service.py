@@ -511,7 +511,7 @@ class SeedDataService:
             user = user_service.create(
                 db,
                 UserCreate(
-                    first_name=fake.first_name(),
+                    first_name=f"[SEED] {fake.first_name()}",
                     last_name=fake.last_name(),
                     email=fake.unique.email(),
                     external_user_id=fake.unique.uuid4() if fake.boolean(chance_of_getting_true=80) else None,
