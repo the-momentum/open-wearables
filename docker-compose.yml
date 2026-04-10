@@ -36,6 +36,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      svix-server:
+        condition: service_healthy
     develop:
       watch:
         - action: sync
@@ -151,6 +153,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "svix-server healthcheck http://localhost:8071"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     restart: on-failure
 
   frontend:

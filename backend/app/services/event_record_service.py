@@ -57,33 +57,10 @@ class EventRecordService(
     # Create with outgoing-webhook emit
     # ------------------------------------------------------------------
 
-    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:  # type: ignore[override]
+    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         record = super().create(db_session, creator)
         self._emit_event_record_webhook(creator)
         return record
-
-    @staticmethod
-    def _emit_event_record_webhook(creator: EventRecordCreate) -> None:
-        """Schedule an outgoing webhook event based on the record category."""
-        common = {
-            "record_id": creator.id,
-            "user_id": creator.user_id,
-            "provider": creator.provider or creator.source_name,
-            "start_datetime": creator.start_datetime.isoformat(),
-            "end_datetime": creator.end_datetime.isoformat(),
-            "duration_seconds": creator.duration_seconds,
-        }
-        if creator.category == "workout":
-            on_workout_created(workout_type=creator.type, **common)
-        elif creator.category == "sleep":
-            on_sleep_created(
-                **{k: v for k, v in common.items() if k != "duration_seconds"},
-                duration_seconds=common["duration_seconds"],
-            )
-        else:
-            on_activity_created(
-                activity_type=creator.type, **{k: v for k, v in common.items() if k != "duration_seconds"}
-            )
 
     def _resolve_avg_hr(
         self,
@@ -172,15 +149,16 @@ class EventRecordService(
         first, and the old record is deleted only after a successful insert — so a failure
         never loses the original data.
         """
-        result = self._create_or_merge_sleep_inner(db_session, user_id, record, detail, threshold_minutes)
-        on_sleep_created(
-            record_id=result.id,
-            user_id=user_id,
-            provider=record.provider or record.source_name,
-            start_datetime=result.start_datetime.isoformat(),
-            end_datetime=result.end_datetime.isoformat(),
-            duration_seconds=record.duration_seconds,
-        )
+        result, inserted = self._create_or_merge_sleep_inner(db_session, user_id, record, detail, threshold_minutes)
+        if inserted:
+            on_sleep_created(
+                record_id=result.id,
+                user_id=user_id,
+                provider=record.provider or record.source_name,
+                start_datetime=result.start_datetime.isoformat(),
+                end_datetime=result.end_datetime.isoformat(),
+                duration_seconds=result.duration_seconds,
+            )
         return result
 
     def _create_or_merge_sleep_inner(
@@ -190,7 +168,7 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
-    ) -> EventRecord:
+    ) -> tuple[EventRecord, bool]:
         adjacent = self.find_adjacent_sleep_record(
             db_session,
             user_id,
@@ -322,7 +300,7 @@ class EventRecordService(
                     detail_type="sleep",
                 )
                 db_session.commit()
-                return adjacent
+                return adjacent, False
 
             record = record.model_copy(
                 update={
@@ -344,7 +322,7 @@ class EventRecordService(
                     detail_type="sleep",
                 )
                 db_session.commit()
-                return adjacent
+                return adjacent, False
 
             self.event_record_detail_repo.create_and_flush(
                 db_session,
@@ -353,7 +331,7 @@ class EventRecordService(
             )
             self.crud.delete_flush(db_session, adjacent)
             db_session.commit()
-            return created_record
+            return created_record, True
 
         created_record = self.crud.create_and_flush(db_session, record)
         self.event_record_detail_repo.create_and_flush(
@@ -362,7 +340,7 @@ class EventRecordService(
             detail_type="sleep",
         )
         db_session.commit()
-        return created_record
+        return created_record, True
 
     @staticmethod
     def _emit_event_record_webhook(record: EventRecordCreate) -> None:

@@ -17,7 +17,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
+from app.services.outgoing_webhooks.events import (
+    _dispatch,
+    on_sleep_created,
+    on_timeseries_batch_saved,
+    on_workout_created,
+)
+from app.utils.security import create_access_token
 from tests.factories import DeveloperFactory
 
 # ---------------------------------------------------------------------------
@@ -43,8 +51,6 @@ class TestWebhookEventTypes:
 class TestWebhookEmit:
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_workout_created_dispatches(self, mock_task: MagicMock) -> None:
-        from app.services.outgoing_webhooks.events import on_workout_created
-
         uid = uuid4()
         rid = uuid4()
         on_workout_created(
@@ -63,8 +69,6 @@ class TestWebhookEmit:
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_sleep_created_dispatches(self, mock_task: MagicMock) -> None:
-        from app.services.outgoing_webhooks.events import on_sleep_created
-
         uid = uuid4()
         rid = uuid4()
         on_sleep_created(
@@ -80,8 +84,6 @@ class TestWebhookEmit:
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_batch_saved_dispatches(self, mock_task: MagicMock) -> None:
-        from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
-
         uid = uuid4()
         on_timeseries_batch_saved(
             user_id=uid,
@@ -94,8 +96,6 @@ class TestWebhookEmit:
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_fallback_event_type(self, mock_task: MagicMock) -> None:
-        from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
-
         uid = uuid4()
         on_timeseries_batch_saved(
             user_id=uid,
@@ -108,7 +108,6 @@ class TestWebhookEmit:
 
     def test_dispatch_swallows_broker_error(self) -> None:
         """_dispatch silently drops the event when Celery is unreachable."""
-        from app.services.outgoing_webhooks.events import _dispatch
 
         with patch(
             "app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event",
@@ -131,8 +130,6 @@ class TestEmitWebhookEventTask:
         mock_dev_service: MagicMock,
         mock_svix: MagicMock,
     ) -> None:
-        from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
-
         dev1 = MagicMock(id=uuid4(), email="dev1@test.com")
         dev2 = MagicMock(id=uuid4(), email="dev2@test.com")
         mock_dev_service.crud.get_all.return_value = [dev1, dev2]
@@ -184,7 +181,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 
@@ -208,7 +204,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 
@@ -233,7 +228,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 
@@ -251,7 +245,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 
@@ -271,7 +264,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 
@@ -296,7 +288,6 @@ class TestOutgoingWebhooksAPI:
         mock_svix: MagicMock,
     ) -> None:
         developer = DeveloperFactory()
-        from app.utils.security import create_access_token
 
         token = create_access_token(developer.id)
 

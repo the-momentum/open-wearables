@@ -29,9 +29,13 @@ uv run python scripts/init/seed_series_types.py
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
 
-# Register webhook event types with Svix
+# Register webhook event types with Svix (with retry, non-fatal)
 echo 'Registering webhook event types...'
-uv run python scripts/init/seed_webhook_event_types.py
+for i in 1 2 3; do
+    uv run python scripts/init/seed_webhook_event_types.py && break
+    echo "Svix not ready yet, retrying in 5s... (attempt ${i}/3)"
+    sleep 5
+done || echo "Warning: Could not register webhook event types with Svix. Will retry on next startup."
 
 # Init app
 echo "Starting the FastAPI application..."

@@ -6,7 +6,7 @@ CREATE DATABASE cannot run inside a transaction. Safe to call repeatedly —
 skips creation if the database already exists.
 """
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import URL, create_engine, text
 
 from app.config import settings
 
@@ -14,10 +14,13 @@ from app.config import settings
 def seed_svix_db() -> None:
     """Ensure the svix database exists in the shared Postgres instance."""
     # Connect to the default `postgres` maintenance DB (svix may not exist yet)
-    maintenance_uri = (
-        f"postgresql+psycopg://"
-        f"{settings.db_user}:{settings.db_password.get_secret_value()}"
-        f"@{settings.db_host}:{settings.db_port}/postgres"
+    maintenance_uri = URL.create(
+        "postgresql+psycopg",
+        username=settings.db_user,
+        password=settings.db_password.get_secret_value(),
+        host=settings.db_host,
+        port=settings.db_port,
+        database="postgres",
     )
     engine = create_engine(maintenance_uri, isolation_level="AUTOCOMMIT")
     try:

@@ -29,7 +29,7 @@ def _dispatch(event_type: str, payload: dict[str, Any], *, idempotency_key: str 
 
         emit_webhook_event.delay(event_type, payload, idempotency_key=idempotency_key)
     except Exception:
-        logger.debug("Could not enqueue webhook event %s (broker unavailable?)", event_type)
+        logger.warning("Could not enqueue webhook event %s", event_type, exc_info=True)
 
 
 def on_workout_created(
@@ -123,6 +123,7 @@ def on_timeseries_batch_saved(
 ) -> None:
     """Emit one webhook event per data-type per ingestion batch."""
     event_type = SERIES_TYPE_TO_WEBHOOK_EVENT.get(series_type, WebhookEventType.TIMESERIES_UPDATED)
+    idempotency_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_datetime or ''}.{end_datetime or ''}"
     _dispatch(
         event_type,
         {
@@ -136,4 +137,5 @@ def on_timeseries_batch_saved(
                 "end_datetime": end_datetime,
             },
         },
+        idempotency_key=idempotency_key,
     )

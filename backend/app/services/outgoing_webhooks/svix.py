@@ -19,6 +19,7 @@ from svix.api import (
     EndpointIn,
     EndpointOut,
     EndpointPatch,
+    EventExampleIn,
     EventTypeIn,
     EventTypeUpdate,
     ListResponseEndpointOut,
@@ -181,15 +182,20 @@ def list_message_attempts(app_id: str, endpoint_id: str) -> ListResponseMessageA
 
 
 def send_test_message(app_id: str, endpoint_id: str, event_type: str) -> MessageOut | None:
-    """Send a sample payload to an endpoint for testing."""
+    """Send a sample event to a specific endpoint for testing.
+
+    Uses Svix's ``endpoint.send_example`` so only the targeted endpoint
+    receives the message, regardless of other endpoints in the application.
+    """
     if not is_enabled():
         return None
     assert _client is not None
-    sample_payload = {
-        "type": event_type,
-        "data": {"message": "This is a test webhook from Open Wearables."},
-    }
-    return _client.message.create(
-        app_id,
-        MessageIn(event_type=event_type, payload=sample_payload),
-    )
+    try:
+        return _client.endpoint.send_example(
+            app_id,
+            endpoint_id,
+            EventExampleIn(event_type=event_type),
+        )
+    except Exception:
+        logger.exception("Failed to send test webhook event=%s to endpoint=%s", event_type, endpoint_id)
+        return None

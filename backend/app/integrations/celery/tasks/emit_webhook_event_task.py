@@ -38,7 +38,7 @@ def emit_webhook_event(
     added later to narrow the audience.
     """
     with SessionLocal() as db:
-        developers = developer_service.crud.get_all(db)
+        developers = developer_service.crud.get_all(db, filters={}, offset=0, limit=1000, sort_by=None)
 
     sent = 0
     errors: list[str] = []
@@ -54,5 +54,17 @@ def emit_webhook_event(
             sent += 1
         else:
             errors.append(str(dev.id))
+
+    if errors:
+        exc = RuntimeError(
+            f"Webhook delivery failed for {len(errors)} of {sent + len(errors)} developer(s) "
+            f"[event={event_type}, failed={errors}]"
+        )
+        logger.error(
+            "Webhook delivery failed for %d developer(s) on event %s; scheduling retry",
+            len(errors),
+            event_type,
+        )
+        raise self.retry(exc=exc)
 
     return {"event_type": event_type, "sent": sent, "errors": errors}

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from svix.api import EndpointIn, EndpointPatch
 
 from app.schemas.webhooks.endpoints import (
@@ -32,14 +32,17 @@ router = APIRouter()
 def _svix_app_id(developer: DeveloperDep) -> str:
     """Authenticate the developer, assert Svix is configured, and return the app UID."""
     if not svix_service.is_enabled():
-        raise HTTPException(status_code=503, detail="Outgoing webhooks are not configured (SVIX_AUTH_TOKEN missing).")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Outgoing webhooks are not configured (set SVIX_JWT_SECRET or SVIX_AUTH_TOKEN).",
+        )
     return svix_service.ensure_application(str(developer.id), developer.email)
 
 
 SvixAppId = Annotated[str, Depends(_svix_app_id)]
 
 
-@router.post("/endpoints", status_code=201)
+@router.post("/endpoints", status_code=status.HTTP_201_CREATED)
 def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointResponse:
     ep = svix_service.create_endpoint(
         app_id,
@@ -73,7 +76,7 @@ def update_endpoint(endpoint_id: str, body: EndpointUpdateRequest, app_id: SvixA
     return EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
 
 
-@router.delete("/endpoints/{endpoint_id}", status_code=204)
+@router.delete("/endpoints/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_endpoint(endpoint_id: str, app_id: SvixAppId) -> None:
     svix_service.delete_endpoint(app_id, endpoint_id)
 
@@ -106,5 +109,5 @@ def send_test_event(endpoint_id: str, app_id: SvixAppId, body: TestEventRequest 
     event_type = body.event_type if body else WebhookEventType.WORKOUT_CREATED
     result = svix_service.send_test_message(app_id, endpoint_id, event_type)
     if result is None:
-        raise HTTPException(status_code=500, detail="Failed to send test event.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to send test event.")
     return {"message": "Test event sent successfully.", "message_id": result.id}
