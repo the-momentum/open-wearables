@@ -214,6 +214,7 @@ export interface UserConnection {
   created_at: string;
   updated_at: string;
   max_historical_days?: number | null;
+  supports_pull?: boolean;
 }
 
 // ============================================================================

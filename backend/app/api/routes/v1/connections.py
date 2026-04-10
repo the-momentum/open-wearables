@@ -16,7 +16,9 @@ factory = ProviderFactory()
 def _with_capabilities(conn: object) -> UserConnectionWithCapabilities:
     enriched = UserConnectionWithCapabilities.model_validate(conn)
     with contextlib.suppress(ValueError):
-        enriched.max_historical_days = factory.get_provider(enriched.provider).capabilities.max_historical_days
+        caps = factory.get_provider(enriched.provider).capabilities
+        enriched.max_historical_days = caps.max_historical_days
+        enriched.supports_pull = caps.supports_pull
     return enriched
 
 

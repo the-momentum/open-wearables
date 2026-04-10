@@ -427,6 +427,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
             {(connection.max_historical_days === null ||
               connection.max_historical_days === undefined) &&
+              connection.supports_pull &&
               !isPermanentlyFailed && (
                 <>
                   <DropdownMenu>
