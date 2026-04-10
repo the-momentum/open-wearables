@@ -24,6 +24,9 @@ HEALTH_SCORE_RANGES: dict[HealthScoreCategory, dict[ProviderName, ScoreRange]] =
     HealthScoreCategory.STRESS: {
         ProviderName.GARMIN: ScoreRange(0, 100),
     },
+    HealthScoreCategory.BODY_BATTERY: {
+        ProviderName.GARMIN: ScoreRange(0, 100),
+    },
     HealthScoreCategory.RECOVERY: {
         ProviderName.WHOOP: ScoreRange(0, 100),
     },
