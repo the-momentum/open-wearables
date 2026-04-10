@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.enums import ProviderName, WorkoutType
 
@@ -25,6 +25,76 @@ class WorkoutConfig(BaseModel):
     date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
 
 
+class SleepStageDistribution(BaseModel):
+    """Percentage ranges for each sleep stage. Light = remainder (100% - others)."""
+
+    deep_pct_range: tuple[int, int] = (15, 25)
+    rem_pct_range: tuple[int, int] = (20, 25)
+    awake_pct_range: tuple[int, int] = (2, 8)
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "SleepStageDistribution":
+        for name in ("deep_pct_range", "rem_pct_range", "awake_pct_range"):
+            lo, hi = getattr(self, name)
+            if not (0 <= lo <= hi <= 100):
+                msg = f"{name}: need 0 <= min ({lo}) <= max ({hi}) <= 100"
+                raise ValueError(msg)
+        max_sum = self.deep_pct_range[1] + self.rem_pct_range[1] + self.awake_pct_range[1]
+        if max_sum > 95:
+            msg = f"Sum of max percentages ({max_sum}%) exceeds 95% - not enough room for light sleep"
+            raise ValueError(msg)
+        return self
+
+
+SLEEP_STAGE_PROFILES: dict[str, dict] = {
+    "optimal": {
+        "label": "Optimal Sleeper",
+        "description": "Balanced stages - good sleep scores",
+        "distribution": SleepStageDistribution(
+            deep_pct_range=(18, 25),
+            rem_pct_range=(20, 25),
+            awake_pct_range=(2, 5),
+        ),
+    },
+    "deep_deficit": {
+        "label": "Deep Sleep Deficit",
+        "description": "Low deep sleep - poor physical recovery",
+        "distribution": SleepStageDistribution(
+            deep_pct_range=(5, 10),
+            rem_pct_range=(20, 25),
+            awake_pct_range=(5, 10),
+        ),
+    },
+    "rem_deprived": {
+        "label": "REM Deprived",
+        "description": "Low REM sleep - poor cognitive recovery",
+        "distribution": SleepStageDistribution(
+            deep_pct_range=(15, 22),
+            rem_pct_range=(8, 13),
+            awake_pct_range=(5, 10),
+        ),
+    },
+    "restless": {
+        "label": "Restless Sleeper",
+        "description": "Excessive wake time - fragmented sleep",
+        "distribution": SleepStageDistribution(
+            deep_pct_range=(10, 15),
+            rem_pct_range=(15, 20),
+            awake_pct_range=(15, 25),
+        ),
+    },
+    "athlete_recovery": {
+        "label": "Athlete Recovery",
+        "description": "Heavy deep sleep - optimal physical recovery",
+        "distribution": SleepStageDistribution(
+            deep_pct_range=(25, 35),
+            rem_pct_range=(20, 25),
+            awake_pct_range=(2, 5),
+        ),
+    },
+}
+
+
 class SleepConfig(BaseModel):
     """Parameters controlling sleep generation."""
 
@@ -32,10 +102,18 @@ class SleepConfig(BaseModel):
     duration_min_minutes: int = Field(300, ge=60, le=720)
     duration_max_minutes: int = Field(600, ge=60, le=720)
     nap_chance_pct: int = Field(10, ge=0, le=100)
-    weekend_catchup: bool = Field(False, description="If True, weekday sleep is shorter and weekend sleep is longer.")
+    weekend_catchup: bool = Field(
+        False,
+        description="If True, weekday sleep is shorter and weekend sleep is longer.",
+    )
     date_range_months: int = Field(6, ge=1, le=24)
     date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
     date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
+    stage_profile: str | None = Field(
+        None,
+        description="Named sleep stage profile. None = use stage_distribution.",
+    )
+    stage_distribution: SleepStageDistribution = SleepStageDistribution()
 
 
 class SeedProfileConfig(BaseModel):
@@ -102,7 +180,7 @@ SEED_PRESETS: dict[str, dict] = {
                 steps_range=(2000, 25_000),
                 time_series_chance_pct=50,
             ),
-            sleep_config=SleepConfig(count=30),
+            sleep_config=SleepConfig(count=30, stage_profile="athlete_recovery"),
         ),
     },
     "boxer_footballer": {
@@ -143,6 +221,7 @@ SEED_PRESETS: dict[str, dict] = {
                 duration_min_minutes=240,
                 duration_max_minutes=360,
                 nap_chance_pct=5,
+                stage_profile="deep_deficit",
             ),
         ),
     },
@@ -177,6 +256,7 @@ SEED_PRESETS: dict[str, dict] = {
                 duration_min_minutes=180,
                 duration_max_minutes=660,
                 nap_chance_pct=20,
+                stage_profile="restless",
             ),
         ),
     },
@@ -199,7 +279,7 @@ SEED_PRESETS: dict[str, dict] = {
             generate_workouts=False,
             generate_sleep=True,
             generate_time_series=False,
-            sleep_config=SleepConfig(count=40),
+            sleep_config=SleepConfig(count=40, stage_profile="optimal"),
         ),
     },
     "minimal": {

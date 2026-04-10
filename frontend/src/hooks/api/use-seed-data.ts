@@ -11,7 +11,15 @@ export function useSeedPresets() {
   return useQuery({
     queryKey: queryKeys.seedData.presets(),
     queryFn: () => seedDataService.getPresets(),
-    staleTime: Infinity, // Presets are static
+    staleTime: Infinity,
+  });
+}
+
+export function useSleepStageProfiles() {
+  return useQuery({
+    queryKey: queryKeys.seedData.sleepProfiles(),
+    queryFn: () => seedDataService.getSleepStageProfiles(),
+    staleTime: Infinity,
   });
 }
 

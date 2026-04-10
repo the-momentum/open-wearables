@@ -87,4 +87,5 @@ export const API_ENDPOINTS = {
   // Seed data endpoints
   seedGenerate: '/api/v1/settings/seed',
   seedPresets: '/api/v1/settings/seed/presets',
+  seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
 } as const;

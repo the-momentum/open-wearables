@@ -33,6 +33,7 @@ from app.schemas.model_crud.user_management import (
     UserCreate,
 )
 from app.schemas.utils.seed_data import (
+    SLEEP_STAGE_PROFILES,
     SeedDataRequest,
     SleepConfig,
     WorkoutConfig,
@@ -314,11 +315,28 @@ def _generate_sleep(
 
     time_in_bed_minutes = sleep_duration_minutes + fake.random_int(min=15, max=60)
 
-    # Stage durations - must sum exactly to sleep_duration_minutes
-    awake_minutes = fake.random_int(min=5, max=min(30, sleep_duration_minutes // 6))
-    deep_minutes = fake.random_int(min=60, max=min(120, (sleep_duration_minutes - awake_minutes) // 2))
-    rem_minutes = fake.random_int(min=60, max=min(140, sleep_duration_minutes - awake_minutes - deep_minutes - 30))
+    # Resolve stage distribution (named profile overrides custom distribution)
+    dist = config.stage_distribution
+    if config.stage_profile and config.stage_profile in SLEEP_STAGE_PROFILES:
+        dist = SLEEP_STAGE_PROFILES[config.stage_profile]["distribution"]
+
+    deep_pct = fake.random_int(min=dist.deep_pct_range[0], max=dist.deep_pct_range[1]) / 100
+    rem_pct = fake.random_int(min=dist.rem_pct_range[0], max=dist.rem_pct_range[1]) / 100
+    awake_pct = fake.random_int(min=dist.awake_pct_range[0], max=dist.awake_pct_range[1]) / 100
+
+    # Clamp total non-light to 95% to guarantee light sleep
+    total_pct = deep_pct + rem_pct + awake_pct
+    if total_pct > 0.95:
+        scale = 0.95 / total_pct
+        deep_pct, rem_pct, awake_pct = deep_pct * scale, rem_pct * scale, awake_pct * scale
+
+    deep_minutes = max(1, round(sleep_duration_minutes * deep_pct))
+    rem_minutes = max(1, round(sleep_duration_minutes * rem_pct))
+    awake_minutes = max(1, round(sleep_duration_minutes * awake_pct))
     light_minutes = sleep_duration_minutes - deep_minutes - rem_minutes - awake_minutes
+    if light_minutes < 1:
+        deep_minutes -= 1 - light_minutes
+        light_minutes = 1
 
     sleep_efficiency = Decimal(sleep_duration_minutes) / Decimal(time_in_bed_minutes) * 100
     is_nap = fake.boolean(chance_of_getting_true=config.nap_chance_pct)

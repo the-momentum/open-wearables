@@ -5,6 +5,7 @@ from fastapi import APIRouter, status
 from app.integrations.celery.tasks.seed_data_task import generate_seed_data
 from app.schemas.utils.seed_data import (
     SEED_PRESETS,
+    SLEEP_STAGE_PROFILES,
     SeedDataRequest,
     SeedDataResponse,
     SeedPresetInfo,
@@ -38,3 +39,20 @@ def list_presets(
     _developer: DeveloperDep,
 ) -> list[SeedPresetInfo]:
     return [SeedPresetInfo(id=preset_id, **preset_data) for preset_id, preset_data in SEED_PRESETS.items()]
+
+
+@router.get(
+    "/settings/seed/sleep-profiles",
+    status_code=status.HTTP_200_OK,
+    summary="List available sleep stage profiles",
+)
+def list_sleep_stage_profiles(_developer: DeveloperDep) -> list[dict]:
+    return [
+        {
+            "id": profile_id,
+            "label": profile["label"],
+            "description": profile["description"],
+            "distribution": profile["distribution"].model_dump(),
+        }
+        for profile_id, profile in SLEEP_STAGE_PROFILES.items()
+    ]

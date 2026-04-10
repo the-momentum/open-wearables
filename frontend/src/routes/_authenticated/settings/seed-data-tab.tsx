@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react';
-import { useSeedPresets, useGenerateSeedData } from '@/hooks/api/use-seed-data';
+import {
+  useSeedPresets,
+  useGenerateSeedData,
+  useSleepStageProfiles,
+} from '@/hooks/api/use-seed-data';
 import type {
   SeedProfileConfig,
   SeedPreset,
+  SleepStageDistribution,
+  SleepStageProfile,
 } from '@/lib/api/services/seed-data.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,8 +75,27 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
     date_range_months: 6,
     date_from: DEFAULT_DATE_FROM,
     date_to: DEFAULT_DATE_TO,
+    stage_profile: null,
+    stage_distribution: {
+      deep_pct_range: [15, 25],
+      rem_pct_range: [20, 25],
+      awake_pct_range: [2, 8],
+    },
   },
 };
+
+const DEFAULT_STAGE_DISTRIBUTION: SleepStageDistribution = {
+  deep_pct_range: [15, 25],
+  rem_pct_range: [20, 25],
+  awake_pct_range: [2, 8],
+};
+
+const STAGE_COLORS = {
+  deep: 'bg-indigo-500',
+  rem: 'bg-cyan-500',
+  awake: 'bg-amber-500',
+  light: 'bg-zinc-600',
+} as const;
 
 // Common workout types displayed as checkboxes
 const COMMON_WORKOUT_TYPES = [
@@ -100,6 +125,7 @@ const PROVIDERS = [
 
 export function SeedDataTab() {
   const { data: presets, isLoading: presetsLoading } = useSeedPresets();
+  const { data: sleepStageProfiles } = useSleepStageProfiles();
   const generateMutation = useGenerateSeedData();
 
   const [numUsers, setNumUsers] = useState(1);
@@ -121,6 +147,11 @@ export function SeedDataTab() {
         ...preset.profile.sleep_config,
         date_from: preset.profile.sleep_config.date_from ?? DEFAULT_DATE_FROM,
         date_to: preset.profile.sleep_config.date_to ?? DEFAULT_DATE_TO,
+        stage_profile:
+          preset.profile.sleep_config.stage_profile ?? null,
+        stage_distribution:
+          preset.profile.sleep_config.stage_distribution ??
+          DEFAULT_STAGE_DISTRIBUTION,
       },
     });
   };
@@ -148,6 +179,67 @@ export function SeedDataTab() {
   );
   const sleepCountExceedsDays =
     sleepDays !== null && profile.sleep_config.count > sleepDays;
+
+  // Stage distribution validation
+  const dist = profile.sleep_config.stage_distribution;
+  const stageMaxSum =
+    dist.deep_pct_range[1] + dist.rem_pct_range[1] + dist.awake_pct_range[1];
+  const stageDistInvalid = stageMaxSum > 95;
+
+  // Computed light sleep range (remainder)
+  const lightMin = Math.max(
+    0,
+    100 -
+      dist.deep_pct_range[1] -
+      dist.rem_pct_range[1] -
+      dist.awake_pct_range[1]
+  );
+  const lightMax = Math.max(
+    0,
+    100 -
+      dist.deep_pct_range[0] -
+      dist.rem_pct_range[0] -
+      dist.awake_pct_range[0]
+  );
+
+  // Stacked bar midpoints for preview
+  const deepMid =
+    (dist.deep_pct_range[0] + dist.deep_pct_range[1]) / 2;
+  const remMid =
+    (dist.rem_pct_range[0] + dist.rem_pct_range[1]) / 2;
+  const awakeMid =
+    (dist.awake_pct_range[0] + dist.awake_pct_range[1]) / 2;
+  const lightMid = Math.max(0, 100 - deepMid - remMid - awakeMid);
+
+  // Apply a sleep stage profile
+  const applySleepStageProfile = (p: SleepStageProfile) => {
+    setProfile({
+      ...profile,
+      sleep_config: {
+        ...profile.sleep_config,
+        stage_profile: p.id,
+        stage_distribution: { ...p.distribution },
+      },
+    });
+    setActivePreset(null);
+  };
+
+  const updateStageDistribution = (
+    partial: Partial<SleepStageDistribution>
+  ) => {
+    setProfile({
+      ...profile,
+      sleep_config: {
+        ...profile.sleep_config,
+        stage_profile: null,
+        stage_distribution: {
+          ...profile.sleep_config.stage_distribution,
+          ...partial,
+        },
+      },
+    });
+    setActivePreset(null);
+  };
 
   // Workout type checkbox helpers
   const selectedWorkoutTypes = profile.workout_config.workout_types;
@@ -602,6 +694,139 @@ export function SeedDataTab() {
                 </Label>
               </div>
             </div>
+
+            {/* Stage Distribution */}
+            <div className="border-t border-zinc-800 pt-4 mt-2">
+              <Label className="text-xs text-zinc-500 mb-3 block">
+                Stage Distribution
+              </Label>
+
+              {/* Profile pills */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {sleepStageProfiles?.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => applySleepStageProfile(p)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      profile.sleep_config.stage_profile === p.id
+                        ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Stage percentage inputs */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-[auto_1fr_80px_80px] items-center gap-3">
+                  <span className="h-2.5 w-2.5" />
+                  <span />
+                  <span className="text-[10px] text-zinc-600 text-center">
+                    Min %
+                  </span>
+                  <span className="text-[10px] text-zinc-600 text-center">
+                    Max %
+                  </span>
+                </div>
+                {(
+                  [
+                    ['deep', 'Deep', 'deep_pct_range'],
+                    ['rem', 'REM', 'rem_pct_range'],
+                    ['awake', 'Awake', 'awake_pct_range'],
+                  ] as const
+                ).map(([key, label, field]) => (
+                  <div
+                    key={key}
+                    className="grid grid-cols-[auto_1fr_80px_80px] items-center gap-3"
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${STAGE_COLORS[key]}`}
+                    />
+                    <span className="text-xs text-zinc-400">{label}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={95}
+                      value={dist[field][0]}
+                      onChange={(e) => {
+                        const v = Math.max(
+                          0,
+                          Math.min(95, parseInt(e.target.value) || 0)
+                        );
+                        updateStageDistribution({
+                          [field]: [v, Math.max(v, dist[field][1])],
+                        } as Partial<SleepStageDistribution>);
+                      }}
+                      className="h-8 text-xs"
+                    />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={95}
+                      value={dist[field][1]}
+                      onChange={(e) => {
+                        const v = Math.max(
+                          0,
+                          Math.min(95, parseInt(e.target.value) || 0)
+                        );
+                        updateStageDistribution({
+                          [field]: [Math.min(v, dist[field][0]), v],
+                        } as Partial<SleepStageDistribution>);
+                      }}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                ))}
+                {/* Light (calculated) */}
+                <div className="grid grid-cols-[auto_1fr_80px_80px] items-center gap-3">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${STAGE_COLORS.light}`}
+                  />
+                  <span className="text-xs text-zinc-500">Light</span>
+                  <span className="text-xs text-zinc-600 text-center">
+                    ~{lightMin}%
+                  </span>
+                  <span className="text-xs text-zinc-600 text-center">
+                    ~{lightMax}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Stacked bar preview */}
+              <div className="flex h-3 rounded-full overflow-hidden mt-3">
+                <div
+                  className={`${STAGE_COLORS.deep} transition-all`}
+                  style={{ width: `${deepMid}%` }}
+                />
+                <div
+                  className={`${STAGE_COLORS.rem} transition-all`}
+                  style={{ width: `${remMid}%` }}
+                />
+                <div
+                  className={`${STAGE_COLORS.light} transition-all`}
+                  style={{ width: `${lightMid}%` }}
+                />
+                <div
+                  className={`${STAGE_COLORS.awake} transition-all`}
+                  style={{ width: `${awakeMid}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+                <span>Deep {Math.round(deepMid)}%</span>
+                <span>REM {Math.round(remMid)}%</span>
+                <span>Light {Math.round(lightMid)}%</span>
+                <span>Awake {Math.round(awakeMid)}%</span>
+              </div>
+
+              {stageDistInvalid && (
+                <p className="text-xs text-red-400 mt-2">
+                  Sum of max percentages ({stageMaxSum}%) exceeds 95% - not
+                  enough room for light sleep.
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -702,7 +927,11 @@ export function SeedDataTab() {
       <div className="flex items-center gap-4">
         <Button
           onClick={handleGenerate}
-          disabled={generateMutation.isPending || sleepCountExceedsDays}
+          disabled={
+            generateMutation.isPending ||
+            sleepCountExceedsDays ||
+            stageDistInvalid
+          }
           className="gap-2"
         >
           {generateMutation.isPending ? (
