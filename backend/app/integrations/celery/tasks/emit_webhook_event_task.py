@@ -37,6 +37,10 @@ def emit_webhook_event(
     application.  Multi-developer scoping (developer_id on User) can be
     added later to narrow the audience.
     """
+    if not svix_service.is_enabled():
+        logger.debug("Svix is not configured — skipping webhook dispatch for event %s", event_type)
+        return {"event_type": event_type, "sent": 0, "errors": []}
+
     with SessionLocal() as db:
         page_size = 100
         offset = 0

@@ -46,7 +46,7 @@ SvixAppId = Annotated[str, Depends(_svix_app_id)]
 def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointResponse:
     ep = svix_service.create_endpoint(
         app_id,
-        EndpointIn(url=body.url, description=body.description or "", filter_types=body.filter_types),
+        EndpointIn(url=body.url, description=body.description or "", filter_types=body.filter_types or None),
     )
     return EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
 

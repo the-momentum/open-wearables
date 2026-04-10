@@ -19,7 +19,6 @@ from svix.api import (
     EndpointIn,
     EndpointOut,
     EndpointPatch,
-    EventExampleIn,
     EventTypeIn,
     EventTypeUpdate,
     ListResponseEndpointOut,
@@ -31,6 +30,7 @@ from svix.api import (
 )
 
 from app.config import settings
+from app.constants.webhooks.test_payloads import get_test_payload
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 
 logger = logging.getLogger(__name__)
@@ -182,19 +182,26 @@ def list_message_attempts(app_id: str, endpoint_id: str) -> ListResponseMessageA
 
 
 def send_test_message(app_id: str, endpoint_id: str, event_type: str) -> MessageOut | None:
-    """Send a sample event to a specific endpoint for testing.
+    """Send a hardcoded sample event to a specific endpoint for testing.
 
-    Uses Svix's ``endpoint.send_example`` so only the targeted endpoint
-    receives the message, regardless of other endpoints in the application.
+    Uses ``message.create`` with an example payload instead of
+    ``endpoint.send_example`` which requires Svix event-type schemas to be defined.
+    The event_type is adjusted to match the endpoint's filter_types if set.
     """
     if not is_enabled():
         return None
     assert _client is not None
     try:
-        return _client.endpoint.send_example(
+        ep = _client.endpoint.get(app_id, endpoint_id)
+        if ep.filter_types and event_type not in ep.filter_types:
+            event_type = ep.filter_types[0]
+        return _client.message.create(
             app_id,
-            endpoint_id,
-            EventExampleIn(event_type=event_type),
+            MessageIn(
+                event_type=event_type,
+                payload=get_test_payload(event_type),
+                event_id=f"test.{endpoint_id}.{event_type}",
+            ),
         )
     except Exception:
         logger.exception("Failed to send test webhook event=%s to endpoint=%s", event_type, endpoint_id)

@@ -11,7 +11,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from app.constants.webhook_events import SERIES_TYPE_TO_WEBHOOK_EVENT
+from app.constants.webhooks.events import SERIES_TYPE_TO_WEBHOOK_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 
 logger = logging.getLogger(__name__)

@@ -21,7 +21,9 @@ services:
     environment:
       PGPASSWORD: open-wearables
     command: >
-      sh -c "createdb -h db -U open-wearables svix || true"
+      psql -h db -U open-wearables -d postgres -c
+      "SELECT 'CREATE DATABASE svix'::text WHERE NOT EXISTS
+       (SELECT FROM pg_database WHERE datname = 'svix')\gexec"
     depends_on:
       db:
         condition: service_healthy
@@ -155,7 +157,6 @@ services:
       - ./backend/config/.env
     environment:
       SVIX_DB_DSN: "postgresql://open-wearables:open-wearables@db:5432/svix"
-      SVIX_JWT_SECRET: "${SVIX_JWT_SECRET}"
       SVIX_QUEUE_TYPE: "redis"
       SVIX_REDIS_DSN: "redis://redis:6379/1"
       SVIX_CACHE_TYPE: "redis"
