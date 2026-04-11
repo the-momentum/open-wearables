@@ -33,7 +33,7 @@ export function ProvidersTab() {
   }, [providers, hasInitialized]);
 
   const hasChanges = useMemo(() => {
-    if (!providers) return false;
+    if (!providers || !hasInitialized) return false;
 
     return providers.some(
       (provider) => localToggleStates[provider.provider] !== provider.is_enabled
