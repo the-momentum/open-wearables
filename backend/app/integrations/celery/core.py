@@ -103,6 +103,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "fill-missing-sleep-scores": {
+            "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
+            "schedule": float(settings.sleep_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app
