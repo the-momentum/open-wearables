@@ -157,7 +157,7 @@ export function SeedDataTab() {
   };
 
   const clearPreset = () => {
-    clearPreset();
+    setActivePreset(null);
     setProfile((prev) => (prev.preset ? { ...prev, preset: null } : prev));
   };
 
