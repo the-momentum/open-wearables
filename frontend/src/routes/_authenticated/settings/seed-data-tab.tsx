@@ -156,6 +156,11 @@ export function SeedDataTab() {
     });
   };
 
+  const clearPreset = () => {
+    clearPreset();
+    setProfile((prev) => (prev.preset ? { ...prev, preset: null } : prev));
+  };
+
   const resetToDefault = () => {
     setActivePreset(null);
     setProfile(DEFAULT_PROFILE);
@@ -226,7 +231,7 @@ export function SeedDataTab() {
         stage_distribution: { ...p.distribution },
       },
     });
-    setActivePreset(null);
+    clearPreset();
   };
 
   const updateStageDistribution = (
@@ -243,7 +248,7 @@ export function SeedDataTab() {
         },
       },
     });
-    setActivePreset(null);
+    clearPreset();
   };
 
   // Workout type checkbox helpers
@@ -261,7 +266,7 @@ export function SeedDataTab() {
         workout_types: updated.length > 0 ? updated : null,
       },
     });
-    setActivePreset(null);
+    clearPreset();
   };
 
   // Provider checkbox helpers
@@ -276,7 +281,7 @@ export function SeedDataTab() {
       ...profile,
       providers: updated.length > 0 ? updated : null,
     });
-    setActivePreset(null);
+    clearPreset();
   };
 
   return (
@@ -397,7 +402,7 @@ export function SeedDataTab() {
             checked={profile.generate_workouts}
             onCheckedChange={(checked) => {
               setProfile({ ...profile, generate_workouts: checked });
-              setActivePreset(null);
+              clearPreset();
             }}
           />
         </div>
@@ -420,7 +425,7 @@ export function SeedDataTab() {
                         count: parseInt(e.target.value) || 1,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -442,7 +447,7 @@ export function SeedDataTab() {
                         duration_min_minutes: parseInt(e.target.value) || 5,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -464,7 +469,7 @@ export function SeedDataTab() {
                         duration_max_minutes: parseInt(e.target.value) || 5,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -490,7 +495,7 @@ export function SeedDataTab() {
                           date_from: e.target.value || null,
                         },
                       });
-                      setActivePreset(null);
+                      clearPreset();
                     }}
                     className="mt-1"
                   />
@@ -508,7 +513,7 @@ export function SeedDataTab() {
                           date_to: e.target.value || null,
                         },
                       });
-                      setActivePreset(null);
+                      clearPreset();
                     }}
                     className="mt-1"
                   />
@@ -554,7 +559,7 @@ export function SeedDataTab() {
             checked={profile.generate_sleep}
             onCheckedChange={(checked) => {
               setProfile({ ...profile, generate_sleep: checked });
-              setActivePreset(null);
+              clearPreset();
             }}
           />
         </div>
@@ -577,7 +582,7 @@ export function SeedDataTab() {
                         count: parseInt(e.target.value) || 1,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -599,7 +604,7 @@ export function SeedDataTab() {
                         duration_min_minutes: parseInt(e.target.value) || 60,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -621,7 +626,7 @@ export function SeedDataTab() {
                         duration_max_minutes: parseInt(e.target.value) || 60,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -647,7 +652,7 @@ export function SeedDataTab() {
                           date_from: e.target.value || null,
                         },
                       });
-                      setActivePreset(null);
+                      clearPreset();
                     }}
                     className="mt-1"
                   />
@@ -665,7 +670,7 @@ export function SeedDataTab() {
                           date_to: e.target.value || null,
                         },
                       });
-                      setActivePreset(null);
+                      clearPreset();
                     }}
                     className="mt-1"
                   />
@@ -696,7 +701,7 @@ export function SeedDataTab() {
                         nap_chance_pct: parseInt(e.target.value) || 0,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                   className="mt-1"
                 />
@@ -713,7 +718,7 @@ export function SeedDataTab() {
                         weekend_catchup: checked,
                       },
                     });
-                    setActivePreset(null);
+                    clearPreset();
                   }}
                 />
                 <Label
@@ -875,7 +880,7 @@ export function SeedDataTab() {
             checked={profile.generate_time_series}
             onCheckedChange={(checked) => {
               setProfile({ ...profile, generate_time_series: checked });
-              setActivePreset(null);
+              clearPreset();
             }}
           />
         </div>
@@ -897,7 +902,7 @@ export function SeedDataTab() {
                     time_series_chance_pct: parseInt(e.target.value) || 0,
                   },
                 });
-                setActivePreset(null);
+                clearPreset();
               }}
               className="mt-1 w-24"
             />
@@ -949,7 +954,7 @@ export function SeedDataTab() {
                   Math.min(5, parseInt(e.target.value) || 1)
                 ),
               });
-              setActivePreset(null);
+              clearPreset();
             }}
             className="w-20"
           />
