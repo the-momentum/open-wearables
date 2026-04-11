@@ -35,7 +35,8 @@ export function useGenerateSeedData() {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.users.all,
       });
-      const seedInfo = result.seed_used != null ? ` | seed: ${result.seed_used}` : '';
+      const seedInfo =
+        result.seed_used != null ? ` | seed: ${result.seed_used}` : '';
       toast.success(
         `Seed data generation started (task ${result.task_id.slice(0, 8)}...${seedInfo}). New users will appear after the task completes.`
       );

@@ -41,9 +41,7 @@ function daysBetween(from: string | null, to: string | null): number | null {
   return Math.floor(diff / 86_400_000) + 1;
 }
 
-const DEFAULT_DATE_FROM = toISODate(
-  new Date(Date.now() - 6 * 30 * 86_400_000)
-);
+const DEFAULT_DATE_FROM = toISODate(new Date(Date.now() - 6 * 30 * 86_400_000));
 const DEFAULT_DATE_TO = toISODate(new Date());
 
 const DEFAULT_PROFILE: SeedProfileConfig = {
@@ -149,8 +147,7 @@ export function SeedDataTab() {
         ...preset.profile.sleep_config,
         date_from: preset.profile.sleep_config.date_from ?? DEFAULT_DATE_FROM,
         date_to: preset.profile.sleep_config.date_to ?? DEFAULT_DATE_TO,
-        stage_profile:
-          preset.profile.sleep_config.stage_profile ?? null,
+        stage_profile: preset.profile.sleep_config.stage_profile ?? null,
         stage_distribution:
           preset.profile.sleep_config.stage_distribution ??
           DEFAULT_STAGE_DISTRIBUTION,
@@ -184,10 +181,7 @@ export function SeedDataTab() {
   // Sleep count validation: cannot exceed days in the selected date range
   const sleepDays = useMemo(
     () =>
-      daysBetween(
-        profile.sleep_config.date_from,
-        profile.sleep_config.date_to
-      ),
+      daysBetween(profile.sleep_config.date_from, profile.sleep_config.date_to),
     [profile.sleep_config.date_from, profile.sleep_config.date_to]
   );
   const sleepCountExceedsDays =
@@ -216,12 +210,9 @@ export function SeedDataTab() {
   );
 
   // Stacked bar midpoints for preview
-  const deepMid =
-    (dist.deep_pct_range[0] + dist.deep_pct_range[1]) / 2;
-  const remMid =
-    (dist.rem_pct_range[0] + dist.rem_pct_range[1]) / 2;
-  const awakeMid =
-    (dist.awake_pct_range[0] + dist.awake_pct_range[1]) / 2;
+  const deepMid = (dist.deep_pct_range[0] + dist.deep_pct_range[1]) / 2;
+  const remMid = (dist.rem_pct_range[0] + dist.rem_pct_range[1]) / 2;
+  const awakeMid = (dist.awake_pct_range[0] + dist.awake_pct_range[1]) / 2;
   const lightMid = Math.max(0, 100 - deepMid - remMid - awakeMid);
 
   // Apply a sleep stage profile
@@ -345,7 +336,8 @@ export function SeedDataTab() {
               )}
             </div>
             <p className="text-xs text-zinc-600">
-              Seed and preset are embedded in generated user names - copy the seed from there to reproduce data.
+              Seed and preset are embedded in generated user names - copy the
+              seed from there to reproduce data.
             </p>
           </div>
         </div>

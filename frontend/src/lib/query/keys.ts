@@ -156,7 +156,6 @@ export const queryKeys = {
   seedData: {
     all: ['seedData'] as const,
     presets: () => [...queryKeys.seedData.all, 'presets'] as const,
-    sleepProfiles: () =>
-      [...queryKeys.seedData.all, 'sleepProfiles'] as const,
+    sleepProfiles: () => [...queryKeys.seedData.all, 'sleepProfiles'] as const,
   },
 } as const;
