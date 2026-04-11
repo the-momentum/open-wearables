@@ -110,10 +110,20 @@ def fill_missing_sleep_scores() -> dict:
                 for d, result in scores_by_date.items()
             ]
 
-            health_score_service.bulk_create(db, scores_to_save)
-            db.commit()
-            total_saved += len(scores_to_save)
-            total_skipped += len(dates) - len(scores_to_save)
+            try:
+                health_score_service.bulk_create(db, scores_to_save)
+                db.commit()
+                total_saved += len(scores_to_save)
+                total_skipped += len(dates) - len(scores_to_save)
+            except Exception as e:
+                db.rollback()
+                total_skipped += len(scores_to_save)
+                log_and_capture_error(
+                    e,
+                    logger,
+                    f"Failed to save sleep scores for user {uid}",
+                    extra={"user_id": str(uid), "task": "fill_missing_sleep_scores"},
+                )
 
         log_structured(
             logger,
