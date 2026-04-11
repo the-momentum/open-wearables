@@ -167,12 +167,12 @@ export function SeedDataTab() {
   };
 
   const handleGenerate = () => {
-    const parsedSeed = randomSeed ? parseInt(randomSeed) : null;
+    const parsedSeed = randomSeed !== '' ? parseInt(randomSeed) : null;
     generateMutation.mutate(
       {
         num_users: numUsers,
         profile,
-        random_seed: parsedSeed && !isNaN(parsedSeed) ? parsedSeed : null,
+        random_seed: parsedSeed !== null && !isNaN(parsedSeed) ? parsedSeed : null,
       },
       {
         onSuccess: (result) => {
