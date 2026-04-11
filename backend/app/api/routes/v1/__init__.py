@@ -19,6 +19,7 @@ from .priorities import router as priorities_router
 from .sdk_logs import router as sdk_logs_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
+from .seed_data import router as seed_data_router
 from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
@@ -58,6 +59,7 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: 
 v1_router.include_router(applications_router, tags=["Internal: Applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
 v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
+v1_router.include_router(seed_data_router, tags=["Internal: Seed Data"])
 v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
 # --- System: provider webhooks and debug ---
