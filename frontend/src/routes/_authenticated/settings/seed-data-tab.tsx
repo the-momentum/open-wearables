@@ -172,7 +172,8 @@ export function SeedDataTab() {
       {
         num_users: numUsers,
         profile,
-        random_seed: parsedSeed !== null && !isNaN(parsedSeed) ? parsedSeed : null,
+        random_seed:
+          parsedSeed !== null && !isNaN(parsedSeed) ? parsedSeed : null,
       },
       {
         onSuccess: (result) => {
