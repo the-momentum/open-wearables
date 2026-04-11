@@ -1,7 +1,7 @@
 """Unit tests for sleep score algorithm functions.
 
 Covers every public (and key private) function in:
-  - app.algorithms.scoring_primitives   (ScoreBounds, time_to_hours_past_noon, score_sigmoid)
+  - app.algorithms.scoring_primitives   (time_to_hours_past_noon, score_sigmoid)
   - app.algorithms.sleep   (all scoring sub-functions and the top-level combiner)
 
 These tests exercise pure-Python logic only — no database, no factories.
@@ -11,8 +11,7 @@ from datetime import datetime
 
 import pytest
 
-from app.algorithms.config_algorithms import SleepScoreConfig
-from app.algorithms.scoring_primitives import ScoreBounds, score_sigmoid, time_to_hours_past_noon
+from app.algorithms.scoring_primitives import score_sigmoid, time_to_hours_past_noon
 from app.algorithms.sleep import (
     STAGE_SCORE_BOUNDS,
     _calculate_stage_score,
@@ -134,18 +133,12 @@ class TestScoreDurationHours:
     def test_returns_int(self) -> None:
         assert isinstance(_score_duration_hours(8.0), int)
 
-    def test_custom_bounds_respected(self) -> None:
-        """Custom ScoreBounds(0, 50) should cap the score at 50."""
-        bounds = ScoreBounds(0, 50)
-        score = _score_duration_hours(8.0, score_bounds=bounds)
-        assert score == 50
-
-    def test_custom_config_optimal_range(self) -> None:
-        """A custom config with a wider optimal range should still return max inside it."""
-        custom = SleepScoreConfig(optimal_min_hours=6.0, optimal_max_hours=10.0)
-        assert _score_duration_hours(6.0, config=custom) == 100
-        assert _score_duration_hours(10.0, config=custom) == 100
-        assert _score_duration_hours(5.9, config=custom) < 100
+    def test_optimal_boundaries_are_inclusive(self) -> None:
+        """Default optimal range [7, 9] is inclusive on both ends."""
+        assert _score_duration_hours(7.0) == 100
+        assert _score_duration_hours(9.0) == 100
+        assert _score_duration_hours(6.99) < 100
+        assert _score_duration_hours(9.01) < 100
 
 
 class TestCalculateDurationScore:
@@ -203,10 +196,10 @@ class TestCalculateStageScore:
         s60 = _calculate_stage_score(60.0, 90.0)
         assert s30 == pytest.approx(s60 / 2, abs=1)
 
-    def test_custom_bounds(self) -> None:
-        bounds = ScoreBounds(0, 50)
-        assert _calculate_stage_score(90.0, 90.0, score_bounds=bounds) == 50
-        assert _calculate_stage_score(45.0, 90.0, score_bounds=bounds) == 25
+    def test_score_bounded_at_zero_and_max(self) -> None:
+        """Score is always within [STAGE_SCORE_BOUNDS.min, STAGE_SCORE_BOUNDS.max]."""
+        assert _calculate_stage_score(0.0, 90.0) == STAGE_SCORE_BOUNDS.min
+        assert _calculate_stage_score(90.0, 90.0) == STAGE_SCORE_BOUNDS.max
 
 
 class TestCalculateTotalStagesScore:
@@ -235,11 +228,9 @@ class TestCalculateTotalStagesScore:
     def test_only_deep_no_rem(self) -> None:
         assert calculate_total_stages_score(90.0, 0.0) == 50
 
-    def test_custom_config_weights(self) -> None:
-        """Custom weights that favour deep over REM."""
-        custom = SleepScoreConfig(deep_weight=0.8, rem_weight=0.2)
-        score = calculate_total_stages_score(90.0, 0.0, config=custom)
-        assert score == int(100 * 0.8 + 0 * 0.2)
+    def test_default_weights_equal_contribution(self) -> None:
+        """Default 0.5/0.5 weights mean deep=90 rem=0 and deep=0 rem=90 both score 50."""
+        assert calculate_total_stages_score(90.0, 0.0) == calculate_total_stages_score(0.0, 90.0)
 
     def test_returns_int(self) -> None:
         assert isinstance(calculate_total_stages_score(60.0, 60.0), int)
@@ -479,14 +470,14 @@ class TestCalculateOverallSleepScore:
         )
         assert result.breakdown.stages.score == 0
 
-    def test_weights_are_applied(self) -> None:
-        """With custom 100%-duration weight the overall must equal the duration score."""
-        custom = SleepScoreConfig(
-            duration_impact=1.0,
-            stages_impact=0.0,
-            consistency_impact=0.0,
-            interruptions_impact=0.0,
-        )
+    def test_default_weights_produce_expected_overall(self) -> None:
+        """Default impacts (0.40/0.20/0.20/0.20) with known component scores yield a predictable overall.
+
+        Inputs chosen so each component score is unambiguous:
+          duration=100 (8 h), stages=0 (no deep/rem),
+          consistency=0 (no history), interruptions=100 (0 awake).
+        Expected: int((100*0.40 + 0*0.20 + 0*0.20 + 100*0.20) / 100 * 100) = 60
+        """
         result = calculate_overall_sleep_score(
             total_sleep_minutes=480.0,
             deep_minutes=0.0,
@@ -495,10 +486,8 @@ class TestCalculateOverallSleepScore:
             historical_bedtimes=[],
             total_awake_minutes=0.0,
             awakening_durations=[],
-            config=custom,
         )
-        # overall = int(duration_score * 1.0 + 0 + 0 + 0)
-        assert result.overall_score == result.breakdown.duration.score
+        assert result.overall_score == 60
 
     def test_short_sleep_lowers_overall(self) -> None:
         """2 h of sleep must produce a noticeably lower overall score than 8 h."""
