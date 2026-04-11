@@ -174,7 +174,13 @@ function UserDetailPage() {
         content: <BodySection userId={userId} />,
       },
     ],
-    [userId, workoutDateRange, activityDateRange, sleepDateRange, scoresDateRange]
+    [
+      userId,
+      workoutDateRange,
+      activityDateRange,
+      sleepDateRange,
+      scoresDateRange,
+    ]
   );
 
   const handleCopyPairLink = async () => {

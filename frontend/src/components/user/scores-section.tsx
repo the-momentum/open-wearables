@@ -38,14 +38,54 @@ interface CategoryConfig {
 }
 
 const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  sleep: { label: 'Sleep', icon: Moon, color: 'text-indigo-400', maxScale: 100 },
-  recovery: { label: 'Recovery', icon: Heart, color: 'text-rose-400', maxScale: 100 },
-  readiness: { label: 'Readiness', icon: Zap, color: 'text-emerald-400', maxScale: 100 },
-  activity: { label: 'Activity', icon: Activity, color: 'text-sky-400', maxScale: 100 },
-  stress: { label: 'Stress', icon: Flame, color: 'text-orange-400', maxScale: 100 },
-  body_battery: { label: 'Body Battery', icon: Battery, color: 'text-green-400', maxScale: 100 },
-  strain: { label: 'Strain', icon: Dumbbell, color: 'text-red-400', maxScale: 21 },
-  resilience: { label: 'Resilience', icon: Shield, color: 'text-purple-400', maxScale: 100 },
+  sleep: {
+    label: 'Sleep',
+    icon: Moon,
+    color: 'text-indigo-400',
+    maxScale: 100,
+  },
+  recovery: {
+    label: 'Recovery',
+    icon: Heart,
+    color: 'text-rose-400',
+    maxScale: 100,
+  },
+  readiness: {
+    label: 'Readiness',
+    icon: Zap,
+    color: 'text-emerald-400',
+    maxScale: 100,
+  },
+  activity: {
+    label: 'Activity',
+    icon: Activity,
+    color: 'text-sky-400',
+    maxScale: 100,
+  },
+  stress: {
+    label: 'Stress',
+    icon: Flame,
+    color: 'text-orange-400',
+    maxScale: 100,
+  },
+  body_battery: {
+    label: 'Body Battery',
+    icon: Battery,
+    color: 'text-green-400',
+    maxScale: 100,
+  },
+  strain: {
+    label: 'Strain',
+    icon: Dumbbell,
+    color: 'text-red-400',
+    maxScale: 21,
+  },
+  resilience: {
+    label: 'Resilience',
+    icon: Shield,
+    color: 'text-purple-400',
+    maxScale: 100,
+  },
 };
 
 const CATEGORY_ORDER = [
@@ -130,9 +170,7 @@ function formatScore(value: number | null): string {
 }
 
 function formatComponentName(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // ---------------------------------------------------------------------------
@@ -229,41 +267,43 @@ function ScoreDayCard({
 
         {/* Category rows */}
         <div className="mt-3 space-y-2">
-          {Array.from(byCategory.entries()).map(([category, categoryScores]) => {
-            const config = CATEGORY_CONFIG[category];
-            const Icon = config?.icon || Activity;
-            return (
-              <div key={category} className="flex items-center gap-3">
-                <div className="flex items-center gap-2 w-28 flex-shrink-0">
-                  <Icon
-                    className={`h-3.5 w-3.5 ${config?.color || 'text-zinc-400'}`}
-                  />
-                  <span className="text-xs text-zinc-400">
-                    {config?.label || category}
-                  </span>
-                </div>
+          {Array.from(byCategory.entries()).map(
+            ([category, categoryScores]) => {
+              const config = CATEGORY_CONFIG[category];
+              const Icon = config?.icon || Activity;
+              return (
+                <div key={category} className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 w-28 flex-shrink-0">
+                    <Icon
+                      className={`h-3.5 w-3.5 ${config?.color || 'text-zinc-400'}`}
+                    />
+                    <span className="text-xs text-zinc-400">
+                      {config?.label || category}
+                    </span>
+                  </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {categoryScores.map((score) => (
-                    <div
-                      key={score.id}
-                      className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/30"
-                    >
-                      <SourceBadge provider={score.provider || 'unknown'} />
-                      <span className="text-sm font-semibold text-white">
-                        {formatScore(score.value)}
-                      </span>
-                      {score.qualifier && (
-                        <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                          {score.qualifier}
+                  <div className="flex flex-wrap gap-2">
+                    {categoryScores.map((score) => (
+                      <div
+                        key={score.id}
+                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/30"
+                      >
+                        <SourceBadge provider={score.provider || 'unknown'} />
+                        <span className="text-sm font-semibold text-white">
+                          {formatScore(score.value)}
                         </span>
-                      )}
-                    </div>
-                  ))}
+                        {score.qualifier && (
+                          <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                            {score.qualifier}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            }
+          )}
         </div>
       </button>
 
@@ -498,10 +538,7 @@ export function ScoresSection({
                       className="h-[200px] w-full"
                     >
                       <LineChart accessibilityLayer data={chartData}>
-                        <CartesianGrid
-                          vertical={false}
-                          strokeDasharray="3 3"
-                        />
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
                         <XAxis
                           dataKey="date"
                           tickLine={false}
