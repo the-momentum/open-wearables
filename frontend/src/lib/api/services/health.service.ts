@@ -4,6 +4,8 @@ import type {
   UserConnection,
   EventRecordResponse,
   HealthDataParams,
+  HealthScoreParams,
+  HealthScoreResponse,
   PaginatedResponse,
   TimeSeriesParams,
   TimeSeriesSample,
@@ -228,6 +230,19 @@ export const healthService = {
       {
         params,
       }
+    );
+  },
+
+  /**
+   * Get health scores (sleep, recovery, readiness, etc.) for a user
+   */
+  async getHealthScores(
+    userId: string,
+    params?: HealthScoreParams
+  ): Promise<PaginatedResponse<HealthScoreResponse>> {
+    return apiClient.get<PaginatedResponse<HealthScoreResponse>>(
+      API_ENDPOINTS.userHealthScores(userId),
+      { params }
     );
   },
 

@@ -83,4 +83,7 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+
+  // Health scores endpoint
+  userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
 } as const;
