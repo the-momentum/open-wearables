@@ -504,9 +504,9 @@ class SeedDataService:
         identity_fake = Faker()
         identity_fake.seed_instance(int.from_bytes(os.urandom(8)))
 
-        # Pin "now" to start of day so connection sync times (and therefore
-        # date bounds for workouts/sleep) are deterministic across runs.
-        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+        # Use a fixed anchor date so the same seed always produces identical
+        # data regardless of when the generator is run.
+        now = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         personal_record_repo = CrudRepository(PersonalRecord)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
