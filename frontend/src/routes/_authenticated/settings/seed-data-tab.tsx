@@ -298,29 +298,51 @@ export function SeedDataTab() {
         </p>
       </div>
 
-      {/* User count */}
+      {/* User count & seed */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-4">
           <Users className="h-4 w-4 text-zinc-400" />
           <h3 className="text-sm font-medium text-white">Users</h3>
         </div>
-        <div className="flex items-center gap-3">
-          <Label htmlFor="num-users" className="text-sm text-zinc-400">
-            Number of users to create
-          </Label>
-          <Input
-            id="num-users"
-            type="number"
-            min={1}
-            max={10}
-            value={numUsers}
-            onChange={(e) =>
-              setNumUsers(
-                Math.max(1, Math.min(10, parseInt(e.target.value) || 1))
-              )
-            }
-            className="w-20"
-          />
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex items-center gap-3">
+            <Label htmlFor="num-users" className="text-sm text-zinc-400">
+              Number of users to create
+            </Label>
+            <Input
+              id="num-users"
+              type="number"
+              min={1}
+              max={10}
+              value={numUsers}
+              onChange={(e) =>
+                setNumUsers(
+                  Math.max(1, Math.min(10, parseInt(e.target.value) || 1))
+                )
+              }
+              className="w-20"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Label className="text-sm text-zinc-400 whitespace-nowrap">
+              Override random seed
+            </Label>
+            <Input
+              type="number"
+              placeholder="Leave empty for random"
+              value={randomSeed}
+              onChange={(e) => setRandomSeed(e.target.value)}
+              className="w-48"
+            />
+            {lastSeedUsed != null && (
+              <button
+                onClick={() => setRandomSeed(String(lastSeedUsed))}
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+              >
+                Reuse last: {lastSeedUsed}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -936,28 +958,8 @@ export function SeedDataTab() {
         </div>
       </div>
 
-      {/* Seed & Generate */}
+      {/* Generate */}
       <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <Label className="text-xs text-zinc-500 whitespace-nowrap">
-            Random seed
-          </Label>
-          <Input
-            type="number"
-            placeholder="Leave empty for random"
-            value={randomSeed}
-            onChange={(e) => setRandomSeed(e.target.value)}
-            className="w-48"
-          />
-          {lastSeedUsed != null && (
-            <button
-              onClick={() => setRandomSeed(String(lastSeedUsed))}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
-            >
-              Reuse last: {lastSeedUsed}
-            </button>
-          )}
-        </div>
         <div className="flex items-center gap-4">
           <Button
             onClick={handleGenerate}

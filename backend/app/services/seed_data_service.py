@@ -5,6 +5,7 @@ dashboard-driven data generation with configurable profiles.
 """
 
 import logging
+import os
 import random
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -495,8 +496,13 @@ class SeedDataService:
         """
         profile = request.profile
         seed = request.random_seed if request.random_seed is not None else random.randint(0, 2**31 - 1)
+        random.seed(seed)
         fake = Faker()
         Faker.seed(seed)
+        # Unseeded Faker for user identity fields (name, email, UUID) so they
+        # are always unique across runs, even when reusing the same seed.
+        identity_fake = Faker()
+        identity_fake.seed_instance(int.from_bytes(os.urandom(8)))
 
         personal_record_repo = CrudRepository(PersonalRecord)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
@@ -514,10 +520,10 @@ class SeedDataService:
             user = user_service.create(
                 db,
                 UserCreate(
-                    first_name=f"[SEED] {fake.first_name()}",
-                    last_name=fake.last_name(),
-                    email=fake.unique.email(),
-                    external_user_id=fake.unique.uuid4() if fake.boolean(chance_of_getting_true=80) else None,
+                    first_name=f"[SEED] {identity_fake.first_name()}",
+                    last_name=identity_fake.last_name(),
+                    email=identity_fake.unique.email(),
+                    external_user_id=identity_fake.unique.uuid4() if fake.boolean(chance_of_getting_true=80) else None,
                 ),
             )
             summary["users"] += 1
