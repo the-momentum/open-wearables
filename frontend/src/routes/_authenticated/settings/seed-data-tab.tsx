@@ -323,25 +323,30 @@ export function SeedDataTab() {
               className="w-20"
             />
           </div>
-          <div className="flex items-center gap-3">
-            <Label className="text-sm text-zinc-400 whitespace-nowrap">
-              Override random seed
-            </Label>
-            <Input
-              type="number"
-              placeholder="Leave empty for random"
-              value={randomSeed}
-              onChange={(e) => setRandomSeed(e.target.value)}
-              className="w-48"
-            />
-            {lastSeedUsed != null && (
-              <button
-                onClick={() => setRandomSeed(String(lastSeedUsed))}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
-              >
-                Reuse last: {lastSeedUsed}
-              </button>
-            )}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-3">
+              <Label className="text-sm text-zinc-400 whitespace-nowrap">
+                Override random seed
+              </Label>
+              <Input
+                type="number"
+                placeholder="Auto-generated"
+                value={randomSeed}
+                onChange={(e) => setRandomSeed(e.target.value)}
+                className="w-48"
+              />
+              {lastSeedUsed != null && (
+                <button
+                  onClick={() => setRandomSeed(String(lastSeedUsed))}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+                >
+                  Reuse last: {lastSeedUsed}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-zinc-600">
+              Seed and preset are embedded in generated user names - copy the seed from there to reproduce data.
+            </p>
           </div>
         </div>
       </div>
