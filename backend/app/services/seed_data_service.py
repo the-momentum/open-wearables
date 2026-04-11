@@ -445,6 +445,7 @@ def _generate_time_series_samples(
 def _generate_user_connections(
     user_id: UUID,
     fake: Faker,
+    now: datetime,
     num_connections: int = 2,
     providers: list[ProviderName] | None = None,
 ) -> tuple[list[UserConnectionCreate], dict[ProviderName, datetime]]:
@@ -454,7 +455,6 @@ def _generate_user_connections(
     else:
         selected_providers = fake.random.sample(SEED_PROVIDERS, min(num_connections, len(SEED_PROVIDERS)))
 
-    now = datetime.now(timezone.utc)
     connections: list[UserConnectionCreate] = []
     provider_sync_times: dict[ProviderName, datetime] = {}
 
@@ -504,6 +504,10 @@ class SeedDataService:
         identity_fake = Faker()
         identity_fake.seed_instance(int.from_bytes(os.urandom(8)))
 
+        # Pin "now" to start of day so connection sync times (and therefore
+        # date bounds for workouts/sleep) are deterministic across runs.
+        now = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
+
         personal_record_repo = CrudRepository(PersonalRecord)
         event_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         connection_repo = CrudRepository(UserConnection)
@@ -520,7 +524,7 @@ class SeedDataService:
             user = user_service.create(
                 db,
                 UserCreate(
-                    first_name=f"[SEED] {identity_fake.first_name()}",
+                    first_name=f"[SEED:{seed}] {identity_fake.first_name()}",
                     last_name=identity_fake.last_name(),
                     email=identity_fake.unique.email(),
                     external_user_id=identity_fake.unique.uuid4() if fake.boolean(chance_of_getting_true=80) else None,
@@ -535,6 +539,7 @@ class SeedDataService:
             user_connections, provider_sync_times = _generate_user_connections(
                 user.id,
                 fake,
+                now,
                 num_connections=profile.num_connections,
                 providers=profile.providers,
             )
