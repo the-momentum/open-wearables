@@ -24,6 +24,19 @@ class WorkoutConfig(BaseModel):
     date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
     date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
 
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "WorkoutConfig":
+        if self.duration_min_minutes > self.duration_max_minutes:
+            msg = (
+                f"duration_min_minutes ({self.duration_min_minutes}) "
+                f"must be <= duration_max_minutes ({self.duration_max_minutes})"
+            )
+            raise ValueError(msg)
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        return self
+
 
 class SleepStageDistribution(BaseModel):
     """Percentage ranges for each sleep stage. Light = remainder (100% - others)."""
@@ -114,6 +127,22 @@ class SleepConfig(BaseModel):
         description="Named sleep stage profile. None = use stage_distribution.",
     )
     stage_distribution: SleepStageDistribution = SleepStageDistribution()
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "SleepConfig":
+        if self.duration_min_minutes > self.duration_max_minutes:
+            msg = (
+                f"duration_min_minutes ({self.duration_min_minutes}) "
+                f"must be <= duration_max_minutes ({self.duration_max_minutes})"
+            )
+            raise ValueError(msg)
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        if self.stage_profile is not None and self.stage_profile not in SLEEP_STAGE_PROFILES:
+            msg = f"Unknown stage_profile '{self.stage_profile}'. Valid profiles: {', '.join(SLEEP_STAGE_PROFILES)}"
+            raise ValueError(msg)
+        return self
 
 
 class SeedProfileConfig(BaseModel):
