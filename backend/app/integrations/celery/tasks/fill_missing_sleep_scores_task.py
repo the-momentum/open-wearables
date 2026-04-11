@@ -24,7 +24,7 @@ logger = getLogger(__name__)
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
-        er.start_datetime::date AS sleep_date
+        (er.start_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS sleep_date
     FROM event_record er
     JOIN data_source ds   ON ds.id = er.data_source_id
     JOIN sleep_details sd ON sd.record_id = er.id
@@ -32,7 +32,7 @@ _MISSING_SCORES_QUERY = text("""
            ON hs.user_id     = ds.user_id
           AND hs.category     = 'sleep'
           AND hs.provider     = 'internal'
-          AND hs.recorded_at::date = er.start_datetime::date
+          AND hs.recorded_at::date = (er.start_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date
     WHERE er.category = 'sleep'
       AND (sd.is_nap IS NULL OR sd.is_nap = false)
       AND sd.sleep_total_duration_minutes IS NOT NULL
