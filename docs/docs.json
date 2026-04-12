@@ -183,13 +183,6 @@
             ]
           },
           {
-            "group": "Workouts",
-            "pages": [
-              "GET /api/v1/providers/{provider}/users/{user_id}/workouts",
-              "GET /api/v1/providers/{provider}/users/{user_id}/workouts/{workout_id}"
-            ]
-          },
-          {
             "group": "Summaries",
             "pages": [
               "GET /api/v1/users/{user_id}/summaries/activity",
