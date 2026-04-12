@@ -46,6 +46,19 @@ class EventRecordBase(BaseModel):
         description="Device model/name for data source tracking",
     )
 
+    # Human-readable metadata forwarded from third-party providers via the
+    # Apple HealthKit / Health Connect SDKs.
+    title: str | None = Field(
+        None,
+        max_length=255,
+        description="Workout title/display name (e.g. '45 min Power Zone Endurance Ride')",
+    )
+    notes: str | None = Field(
+        None,
+        max_length=2000,
+        description="Free-form workout notes / description",
+    )
+
     duration_seconds: int | None = None
     start_datetime: datetime
     end_datetime: datetime

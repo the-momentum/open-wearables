@@ -91,6 +91,13 @@ class ImportService:
                 type=type,
                 source_name=original_source_name or "unknown",
                 device_model=device_model,
+                # Human-readable metadata sent by third-party HealthKit /
+                # Health Connect writers (Peloton, Strava, Zwift, ...).
+                # Dropping these was Bug 4 in the Peloton issue: the
+                # workout display name and notes appeared in the SDK
+                # payload but never made it to the database.
+                title=wjson.title,
+                notes=wjson.notes,
                 duration_seconds=int(duration),
                 start_datetime=wjson.startDate,
                 end_datetime=wjson.endDate,

@@ -157,6 +157,14 @@ class EventRecordRepository(
                     "category": creator.category,
                     "type": creator.type,
                     "source_name": creator.source_name,
+                    # Human-readable metadata forwarded from third-party
+                    # HealthKit / Health Connect writers. These columns
+                    # were added alongside the Peloton upstream fixes
+                    # (Bug 4) so we can preserve the workout title and
+                    # free-form notes that the SDK already sends on the
+                    # wire but bulk_create used to drop silently.
+                    "title": creator.title,
+                    "notes": creator.notes,
                     "duration_seconds": creator.duration_seconds,
                     "start_datetime": creator.start_datetime,
                     "end_datetime": creator.end_datetime,
