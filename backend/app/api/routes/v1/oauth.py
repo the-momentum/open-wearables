@@ -37,6 +37,7 @@ def get_oauth_strategy(provider: ProviderName) -> BaseProviderStrategy:
 @router.get(
     "/{provider}/authorize",
     summary="Get Provider Authorization URL",
+    status_code=status.HTTP_200_OK,
     response_model=AuthorizationURLResponse,
     tags=["External: Providers"],
 )
