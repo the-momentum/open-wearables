@@ -58,9 +58,7 @@ class EventRecordService(
     # ------------------------------------------------------------------
 
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        record = super().create(db_session, creator)
-        self._emit_event_record_webhook(creator)
-        return record
+        return super().create(db_session, creator)
 
     def _resolve_avg_hr(
         self,
@@ -115,7 +113,13 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
         detail_type: str = "workout",
     ) -> EventRecordDetail:
-        return self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
+        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
+        record = db_session.get(EventRecord, detail.record_id)
+        if record is not None and record.data_source_id is not None:
+            data_source = db_session.get(DataSource, record.data_source_id)
+            if data_source is not None:
+                self._emit_event_record_webhook(record, data_source, detail)
+        return result  # type: ignore[return-value]
 
     def find_adjacent_sleep_record(
         self,
@@ -149,15 +153,38 @@ class EventRecordService(
         first, and the old record is deleted only after a successful insert — so a failure
         never loses the original data.
         """
-        result, inserted = self._create_or_merge_sleep_inner(db_session, user_id, record, detail, threshold_minutes)
+        result, inserted, final_detail = self._create_or_merge_sleep_inner(
+            db_session, user_id, record, detail, threshold_minutes
+        )
         if inserted:
+            eff = final_detail.sleep_efficiency_score
+            has_stages = any(
+                [
+                    final_detail.sleep_awake_minutes,
+                    final_detail.sleep_light_minutes,
+                    final_detail.sleep_deep_minutes,
+                    final_detail.sleep_rem_minutes,
+                ]
+            )
             on_sleep_created(
                 record_id=result.id,
                 user_id=user_id,
                 provider=record.provider or record.source_name,
-                start_datetime=result.start_datetime.isoformat(),
-                end_datetime=result.end_datetime.isoformat(),
+                device=record.device_model,
+                start_time=result.start_datetime.isoformat(),
+                end_time=result.end_datetime.isoformat(),
+                zone_offset=record.zone_offset,
                 duration_seconds=result.duration_seconds,
+                efficiency_percent=float(eff) if eff is not None else None,
+                stages={
+                    "awake_minutes": final_detail.sleep_awake_minutes,
+                    "light_minutes": final_detail.sleep_light_minutes,
+                    "deep_minutes": final_detail.sleep_deep_minutes,
+                    "rem_minutes": final_detail.sleep_rem_minutes,
+                }
+                if has_stages
+                else None,
+                is_nap=final_detail.is_nap,
             )
         return result
 
@@ -168,7 +195,7 @@ class EventRecordService(
         record: EventRecordCreate,
         detail: EventRecordDetailCreate,
         threshold_minutes: int,
-    ) -> tuple[EventRecord, bool]:
+    ) -> tuple[EventRecord, bool, EventRecordDetailCreate]:
         adjacent = self.find_adjacent_sleep_record(
             db_session,
             user_id,
@@ -300,7 +327,7 @@ class EventRecordService(
                     detail_type="sleep",
                 )
                 db_session.commit()
-                return adjacent, False
+                return adjacent, False, detail
 
             record = record.model_copy(
                 update={
@@ -322,58 +349,103 @@ class EventRecordService(
                     detail_type="sleep",
                 )
                 db_session.commit()
-                return adjacent, False
+                return adjacent, False, detail
 
+            merged_final_detail = detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields})
             self.event_record_detail_repo.create_and_flush(
                 db_session,
-                detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields}),
+                merged_final_detail,
                 detail_type="sleep",
             )
             self.crud.delete_flush(db_session, adjacent)
             db_session.commit()
-            return created_record, True
+            return created_record, True, merged_final_detail
 
         created_record = self.crud.create_and_flush(db_session, record)
+        new_detail = detail.model_copy(update={"record_id": created_record.id})
         self.event_record_detail_repo.create_and_flush(
             db_session,
-            detail.model_copy(update={"record_id": created_record.id}),
+            new_detail,
             detail_type="sleep",
         )
         db_session.commit()
-        return created_record, True
+        return created_record, True, new_detail
 
     @staticmethod
-    def _emit_event_record_webhook(record: EventRecordCreate) -> None:
+    def _emit_event_record_webhook(
+        record: EventRecord,
+        data_source: DataSource,
+        detail: EventRecordDetailCreate,
+    ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
         category = (record.category or "").lower()
-        provider = record.provider or record.source_name
+        provider = str(data_source.provider)
+        device = data_source.device_model
+        zone_offset = record.zone_offset
         if category == "sleep":
+            eff = detail.sleep_efficiency_score
+            has_stages = any(
+                [
+                    detail.sleep_awake_minutes,
+                    detail.sleep_light_minutes,
+                    detail.sleep_deep_minutes,
+                    detail.sleep_rem_minutes,
+                ]
+            )
             on_sleep_created(
                 record_id=record.id,
-                user_id=record.user_id,
+                user_id=data_source.user_id,
                 provider=provider,
-                start_datetime=record.start_datetime.isoformat(),
-                end_datetime=record.end_datetime.isoformat(),
+                device=device,
+                start_time=record.start_datetime.isoformat(),
+                end_time=record.end_datetime.isoformat(),
+                zone_offset=zone_offset,
                 duration_seconds=record.duration_seconds,
+                efficiency_percent=float(eff) if eff is not None else None,
+                stages={
+                    "awake_minutes": detail.sleep_awake_minutes,
+                    "light_minutes": detail.sleep_light_minutes,
+                    "deep_minutes": detail.sleep_deep_minutes,
+                    "rem_minutes": detail.sleep_rem_minutes,
+                }
+                if has_stages
+                else None,
+                is_nap=detail.is_nap,
             )
         elif category == "workout":
+            avg_pace: int | None = None
+            if detail.average_speed and float(detail.average_speed) > 0:
+                avg_pace = int(1000 / float(detail.average_speed))
             on_workout_created(
                 record_id=record.id,
-                user_id=record.user_id,
+                user_id=data_source.user_id,
                 provider=provider,
+                device=device,
                 workout_type=record.type,
-                start_datetime=record.start_datetime.isoformat(),
-                end_datetime=record.end_datetime.isoformat(),
+                start_time=record.start_datetime.isoformat(),
+                end_time=record.end_datetime.isoformat(),
+                zone_offset=zone_offset,
                 duration_seconds=record.duration_seconds,
+                calories_kcal=float(detail.energy_burned) if detail.energy_burned is not None else None,
+                distance_meters=float(detail.distance) if detail.distance is not None else None,
+                avg_heart_rate_bpm=int(detail.heart_rate_avg) if detail.heart_rate_avg is not None else None,
+                max_heart_rate_bpm=int(detail.heart_rate_max) if detail.heart_rate_max is not None else None,
+                elevation_gain_meters=float(detail.total_elevation_gain)
+                if detail.total_elevation_gain is not None
+                else None,
+                avg_pace_sec_per_km=avg_pace,
             )
         else:
             on_activity_created(
                 record_id=record.id,
-                user_id=record.user_id,
+                user_id=data_source.user_id,
                 provider=provider,
+                device=device,
                 activity_type=record.type,
-                start_datetime=record.start_datetime.isoformat(),
-                end_datetime=record.end_datetime.isoformat(),
+                start_time=record.start_datetime.isoformat(),
+                end_time=record.end_datetime.isoformat(),
+                zone_offset=zone_offset,
+                duration_seconds=record.duration_seconds,
             )
 
     def bulk_create(
@@ -382,10 +454,9 @@ class EventRecordService(
         records: list[EventRecordCreate],
     ) -> list[UUID]:
         """Bulk create event records with batch data source resolution."""
-        ids = self.crud.bulk_create(db_session, records)
-        for creator in records:
-            self._emit_event_record_webhook(creator)
-        return ids
+        # Webhooks are not emitted for bulk-created records; they fire via
+        # create_detail() when individual details are added.
+        return self.crud.bulk_create(db_session, records)
 
     def bulk_create_details(
         self,

@@ -29,6 +29,7 @@ def emit_webhook_event(
     event_type: str,
     payload: dict[str, Any],
     *,
+    channels: list[str] | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Send a webhook event to every developer's Svix application.
@@ -60,6 +61,7 @@ def emit_webhook_event(
             event_type,
             str(dev.id),
             payload,
+            channels=channels,
             idempotency_key=idempotency_key,
         )
         if result is not None:

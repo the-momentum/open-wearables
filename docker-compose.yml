@@ -18,10 +18,20 @@ services:
 
   db-svix-init:
     image: postgres:18
+    volumes:
+      - ./backend/config/generated:/generated
+    env_file:
+      - ./backend/config/.env
     environment:
-      PGPASSWORD: open-wearables
-    command: >
-      sh -c "createdb -h db -U open-wearables svix || true"
+      PGPASSWORD: ${DB_PASSWORD:-open-wearables}
+    command:
+      - bash
+      - -c
+      - |
+        psql -h ${DB_HOST:-db} -U ${DB_USER:-open-wearables} -d postgres \
+          -c "SELECT 'CREATE DATABASE svix'::text WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'svix')\gexec" \
+        && mkdir -p /generated \
+        && { [ -f /generated/svix.env ] || printf 'SVIX_JWT_SECRET=%s\n' "$$(openssl rand -hex 32)" > /generated/svix.env; }
     depends_on:
       db:
         condition: service_healthy
@@ -37,6 +47,8 @@ services:
     command: scripts/start/app.sh
     env_file:
       - ./backend/config/.env
+      - path: ./backend/config/generated/svix.env
+        required: false
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
@@ -153,6 +165,8 @@ services:
     image: svix/svix-server:v1
     env_file:
       - ./backend/config/.env
+      - path: ./backend/config/generated/svix.env
+        required: false
     environment:
       SVIX_DB_DSN: "postgresql://open-wearables:open-wearables@db:5432/svix"
       SVIX_QUEUE_TYPE: "redis"

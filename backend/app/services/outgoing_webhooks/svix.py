@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from jose import jwt
 from svix.api import (
@@ -37,6 +38,32 @@ logger = logging.getLogger(__name__)
 
 # Fixed org UID used for this self-hosted instance.
 _SVIX_ORG_ID = "org_openwearables"
+
+# Svix channel prefix used to scope messages and endpoint subscriptions per user.
+# Each emitted message is tagged with "user.{user_id}".
+# An endpoint without a channel filter receives ALL messages (all users).
+# An endpoint with channels=["user.X"] receives only messages for user X.
+# Svix allows up to 5 channels per message; we always send exactly one.
+_USER_CHANNEL_PREFIX = "user."
+
+
+def _user_channels(user_id: UUID | None) -> list[str] | None:
+    if user_id is None:
+        return None
+    return [f"{_USER_CHANNEL_PREFIX}{user_id}"]
+
+
+def user_id_from_endpoint(ep: EndpointOut) -> UUID | None:
+    """Extract the user_id filter from an endpoint's Svix channels, if any."""
+    if not ep.channels:
+        return None
+    for ch in ep.channels:
+        if ch.startswith(_USER_CHANNEL_PREFIX):
+            try:
+                return UUID(ch[len(_USER_CHANNEL_PREFIX) :])
+            except ValueError:
+                pass
+    return None
 
 
 def _resolve_auth_token() -> str | None:
@@ -118,6 +145,7 @@ def send(
     developer_id: str,
     payload: dict[str, Any],
     *,
+    channels: list[str] | None = None,
     idempotency_key: str | None = None,
 ) -> MessageOut | None:
     """Emit a webhook message via Svix. developer_id doubles as the Svix application UID."""
@@ -132,6 +160,7 @@ def send(
                 event_type=event_type,
                 payload=payload,
                 event_id=idempotency_key,
+                channels=channels or None,
             ),
         )
     except Exception:
@@ -139,9 +168,24 @@ def send(
         return None
 
 
-def create_endpoint(app_id: str, endpoint_in: EndpointIn) -> EndpointOut:
+def create_endpoint(
+    app_id: str,
+    url: str,
+    description: str | None = None,
+    filter_types: list[str] | None = None,
+    *,
+    user_id: UUID | None = None,
+) -> EndpointOut:
     assert _client is not None
-    return _client.endpoint.create(app_id, endpoint_in)
+    return _client.endpoint.create(
+        app_id,
+        EndpointIn(
+            url=url,
+            description=description or "",
+            filter_types=filter_types or None,
+            channels=_user_channels(user_id),
+        ),
+    )
 
 
 def list_endpoints(app_id: str) -> ListResponseEndpointOut:
@@ -154,9 +198,42 @@ def get_endpoint(app_id: str, endpoint_id: str) -> EndpointOut:
     return _client.endpoint.get(app_id, endpoint_id)
 
 
-def patch_endpoint(app_id: str, endpoint_id: str, endpoint_patch: EndpointPatch) -> EndpointOut:
+def patch_endpoint(
+    app_id: str,
+    endpoint_id: str,
+    *,
+    url: str | None = None,
+    description: str | None = None,
+    filter_types: list[str] | None = None,
+    user_id: UUID | None = None,
+    clear_user_id: bool = False,
+) -> EndpointOut:
+    """Patch an endpoint.
+
+    Pass ``user_id`` to scope the endpoint to a specific user.
+    Pass ``clear_user_id=True`` (with ``user_id=None``) to remove an existing
+    user scope and receive events for all users again.
+    """
     assert _client is not None
-    return _client.endpoint.patch(app_id, endpoint_id, endpoint_patch)
+    channels: list[str] | None
+    if user_id is not None:
+        channels = _user_channels(user_id)
+    elif clear_user_id:
+        # Empty list tells Svix to remove the channel filter from this endpoint.
+        channels = []
+    else:
+        # None = don't touch the channels field (PATCH semantics).
+        channels = None
+    return _client.endpoint.patch(
+        app_id,
+        endpoint_id,
+        EndpointPatch(
+            url=url,
+            description=description,
+            filter_types=filter_types,
+            channels=channels if channels else None,
+        ),
+    )
 
 
 def delete_endpoint(app_id: str, endpoint_id: str) -> None:

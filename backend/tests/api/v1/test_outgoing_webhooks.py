@@ -21,6 +21,7 @@ from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_e
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 from app.services.outgoing_webhooks.events import (
     _dispatch,
+    on_connection_created,
     on_sleep_created,
     on_timeseries_batch_saved,
     on_workout_created,
@@ -57,15 +58,26 @@ class TestWebhookEmit:
             record_id=rid,
             user_id=uid,
             provider="garmin",
+            device="Forerunner 255",
             workout_type="RUNNING",
-            start_datetime="2026-01-01T00:00:00",
-            end_datetime="2026-01-01T01:00:00",
+            start_time="2026-01-01T00:00:00",
+            end_time="2026-01-01T01:00:00",
+            zone_offset="+01:00",
             duration_seconds=3600,
+            calories_kcal=450.0,
+            distance_meters=10000.0,
+            avg_heart_rate_bpm=155,
+            max_heart_rate_bpm=178,
+            elevation_gain_meters=120.0,
+            avg_pace_sec_per_km=360,
         )
         mock_task.delay.assert_called_once()
         args = mock_task.delay.call_args
         assert args[0][0] == "workout.created"
-        assert args[0][1]["data"]["provider"] == "garmin"
+        assert args[0][1]["data"]["source"]["provider"] == "garmin"
+        assert args[0][1]["data"]["calories_kcal"] == 450.0
+        assert args[0][1]["data"]["distance_meters"] == 10000.0
+        assert args[0][1]["data"]["avg_heart_rate_bpm"] == 155
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_sleep_created_dispatches(self, mock_task: MagicMock) -> None:
@@ -75,12 +87,20 @@ class TestWebhookEmit:
             record_id=rid,
             user_id=uid,
             provider="oura",
-            start_datetime="2026-01-01T22:00:00",
-            end_datetime="2026-01-02T06:00:00",
+            device="Oura Ring Gen3",
+            start_time="2026-01-01T22:00:00",
+            end_time="2026-01-02T06:00:00",
+            zone_offset=None,
             duration_seconds=28800,
+            efficiency_percent=85.0,
+            stages={"deep_minutes": 90, "rem_minutes": 60, "light_minutes": 120, "awake_minutes": 10},
+            is_nap=False,
         )
         mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "sleep.created"
+        args = mock_task.delay.call_args
+        assert args[0][0] == "sleep.created"
+        assert args[0][1]["data"]["efficiency_percent"] == 85.0
+        assert args[0][1]["data"]["stages"]["deep_minutes"] == 90
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_batch_saved_dispatches(self, mock_task: MagicMock) -> None:
@@ -92,7 +112,7 @@ class TestWebhookEmit:
             sample_count=100,
         )
         mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "heart_rate.updated"
+        assert mock_task.delay.call_args[0][0] == "heart_rate.created"
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_fallback_event_type(self, mock_task: MagicMock) -> None:
@@ -104,7 +124,23 @@ class TestWebhookEmit:
             sample_count=5,
         )
         mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "timeseries.updated"
+        assert mock_task.delay.call_args[0][0] == "timeseries.created"
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_on_connection_created_dispatches(self, mock_task: MagicMock) -> None:
+        uid = uuid4()
+        cid = uuid4()
+        on_connection_created(
+            user_id=uid,
+            provider="garmin",
+            connection_id=cid,
+            connected_at="2026-01-01T12:00:00+00:00",
+        )
+        mock_task.delay.assert_called_once()
+        args = mock_task.delay.call_args
+        assert args[0][0] == "connection.created"
+        assert args[0][1]["data"]["provider"] == "garmin"
+        assert args[0][1]["data"]["connection_id"] == str(cid)
 
     def test_dispatch_swallows_broker_error(self) -> None:
         """_dispatch silently drops the event when Celery is unreachable."""
@@ -163,6 +199,7 @@ class TestOutgoingWebhooksAPI:
         with patch("app.api.routes.v1.outgoing_webhooks.svix_service") as m:
             m.is_enabled.return_value = True
             m.ensure_application.return_value = "app_uid_123"
+            m.user_id_from_endpoint.return_value = None
             yield m
 
     def test_list_event_types(self, client: TestClient) -> None:

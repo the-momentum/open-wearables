@@ -41,8 +41,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T12:30:00+00:00",
         },
     },
-    WebhookEventType.HEART_RATE_UPDATED: {
-        "type": WebhookEventType.HEART_RATE_UPDATED,
+    WebhookEventType.HEART_RATE_CREATED: {
+        "type": WebhookEventType.HEART_RATE_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -52,8 +52,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T09:00:00+00:00",
         },
     },
-    WebhookEventType.HEART_RATE_VARIABILITY_UPDATED: {
-        "type": WebhookEventType.HEART_RATE_VARIABILITY_UPDATED,
+    WebhookEventType.HEART_RATE_VARIABILITY_CREATED: {
+        "type": WebhookEventType.HEART_RATE_VARIABILITY_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "oura",
@@ -63,8 +63,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-02T06:00:00+00:00",
         },
     },
-    WebhookEventType.STEPS_UPDATED: {
-        "type": WebhookEventType.STEPS_UPDATED,
+    WebhookEventType.STEPS_CREATED: {
+        "type": WebhookEventType.STEPS_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -74,8 +74,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T23:59:00+00:00",
         },
     },
-    WebhookEventType.CALORIES_UPDATED: {
-        "type": WebhookEventType.CALORIES_UPDATED,
+    WebhookEventType.CALORIES_CREATED: {
+        "type": WebhookEventType.CALORIES_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -85,8 +85,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T23:59:00+00:00",
         },
     },
-    WebhookEventType.SPO2_UPDATED: {
-        "type": WebhookEventType.SPO2_UPDATED,
+    WebhookEventType.SPO2_CREATED: {
+        "type": WebhookEventType.SPO2_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "oura",
@@ -96,8 +96,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-02T06:00:00+00:00",
         },
     },
-    WebhookEventType.RESPIRATORY_RATE_UPDATED: {
-        "type": WebhookEventType.RESPIRATORY_RATE_UPDATED,
+    WebhookEventType.RESPIRATORY_RATE_CREATED: {
+        "type": WebhookEventType.RESPIRATORY_RATE_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "oura",
@@ -107,8 +107,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-02T06:00:00+00:00",
         },
     },
-    WebhookEventType.BODY_TEMPERATURE_UPDATED: {
-        "type": WebhookEventType.BODY_TEMPERATURE_UPDATED,
+    WebhookEventType.BODY_TEMPERATURE_CREATED: {
+        "type": WebhookEventType.BODY_TEMPERATURE_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "oura",
@@ -118,8 +118,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-02T06:00:00+00:00",
         },
     },
-    WebhookEventType.STRESS_UPDATED: {
-        "type": WebhookEventType.STRESS_UPDATED,
+    WebhookEventType.STRESS_CREATED: {
+        "type": WebhookEventType.STRESS_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -129,8 +129,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T20:00:00+00:00",
         },
     },
-    WebhookEventType.BLOOD_GLUCOSE_UPDATED: {
-        "type": WebhookEventType.BLOOD_GLUCOSE_UPDATED,
+    WebhookEventType.BLOOD_GLUCOSE_CREATED: {
+        "type": WebhookEventType.BLOOD_GLUCOSE_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "ultrahuman",
@@ -140,8 +140,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T23:59:00+00:00",
         },
     },
-    WebhookEventType.BLOOD_PRESSURE_UPDATED: {
-        "type": WebhookEventType.BLOOD_PRESSURE_UPDATED,
+    WebhookEventType.BLOOD_PRESSURE_CREATED: {
+        "type": WebhookEventType.BLOOD_PRESSURE_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -151,8 +151,8 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T20:00:00+00:00",
         },
     },
-    WebhookEventType.TIMESERIES_UPDATED: {
-        "type": WebhookEventType.TIMESERIES_UPDATED,
+    WebhookEventType.TIMESERIES_CREATED: {
+        "type": WebhookEventType.TIMESERIES_CREATED,
         "data": {
             "user_id": "00000000-0000-0000-0000-000000000002",
             "provider": "garmin",
@@ -168,6 +168,6 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
 def get_test_payload(event_type: str) -> dict:
     """Return the example payload for the given event type.
 
-    Falls back to the TIMESERIES_UPDATED example for unknown types.
+    Falls back to the TIMESERIES_CREATED example for unknown types.
     """
-    return EXAMPLE_PAYLOADS.get(event_type, EXAMPLE_PAYLOADS[WebhookEventType.TIMESERIES_UPDATED])
+    return EXAMPLE_PAYLOADS.get(event_type, EXAMPLE_PAYLOADS[WebhookEventType.TIMESERIES_CREATED])

@@ -155,6 +155,9 @@ cython_debug/
 docker/volumes/
 volumes
 
+# Auto-generated secrets (created by generate-config Docker service on first run)
+backend/config/generated/
+
 # SSL certificates
 *.pem
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 from app.schemas.webhooks.event_types import WebhookEventType
@@ -14,12 +16,20 @@ class EndpointCreateRequest(BaseModel):
         None,
         description="Only deliver events of these types. Empty / None = all types.",
     )
+    user_id: UUID | None = Field(
+        None,
+        description="Subscribe only to events for this user. Empty / None = all users.",
+    )
 
 
 class EndpointUpdateRequest(BaseModel):
     url: str | None = None
     description: str | None = None
     filter_types: list[str] | None = None
+    user_id: UUID | None = Field(
+        None,
+        description="Subscribe only to events for this user. Pass null to remove the filter.",
+    )
 
 
 class EndpointResponse(BaseModel):
@@ -27,6 +37,7 @@ class EndpointResponse(BaseModel):
     url: str
     description: str | None = None
     filter_types: list[str] | None = None
+    user_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 

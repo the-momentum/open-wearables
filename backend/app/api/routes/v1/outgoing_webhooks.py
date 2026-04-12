@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from svix.api import EndpointIn, EndpointPatch
+from svix.api import EndpointOut
 
 from app.schemas.webhooks.endpoints import (
     EndpointCreateRequest,
@@ -27,6 +27,16 @@ from app.services import DeveloperDep
 from app.services.outgoing_webhooks import svix as svix_service
 
 router = APIRouter()
+
+
+def _ep_to_response(ep: EndpointOut) -> EndpointResponse:
+    return EndpointResponse(
+        id=ep.id,
+        url=ep.url,
+        description=ep.description,
+        filter_types=ep.filter_types,
+        user_id=svix_service.user_id_from_endpoint(ep),
+    )
 
 
 def _svix_app_id(developer: DeveloperDep) -> str:
@@ -46,34 +56,39 @@ SvixAppId = Annotated[str, Depends(_svix_app_id)]
 def create_endpoint(body: EndpointCreateRequest, app_id: SvixAppId) -> EndpointResponse:
     ep = svix_service.create_endpoint(
         app_id,
-        EndpointIn(url=body.url, description=body.description or "", filter_types=body.filter_types or None),
+        url=body.url,
+        description=body.description,
+        filter_types=body.filter_types,
+        user_id=body.user_id,
     )
-    return EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
+    return _ep_to_response(ep)
 
 
 @router.get("/endpoints")
 def list_endpoints(app_id: SvixAppId) -> list[EndpointResponse]:
     result = svix_service.list_endpoints(app_id)
-    return [
-        EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
-        for ep in result.data
-    ]
+    return [_ep_to_response(ep) for ep in result.data]
 
 
 @router.get("/endpoints/{endpoint_id}")
 def get_endpoint(endpoint_id: str, app_id: SvixAppId) -> EndpointResponse:
     ep = svix_service.get_endpoint(app_id, endpoint_id)
-    return EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
+    return _ep_to_response(ep)
 
 
 @router.patch("/endpoints/{endpoint_id}")
 def update_endpoint(endpoint_id: str, body: EndpointUpdateRequest, app_id: SvixAppId) -> EndpointResponse:
+    clear_user = "user_id" in body.model_fields_set and body.user_id is None
     ep = svix_service.patch_endpoint(
         app_id,
         endpoint_id,
-        EndpointPatch(url=body.url, description=body.description, filter_types=body.filter_types),
+        url=body.url,
+        description=body.description,
+        filter_types=body.filter_types,
+        user_id=body.user_id,
+        clear_user_id=clear_user,
     )
-    return EndpointResponse(id=ep.id, url=ep.url, description=ep.description, filter_types=ep.filter_types)
+    return _ep_to_response(ep)
 
 
 @router.delete("/endpoints/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
