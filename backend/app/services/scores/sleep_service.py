@@ -1,0 +1,228 @@
+"""Sleep score service.
+
+Exposes two entry points for computing a per-night OW sleep score using the
+four-pillar algorithm (duration, stages, consistency, interruptions):
+
+- SleepScoreService.get_sleep_score   – pure calculation; accepts raw sleep parameters
+- SleepScoreService.get_sleep_score_for_user – DB-backed; fetches data from the database
+"""
+
+from datetime import date, datetime, timedelta, timezone
+from logging import Logger, getLogger
+from uuid import UUID
+
+from pydantic import BaseModel
+
+from app.algorithms.config_algorithms import sleep_config
+from app.algorithms.sleep import SleepScoreResult, calculate_overall_sleep_score
+from app.constants.sleep import SleepStageType
+from app.database import DbSession
+from app.models import EventRecord, SleepDetails
+from app.repositories.event_record_repository import EventRecordRepository
+from app.schemas.model_crud.activities import EventRecordQueryParams
+from app.schemas.model_crud.activities.sleep import SleepStage
+from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+
+
+class WasoData(BaseModel):
+    total_awake_minutes: float
+    awakening_durations: list[float]
+
+
+class SleepScoreService:
+    """Service for computing per-night sleep scores."""
+
+    def __init__(self, log: Logger):
+        self.logger = log
+        self.event_record_repo = EventRecordRepository(EventRecord)
+
+    @staticmethod
+    def _apply_zone_offset(dt: datetime, zone_offset: str | None) -> datetime:
+        """Return dt converted to local time using the stored zone_offset string.
+
+        Falls back to the original value when zone_offset is unavailable so that
+        providers that omit it continue to work unchanged.
+        """
+        if zone_offset is None:
+            return dt
+        sign = 1 if zone_offset[0] == "+" else -1
+        hours, minutes = int(zone_offset[1:3]), int(zone_offset[4:6])
+        offset = timedelta(hours=sign * hours, minutes=sign * minutes)
+        tz = timezone(offset)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(tz)
+
+    def _parse_wearable_stages_for_interruptions(
+        self,
+        sleep_stages: list[SleepStage],
+    ) -> WasoData:
+        """Strip sleep latency and morning lying-in-bed periods to calculate true WASO.
+
+        Returns total WASO minutes and individual awakening durations.
+        """
+        if not sleep_stages:
+            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
+
+        sleep_indices = [i for i, s in enumerate(sleep_stages) if s.stage != SleepStageType.AWAKE]
+        if not sleep_indices:
+            return WasoData(total_awake_minutes=0.0, awakening_durations=[])
+
+        first_sleep_idx = sleep_indices[0]
+        last_sleep_idx = sleep_indices[-1]
+
+        true_sleep_period = sleep_stages[first_sleep_idx : last_sleep_idx + 1]
+
+        waso_total_minutes = 0.0
+        awakening_durations: list[float] = []
+        for block in true_sleep_period:
+            if block.stage == SleepStageType.AWAKE:
+                duration_mins = (block.end_time - block.start_time).total_seconds() / 60.0
+                waso_total_minutes += duration_mins
+                awakening_durations.append(duration_mins)
+
+        return WasoData(
+            total_awake_minutes=waso_total_minutes,
+            awakening_durations=awakening_durations,
+        )
+
+    def get_sleep_score(
+        self,
+        total_sleep_duration_minutes: float,
+        deep_minutes: float,
+        rem_minutes: float,
+        awake_minutes: float,
+        session_start: datetime,
+        historical_bedtimes: list[datetime],
+        sleep_stages: list[SleepStage] | None = None,
+    ) -> SleepScoreResult:
+        """Calculate a sleep score from raw sleep parameters for a single night.
+
+        If sleep_stages is provided it is used to derive true WASO (strips sleep
+        latency and morning lie-in). Otherwise awake_minutes is used as a fallback
+        for interruption scoring.
+
+        total_sleep_duration_minutes is expected to be net sleep (awake time already
+        excluded), as stored by wearable providers. awake_minutes / stage-derived WASO
+        feeds only the interruptions pillar.
+        """
+        if not total_sleep_duration_minutes or total_sleep_duration_minutes <= 0:
+            raise ValueError(
+                "Cannot calculate sleep score: total_sleep_duration_minutes must be"
+                f" > 0, got {total_sleep_duration_minutes}"
+            )
+
+        if sleep_stages:
+            waso = self._parse_wearable_stages_for_interruptions(sleep_stages)
+            total_awake = waso.total_awake_minutes
+            awakening_durations = waso.awakening_durations
+        else:
+            total_awake = awake_minutes
+            awakening_durations = []
+
+        return calculate_overall_sleep_score(
+            total_sleep_minutes=total_sleep_duration_minutes,
+            deep_minutes=deep_minutes,
+            rem_minutes=rem_minutes,
+            session_start=session_start.isoformat(),
+            historical_bedtimes=[dt.isoformat() for dt in historical_bedtimes],
+            total_awake_minutes=total_awake,
+            awakening_durations=awakening_durations,
+        )
+
+    @handle_exceptions
+    def get_sleep_score_for_user(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        sleep_date: date,
+    ) -> SleepScoreResult:
+        """Fetch sleep data for a user on a given date and return their sleep score.
+
+        sleep_date is the calendar date on which the sleep session started (bedtime
+        date). The longest non-nap session that started on that date is used.
+        Historical bedtimes from the prior rolling window are fetched for consistency
+        scoring.
+        """
+        day_start = datetime(sleep_date.year, sleep_date.month, sleep_date.day)
+
+        # Fetch sessions that started on sleep_date (broader window, post-filter below).
+        records, _ = self.event_record_repo.get_records_with_filters(
+            db_session,
+            EventRecordQueryParams(
+                category="sleep",
+                start_datetime=day_start,
+                sort_by="start_datetime",
+                sort_order="asc",
+                limit=20,
+            ),
+            str(user_id),
+        )
+
+        # Keep non-nap sessions that actually started on sleep_date (local time).
+        sessions = [
+            (record, detail)
+            for record, _ in records
+            if self._apply_zone_offset(record.start_datetime, record.zone_offset).date() == sleep_date
+            and isinstance((detail := record.detail), SleepDetails)
+            and not detail.is_nap
+        ]
+
+        if not sessions:
+            raise ResourceNotFoundError(f"sleep data for user {user_id} on {sleep_date}")
+
+        record, detail = max(sessions, key=lambda s: s[1].sleep_total_duration_minutes or 0)
+
+        # Fetch historical bedtimes for consistency scoring.
+        history_start = day_start - timedelta(days=sleep_config.rolling_window_nights + 1)
+        hist_records, _ = self.event_record_repo.get_records_with_filters(
+            db_session,
+            EventRecordQueryParams(
+                category="sleep",
+                start_datetime=history_start,
+                end_datetime=day_start,
+                sort_by="start_datetime",
+                sort_order="desc",
+                # Use a generous multiplier so deduplication always has enough
+                # raw records even when multiple sources sync the same night.
+                limit=sleep_config.rolling_window_nights * 4,
+            ),
+            str(user_id),
+        )
+
+        # Deduplicate by calendar date so multiple sessions on one night (e.g. two
+        # sources syncing the same sleep, or a split session) don't crowd out earlier
+        # nights in the rolling window.
+        # TODO: this is a simplification — a user may have genuinely separate sleep
+        # periods on one night (woke up fully, went back to bed, or switched devices).
+        # Device priority (already used elsewhere in the codebase) could help pick the
+        # most trustworthy record per night. Revisit when we have a smarter
+        # session-merging / source-priority strategy.
+        seen_nights: set[date] = set()
+        historical_bedtimes: list[datetime] = []
+        for r, _ in hist_records:
+            if isinstance(r.detail, SleepDetails) and not r.detail.is_nap:
+                local_start = self._apply_zone_offset(r.start_datetime, r.zone_offset)
+                night = local_start.date()
+                if night not in seen_nights:
+                    seen_nights.add(night)
+                    historical_bedtimes.append(local_start)
+            if len(historical_bedtimes) >= sleep_config.rolling_window_nights:
+                break
+
+        sleep_stages: list[SleepStage] | None = None
+        if detail.sleep_stages:
+            sleep_stages = [SleepStage(**s) for s in detail.sleep_stages]
+
+        return self.get_sleep_score(
+            total_sleep_duration_minutes=float(detail.sleep_total_duration_minutes or 0),
+            deep_minutes=float(detail.sleep_deep_minutes or 0),
+            rem_minutes=float(detail.sleep_rem_minutes or 0),
+            awake_minutes=float(detail.sleep_awake_minutes or 0),
+            session_start=self._apply_zone_offset(record.start_datetime, record.zone_offset),
+            historical_bedtimes=historical_bedtimes,
+            sleep_stages=sleep_stages,
+        )
+
+
+sleep_score_service = SleepScoreService(log=getLogger(__name__))

@@ -33,7 +33,7 @@ export function ProvidersTab() {
   }, [providers, hasInitialized]);
 
   const hasChanges = useMemo(() => {
-    if (!providers) return false;
+    if (!providers || !hasInitialized) return false;
 
     return providers.some(
       (provider) => localToggleStates[provider.provider] !== provider.is_enabled
@@ -83,28 +83,11 @@ export function ProvidersTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-medium text-white">OAuth Providers</h2>
-          <p className="text-sm text-zinc-500 mt-1">
-            Configure which OAuth providers are available to your end users
-          </p>
-        </div>
-        {hasChanges && (
-          <Button onClick={handleSave} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                Save Changes
-              </>
-            )}
-          </Button>
-        )}
+      <div>
+        <h2 className="text-xl font-medium text-white">OAuth Providers</h2>
+        <p className="text-sm text-zinc-500 mt-1">
+          Configure which OAuth providers are available to your end users
+        </p>
       </div>
 
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
@@ -130,6 +113,25 @@ export function ProvidersTab() {
           ))}
         </div>
       </div>
+
+      {hasChanges && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 rounded-lg border border-zinc-700 bg-zinc-900 px-6 py-3 shadow-lg shadow-black/50">
+          <p className="text-sm text-zinc-300">You have unsaved changes</p>
+          <Button onClick={handleSave} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                Save Changes
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

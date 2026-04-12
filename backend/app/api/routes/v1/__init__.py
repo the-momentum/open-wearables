@@ -17,8 +17,10 @@ from .oauth import router as oauth_router
 from .oura_webhooks import router as oura_webhooks_router
 from .outgoing_webhooks import router as outgoing_webhooks_router
 from .priorities import router as priorities_router
+from .sdk_logs import router as sdk_logs_router
 from .sdk_sync import router as sdk_sync_router
 from .sdk_token import router as sdk_token_router
+from .seed_data import router as seed_data_router
 from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .suunto_debug import router as suunto_debug_router
@@ -41,8 +43,9 @@ v1_router.include_router(events_router, tags=["External: Events"])
 v1_router.include_router(health_scores_router, tags=["External: Health Scores"])
 v1_router.include_router(oauth_router, prefix="/oauth")
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
-v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["External: Workouts"])
+v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["System: Vendor Workouts"])
 v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
+v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_sync_router, tags=["External: Mobile SDK"])
 v1_router.include_router(sdk_token_router, tags=["External: Mobile SDK"])
 v1_router.include_router(user_invitation_code_router, tags=["External: Mobile SDK"])
@@ -58,6 +61,7 @@ v1_router.include_router(api_keys_router, prefix="/developer", tags=["Internal: 
 v1_router.include_router(applications_router, tags=["Internal: Applications"])
 v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Internal: Dashboard"])
 v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
+v1_router.include_router(seed_data_router, tags=["Internal: Seed Data"])
 v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
 # --- System: provider webhooks and debug ---

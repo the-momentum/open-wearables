@@ -602,6 +602,7 @@ class EventRecordRepository(
         end_time: datetime,
         threshold_minutes: int,
         source: str | None = None,
+        provider: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -610,9 +611,10 @@ class EventRecordRepository(
         is eagerly loaded so callers can read ``sleep_stages`` without an extra
         query.
 
-        When *source* is provided the query is restricted to records whose
-        DataSource has the same source string, preventing cross-provider merges
+        When *provider* is provided the query is restricted to records whose
+        DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
+        When *source* is provided an additional filter on DataSource.source is applied.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -622,6 +624,8 @@ class EventRecordRepository(
             self.model.start_datetime <= end_time + threshold,
             self.model.end_datetime >= start_time - threshold,
         ]
+        if provider is not None:
+            filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
         return (
