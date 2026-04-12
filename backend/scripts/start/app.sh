@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e -x
 
+# Load auto-generated Svix JWT secret from the shared Docker volume (if present)
+if [ -f /run/svix-secrets/jwt_secret ]; then
+    SVIX_JWT_SECRET=$(cat /run/svix-secrets/jwt_secret)
+    export SVIX_JWT_SECRET
+fi
+
 # Init database
 echo 'Applying migrations...'
 uv run alembic upgrade head
