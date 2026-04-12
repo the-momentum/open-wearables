@@ -235,3 +235,7 @@ curl -X GET "http://localhost:8000/api/v1/oauth/providers?enabled_only=true" \
   }
 ]
 ```
+
+<Note>
+  `icon_url` is a **relative URL** (e.g., `/static/provider-icons/garmin.svg`). Resolve it against your API base URL to get the full path - for example, `https://your-api.example.com/static/provider-icons/garmin.svg`.
+</Note>
