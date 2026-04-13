@@ -14,7 +14,7 @@ from app.agent.engines.router import RouterDecision, build_router
 from app.agent.static.default_msgs import GUARDRAILS_REFUSAL_MSG
 from app.agent.tools.tool_registry import tool_manager
 from app.schemas.agent import AgentMode
-from app.schemas.language import Language
+from app.schemas.language import LANGUAGE_NAMES, Language
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class WorkflowEngine:
             raise
 
         # 3. Guardrails: clean up and format the response
-        guardrails = build_guardrails()
+        guardrails = build_guardrails(language=LANGUAGE_NAMES.get(language, "English") if language else "English")
         try:
             fmt_result = await guardrails.run(raw_response)
             return str(fmt_result.data)
