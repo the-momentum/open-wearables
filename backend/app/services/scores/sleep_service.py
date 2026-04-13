@@ -323,10 +323,7 @@ class SleepScoreService:
                 self.logger,
                 "warning",
                 f"Skipped sleep score for {len(skipped)} date(s): invalid session data",
-                skipped=[
-                    {"date": str(d), "record_id": rid, "reason": reason}
-                    for d, rid, reason in skipped
-                ],
+                skipped=[{"date": str(d), "record_id": rid, "reason": reason} for d, rid, reason in skipped],
             )
 
         return results
