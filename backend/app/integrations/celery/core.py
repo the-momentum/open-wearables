@@ -111,6 +111,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "fill-missing-resilience-scores": {
+            "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
+            "schedule": float(settings.resilience_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app
