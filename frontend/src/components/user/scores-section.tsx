@@ -476,7 +476,8 @@ export function ScoresSection({
 
         <div className="px-6 pt-4">
           <p className="text-xs text-yellow-300/90 bg-yellow-500/10 border border-yellow-500/20 rounded-md px-3 py-2">
-            Scores calculated by Open Wearables (OW) are in an experimental phase and may change as the algorithm is refined.
+            Scores calculated by Open Wearables (OW) are in an experimental
+            phase and may change as the algorithm is refined.
           </p>
         </div>
 
