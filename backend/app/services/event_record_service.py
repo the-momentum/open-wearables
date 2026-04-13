@@ -53,13 +53,6 @@ class EventRecordService(
         self.data_source_repo = DataSourceRepository()
         self.data_point_series_repo = DataPointSeriesRepository(DataPointSeries)
 
-    # ------------------------------------------------------------------
-    # Create with outgoing-webhook emit
-    # ------------------------------------------------------------------
-
-    def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
-        return super().create(db_session, creator)
-
     def _resolve_avg_hr(
         self,
         db_session: DbSession,
