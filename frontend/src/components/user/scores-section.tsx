@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Line, LineChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
@@ -420,8 +420,16 @@ export function ScoresSection({
     return CATEGORY_ORDER.filter((c) => cats.has(c));
   }, [scores]);
 
-  // Auto-select first category if "all" and categories are available
-  // (keeps "all" as an option, but for first load pick something useful)
+  // Reset category when it's no longer available in the current data
+  useEffect(() => {
+    if (
+      selectedCategory !== 'all' &&
+      availableCategories.length > 0 &&
+      !availableCategories.includes(selectedCategory)
+    ) {
+      setSelectedCategory('all');
+    }
+  }, [availableCategories, selectedCategory]);
 
   // Unique providers for the selected category
   const providers = useMemo(() => {
