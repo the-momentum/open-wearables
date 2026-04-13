@@ -184,6 +184,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
         return cls(id=3, code="heart_rate_variability_sdnn", unit="ms")
 
     @classmethod
+    def get_or_create_heart_rate_variability_rmssd(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded heart_rate_variability_rmssd series type (ID=7)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 7).first()
+            if existing:
+                return existing
+        return cls(id=7, code="heart_rate_variability_rmssd", unit="ms")
+
+    @classmethod
     def get_or_create_blood_pressure_systolic(cls) -> SeriesTypeDefinition:
         """Get the pre-seeded blood_pressure_systolic series type (ID=22)."""
         session = cls._meta.sqlalchemy_session

@@ -637,3 +637,28 @@ class EventRecordRepository(
             .with_for_update()
             .first()
         )
+
+    def get_sleep_records_with_details(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[EventRecord, SleepDetails | None]]:
+        """Return sleep EventRecords with their SleepDetails that overlap [start_dt, end_dt).
+
+        Uses an outerjoin so sessions with no stage data are still included.
+        """
+        rows = (
+            db_session.query(EventRecord, SleepDetails)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.end_datetime >= start_dt,
+                EventRecord.start_datetime < end_dt,
+            )
+            .all()
+        )
+        return [(event_record, sleep_details) for event_record, sleep_details in rows]
