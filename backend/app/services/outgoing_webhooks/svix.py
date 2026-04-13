@@ -24,6 +24,7 @@ from svix.api import (
     EventTypeUpdate,
     ListResponseEndpointOut,
     ListResponseMessageAttemptOut,
+    ListResponseMessageOut,
     MessageIn,
     MessageOut,
     Svix,
@@ -231,7 +232,7 @@ def patch_endpoint(
             url=url,
             description=description,
             filter_types=filter_types,
-            channels=channels if channels else None,
+            channels=channels,
         ),
     )
 
@@ -248,7 +249,7 @@ def get_endpoint_secret(app_id: str, endpoint_id: str) -> str:
     return result.key
 
 
-def list_messages(app_id: str) -> Any:
+def list_messages(app_id: str) -> ListResponseMessageOut:
     assert _client is not None
     return _client.message.list(app_id)
 
