@@ -19,6 +19,7 @@ from app.services.providers.garmin.backfill_state import (
 
 from .archival_task import run_daily_archival
 from .emit_webhook_event_task import emit_webhook_event
+from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
     start_full_backfill as start_garmin_full_backfill,
@@ -56,6 +57,8 @@ __all__ = [
     "gc_stuck_backfills",
     # Archival
     "run_daily_archival",
+    # Sleep score calculation
+    "fill_missing_sleep_scores",
     # Other tasks
     "finalize_stale_sleeps",
     "process_sdk_upload",

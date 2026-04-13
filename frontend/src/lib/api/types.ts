@@ -585,6 +585,34 @@ export interface InvitationAccept {
   password: string;
 }
 
+// Health Score types
+export interface ScoreComponent {
+  value: number | null;
+  qualifier: string | null;
+}
+
+export interface HealthScoreResponse {
+  id: string;
+  data_source_id: string | null;
+  provider: string | null;
+  category: string;
+  value: number | null;
+  qualifier: string | null;
+  recorded_at: string;
+  zone_offset: string | null;
+  components: Record<string, ScoreComponent> | null;
+}
+
+export interface HealthScoreParams {
+  start_date?: string;
+  end_date?: string;
+  category?: string;
+  provider?: string;
+  limit?: number;
+  offset?: number;
+  [key: string]: string | number | undefined;
+}
+
 // Sync Response (returned by provider sync endpoint)
 export interface SyncResponse {
   success: boolean;

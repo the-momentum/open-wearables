@@ -18,6 +18,11 @@ const PROVIDER_STYLES: Record<
     label: 'Google Fit',
   },
   withings: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Withings' },
+  internal: {
+    bg: 'bg-emerald-500/20',
+    text: 'text-emerald-400',
+    label: 'OW',
+  },
 };
 
 const DEFAULT_STYLE = { bg: 'bg-zinc-500/20', text: 'text-zinc-400' };
