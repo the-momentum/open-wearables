@@ -306,6 +306,28 @@ class EventRecordRepository(
 
         return query.limit(limit + 1).all(), total_count
 
+    def get_user_event_counts_by_provider(
+        self, db_session: DbSession, user_id: UUID
+    ) -> list[tuple[str, str, str | None, int]]:
+        """Get event record counts for a user grouped by provider, category, and type.
+
+        Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
+        """
+        results = (
+            db_session.query(
+                DataSource.provider,
+                self.model.category,
+                self.model.type,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(DataSource.provider, self.model.category, self.model.type)
+            .order_by(DataSource.provider, func.count(self.model.id).desc())
+            .all()
+        )
+        return [(provider, category, event_type, count) for provider, category, event_type, count in results]
+
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type.
 

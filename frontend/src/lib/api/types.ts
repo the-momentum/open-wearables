@@ -185,6 +185,24 @@ export interface DashboardStats {
   data_points: DataPointsInfo;
 }
 
+export interface ProviderDataCount {
+  provider: string;
+  data_points: number;
+  series_counts: Record<string, number>;
+  workout_count: number;
+  sleep_count: number;
+}
+
+export interface UserDataSummary {
+  user_id: string;
+  total_data_points: number;
+  total_workouts: number;
+  total_sleep_events: number;
+  series_type_counts: Record<string, number>;
+  workout_type_counts: Record<string, number>;
+  by_provider: ProviderDataCount[];
+}
+
 export interface Provider {
   provider: string;
   name: string;
