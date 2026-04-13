@@ -1,6 +1,15 @@
 ---
-title: "Garmin Data Pipeline"
-description: "Technical deep-dive into Garmin webhook ingestion, backfill orchestration, retry/recovery, and frontend status rendering"
+title: "Garmin Data Pipeline | Open Wearables"
+sidebarTitle: "Data Pipeline"
+description: "Deep-dive into Garmin webhook ingestion, backfill orchestration, and retry logic. Garmin delivers data only via webhooks. Celery workers process events with Redis-backed state management."
+keywords: ["garmin data pipeline", "garmin webhook ingestion", "garmin api architecture", "garmin celery workers"]
+"og:title": "Garmin Data Pipeline | Open Wearables"
+"og:description": "Garmin webhook ingestion, backfill orchestration, and retry logic. Celery workers with Redis-backed state management."
+"og:url": "https://docs.openwearables.io/providers/garmin-data-pipeline"
+"og:type": "article"
+"twitter:title": "Garmin Data Pipeline | Open Wearables"
+"twitter:description": "Garmin webhook ingestion, backfill orchestration, and retry logic. Celery workers with Redis-backed state management."
+"twitter:card": "summary_large_image"
 ---
 
 ## Architecture Overview

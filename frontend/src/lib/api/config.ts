@@ -86,4 +86,9 @@ export const API_ENDPOINTS = {
 
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
+
+  // Seed data endpoints
+  seedGenerate: '/api/v1/settings/seed',
+  seedPresets: '/api/v1/settings/seed/presets',
+  seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
 } as const;
