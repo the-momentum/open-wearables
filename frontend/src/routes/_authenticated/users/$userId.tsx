@@ -156,6 +156,12 @@ function UserDetailPage() {
         ),
       },
       {
+        id: 'body',
+        label: 'Body',
+        icon: Scale,
+        content: <BodySection userId={userId} />,
+      },
+      {
         id: 'scores',
         label: 'Scores',
         icon: Trophy,
@@ -166,12 +172,6 @@ function UserDetailPage() {
             onDateRangeChange={setScoresDateRange}
           />
         ),
-      },
-      {
-        id: 'body',
-        label: 'Body',
-        icon: Scale,
-        content: <BodySection userId={userId} />,
       },
     ],
     [
