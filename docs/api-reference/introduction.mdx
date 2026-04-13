@@ -70,6 +70,12 @@ For production deployments, replace with your server URL.
 | Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
 | Historical sync | POST | `/api/v1/providers/{provider}/users/{user_id}/sync/historical` |
 | Get provider workouts | GET | `/api/v1/providers/{provider}/users/{user_id}/workouts` |
+| List event types | GET | `/api/v1/webhooks/event-types` |
+| Register webhook endpoint | POST | `/api/v1/webhooks/endpoints` |
+| List webhook endpoints | GET | `/api/v1/webhooks/endpoints` |
+| Update webhook endpoint | PATCH | `/api/v1/webhooks/endpoints/{endpoint_id}` |
+| Delete webhook endpoint | DELETE | `/api/v1/webhooks/endpoints/{endpoint_id}` |
+| Get endpoint secret | GET | `/api/v1/webhooks/endpoints/{endpoint_id}/secret` |
 
 ## Authentication
 

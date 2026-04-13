@@ -136,6 +136,7 @@
             "group": "Integration Guides",
             "pages": [
               "api-reference/guides/quick-integration",
+              "api-reference/guides/webhooks",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
               "api-reference/guides/error-handling"
@@ -230,6 +231,21 @@
               "POST /api/v1/users/{user_id}/token",
               "POST /api/v1/users/{user_id}/invitation-code",
               "POST /api/v1/invitation-code/redeem"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "GET /api/v1/webhooks/event-types",
+              "POST /api/v1/webhooks/endpoints",
+              "GET /api/v1/webhooks/endpoints",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}",
+              "PATCH /api/v1/webhooks/endpoints/{endpoint_id}",
+              "DELETE /api/v1/webhooks/endpoints/{endpoint_id}",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}/secret",
+              "POST /api/v1/webhooks/endpoints/{endpoint_id}/test",
+              "GET /api/v1/webhooks/messages",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}/attempts"
             ]
           }
         ]
