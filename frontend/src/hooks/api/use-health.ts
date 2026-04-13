@@ -173,6 +173,9 @@ export function useSynchronizeDataFromProvider(
         queryKey: queryKeys.health.bodySummary(userId),
       });
       queryClient.invalidateQueries({
+        queryKey: queryKeys.health.dataSummary(userId),
+      });
+      queryClient.invalidateQueries({
         queryKey: queryKeys.health.healthScores(userId),
       });
 
