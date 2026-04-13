@@ -90,7 +90,9 @@ class Settings(BaseSettings):
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
     sleep_score_interval_seconds: int = 600  # How often to run the fill-missing-scores task (default: 10 min)
-    resilience_score_interval_seconds: int = 600  # How often to run the fill-missing-resilience-scores task (default: 10 min)
+    resilience_score_interval_seconds: int = (
+        600  # How often to run the fill-missing-resilience-scores task (default: 10 min)
+    )
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"

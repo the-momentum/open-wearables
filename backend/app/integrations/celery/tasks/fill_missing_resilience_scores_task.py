@@ -94,9 +94,7 @@ def fill_missing_resilience_scores() -> dict:
 
         for uid, reference_dates in dates_by_user.items():
             try:
-                scores_by_date = resilience_score_service.get_hrv_cv_scores_for_date_range(
-                    db, uid, reference_dates
-                )
+                scores_by_date = resilience_score_service.get_hrv_cv_scores_for_date_range(db, uid, reference_dates)
             except Exception as e:
                 total_skipped += len(reference_dates)
                 log_and_capture_error(

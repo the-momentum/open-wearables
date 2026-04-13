@@ -352,7 +352,6 @@ class ResilienceScoreService:
         result = calculate_sdnn([v for _, v in filtered])
         return None if math.isnan(result) else result
 
-
     def get_hrv_cv_scores_for_date_range(
         self,
         db_session: DbSession,
