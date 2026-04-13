@@ -58,6 +58,7 @@ sleep_config = SleepScoreConfig()
 
 # HRV RESILIENCE SCORE
 
+
 class ResilienceScoreConfig(BaseModel):
     lookback_days: int = Field(default=7, ge=1)
     min_days_required: int = Field(default=5, ge=2)

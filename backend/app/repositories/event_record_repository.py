@@ -649,7 +649,7 @@ class EventRecordRepository(
 
         Uses an outerjoin so sessions with no stage data are still included.
         """
-        return (
+        rows = (
             db_session.query(EventRecord, SleepDetails)
             .join(DataSource, EventRecord.data_source_id == DataSource.id)
             .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
@@ -661,3 +661,4 @@ class EventRecordRepository(
             )
             .all()
         )
+        return [(event_record, sleep_details) for event_record, sleep_details in rows]

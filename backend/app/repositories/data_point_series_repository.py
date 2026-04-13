@@ -987,7 +987,7 @@ class DataPointSeriesRepository(
                 self.model.recorded_at >= start_dt,
                 self.model.recorded_at < end_dt,
             )
-            .order_by(self.model.recorded_at)
+            .order_by(self.model.recorded_at, self.model.id)
             .all()
         )
         return [(row.recorded_at, float(row.value)) for row in results]
