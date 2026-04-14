@@ -1,0 +1,261 @@
+name: Deploy to staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 031244176128.dkr.ecr.us-east-1.amazonaws.com
+  BACKEND_REPO: rhiseai/open-wearables-backend
+  FRONTEND_REPO: rhiseai/open-wearables-frontend
+  ROLE_ARN: arn:aws:iam::031244176128:role/github-actions-ow-publish
+
+jobs:
+  # ===========================================================================
+  # Build + push backend and frontend images to ECR
+  # ===========================================================================
+  build:
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      backend_image: ${{ steps.tags.outputs.backend_image }}
+      frontend_image: ${{ steps.tags.outputs.frontend_image }}
+      sha_short: ${{ steps.tags.outputs.sha_short }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            repo: rhiseai/open-wearables-backend
+          - name: frontend
+            context: ./frontend
+            repo: rhiseai/open-wearables-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Compute tags
+        id: tags
+        env:
+          SHA: ${{ github.sha }}
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          SHORT="${SHA:0:7}"
+          echo "sha_short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "backend_image=${REGISTRY}/${BACKEND_REPO}:staging" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${REGISTRY}/${FRONTEND_REPO}:staging" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build + push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:staging
+            ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:sha-${{ steps.tags.outputs.sha_short }}
+
+  # ===========================================================================
+  # Deploy: push compose + env to EC2 via SSM, run deploy.sh
+  # ===========================================================================
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve staging instance id
+        id: inst
+        run: |
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=open-wearables" \
+                      "Name=tag:environment,Values=staging" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [[ "$ID" == "None" || -z "$ID" ]]; then
+            echo "No running ow-staging instance found"; exit 1
+          fi
+          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for SSM agent
+        env:
+          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=${INSTANCE_ID}" \
+              --query 'InstanceInformationList[0].PingStatus' --output text)
+            if [[ "$STATUS" == "Online" ]]; then echo "SSM online"; exit 0; fi
+            echo "  SSM status: $STATUS (retry $i)"; sleep 5
+          done
+          echo "SSM never came online"; exit 1
+
+      - name: Generate .env from secrets
+        id: env_gen
+        env:
+          OW_DB_PASSWORD: ${{ secrets.OW_DB_PASSWORD }}
+          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
+          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
+          OW_DASHBOARD_DOMAIN: ${{ secrets.OW_DASHBOARD_DOMAIN }}
+          BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
+        run: |
+          cat > .env.deploy <<EOF
+          ENVIRONMENT=staging
+          OW_DOMAIN=${OW_DOMAIN}
+          OW_DASHBOARD_DOMAIN=${OW_DASHBOARD_DOMAIN}
+          ACME_EMAIL=${ACME_EMAIL}
+          OW_DB_NAME=open-wearables
+          OW_DB_USER=open-wearables
+          OW_DB_PASSWORD=${OW_DB_PASSWORD}
+          OW_IMAGE_BACKEND=${BACKEND_IMAGE}
+          OW_IMAGE_FRONTEND=${FRONTEND_IMAGE}
+          EOF
+          echo "env_b64=$(base64 -w0 .env.deploy)" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ow.env (backend provider secrets)
+        id: ow_env_gen
+        env:
+          OW_SECRET_KEY: ${{ secrets.OW_SECRET_KEY }}
+          OW_ADMIN_EMAIL: ${{ secrets.OW_ADMIN_EMAIL }}
+          OW_ADMIN_PASSWORD: ${{ secrets.OW_ADMIN_PASSWORD }}
+          OPEN_WEARABLES_API_KEY: ${{ secrets.OPEN_WEARABLES_API_KEY }}
+          API_BASE_URL: ${{ secrets.OW_DOMAIN }}
+          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
+          OW_DASHBOARD_DOMAIN: ${{ secrets.OW_DASHBOARD_DOMAIN }}
+          # Providers
+          GARMIN_CLIENT_ID: ${{ secrets.GARMIN_CLIENT_ID }}
+          GARMIN_CLIENT_SECRET: ${{ secrets.GARMIN_CLIENT_SECRET }}
+          OURA_CLIENT_ID: ${{ secrets.OURA_CLIENT_ID }}
+          OURA_CLIENT_SECRET: ${{ secrets.OURA_CLIENT_SECRET }}
+          OURA_WEBHOOK_VERIFICATION_TOKEN: ${{ secrets.OURA_WEBHOOK_VERIFICATION_TOKEN }}
+          WHOOP_CLIENT_ID: ${{ secrets.WHOOP_CLIENT_ID }}
+          WHOOP_CLIENT_SECRET: ${{ secrets.WHOOP_CLIENT_SECRET }}
+          # Optional
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          cat > ow.env.deploy <<EOF
+          # Core
+          SECRET_KEY=${OW_SECRET_KEY}
+          ADMIN_EMAIL=${OW_ADMIN_EMAIL}
+          ADMIN_PASSWORD=${OW_ADMIN_PASSWORD}
+          OPEN_WEARABLES_API_KEY=${OPEN_WEARABLES_API_KEY}
+          API_BASE_URL=https://${API_BASE_URL}
+          SERVER_HOST=https://${OW_DOMAIN}
+          FRONTEND_URL=https://${OW_DASHBOARD_DOMAIN}
+          CORS_ORIGINS=["https://${OW_DASHBOARD_DOMAIN}"]
+
+          # Email
+          RESEND_API_KEY=${RESEND_API_KEY}
+          EMAIL_FROM_ADDRESS=noreply@getlucie.ai
+          EMAIL_FROM_NAME=Open Wearables
+
+          # Sentry
+          SENTRY_ENABLED=${SENTRY_DSN:+True}
+          SENTRY_DSN=${SENTRY_DSN}
+          SENTRY_ENV=staging
+
+          # Garmin
+          GARMIN_CLIENT_ID=${GARMIN_CLIENT_ID}
+          GARMIN_CLIENT_SECRET=${GARMIN_CLIENT_SECRET}
+
+          # Oura
+          OURA_CLIENT_ID=${OURA_CLIENT_ID}
+          OURA_CLIENT_SECRET=${OURA_CLIENT_SECRET}
+          OURA_DEFAULT_SCOPE=personal daily activity heartrate workout session spo2 ring_configuration heart_health
+          OURA_WEBHOOK_VERIFICATION_TOKEN=${OURA_WEBHOOK_VERIFICATION_TOKEN}
+
+          # Whoop
+          WHOOP_CLIENT_ID=${WHOOP_CLIENT_ID}
+          WHOOP_CLIENT_SECRET=${WHOOP_CLIENT_SECRET}
+          WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout read:body_measurement
+
+          # Sync
+          SYNC_INTERVAL_SECONDS=3600
+          EOF
+          echo "ow_env_b64=$(base64 -w0 ow.env.deploy)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload deploy tree + env to /app via SSM
+        env:
+          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          ENV_B64: ${{ steps.env_gen.outputs.env_b64 }}
+          OW_ENV_B64: ${{ steps.ow_env_gen.outputs.ow_env_b64 }}
+        run: |
+          TAR_B64=$(tar -C . -czf - deploy | base64 -w0)
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "OW staging: sync deploy tree + env" \
+            --parameters commands="set -e; mkdir -p /app; echo '$TAR_B64' | base64 -d | tar -xzf - -C /app; echo '$ENV_B64' | base64 -d > /app/.env; echo '$OW_ENV_B64' | base64 -d > /app/ow.env; chmod +x /app/deploy/scripts/*.sh" \
+            --query 'Command.CommandId' --output text)
+          aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID"
+
+      - name: Run deploy.sh via SSM
+        env:
+          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+        run: |
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "OW staging: deploy" \
+            --parameters 'commands=["bash /app/deploy/scripts/deploy.sh"]' \
+            --cloud-watch-output-config 'CloudWatchOutputEnabled=true' \
+            --query 'Command.CommandId' --output text)
+          echo "SSM command: $CMD_ID"
+          aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID"
+          aws ssm get-command-invocation \
+            --instance-id "$INSTANCE_ID" \
+            --command-id "$CMD_ID" \
+            --query '{stdout:StandardOutputContent,stderr:StandardErrorContent}' --output text
+
+      - name: Summary
+        env:
+          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
+          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## OW staging deployment"
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Instance | \`$INSTANCE_ID\` |"
+            echo "| Backend | \`$BACKEND_IMAGE\` |"
+            echo "| Frontend | \`$FRONTEND_IMAGE\` |"
+            echo "| SHA | \`$COMMIT_SHA\` |"
+            echo "| URL | https://$OW_DOMAIN |"
+          } >> "$GITHUB_STEP_SUMMARY"

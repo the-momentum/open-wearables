@@ -1,0 +1,196 @@
+# OpenWearables deployment stack
+#
+# Deployed to a dedicated EC2 (separate from lucie-api).
+# Uses Traefik for TLS termination + routing.
+# Images pulled from ECR; this file is synced to /app on the box by CI.
+#
+# Required env (written by CI from GH Secrets → /app/.env):
+#   ENVIRONMENT          = staging | production
+#   OW_DOMAIN            = ow-staging.getlucie.ai
+#   OW_DASHBOARD_DOMAIN  = ow-dashboard-staging.getlucie.ai
+#   OW_IMAGE_BACKEND     = 031244176128.dkr.ecr.us-east-1.amazonaws.com/rhiseai/open-wearables-backend:<tag>
+#   OW_IMAGE_FRONTEND    = 031244176128.dkr.ecr.us-east-1.amazonaws.com/rhiseai/open-wearables-frontend:<tag>
+#   OW_DB_NAME           = open-wearables
+#   OW_DB_USER           = open-wearables
+#   OW_DB_PASSWORD       = <secret>
+#   ACME_EMAIL           = admin@getlucie.ai
+#   # plus any provider credentials the backend needs (loaded via env_file /app/ow.env)
+
+services:
+  # ---------------------------------------------------------------------------
+  # Traefik — TLS termination, automatic Let's Encrypt certs
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - ow-network
+
+  # ---------------------------------------------------------------------------
+  # Postgres (self-hosted for staging; prod will move to RDS later)
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:18
+    container_name: ow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${OW_DB_NAME:-open-wearables}
+      POSTGRES_USER: ${OW_DB_USER:-open-wearables}
+      POSTGRES_PASSWORD: ${OW_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OW_DB_USER:-open-wearables} -d ${OW_DB_NAME:-open-wearables}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ow-network
+
+  # ---------------------------------------------------------------------------
+  # Redis
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:8-alpine
+    container_name: ow-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+    networks:
+      - ow-network
+
+  # ---------------------------------------------------------------------------
+  # Backend API — routed by Traefik at https://${OW_DOMAIN}
+  # container_name intentionally omitted so the deploy script can scale to 2
+  # replicas for zero-downtime rollouts.
+  # ---------------------------------------------------------------------------
+  app:
+    image: ${OW_IMAGE_BACKEND}
+    pull_policy: always
+    restart: unless-stopped
+    command: scripts/start/app.sh
+    env_file:
+      - /app/ow.env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${OW_DB_NAME:-open-wearables}
+      - DB_USER=${OW_DB_USER:-open-wearables}
+      - DB_PASSWORD=${OW_DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SERVER_HOST=https://${OW_DOMAIN}
+      - FRONTEND_URL=https://${OW_DASHBOARD_DOMAIN}
+      - CORS_ORIGINS=["https://${OW_DASHBOARD_DOMAIN}"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks:
+      - ow-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ow-api.rule=Host(`${OW_DOMAIN}`)"
+      - "traefik.http.routers.ow-api.entrypoints=websecure"
+      - "traefik.http.routers.ow-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ow-api.loadbalancer.server.port=8000"
+
+  celery-worker:
+    image: ${OW_IMAGE_BACKEND}
+    pull_policy: always
+    restart: unless-stopped
+    command: scripts/start/worker.sh
+    env_file:
+      - /app/ow.env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DB_HOST=db
+      - DB_NAME=${OW_DB_NAME:-open-wearables}
+      - DB_USER=${OW_DB_USER:-open-wearables}
+      - DB_PASSWORD=${OW_DB_PASSWORD}
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+      - app
+    networks:
+      - ow-network
+
+  celery-beat:
+    image: ${OW_IMAGE_BACKEND}
+    pull_policy: always
+    restart: unless-stopped
+    command: scripts/start/beat.sh
+    env_file:
+      - /app/ow.env
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DB_HOST=db
+      - DB_NAME=${OW_DB_NAME:-open-wearables}
+      - DB_USER=${OW_DB_USER:-open-wearables}
+      - DB_PASSWORD=${OW_DB_PASSWORD}
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+      - app
+    networks:
+      - ow-network
+
+  # ---------------------------------------------------------------------------
+  # Frontend dashboard
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: ${OW_IMAGE_FRONTEND}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=https://${OW_DOMAIN}
+    networks:
+      - ow-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ow-dashboard.rule=Host(`${OW_DASHBOARD_DOMAIN}`)"
+      - "traefik.http.routers.ow-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.ow-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ow-dashboard.loadbalancer.server.port=3000"
+
+networks:
+  ow-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  traefik_letsencrypt:
