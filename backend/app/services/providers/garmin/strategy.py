@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.integrations.celery.tasks import start_garmin_full_backfill
+from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill as start_garmin_full_backfill
 from app.services.providers.base_strategy import BaseProviderStrategy, HistoricalSyncResult, ProviderCapabilities
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth

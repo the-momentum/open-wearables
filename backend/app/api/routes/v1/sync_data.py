@@ -18,6 +18,7 @@ from app.integrations.celery.tasks import (
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -356,10 +357,10 @@ def sync_historical_data(
 
     try:
         result = strategy.start_historical_sync(user_id, days)
-    except NotImplementedError:
+    except UnsupportedProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{provider.value}' does not support historical sync.",
+            detail=exc.detail,
         )
 
     return {

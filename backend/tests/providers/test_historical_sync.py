@@ -8,6 +8,7 @@ Tests cover:
 - HistoricalSyncResult dataclass contract
 """
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from app.services.providers.base_strategy import HistoricalSyncResult
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.whoop.strategy import WhoopStrategy
+from app.utils.exceptions import UnsupportedProviderError
 
 
 class TestHistoricalSyncResult:
@@ -53,7 +55,7 @@ class TestHistoricalSyncResult:
 class TestPullBasedHistoricalSync:
     """Tests for the default start_historical_sync (pull-based providers)."""
 
-    @patch("app.services.providers.base_strategy.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
     def test_oura_dispatches_pull_sync(self, mock_task: MagicMock) -> None:
         """Pull-based provider should dispatch sync_vendor_data with is_historical=True."""
         mock_task.delay.return_value = MagicMock(id="task-oura-123")
@@ -73,7 +75,7 @@ class TestPullBasedHistoricalSync:
         assert call_kwargs["providers"] == ["oura"]
         assert call_kwargs["is_historical"] is True
 
-    @patch("app.services.providers.base_strategy.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
     def test_whoop_dispatches_pull_sync(self, mock_task: MagicMock) -> None:
         """Another pull-based provider should also use the default implementation."""
         mock_task.delay.return_value = MagicMock(id="task-whoop-456")
@@ -87,7 +89,7 @@ class TestPullBasedHistoricalSync:
         call_kwargs = mock_task.delay.call_args[1]
         assert call_kwargs["providers"] == ["whoop"]
 
-    @patch("app.services.providers.base_strategy.sync_vendor_data")
+    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
     def test_respects_days_parameter(self, mock_task: MagicMock) -> None:
         """The date range should span the requested number of days."""
         mock_task.delay.return_value = MagicMock(id="task-123")
@@ -97,7 +99,6 @@ class TestPullBasedHistoricalSync:
 
         assert result.days == 7
         # start_date and end_date should be ~7 days apart
-        from datetime import datetime
 
         start = datetime.fromisoformat(result.start_date)
         end = datetime.fromisoformat(result.end_date)
@@ -139,9 +140,9 @@ class TestGarminHistoricalSync:
 class TestUnsupportedHistoricalSync:
     """Tests for providers that don't support historical sync."""
 
-    def test_apple_raises_not_implemented(self) -> None:
-        """SDK-only provider should raise NotImplementedError."""
+    def test_apple_raises_unsupported(self) -> None:
+        """SDK-only provider should raise UnsupportedProviderError."""
         user_id = uuid4()
 
-        with pytest.raises(NotImplementedError, match="apple"):
+        with pytest.raises(UnsupportedProviderError, match="apple"):
             AppleStrategy().start_historical_sync(user_id, days=90)

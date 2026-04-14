@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
 from app.services.providers.base_strategy import HistoricalSyncResult
+from app.utils.exceptions import UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
 
@@ -286,9 +287,7 @@ class TestSyncHistoricalEndpoint:
         api_key = ApiKeyFactory()
 
         mock_strategy = MagicMock()
-        mock_strategy.start_historical_sync.side_effect = NotImplementedError(
-            "Provider 'apple' does not support historical sync"
-        )
+        mock_strategy.start_historical_sync.side_effect = UnsupportedProviderError("apple", "historical sync")
         mock_provider_factory.get_provider.return_value = mock_strategy
 
         response = client.post(

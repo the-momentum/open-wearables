@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -12,6 +11,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.exceptions import UnsupportedProviderError
 
 
 @dataclass
@@ -125,7 +125,9 @@ class BaseProviderStrategy(ABC):
         Raises NotImplementedError for providers that don't support historical sync.
         """
         if not self.capabilities.supports_pull:
-            raise NotImplementedError(f"Provider '{self.name}' does not support historical sync")
+            raise UnsupportedProviderError(self.name, "historical sync")
+
+        from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data  # noqa: PLC0415
 
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
