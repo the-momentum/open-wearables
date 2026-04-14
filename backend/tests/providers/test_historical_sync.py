@@ -55,10 +55,10 @@ class TestHistoricalSyncResult:
 class TestPullBasedHistoricalSync:
     """Tests for the default start_historical_sync (pull-based providers)."""
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
-    def test_oura_dispatches_pull_sync(self, mock_task: MagicMock) -> None:
+    @patch("app.services.providers.base_strategy.celery_app")
+    def test_oura_dispatches_pull_sync(self, mock_celery: MagicMock) -> None:
         """Pull-based provider should dispatch sync_vendor_data with is_historical=True."""
-        mock_task.delay.return_value = MagicMock(id="task-oura-123")
+        mock_celery.send_task.return_value = MagicMock(id="task-oura-123")
         user_id = uuid4()
 
         result = OuraStrategy().start_historical_sync(user_id, days=90)
@@ -69,16 +69,16 @@ class TestPullBasedHistoricalSync:
         assert result.days == 90
         assert result.start_date is not None
         assert result.end_date is not None
-        mock_task.delay.assert_called_once()
-        call_kwargs = mock_task.delay.call_args[1]
+        mock_celery.send_task.assert_called_once()
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["user_id"] == str(user_id)
         assert call_kwargs["providers"] == ["oura"]
         assert call_kwargs["is_historical"] is True
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
-    def test_whoop_dispatches_pull_sync(self, mock_task: MagicMock) -> None:
+    @patch("app.services.providers.base_strategy.celery_app")
+    def test_whoop_dispatches_pull_sync(self, mock_celery: MagicMock) -> None:
         """Another pull-based provider should also use the default implementation."""
-        mock_task.delay.return_value = MagicMock(id="task-whoop-456")
+        mock_celery.send_task.return_value = MagicMock(id="task-whoop-456")
         user_id = uuid4()
 
         result = WhoopStrategy().start_historical_sync(user_id, days=30)
@@ -86,24 +86,21 @@ class TestPullBasedHistoricalSync:
         assert result.task_id == "task-whoop-456"
         assert result.method == "pull_api"
         assert result.days == 30
-        call_kwargs = mock_task.delay.call_args[1]
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["providers"] == ["whoop"]
 
-    @patch("app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data")
-    def test_respects_days_parameter(self, mock_task: MagicMock) -> None:
+    @patch("app.services.providers.base_strategy.celery_app")
+    def test_respects_days_parameter(self, mock_celery: MagicMock) -> None:
         """The date range should span the requested number of days."""
-        mock_task.delay.return_value = MagicMock(id="task-123")
+        mock_celery.send_task.return_value = MagicMock(id="task-123")
         user_id = uuid4()
 
         result = OuraStrategy().start_historical_sync(user_id, days=7)
 
         assert result.days == 7
-        # start_date and end_date should be ~7 days apart
-
         start = datetime.fromisoformat(result.start_date)
         end = datetime.fromisoformat(result.end_date)
-        delta = (end - start).days
-        assert delta == 7
+        assert (end - start).days == 7
 
 
 class TestGarminHistoricalSync:

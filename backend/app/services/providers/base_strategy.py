@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 from uuid import UUID
 
-from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data  # noqa: PLC0415
+from celery import current_app as celery_app
+
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -20,7 +22,7 @@ class HistoricalSyncResult:
     """Result of dispatching a historical sync task."""
 
     task_id: str
-    method: str  # "pull_api" | "webhook_backfill"
+    method: Literal["pull_api", "webhook_backfill"]
     message: str
     days: int | None
     start_date: str | None = None
@@ -123,7 +125,7 @@ class BaseProviderStrategy(ABC):
         Default implementation works for pull-based providers. Override for
         providers that use a different mechanism (e.g. Garmin webhook backfill).
 
-        Raises NotImplementedError for providers that don't support historical sync.
+        Raises UnsupportedProviderError for providers that don't support historical sync.
         """
         if not self.capabilities.supports_pull:
             raise UnsupportedProviderError(self.name, "historical sync")
@@ -131,12 +133,15 @@ class BaseProviderStrategy(ABC):
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
-        task = sync_vendor_data.delay(
-            user_id=str(user_id),
-            start_date=start_date.isoformat(),
-            end_date=end_date.isoformat(),
-            providers=[self.name],
-            is_historical=True,
+        task = celery_app.send_task(
+            "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data",
+            kwargs={
+                "user_id": str(user_id),
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "providers": [self.name],
+                "is_historical": True,
+            },
         )
 
         return HistoricalSyncResult(
