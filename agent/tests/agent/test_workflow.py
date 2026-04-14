@@ -6,7 +6,6 @@ from uuid import uuid4
 import pytest
 
 from app.agent.workflows.agent_workflow import WorkflowEngine, _build_history
-from app.schemas.agent import AgentMode
 
 
 @pytest.fixture

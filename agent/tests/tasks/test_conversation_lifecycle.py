@@ -44,23 +44,26 @@ class TestManageConversationLifecycle:
 
     async def test_marks_stale_conversations_inactive(self, db: AsyncSession) -> None:
         from app.integrations.celery.tasks.conversation_lifecycle import _run_lifecycle
+        from app.repositories import conversation_repository
 
         conv = ConversationFactory(status=ConversationStatus.ACTIVE)
         await db.flush()
         await _backdate(db, conv, "updated_at", datetime(2000, 1, 1, tzinfo=timezone.utc))
 
+        # Patch close_stale to a no-op so it does not interfere with the
+        # mark-inactive assertion (mark_inactive_stale updates updated_at=now()
+        # via SQLAlchemy onupdate, which can occasionally match the close window
+        # depending on transaction timing).
         with patch("app.integrations.celery.tasks.conversation_lifecycle.settings") as mock_settings:
             mock_settings.session_timeout_minutes = 10
-            # Use a very large close_hours so close_stale does not fire in the same run.
-            mock_settings.conversation_close_hours = 999_999
+            mock_settings.conversation_close_hours = 24
 
             with patch("app.integrations.celery.tasks.conversation_lifecycle.AsyncSessionLocal") as mock_session_local:
                 mock_session_local.return_value.__aenter__ = AsyncMock(return_value=db)
                 mock_session_local.return_value.__aexit__ = AsyncMock(return_value=False)
 
-                await _run_lifecycle()
-
-        from app.repositories import conversation_repository
+                with patch.object(conversation_repository, "close_stale", AsyncMock(return_value=0)):
+                    await _run_lifecycle()
 
         refreshed = await conversation_repository.get_by_id(db, conv.id)
         assert refreshed.status == ConversationStatus.INACTIVE

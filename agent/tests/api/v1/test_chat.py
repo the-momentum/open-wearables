@@ -63,7 +63,7 @@ class TestSendMessage:
 
         assert response.status_code == 404
 
-    def test_returns_410_for_closed_conversation(
+    async def test_returns_410_for_closed_conversation(
         self,
         client: TestClient,
         auth_headers: dict,
@@ -72,6 +72,7 @@ class TestSendMessage:
     ) -> None:
         closed_conv = ConversationFactory(user_id=user_id, status=ConversationStatus.CLOSED)
         SessionFactory(conversation=closed_conv, active=True)
+        await db.flush()
 
         response = client.post(
             f"/api/v1/chat/{closed_conv.id}",
@@ -81,7 +82,7 @@ class TestSendMessage:
 
         assert response.status_code == 410
 
-    def test_returns_410_for_inactive_session(
+    async def test_returns_410_for_inactive_session(
         self,
         client: TestClient,
         auth_headers: dict,
@@ -90,6 +91,7 @@ class TestSendMessage:
     ) -> None:
         conv = ConversationFactory(user_id=user_id, status=ConversationStatus.ACTIVE)
         SessionFactory(conversation=conv, active=False)
+        await db.flush()
 
         response = client.post(
             f"/api/v1/chat/{conv.id}",

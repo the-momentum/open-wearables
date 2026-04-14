@@ -49,10 +49,10 @@ def _(exc: AttributeError, entity: str) -> HTTPException:
 @handle_exception.register
 def _(exc: RequestValidationError, _: str) -> HTTPException:
     err_args = exc.args[0][0]
-    return HTTPException(
-        status_code=400,
-        detail=f"{err_args['msg']} - {err_args['ctx']['error']}",
-    )
+    msg = err_args.get("msg", "Validation error")
+    ctx_error = err_args.get("ctx", {}).get("error", "")
+    detail = f"{msg} - {ctx_error}" if ctx_error else msg
+    return HTTPException(status_code=422, detail=detail)
 
 
 def handle_exceptions[**P, T, Service: AppService](func: Callable[P, T]) -> Callable[P, T]:

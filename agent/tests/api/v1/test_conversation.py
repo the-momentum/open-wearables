@@ -82,7 +82,7 @@ class TestDeactivateConversation:
 
         assert response.status_code == 404
 
-    def test_returns_403_for_conversation_owned_by_other_user(
+    async def test_returns_403_for_conversation_owned_by_other_user(
         self,
         client: TestClient,
         auth_headers: dict,
@@ -90,6 +90,7 @@ class TestDeactivateConversation:
     ) -> None:
         other_conv = ConversationFactory(user_id=uuid4(), status=ConversationStatus.ACTIVE)
         SessionFactory(conversation=other_conv, active=True)
+        await db.flush()
 
         response = client.patch(
             f"/api/v1/conversation/{other_conv.id}",
