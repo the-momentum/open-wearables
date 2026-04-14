@@ -22,10 +22,6 @@ def create_celery() -> Celery:
     celery_app.autodiscover_tasks(["app.integrations.celery", "app.integrations.celery.tasks"])
 
     celery_app.conf.beat_schedule = {
-        "dummy-task": {
-            "task": "app.integrations.celery.tasks.dummy_task.dummy_task",
-            "schedule": crontab(minute="*/1"),
-        },
         "manage-conversation-lifecycle": {
             "task": "app.integrations.celery.tasks.conversation_lifecycle.manage_conversation_lifecycle",
             "schedule": crontab(minute="*/5"),
