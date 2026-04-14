@@ -46,7 +46,7 @@ class TestSleepSummaryEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert len(data["data"]) == 1
-        assert data["data"][0]["date"] == "2025-12-26"
+        assert data["data"][0]["date"] == "2025-12-25"
         assert data["data"][0]["start_time"] == "2025-12-25T22:00:00Z"
         assert data["data"][0]["end_time"] == "2025-12-26T05:00:00Z"
         assert data["data"][0]["duration_minutes"] == 420  # 7 hours
@@ -91,7 +91,7 @@ class TestSleepSummaryEndpoint:
         assert len(data["data"]) == 1
 
         sleep_data = data["data"][0]
-        assert sleep_data["date"] == "2025-12-26"
+        assert sleep_data["date"] == "2025-12-25"
         assert sleep_data["duration_minutes"] == 480  # 8 hours
 
         # Verify sleep details are populated
@@ -256,25 +256,25 @@ class TestSleepSummaryEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data["data"]) == 1
+        # Main sleep (local start Dec 25) and nap (local start Dec 26) land on separate dates.
+        assert len(data["data"]) == 2
 
-        sleep_data = data["data"][0]
-        assert sleep_data["date"] == "2025-12-26"
+        main_sleep_data = data["data"][0]
+        assert main_sleep_data["date"] == "2025-12-25"
+        assert main_sleep_data["start_time"] == "2025-12-25T22:00:00Z"
+        assert main_sleep_data["end_time"] == "2025-12-26T06:00:00Z"
+        assert main_sleep_data["duration_minutes"] == 480
+        assert main_sleep_data["time_in_bed_minutes"] == 480
+        assert main_sleep_data["efficiency_percent"] == 85.0
+        assert main_sleep_data["stages"]["deep_minutes"] == 90
+        assert main_sleep_data["stages"]["light_minutes"] == 210
+        assert main_sleep_data["nap_count"] == 0
+        assert main_sleep_data["nap_duration_minutes"] == 0
 
-        # Main sleep metrics should EXCLUDE nap
-        assert sleep_data["start_time"] == "2025-12-25T22:00:00Z"  # Main sleep start, not nap
-        assert sleep_data["end_time"] == "2025-12-26T06:00:00Z"  # Main sleep end, not nap
-        assert sleep_data["duration_minutes"] == 480  # Only main sleep (8 hours)
-        assert sleep_data["time_in_bed_minutes"] == 480  # Only main sleep time in bed
-        assert sleep_data["efficiency_percent"] == 85.0  # Only main sleep efficiency
-
-        # Sleep stages should be main sleep only
-        assert sleep_data["stages"]["deep_minutes"] == 90
-        assert sleep_data["stages"]["light_minutes"] == 210
-
-        # Nap tracking
-        assert sleep_data["nap_count"] == 1
-        assert sleep_data["nap_duration_minutes"] == 30
+        nap_data = data["data"][1]
+        assert nap_data["date"] == "2025-12-26"
+        assert nap_data["nap_count"] == 1
+        assert nap_data["nap_duration_minutes"] == 30
 
     def test_get_sleep_summary_no_naps(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns null for nap fields when no naps exist."""
