@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
+from app.config import settings
 from app.database import DbSession
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import AuthorizationURLResponse
@@ -89,10 +91,32 @@ def oauth_callback(
     assert strategy.oauth
     oauth_state = strategy.oauth.handle_callback(db, code, state)
 
-    # Stamp last_synced_at=now so the first periodic sync uses it as the
-    # live-sync cursor and won't pull all historical data.
-    # Historical data must be fetched explicitly via the /sync/historical endpoint.
+    # Stamp last_synced_at=now so the first periodic sync uses the connection
+    # timestamp as its live-sync cursor and won't attempt to pull all history.
     user_connection_service.stamp_last_synced_at(db, oauth_state.user_id, provider.value)
+
+    # Grace-period flag: automatically kick off a historical sync so integrators
+    # who haven't yet adopted the explicit /sync/historical call still get backfill.
+    # Controlled by HISTORICAL_SYNC_ON_CONNECT (default: true).
+    if settings.historical_sync_on_connect:
+        caps = strategy.capabilities
+        if caps.supports_async_export:
+            # this code is going to be removed later, so leave inner imports heres
+            from app.integrations.celery.tasks import start_garmin_full_backfill
+
+            start_garmin_full_backfill.delay(str(oauth_state.user_id))
+        elif caps.supports_pull:
+            from app.integrations.celery.tasks import sync_vendor_data
+
+            now = datetime.now(timezone.utc)
+            start_date = (now - timedelta(days=90)).isoformat()
+            sync_vendor_data.delay(
+                user_id=str(oauth_state.user_id),
+                start_date=start_date,
+                end_date=now.isoformat(),
+                providers=[provider.value],
+                is_historical=True,
+            )
 
     # If a specific redirect_uri was requested (e.g. by frontend), redirect there
     if oauth_state.redirect_uri:

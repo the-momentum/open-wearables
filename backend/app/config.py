@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
+    # Grace-period flag: auto-dispatch historical sync after OAuth connect (default: true).
+    # Pre-0.4.2 behaviour. Set to false once your integration calls /sync/historical explicitly.
+    # Will default to false in a future release.
+    historical_sync_on_connect: bool = True
 
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
