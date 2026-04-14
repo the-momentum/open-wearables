@@ -215,31 +215,59 @@ jobs:
           OW_ENV_B64: ${{ steps.ow_env_gen.outputs.ow_env_b64 }}
         run: |
           TAR_B64=$(tar -C . -czf - deploy | base64 -w0)
+
+          # Build the full remote script, base64-encode it, then send a single
+          # short SSM command that decodes and runs it. This avoids every
+          # quoting pitfall with `--parameters commands=...` shorthand (which
+          # breaks on single quotes, commas, and brackets in payloads).
+          REMOTE_SCRIPT=$(cat <<REMOTE_EOF
+          set -e
+          mkdir -p /app
+          echo "$TAR_B64" | base64 -d | tar -xzf - -C /app
+          echo "$ENV_B64" | base64 -d > /app/.env
+          echo "$OW_ENV_B64" | base64 -d > /app/ow.env
+          chmod +x /app/deploy/scripts/*.sh
+          REMOTE_EOF
+          )
+          SCRIPT_B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 -w0)
+
+          # Use jq to build a clean JSON params file — dodges shorthand parser.
+          jq -n --arg s "$SCRIPT_B64" \
+            '{commands: ["echo \($s) | base64 -d | bash"]}' \
+            > /tmp/ssm-params.json
+
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "OW staging: sync deploy tree + env" \
-            --parameters commands="set -e; mkdir -p /app; echo '$TAR_B64' | base64 -d | tar -xzf - -C /app; echo '$ENV_B64' | base64 -d > /app/.env; echo '$OW_ENV_B64' | base64 -d > /app/ow.env; chmod +x /app/deploy/scripts/*.sh" \
+            --parameters file:///tmp/ssm-params.json \
             --query 'Command.CommandId' --output text)
-          aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID"
+          echo "upload CommandId: $CMD_ID"
+          if ! aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID"; then
+            aws ssm get-command-invocation --instance-id "$INSTANCE_ID" --command-id "$CMD_ID" \
+              --query '{Status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output text
+            exit 1
+          fi
 
       - name: Run deploy.sh via SSM
         env:
           INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
         run: |
+          jq -n '{commands: ["bash /app/deploy/scripts/deploy.sh"]}' > /tmp/ssm-run.json
+
           CMD_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "OW staging: deploy" \
-            --parameters 'commands=["bash /app/deploy/scripts/deploy.sh"]' \
+            --parameters file:///tmp/ssm-run.json \
             --cloud-watch-output-config 'CloudWatchOutputEnabled=true' \
             --query 'Command.CommandId' --output text)
-          echo "SSM command: $CMD_ID"
-          aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID"
+          echo "deploy CommandId: $CMD_ID"
+          aws ssm wait command-executed --instance-id "$INSTANCE_ID" --command-id "$CMD_ID" || true
           aws ssm get-command-invocation \
             --instance-id "$INSTANCE_ID" \
             --command-id "$CMD_ID" \
-            --query '{stdout:StandardOutputContent,stderr:StandardErrorContent}' --output text
+            --query '{Status:Status,stdout:StandardOutputContent,stderr:StandardErrorContent}' --output text
 
       - name: Summary
         env:
