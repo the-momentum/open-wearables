@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Zero-downtime deploy for OpenWearables on a dedicated EC2.
+# Deploy OpenWearables to the dedicated EC2.
 #
-# Called by GH Actions via SSM:
-#   bash /app/deploy/scripts/deploy.sh
+# Strategy (matches lucie-api/scripts/deploy.sh pattern):
+#   1. Pull new images
+#   2. Ensure stateful services are up (db, redis, traefik) — idempotent
+#   3. Wait for DB to accept connections
+#   4. Run alembic upgrade in a THROWAWAY container — if this fails, abort
+#      before we touch the live app (avoids the crash-loop we saw in prod)
+#   5. Recreate app + frontend with `compose up -d --no-deps` — brief gap,
+#      health-polled afterwards
+#   6. Bring everything else up (celery-worker, celery-beat)
+#   7. Prune dangling images
 #
-# Prereqs (already ensured by bootstrap):
-#   - /app contains the latest deploy/ tree (docker-compose.yml, scripts/)
-#   - /app/.env contains OW_IMAGE_BACKEND / OW_IMAGE_FRONTEND and vars referenced
-#     by docker-compose.yml
-#   - /app/ow.env contains backend provider secrets (loaded via env_file)
-#   - Docker configured with ecr-login credential helper so `docker pull` just
-#     works against ECR
-#
-# Strategy:
-#   * Pull new images first (fast-fail if ECR is unreachable / tag missing)
-#   * Rolling services (app, frontend): scale to N+1, wait healthy, drop old
-#   * Background services (celery-worker, celery-beat): in-place restart
-#   * Stateful services (db, redis, traefik): never touched unless explicitly
-#     requested with FORCE_RESTART_STATEFUL=1
+# We deliberately DON'T do scale-based rolling here: the previous version
+# left the box in a bad state when the new image crash-looped, because both
+# the "new" (never healthy) and "old" containers ended up stuck in
+# Restarting. Lucie-api runs a single replica on staging for the same
+# reason — the gap is short and recoverable, an unhealthy rollout is not.
 
 set -euo pipefail
 
@@ -26,80 +25,72 @@ cd "$APP_DIR"
 
 COMPOSE=(docker compose --env-file "$APP_DIR/.env" -f "$APP_DIR/deploy/docker-compose.yml")
 
-ROLLING_SERVICES=(app frontend)
-INPLACE_SERVICES=(celery-worker celery-beat)
-
 log() { printf '\033[1;36m[deploy]\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[deploy]\033[0m %s\n' "$*" >&2; exit 1; }
 
-log "Ensuring stateful services are up (db, redis, traefik)..."
-"${COMPOSE[@]}" up -d db redis traefik
+# Load .env so we can reference DB vars directly below.
+set -a
+# shellcheck disable=SC1091
+source "$APP_DIR/.env"
+set +a
+
+: "${OW_IMAGE_BACKEND:?OW_IMAGE_BACKEND must be set in /app/.env}"
+: "${OW_DB_USER:=open-wearables}"
+: "${OW_DB_NAME:=open-wearables}"
 
 log "Pulling new images..."
-"${COMPOSE[@]}" pull "${ROLLING_SERVICES[@]}" "${INPLACE_SERVICES[@]}"
+"${COMPOSE[@]}" pull app frontend celery-worker celery-beat
 
-# -----------------------------------------------------------------------------
-# Rolling services
-# -----------------------------------------------------------------------------
-for svc in "${ROLLING_SERVICES[@]}"; do
-  log "Rolling $svc..."
+log "Ensuring stateful services are running (db, redis, traefik)..."
+"${COMPOSE[@]}" up -d db redis traefik
 
-  old_ids=$("${COMPOSE[@]}" ps -q "$svc" || true)
-  old_count=$(printf '%s\n' "$old_ids" | grep -c . || true)
-  new_scale=$((old_count + 1))
-
-  log "  scaling $svc to $new_scale (currently $old_count)"
-  "${COMPOSE[@]}" up -d \
-    --no-deps --no-recreate --scale "$svc=$new_scale" "$svc"
-
-  # Wait for health: every currently-running container for this service must
-  # be "healthy" (or "running" if it has no healthcheck).
-  log "  waiting for $svc to become healthy..."
-  healthy=0
-  for attempt in $(seq 1 60); do
-    ids=$("${COMPOSE[@]}" ps -q "$svc")
-    [[ -z "$ids" ]] && { sleep 2; continue; }
-
-    unhealthy=0
-    while IFS= read -r id; do
-      [[ -z "$id" ]] && continue
-      state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || echo "missing")
-      case "$state" in
-        healthy|running) ;;
-        *) unhealthy=$((unhealthy + 1)) ;;
-      esac
-    done <<< "$ids"
-
-    if [[ "$unhealthy" -eq 0 ]]; then
-      healthy=1
-      log "  $svc is healthy"
-      break
-    fi
-    sleep 2
-  done
-  [[ "$healthy" -eq 1 ]] || die "$svc did not become healthy within 120s"
-
-  # Kill the pre-deploy containers (snapshot taken before scale-up).
-  if [[ -n "$old_ids" ]]; then
-    log "  removing $old_count old $svc container(s)"
-    # shellcheck disable=SC2086
-    docker stop --time 30 $old_ids >/dev/null
-    # shellcheck disable=SC2086
-    docker rm $old_ids >/dev/null
+log "Waiting for database..."
+for i in $(seq 1 30); do
+  if docker exec ow-db pg_isready -U "$OW_DB_USER" -d "$OW_DB_NAME" >/dev/null 2>&1; then
+    log "  db is ready"
+    break
   fi
-
-  # Return to steady state (1 replica).
-  "${COMPOSE[@]}" up -d \
-    --no-deps --no-recreate --scale "$svc=1" "$svc"
+  [[ "$i" -eq 30 ]] && die "database never became ready"
+  sleep 2
 done
 
-# -----------------------------------------------------------------------------
-# Background services (no inbound traffic → simple restart is fine)
-# -----------------------------------------------------------------------------
-for svc in "${INPLACE_SERVICES[@]}"; do
-  log "Restarting $svc in place..."
-  "${COMPOSE[@]}" up -d --no-deps "$svc"
+log "Running alembic migrations in a throwaway container..."
+if ! docker run --rm \
+    --network ow-network \
+    --env-file "$APP_DIR/.env" \
+    --env-file "$APP_DIR/ow.env" \
+    -e DB_HOST=db \
+    -e DB_PORT=5432 \
+    -e DB_NAME="$OW_DB_NAME" \
+    -e DB_USER="$OW_DB_USER" \
+    -e DB_PASSWORD="$OW_DB_PASSWORD" \
+    -e REDIS_HOST=redis \
+    --entrypoint "" \
+    "$OW_IMAGE_BACKEND" \
+    uv run alembic upgrade head; then
+  die "alembic migrations failed — aborting before touching live app"
+fi
+
+log "Recreating app + frontend (brief gap)..."
+"${COMPOSE[@]}" up -d --no-deps app frontend
+
+log "Health checking app..."
+healthy=0
+for i in $(seq 1 30); do
+  HEALTH=$("${COMPOSE[@]}" ps app --format json 2>/dev/null \
+    | jq -sr 'flatten(1) | .[0].Health // "starting"' 2>/dev/null \
+    || echo "unknown")
+  case "$HEALTH" in
+    healthy) healthy=1; log "  app is healthy"; break ;;
+    unhealthy) log "  ::warning:: app is UNHEALTHY (attempt $i/30)" ;;
+    *) log "  app: $HEALTH ($i/30)" ;;
+  esac
+  sleep 5
 done
+[[ "$healthy" -eq 1 ]] || die "app did not become healthy within 150s"
+
+log "Bringing up celery services..."
+"${COMPOSE[@]}" up -d --no-deps celery-worker celery-beat
 
 log "Pruning dangling images..."
 docker image prune -f >/dev/null

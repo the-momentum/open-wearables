@@ -108,12 +108,13 @@ services:
       - SERVER_HOST=https://${OW_DOMAIN}
       - FRONTEND_URL=https://${OW_DASHBOARD_DOMAIN}
       - CORS_ORIGINS=["https://${OW_DASHBOARD_DOMAIN}"]
+    # TCP-connect probe (curl is not present in the OW backend image; python is).
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',8000)); s.close()\" || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
