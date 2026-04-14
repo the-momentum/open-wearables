@@ -141,6 +141,20 @@ services:
       - DB_USER=${OW_DB_USER:-open-wearables}
       - DB_PASSWORD=${OW_DB_PASSWORD}
       - REDIS_HOST=redis
+    # Probe the worker by asking celery to ping its own node. This only
+    # succeeds once the worker has registered with the broker, so it is a
+    # true readiness signal for zero-downtime rolling restarts.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "uv run celery -A app.main:celery_app inspect ping -d celery@$$HOSTNAME >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    stop_grace_period: 60s
     depends_on:
       - db
       - redis
@@ -148,6 +162,8 @@ services:
     networks:
       - ow-network
 
+  # Beat is a singleton scheduler. Never run > 1 instance (duplicate cron
+  # triggers). Deploys restart it in place with a brief gap.
   celery-beat:
     image: ${OW_IMAGE_BACKEND}
     pull_policy: always
