@@ -65,3 +65,4 @@ class UserConnectionWithCapabilities(UserConnectionRead):
     """
 
     max_historical_days: int | None = None
+    supports_pull: bool = False

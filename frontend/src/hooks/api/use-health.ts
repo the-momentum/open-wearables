@@ -8,6 +8,7 @@ import type {
   TimeSeriesParams,
   SleepSessionsParams,
   BodySummaryParams,
+  HealthScoreParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
@@ -119,6 +120,18 @@ export function useBodySummary(userId: string, params?: BodySummaryParams) {
 }
 
 /**
+ * Get health scores (sleep, recovery, readiness, etc.) for a user
+ * Uses GET /api/v1/users/{user_id}/health-scores
+ */
+export function useHealthScores(userId: string, params: HealthScoreParams) {
+  return useQuery({
+    queryKey: queryKeys.health.healthScores(userId, params),
+    queryFn: () => healthService.getHealthScores(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
  * Synchronize workouts/exercises/activities from fitness provider API for a specific user
  */
 export function useSynchronizeDataFromProvider(
@@ -145,6 +158,9 @@ export function useSynchronizeDataFromProvider(
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.bodySummary(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.healthScores(userId),
       });
 
       toast.success('Data synchronized successfully');

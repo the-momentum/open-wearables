@@ -18,6 +18,8 @@ from app.services.providers.garmin.backfill_state import (
 )
 
 from .archival_task import run_daily_archival
+from .emit_webhook_event_task import emit_webhook_event
+from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
     start_full_backfill as start_garmin_full_backfill,
@@ -36,6 +38,7 @@ from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
 from .process_xml_upload_task import process_xml_upload
+from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
 
@@ -54,6 +57,8 @@ __all__ = [
     "gc_stuck_backfills",
     # Archival
     "run_daily_archival",
+    # Sleep score calculation
+    "fill_missing_sleep_scores",
     # Other tasks
     "finalize_stale_sleeps",
     "process_sdk_upload",
@@ -61,5 +66,8 @@ __all__ = [
     "process_xml_upload",
     "sync_vendor_data",
     "sync_all_users",
+    "generate_seed_data",
     "send_invitation_email_task",
+    # Outgoing webhooks
+    "emit_webhook_event",
 ]

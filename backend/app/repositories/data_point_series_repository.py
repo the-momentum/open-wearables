@@ -964,3 +964,30 @@ class DataPointSeriesRepository(
 
         value, recorded_at, provider_name, device_id = result
         return (float(value), recorded_at, provider_name, device_id)
+
+    def query_series(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        type_id: int,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[datetime, float]]:
+        """Query raw (recorded_at, value) pairs for a given series type and time window.
+
+        Filters by user (via DataSource), series type, and half-open interval
+        [start_dt, end_dt), ordered by recorded_at ascending.
+        """
+        results = (
+            db_session.query(self.model.recorded_at, self.model.value)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.series_type_definition_id == type_id,
+                self.model.recorded_at >= start_dt,
+                self.model.recorded_at < end_dt,
+            )
+            .order_by(self.model.recorded_at, self.model.id)
+            .all()
+        )
+        return [(row.recorded_at, float(row.value)) for row in results]

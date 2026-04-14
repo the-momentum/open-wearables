@@ -1,6 +1,15 @@
 ---
-title: 'API Reference'
-description: 'API documentation for integrating with Open Wearables'
+title: "Open Wearables API Reference | REST API Docs"
+sidebarTitle: "Introduction"
+description: "REST API reference for Open Wearables: manage users, connect wearable providers, and retrieve health data. Covers 3rd-party integration endpoints. Authentication via API key."
+keywords: ["open wearables api reference", "wearable rest api docs", "health data api endpoints", "open wearables endpoints"]
+"og:title": "Open Wearables API Reference | REST API Docs"
+"og:description": "REST endpoints for managing users, connecting providers, and fetching health data. Authentication via API key."
+"og:url": "https://docs.openwearables.io/api-reference/introduction"
+"og:type": "article"
+"twitter:title": "Open Wearables API Reference | REST API Docs"
+"twitter:description": "REST endpoints for managing users, connecting providers, and fetching health data. Authentication via API key."
+"twitter:card": "summary_large_image"
 ---
 
 ## About this reference
@@ -13,14 +22,14 @@ Internal endpoints (dashboard management, team settings, webhook receivers) are 
   <Card
     title="Swagger UI (full API)"
     icon="terminal"
-    href="http://localhost:8000/docs"
+    href="https://api.openwearables.io/docs"
   >
     Interactive API explorer with all endpoints, including internal
   </Card>
   <Card
     title="OpenAPI JSON"
     icon="file-code"
-    href="http://localhost:8000/openapi.json"
+    href="https://api.openwearables.io/openapi.json"
   >
     Machine-readable OpenAPI 3.1 specification
   </Card>
@@ -61,6 +70,12 @@ For production deployments, replace with your server URL.
 | Sync data | POST | `/api/v1/providers/{provider}/users/{user_id}/sync` |
 | Historical sync | POST | `/api/v1/providers/{provider}/users/{user_id}/sync/historical` |
 | Get provider workouts | GET | `/api/v1/providers/{provider}/users/{user_id}/workouts` |
+| List event types | GET | `/api/v1/webhooks/event-types` |
+| Register webhook endpoint | POST | `/api/v1/webhooks/endpoints` |
+| List webhook endpoints | GET | `/api/v1/webhooks/endpoints` |
+| Update webhook endpoint | PATCH | `/api/v1/webhooks/endpoints/{endpoint_id}` |
+| Delete webhook endpoint | DELETE | `/api/v1/webhooks/endpoints/{endpoint_id}` |
+| Get endpoint secret | GET | `/api/v1/webhooks/endpoints/{endpoint_id}/secret` |
 
 ## Authentication
 
@@ -176,8 +191,8 @@ Many endpoints support filtering and sorting. Check individual endpoint document
 ## OpenAPI Specification
 
 The complete OpenAPI specification is available at:
-- **Swagger UI:** `http://localhost:8000/docs`
-- **OpenAPI JSON:** `http://localhost:8000/openapi.json`
+- **Swagger UI:** `https://api.openwearables.io/docs`
+- **OpenAPI JSON:** `https://api.openwearables.io/openapi.json`
 
 <Tip>
   The OpenAPI specification is auto-generated from the API code and is always the most accurate reference.

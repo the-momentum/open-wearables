@@ -446,13 +446,15 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         start_time = state.start_time
 
     # --- Merge with an adjacent existing session if one exists ---
+    source_for_lookup = state.source_name if state.source_name != "unknown" else None
     adjacent = event_record_service.find_adjacent_sleep_record(
         db_session,
         UUID(user_id),
         start_time,
         end_time,
         settings.sleep_end_gap_minutes,
-        source=state.provider,
+        source=source_for_lookup,
+        provider=state.provider,
     )
 
     if adjacent is not None:
@@ -495,7 +497,8 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         category="sleep",
         type="sleep_session",
         source_name=state.source_name or "unknown",
-        source=state.provider or "unknown",
+        source=source_for_lookup,
+        provider=state.provider,
         device_model=state.device_model,
     )
 

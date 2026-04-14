@@ -602,6 +602,7 @@ class EventRecordRepository(
         end_time: datetime,
         threshold_minutes: int,
         source: str | None = None,
+        provider: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -610,9 +611,10 @@ class EventRecordRepository(
         is eagerly loaded so callers can read ``sleep_stages`` without an extra
         query.
 
-        When *source* is provided the query is restricted to records whose
-        DataSource has the same source string, preventing cross-provider merges
+        When *provider* is provided the query is restricted to records whose
+        DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
+        When *source* is provided an additional filter on DataSource.source is applied.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -622,6 +624,8 @@ class EventRecordRepository(
             self.model.start_datetime <= end_time + threshold,
             self.model.end_datetime >= start_time - threshold,
         ]
+        if provider is not None:
+            filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
         return (
@@ -633,3 +637,28 @@ class EventRecordRepository(
             .with_for_update()
             .first()
         )
+
+    def get_sleep_records_with_details(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[EventRecord, SleepDetails | None]]:
+        """Return sleep EventRecords with their SleepDetails that overlap [start_dt, end_dt).
+
+        Uses an outerjoin so sessions with no stage data are still included.
+        """
+        rows = (
+            db_session.query(EventRecord, SleepDetails)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.end_datetime >= start_dt,
+                EventRecord.start_datetime < end_dt,
+            )
+            .all()
+        )
+        return [(event_record, sleep_details) for event_record, sleep_details in rows]

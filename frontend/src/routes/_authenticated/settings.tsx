@@ -7,6 +7,7 @@ import { PrioritiesTab } from './settings/priorities-tab';
 import { TeamTab } from './settings/team-tab';
 import { DataLifecycleTab } from './settings/data-lifecycle-tab';
 import { SecurityTab } from './settings/security-tab';
+import { SeedDataTab } from './settings/seed-data-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
   component: SettingsPage,
@@ -48,6 +49,11 @@ const tabs: TabConfig[] = [
     id: 'security',
     label: 'Security',
     component: SecurityTab,
+  },
+  {
+    id: 'seed-data',
+    label: 'Seed Data',
+    component: SeedDataTab,
   },
 ];
 

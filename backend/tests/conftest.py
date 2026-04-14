@@ -206,6 +206,19 @@ def flush_redis(_redis_url: str) -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
+def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
+    """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.
+
+    Patches the Celery task's delay so tests that don't care about webhook
+    emission never hang on a missing broker.  Tests that DO verify dispatch
+    behaviour override this via their own @patch decorator (innermost wins).
+    """
+    with patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event") as mock:
+        mock.delay.return_value = None
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
     """Mock Celery tasks to run synchronously."""
     mock_task = MagicMock()

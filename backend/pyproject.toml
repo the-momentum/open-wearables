@@ -25,6 +25,8 @@ dependencies = [
     "isodate>=0.7.2",
     "resend>=2.0.0",
     "pyyaml>=6.0.3",
+    "svix>=1.90.0",
+    "numpy>=2.4.4",
 ]
 
 [dependency-groups]

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
@@ -24,13 +25,19 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
 
 class TimeSeriesService(
-    AppService[DataPointSeriesRepository, DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
+    AppService[
+        DataPointSeriesRepository,
+        DataPointSeries,
+        TimeSeriesSampleCreate,
+        TimeSeriesSampleUpdate,
+    ],
 ):
     """Coordinated access to unified device time series samples."""
 
@@ -40,9 +47,29 @@ class TimeSeriesService(
     def bulk_create_samples(
         self,
         db_session: DbSession,
-        samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+        samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
         self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
+        self._emit_timeseries_webhooks(samples)
+
+    @staticmethod
+    def _emit_timeseries_webhooks(
+        samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+    ) -> None:
+        """Emit one webhook event per (user, provider, series_type) batch."""
+        if not samples:
+            return
+        groups: dict[tuple[UUID, str, str], int] = defaultdict(int)
+        for s in samples:
+            key = (s.user_id, s.provider or s.source or "unknown", s.series_type.value)
+            groups[key] += 1
+        for (user_id, provider, series_type), count in groups.items():
+            on_timeseries_batch_saved(
+                user_id=user_id,
+                provider=provider,
+                series_type=series_type,
+                sample_count=count,
+            )
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
