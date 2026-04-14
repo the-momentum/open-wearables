@@ -23,5 +23,4 @@ class ProviderPriority(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     provider: Mapped[Unique[ProviderName]]  # Uses ProviderName enum
     priority: Mapped[Indexed[int]]  # 1 = highest priority
-    created_at: Mapped[datetime]
     updated_at: Mapped[datetime]

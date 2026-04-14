@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, inspect
+from sqlalchemy import Date, DateTime, Engine, String, Text, create_engine, func, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
+    Mapped,
     Session,
     declared_attr,
+    mapped_column,
     sessionmaker,
 )
 
@@ -45,6 +47,8 @@ def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
 
 
 class BaseDbModel(DeclarativeBase, metaclass=AutoRelMeta):
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
     @declared_attr.directive
     def __tablename__(self) -> str:
         return self.__name__.lower()
