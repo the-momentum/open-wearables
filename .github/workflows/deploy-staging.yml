@@ -183,8 +183,8 @@ jobs:
           EMAIL_FROM_ADDRESS=noreply@getlucie.ai
           EMAIL_FROM_NAME=Open Wearables
 
-          # Sentry
-          SENTRY_ENABLED=${SENTRY_DSN:+True}
+          # Sentry (hardcoded disabled on staging)
+          SENTRY_ENABLED=False
           SENTRY_DSN=${SENTRY_DSN}
           SENTRY_ENV=staging
 
