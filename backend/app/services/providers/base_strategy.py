@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data  # noqa: PLC0415
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -126,8 +127,6 @@ class BaseProviderStrategy(ABC):
         """
         if not self.capabilities.supports_pull:
             raise UnsupportedProviderError(self.name, "historical sync")
-
-        from app.integrations.celery.tasks.sync_vendor_data_task import sync_vendor_data  # noqa: PLC0415
 
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
