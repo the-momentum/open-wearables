@@ -128,6 +128,7 @@ export function CredentialsTab() {
           <Button
             variant="ghost-faded"
             size="icon-sm"
+            aria-label="Copy API URL"
             onClick={() =>
               copyToClipboard(API_CONFIG.baseUrl, 'API URL copied')
             }
