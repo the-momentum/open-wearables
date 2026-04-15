@@ -18,6 +18,7 @@ import type {
   RecoverySummary,
   SleepSession,
   SleepSessionsParams,
+  UserDataSummary,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -256,6 +257,15 @@ export const healthService = {
     return apiClient.get<PaginatedResponse<SleepSession>>(
       API_ENDPOINTS.userSleepSessions(userId),
       { params }
+    );
+  },
+
+  /**
+   * Get per-user data summary with counts by type and provider
+   */
+  async getUserDataSummary(userId: string): Promise<UserDataSummary> {
+    return apiClient.get<UserDataSummary>(
+      API_ENDPOINTS.userDataSummary(userId)
     );
   },
 };

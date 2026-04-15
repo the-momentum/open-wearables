@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -306,6 +306,28 @@ class EventRecordRepository(
 
         return query.limit(limit + 1).all(), total_count
 
+    def get_user_event_counts_by_provider(
+        self, db_session: DbSession, user_id: UUID
+    ) -> list[tuple[str, str, str | None, int]]:
+        """Get event record counts for a user grouped by provider, category, and type.
+
+        Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
+        """
+        results = (
+            db_session.query(
+                DataSource.provider,
+                self.model.category,
+                self.model.type,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(DataSource.provider, self.model.category, self.model.type)
+            .order_by(DataSource.provider, func.count(self.model.id).desc())
+            .all()
+        )
+        return [(provider, category, event_type, count) for provider, category, event_type, count in results]
+
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type.
 
@@ -400,12 +422,18 @@ class EventRecordRepository(
         # is_nap can be True, False, or NULL - we treat NULL as "not a nap"
         is_main_sleep = func.coalesce(SleepDetails.is_nap, False) == False  # noqa: E712
 
+        # Local calendar date the session started — mirrors score date logic in fill_missing_sleep_scores_task.
+        local_sleep_date = cast(
+            EventRecord.start_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+
         # Build base aggregated query as subquery
         # Join with SleepDetails to get sleep stage data
         # Cast UUID to text for min() since PostgreSQL doesn't support min() on UUID directly
         subquery = (
             db_session.query(
-                cast(EventRecord.end_datetime, Date).label("sleep_date"),
+                local_sleep_date.label("sleep_date"),
                 # Main sleep times (exclude naps)
                 func.min(case((is_main_sleep, EventRecord.start_datetime), else_=None)).label("min_start_time"),
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
@@ -452,10 +480,11 @@ class EventRecordRepository(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
                 EventRecord.end_datetime >= start_date,
-                cast(EventRecord.end_datetime, Date) < cast(end_date, Date),
+                local_sleep_date >= cast(start_date, Date),
+                local_sleep_date < cast(end_date, Date),
             )
             .group_by(
-                cast(EventRecord.end_datetime, Date),
+                local_sleep_date,
                 DataSource.source,
                 DataSource.device_model,
             )
