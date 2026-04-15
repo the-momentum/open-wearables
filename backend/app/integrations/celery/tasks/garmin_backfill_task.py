@@ -74,18 +74,30 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         )
         return {"error": f"Invalid user_id: {e}"}
 
-    # Skip backfill if user didn't grant HISTORICAL_DATA_EXPORT permission
+    # Skip backfill only when we *know* the user hasn't granted HISTORICAL_DATA_EXPORT.
+    # scope=None means the permissions fetch failed during OAuth (best-effort) and the
+    # userPermissionsChange webhook hasn't updated it yet — treat that as unknown and
+    # proceed so the user doesn't get silently blocked.
     with SessionLocal() as db:
         connection_repo = UserConnectionRepository()
         connection = connection_repo.get_by_user_and_provider(db, UUID(user_id), "garmin")
-        if not connection or not connection.scope or "HISTORICAL_DATA_EXPORT" not in connection.scope.split():
+        if not connection:
+            log_structured(
+                logger,
+                "info",
+                "Skipping backfill -- no Garmin connection found",
+                provider="garmin",
+                user_id=user_id,
+            )
+            return {"status": "skipped", "reason": "No Garmin connection found"}
+        if connection.scope is not None and "HISTORICAL_DATA_EXPORT" not in connection.scope.split():
             log_structured(
                 logger,
                 "info",
                 "Skipping backfill -- HISTORICAL_DATA_EXPORT not granted",
                 provider="garmin",
                 user_id=user_id,
-                scope=connection.scope if connection else None,
+                scope=connection.scope,
             )
             return {"status": "skipped", "reason": "HISTORICAL_DATA_EXPORT permission not granted"}
 

@@ -106,7 +106,7 @@ class TestPullBasedHistoricalSync:
 class TestGarminHistoricalSync:
     """Tests for Garmin's overridden start_historical_sync."""
 
-    @patch("app.integrations.celery.tasks.start_garmin_full_backfill")
+    @patch("app.services.providers.garmin.strategy.start_garmin_full_backfill")
     def test_dispatches_backfill_task(self, mock_backfill: MagicMock) -> None:
         """Garmin should dispatch start_garmin_full_backfill, not sync_vendor_data."""
         mock_backfill.delay.return_value = MagicMock(id="task-garmin-789")
@@ -122,7 +122,7 @@ class TestGarminHistoricalSync:
         assert result.end_date is None
         mock_backfill.delay.assert_called_once_with(str(user_id))
 
-    @patch("app.integrations.celery.tasks.start_garmin_full_backfill")
+    @patch("app.services.providers.garmin.strategy.start_garmin_full_backfill")
     def test_ignores_days_parameter(self, mock_backfill: MagicMock) -> None:
         """Garmin always uses its own 30-day limit regardless of days param."""
         mock_backfill.delay.return_value = MagicMock(id="task-123")

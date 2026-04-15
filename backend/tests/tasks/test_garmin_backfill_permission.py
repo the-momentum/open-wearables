@@ -56,13 +56,23 @@ class TestBackfillPermissionCheck:
 
     @patch(f"{MODULE}.UserConnectionRepository")
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
-    def test_skips_when_scope_is_none(self, mock_repo_cls: MagicMock) -> None:
+    def test_proceeds_when_scope_is_none(self, mock_repo_cls: MagicMock) -> None:
+        """scope=None means permissions fetch failed during OAuth — treat as unknown and proceed."""
         mock_repo_cls.return_value.get_by_user_and_provider.return_value = _make_connection(None)
 
-        result = start_full_backfill(str(uuid4()))
+        with (
+            patch(f"{MODULE}.acquire_backfill_lock", return_value=True),
+            patch(f"{MODULE}.set_trace_id", return_value="trace-123"),
+            patch(f"{MODULE}.get_current_window", return_value=0),
+            patch(f"{MODULE}.is_cancelled", return_value=False),
+            patch(f"{MODULE}.init_window_state"),
+            patch(f"{MODULE}.reset_type_status"),
+            patch(f"{MODULE}.trigger_backfill_for_type") as mock_trigger,
+        ):
+            mock_trigger.apply_async = MagicMock()
+            result = start_full_backfill(str(uuid4()))
 
-        assert result["status"] == "skipped"
-        assert "HISTORICAL_DATA_EXPORT" in result["reason"]
+        assert result["status"] == "started"
 
     @patch(f"{MODULE}.UserConnectionRepository")
     @pytest.mark.usefixtures("_patch_redis", "_patch_session")
