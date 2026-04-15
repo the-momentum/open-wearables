@@ -11,5 +11,6 @@ _WORKFLOW_ERROR_MSGS: dict[Language, str] = {
     Language.spanish: "Encontré un problema al procesar tu solicitud. Por favor, inténtalo de nuevo en un momento.",
 }
 
+
 def get_workflow_error_msg(language: Language | None = None) -> str:
     return _WORKFLOW_ERROR_MSGS.get(language or Language.english, _WORKFLOW_ERROR_MSGS[Language.english])

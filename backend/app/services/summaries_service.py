@@ -392,7 +392,7 @@ class SummariesService:
         vitals_by_date: dict[date, dict] = {row["recovery_date"]: row for row in vitals_rows}
 
         # --- Sleep: duration and efficiency per date ---
-        sleep_rows = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, None, 1000)
+        sleep_rows = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, None, None)
         sleep_rows = self._filter_by_priority(db_session, user_id, sleep_rows, date_key="sleep_date")
         sleep_by_date: dict[date, dict] = {row["sleep_date"]: row for row in sleep_rows}
 
@@ -402,17 +402,14 @@ class SummariesService:
         # Cursor-based pagination: skip dates before/at the cursor date
         prev_page = False
         if cursor:
-            try:
-                cursor_dt, _, direction = decode_cursor(cursor)
-                cursor_date = cursor_dt.date()
-                if direction == "prev":
-                    all_dates = [d for d in all_dates if d < cursor_date]
-                    all_dates = list(reversed(all_dates))
-                    prev_page = True
-                else:
-                    all_dates = [d for d in all_dates if d > cursor_date]
-            except Exception:
-                pass
+            cursor_dt, _, direction = decode_cursor(cursor)
+            cursor_date = cursor_dt.date()
+            if direction == "prev":
+                all_dates = [d for d in all_dates if d < cursor_date]
+                all_dates = list(reversed(all_dates))
+                prev_page = True
+            else:
+                all_dates = [d for d in all_dates if d > cursor_date]
 
         has_more = len(all_dates) > limit
         if has_more:
@@ -424,12 +421,24 @@ class SummariesService:
         previous_cursor: str | None = None
 
         _nil_id = UUID("00000000-0000-0000-0000-000000000000")
-        if all_dates and has_more:
-            last_midnight = datetime.combine(all_dates[-1], datetime.min.time()).replace(tzinfo=timezone.utc)
-            next_cursor = encode_cursor(last_midnight, _nil_id, "next")
-        if all_dates and cursor:
-            first_midnight = datetime.combine(all_dates[0], datetime.min.time()).replace(tzinfo=timezone.utc)
-            previous_cursor = encode_cursor(first_midnight, _nil_id, "prev")
+        if all_dates:
+            if prev_page:
+                # Navigated backward: emit next_cursor (there are newer pages) and
+                # previous_cursor only when there are still older pages.
+                last_midnight = datetime.combine(all_dates[-1], datetime.min.time()).replace(tzinfo=timezone.utc)
+                next_cursor = encode_cursor(last_midnight, _nil_id, "next")
+                if has_more:
+                    first_midnight = datetime.combine(all_dates[0], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    previous_cursor = encode_cursor(first_midnight, _nil_id, "prev")
+            else:
+                # Navigated forward (or first page): emit next_cursor when more pages exist
+                # and previous_cursor when we arrived via a cursor (not the first page).
+                if has_more:
+                    last_midnight = datetime.combine(all_dates[-1], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    next_cursor = encode_cursor(last_midnight, _nil_id, "next")
+                if cursor:
+                    first_midnight = datetime.combine(all_dates[0], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    previous_cursor = encode_cursor(first_midnight, _nil_id, "prev")
 
         data = []
         for d in all_dates:
@@ -455,7 +464,9 @@ class SummariesService:
                     source=source,
                     sleep_duration_seconds=sleep_duration,
                     sleep_efficiency_percent=efficiency,
-                    resting_heart_rate_bpm=vitals["avg_resting_hr"] if vitals else None,
+                    resting_heart_rate_bpm=int(round(vitals["avg_resting_hr"]))
+                    if vitals and vitals["avg_resting_hr"] is not None
+                    else None,
                     avg_hrv_sdnn_ms=vitals["avg_hrv_sdnn"] if vitals else None,
                     avg_spo2_percent=vitals["avg_spo2"] if vitals else None,
                     recovery_score=None,

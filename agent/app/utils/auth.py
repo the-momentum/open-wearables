@@ -35,7 +35,7 @@ class JWTAuth:
             )
 
         exp = payload.get("exp")
-        if exp is None or datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
+        if exp is None or datetime.fromtimestamp(exp, tz=timezone.utc) <= datetime.now(tz=timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired",
@@ -56,7 +56,14 @@ class JWTAuth:
                 detail="Could not validate credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        return UUID(user_id)
+        try:
+            return UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
 
 jwt_auth = JWTAuth()

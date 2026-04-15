@@ -32,5 +32,5 @@ class Session(BaseDbModel):
 
     conversation: Mapped["Conversation"] = relationship(back_populates="sessions")  # type: ignore[name-defined]
     messages: Mapped[list["Message"]] = relationship(  # type: ignore[name-defined]
-        back_populates="session"
+        back_populates="session", passive_deletes=True
     )

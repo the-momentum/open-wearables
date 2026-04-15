@@ -19,7 +19,7 @@ RELATION_TYPES: dict[object, dict[str, Any]] = {
 class AutoRelMeta(DeclarativeAttributeIntercept):
     """Metaclass for auto-creating SQLAlchemy relationships from type annotations."""
 
-    _registry: dict[str, dict[str, tuple[str, str]]] = {}
+    _registry: dict[str, dict[str, tuple[str, str, dict]]] = {}
 
     def __new__(
         mcls,
@@ -93,7 +93,7 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         namespace[attr] = relationship(target_name, **options)
 
         kind = "one" if inner_origin is OneToMany else "many"
-        local_rels[attr] = (kind, target_name)
+        local_rels[attr] = (kind, target_name, options)
 
     @classmethod
     def _handle_back_populates(
@@ -102,12 +102,12 @@ class AutoRelMeta(DeclarativeAttributeIntercept):
         local_rels: dict[str, tuple[str, str]],
     ) -> None:
         """Optionally auto-link back_populates for opposite relations."""
-        for my_attr, (my_type, target_name) in local_rels.items():
+        for my_attr, (my_type, target_name, my_options) in local_rels.items():
             target_rels = cls._registry.get(target_name, {})
-            for tgt_attr, (tgt_type, tgt_target) in target_rels.items():
+            for tgt_attr, (tgt_type, tgt_target, _) in target_rels.items():
                 if tgt_target == mapped_cls.__name__ and tgt_type != my_type:
                     setattr(
                         mapped_cls,
                         my_attr,
-                        relationship(target_name, back_populates=tgt_attr),
+                        relationship(target_name, back_populates=tgt_attr, **my_options),
                     )

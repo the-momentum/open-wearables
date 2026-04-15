@@ -114,12 +114,12 @@ async def _create_schema(async_engine: Any) -> AsyncGenerator[None, None]:
     async with async_engine.begin() as conn:
         # MessageRole uses create_type=False so metadata.create_all won't create the PG enum;
         # we must create it explicitly before creating the tables.
-        await conn.execute(text("CREATE TYPE IF NOT EXISTS messagrole AS ENUM ('user', 'assistant')"))
+        await conn.execute(text("CREATE TYPE IF NOT EXISTS messagerole AS ENUM ('user', 'assistant')"))
         await conn.run_sync(BaseDbModel.metadata.create_all)
     yield
     async with async_engine.begin() as conn:
         await conn.run_sync(BaseDbModel.metadata.drop_all)
-        await conn.execute(text("DROP TYPE IF EXISTS messagrole"))
+        await conn.execute(text("DROP TYPE IF EXISTS messagerole"))
 
 
 @pytest_asyncio.fixture

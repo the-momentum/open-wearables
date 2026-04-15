@@ -201,8 +201,9 @@ class TestConversationServiceBuildHistory:
             role = MessageRole.USER if i % 2 == 0 else MessageRole.ASSISTANT
             await message_repository.create(db, conv.id, role, f"Message {i}")
 
-        with patch("app.config.settings") as mock_settings:
-            mock_settings.history_summary_threshold = 20
+        from app.config import settings
+
+        with patch.object(settings, "history_summary_threshold", 20):
             history = await service.build_history(conv)
 
         # First element should be the summary injection

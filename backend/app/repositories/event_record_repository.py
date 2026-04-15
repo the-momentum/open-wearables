@@ -385,7 +385,7 @@ class EventRecordRepository(
         start_date: datetime,
         end_date: datetime,
         cursor: str | None,
-        limit: int,
+        limit: int | None,
     ) -> list[dict]:
         """Get daily sleep summaries aggregated by date, source, and device_model.
 
@@ -499,8 +499,8 @@ class EventRecordRepository(
             # No cursor: default ordering
             query = query.order_by(asc(subquery.c.sleep_date), asc(record_id_col))
 
-        # Limit + 1 to check for has_more
-        results = query.limit(limit + 1).all()
+        # Limit + 1 to check for has_more; None means fetch all rows
+        results = query.limit(limit + 1 if limit is not None else None).all()
 
         # Transform results to dict format
         summaries = []
