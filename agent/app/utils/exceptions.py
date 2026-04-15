@@ -84,7 +84,8 @@ def _(exc: AttributeError, entity: str) -> HTTPException:
 
 @handle_exception.register
 def _(exc: RequestValidationError, _: str) -> HTTPException:
-    err_args = exc.args[0][0]
+    errors = exc.errors()
+    err_args = errors[0] if errors else {}
     msg = err_args.get("msg", "Validation error")
     ctx = err_args.get("ctx", {})
     error = ctx.get("error", "") if ctx else ""

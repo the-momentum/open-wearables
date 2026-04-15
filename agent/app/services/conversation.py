@@ -1,7 +1,6 @@
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
-
-from sqlalchemy import func
 
 from app.database import AsyncDbSession
 from app.models.chat_session import Session
@@ -139,7 +138,7 @@ class ConversationService:
         """Update conversation.updated_at so lifecycle worker can track staleness."""
         conversation = await conversation_repository.get_by_id(self._db, conversation_id)
         if conversation is not None:
-            conversation.updated_at = func.now()
+            conversation.updated_at = datetime.now(timezone.utc)
             self._db.add(conversation)
             await self._db.commit()
 
@@ -162,9 +161,9 @@ class ConversationService:
             return [{"role": m.role.value, "content": m.content} for m in messages]
 
         old = messages[: len(messages) - threshold]
-        recent = messages[len(messages) - threshold :]
+        recent = messages[-threshold:]
 
-        if not conversation.summary:
+        if conversation.summary is None:
             from app.agent.workflows.agent_workflow import workflow_engine
 
             old_history = [{"role": m.role.value, "content": m.content} for m in old]

@@ -78,7 +78,7 @@ def _postgres_url() -> Generator[str, None, None]:
                     )
                     conn.close()
                     return
-                except Exception:
+                except psycopg.OperationalError:
                     time.sleep(0.5)
             raise RuntimeError("Postgres container did not become ready in time")
 

@@ -11,6 +11,7 @@ from app.agent.static.default_msgs import get_workflow_error_msg
 from app.agent.workflows.agent_workflow import workflow_engine
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.models.conversation import Conversation
 from app.repositories import conversation_repository, session_repository
 from app.schemas.agent import AgentMode
 from app.schemas.language import Language
@@ -21,16 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_conversation_params(
-    conversation: object | None,
+    conversation: Conversation | None,
 ) -> tuple[Language | None, AgentMode]:
     if conversation is None:
         return None, AgentMode.GENERAL
-    language = Language(conversation.language) if conversation.language else None  # type: ignore
-    agent_mode = (
-        AgentMode(conversation.agent_mode)  # type: ignore
-        if conversation.agent_mode  # type: ignore
-        else AgentMode.GENERAL
-    )
+    language = Language(conversation.language) if conversation.language else None
+    agent_mode = AgentMode(conversation.agent_mode) if conversation.agent_mode else AgentMode.GENERAL
     return language, agent_mode
 
 
