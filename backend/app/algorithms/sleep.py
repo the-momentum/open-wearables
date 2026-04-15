@@ -176,7 +176,8 @@ def calculate_overall_sleep_score(
     if not total_sleep_minutes or total_sleep_minutes <= 0:
         raise ValueError(f"Cannot calculate sleep score: total_sleep_minutes must be > 0, got {total_sleep_minutes}")
 
-    _MAX_SLEEP_MINUTES = 24 * 60  # 1440 — anything beyond 24 h is corrupt data
+    # 1440 — anything beyond 24 h is corrupt data
+    _MAX_SLEEP_MINUTES = 24 * 60  # noqa: N806
     if total_sleep_minutes > _MAX_SLEEP_MINUTES:
         raise ValueError(
             f"Cannot calculate sleep score: total_sleep_minutes={total_sleep_minutes} exceeds"
