@@ -458,6 +458,7 @@ class EventRecordRepository(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
                 EventRecord.end_datetime >= start_date,
+                local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
             )
             .group_by(
