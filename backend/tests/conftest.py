@@ -225,10 +225,13 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
     mock_task.delay.return_value = MagicMock()
     mock_task.apply_async.return_value = MagicMock()
 
+    mock_handler_celery = MagicMock()
+    mock_handler_celery.send_task.return_value.id = "mock-task-id"
+
     with (
         patch("celery.current_app") as mock_celery,
         # Prevent webhook handler from dispatching the backfill Celery task
-        patch("app.services.providers.garmin.webhook_handler.celery_app"),
+        patch("app.services.providers.garmin.webhook_handler.celery_app", mock_handler_celery),
     ):
         # Configure Celery to use in-memory broker and result backend
         # We Mock the conf object to return our test settings
