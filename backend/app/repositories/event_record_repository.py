@@ -176,8 +176,12 @@ class EventRecordRepository(
             return []
 
         # 3. Batch insert with ON CONFLICT DO NOTHING
-        # Chunk to stay under PostgreSQL's 65535 parameter limit (10 params/row → max ~6553 rows)
-        chunk_size = 6_500
+        # Chunk to stay under PostgreSQL's 65535 bind-parameter limit. Compute
+        # the chunk size from the actual row width so adding columns to
+        # ``values_list`` never silently overflows.
+        params_per_row = len(values_list[0])
+        max_bind_params = 65_535
+        chunk_size = max(1, max_bind_params // params_per_row)
         inserted_ids: set[UUID] = set()
         for i in range(0, len(values_list), chunk_size):
             chunk = values_list[i : i + chunk_size]

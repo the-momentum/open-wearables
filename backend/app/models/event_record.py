@@ -5,10 +5,6 @@ from sqlalchemy import Index
 from sqlalchemy.orm import Mapped, relationship
 
 from app.database import BaseDbModel
-from typing import Annotated
-
-from sqlalchemy import String
-from sqlalchemy.orm import mapped_column
 
 from app.mappings import (
     FKDataSource,
@@ -18,13 +14,8 @@ from app.mappings import (
     str_64,
     str_100,
     str_255,
+    str_2000,
 )
-
-# ``notes`` stores human-readable free-form text written by third-party
-# HealthKit and Health Connect exporters (Peloton, Strava, Zwift, ...).
-# 2000 chars is enough for the typical workout description without
-# bloating the row — longer notes are truncated upstream.
-_str_2000 = Annotated[str, mapped_column(String(2000))]
 
 
 class EventRecord(BaseDbModel):
@@ -48,7 +39,7 @@ class EventRecord(BaseDbModel):
     # is a longer free-form description. Both are optional because many
     # providers don't populate them.
     title: Mapped[str_255 | None]
-    notes: Mapped[_str_2000 | None]
+    notes: Mapped[str_2000 | None]
 
     duration_seconds: Mapped[int | None]
 
