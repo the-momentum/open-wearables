@@ -5,7 +5,7 @@ This guide covers setting up your local development environment for Open Wearabl
 ## Prerequisites
 
 - **Docker** (recommended) - [Install Docker](https://docs.docker.com/get-docker/)
-- **uv** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically
+- **uv >=0.9.17** - Python package manager ([Install uv](https://docs.astral.sh/uv/)) - manages Python automatically. Upgrade with `uv self update` if needed ([docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv))
 - **pnpm** - Node.js package manager ([Install pnpm](https://pnpm.io/installation))
 
 For local frontend development without Docker, you'll also need:

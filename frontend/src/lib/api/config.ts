@@ -72,6 +72,9 @@ export const API_ENDPOINTS = {
   // Accept invitation (public - no auth)
   acceptInvitation: '/api/v1/invitations/accept',
 
+  // Data summary endpoint
+  userDataSummary: (userId: string) => `/api/v1/users/${userId}/summaries/data`,
+
   // Summary endpoints (authenticated - requires user authorization)
   userActivitySummary: (userId: string) =>
     `/api/v1/users/${userId}/summaries/activity`,
@@ -83,4 +86,12 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+
+  // Health scores endpoint
+  userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
+
+  // Seed data endpoints
+  seedGenerate: '/api/v1/settings/seed',
+  seedPresets: '/api/v1/settings/seed/presets',
+  seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
 } as const;

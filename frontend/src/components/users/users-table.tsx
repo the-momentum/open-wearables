@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Link } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,7 +12,6 @@ import {
 } from '@tanstack/react-table';
 import {
   Search,
-  Eye,
   Trash2,
   Copy,
   Check,
@@ -21,15 +20,15 @@ import {
   ChevronsUpDown,
   Link as LinkIcon,
   Loader2,
-  Upload,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { UserRead, UserQueryParams } from '@/lib/api/types';
+import { ROUTES } from '@/lib/constants/routes';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { truncateId } from '@/lib/utils/format';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAppleXmlUpload } from '@/hooks/api/use-users';
 import {
   Pagination,
   PaginationContent,
@@ -54,9 +53,9 @@ interface UsersTableProps {
 
 const columnToSortBy: Record<string, UserQueryParams['sort_by']> = {
   created_at: 'created_at',
-  email: 'email',
   first_name: 'first_name',
   name: 'first_name',
+  last_synced_at: 'last_synced_at',
 };
 
 export function UsersTable({
@@ -81,10 +80,7 @@ export function UsersTable({
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedPairLink, setCopiedPairLink] = useState<string | null>(null);
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const { handleUpload, uploadingUserId } = useAppleXmlUpload();
-
+  const navigate = useNavigate();
   const onQueryChangeRef = useRef(onQueryChange);
   useEffect(() => {
     onQueryChangeRef.current = onQueryChange;
@@ -131,7 +127,7 @@ export function UsersTable({
   };
 
   const handleCopyPairLink = async (userId: string) => {
-    const pairLink = `${window.location.origin}/users/${userId}/pair`;
+    const pairLink = `${window.location.origin}${ROUTES.users}/${userId}/pair`;
     const success = await copyToClipboard(
       pairLink,
       'Pairing link copied to clipboard'
@@ -140,10 +136,6 @@ export function UsersTable({
       setCopiedPairLink(userId);
       setTimeout(() => setCopiedPairLink(null), 2000);
     }
-  };
-
-  const handleUploadClick = (userId: string) => {
-    fileInputRefs.current[userId]?.click();
   };
 
   const SortableHeader = ({
@@ -193,7 +185,10 @@ export function UsersTable({
         </span>
       ),
       cell: ({ row }) => (
-        <div className="flex items-center gap-2">
+        <div
+          className="flex items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+        >
           <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
             {truncateId(row.original.id)}
           </code>
@@ -209,22 +204,6 @@ export function UsersTable({
             )}
           </Button>
         </div>
-      ),
-      enableSorting: false,
-    },
-    {
-      accessorKey: 'external_user_id',
-      header: () => (
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
-          External User ID
-        </span>
-      ),
-      cell: ({ row }) => (
-        <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
-          {row.original.external_user_id
-            ? truncateId(row.original.external_user_id)
-            : '—'}
-        </code>
       ),
       enableSorting: false,
     },
@@ -248,21 +227,6 @@ export function UsersTable({
       },
     },
     {
-      accessorKey: 'email',
-      header: ({ column }) => (
-        <SortableHeader column={column}>Email</SortableHeader>
-      ),
-      cell: ({ row }) => (
-        <span
-          className={
-            row.original.email ? 'text-sm text-zinc-400' : 'text-zinc-600'
-          }
-        >
-          {row.original.email || '—'}
-        </span>
-      ),
-    },
-    {
       accessorKey: 'created_at',
       header: ({ column }) => (
         <SortableHeader column={column}>Created</SortableHeader>
@@ -276,6 +240,31 @@ export function UsersTable({
       ),
     },
     {
+      accessorKey: 'last_synced_at',
+      header: ({ column }) => (
+        <SortableHeader column={column}>Last Synced</SortableHeader>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-zinc-500">
+            {row.original.last_synced_at
+              ? formatDistanceToNow(new Date(row.original.last_synced_at), {
+                  addSuffix: true,
+                })
+              : 'Never'}
+          </span>
+          {row.original.last_synced_provider && (
+            <Badge
+              variant="outline"
+              className="text-[10px] px-1.5 py-0 capitalize"
+            >
+              {row.original.last_synced_provider}
+            </Badge>
+          )}
+        </div>
+      ),
+    },
+    {
       id: 'actions',
       header: () => (
         <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider text-right block">
@@ -283,34 +272,10 @@ export function UsersTable({
         </span>
       ),
       cell: ({ row }) => (
-        <div className="flex justify-end gap-1">
-          <Button variant="outline" size="icon" asChild>
-            <Link to="/users/$userId" params={{ userId: row.original.id }}>
-              <Eye className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => handleUploadClick(row.original.id)}
-            disabled={uploadingUserId === row.original.id}
-            title="Upload Apple Health XML"
-          >
-            {uploadingUserId === row.original.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-          </Button>
-          <input
-            ref={(el) => {
-              fileInputRefs.current[row.original.id] = el;
-            }}
-            type="file"
-            accept=".xml"
-            onChange={(e) => handleUpload(row.original.id, e)}
-            className="hidden"
-          />
+        <div
+          className="flex justify-end gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Button
             variant="outline"
             size="icon"
@@ -328,6 +293,7 @@ export function UsersTable({
             size="icon"
             onClick={() => onDelete(row.original.id)}
             disabled={isDeleting}
+            title="Delete user"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -445,7 +411,24 @@ export function UsersTable({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-zinc-800/30 transition-colors"
+                  role="link"
+                  tabIndex={0}
+                  className="hover:bg-zinc-800/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-zinc-500"
+                  onClick={() =>
+                    navigate({
+                      to: `${ROUTES.users}/$userId`,
+                      params: { userId: row.original.id },
+                    })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigate({
+                        to: `${ROUTES.users}/$userId`,
+                        params: { userId: row.original.id },
+                      });
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">

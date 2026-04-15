@@ -19,6 +19,13 @@ reviews:
         changes, verify that docs/providers/ pages are updated accordingly.
         Check coverage tables and supported data types.
 
+    - path: "backend/app/services/providers/**"
+      instructions: |
+        If data normalization, mapping, or calculation logic changes: flag
+        that existing records in the database will NOT be affected. Require
+        the PR to state whether a data migration or backfill is needed for
+        historical records, or explicitly note that only new data is affected.
+
     - path: "backend/app/schemas/**"
       instructions: |
         If data models or enums change (e.g. new provider, new data type),

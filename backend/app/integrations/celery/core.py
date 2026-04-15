@@ -65,6 +65,8 @@ def create_celery() -> Celery:
         task_default_queue="default",
         task_default_exchange="default",
         result_expires=3 * 24 * 3600,
+        control_queue_ttl=300,
+        control_queue_expires=300,
         task_queues={
             "default": {},
             "sdk_sync": {},
@@ -100,6 +102,12 @@ def create_celery() -> Celery:
         "run-daily-archival": {
             "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
             "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
+            "args": (),
+            "kwargs": {},
+        },
+        "fill-missing-sleep-scores": {
+            "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
+            "schedule": float(settings.sleep_score_interval_seconds),
             "args": (),
             "kwargs": {},
         },

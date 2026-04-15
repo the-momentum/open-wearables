@@ -1,3 +1,6 @@
+from .sdk_log_events import (
+    SDKLogRequest,
+)
 from .sleep_state import (
     SLEEP_START_STATES,
     SleepState,
@@ -13,6 +16,8 @@ from .sync_request import (
 )
 
 __all__ = [
+    # SDKLogEvents
+    "SDKLogRequest",
     # SleepState
     "SleepState",
     "SleepStateStage",

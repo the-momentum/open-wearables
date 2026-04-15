@@ -179,7 +179,7 @@ class TestGarmin247Data:
     def test_normalize_sleep(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
         """Test normalizing sleep data."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_sleep(sample_sleep, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
 
         assert normalized["user_id"] == user_id
         assert normalized["provider"] == "garmin"
@@ -198,6 +198,53 @@ class TestGarmin247Data:
         assert normalized["min_heart_rate_bpm"] == 48
         assert normalized["avg_respiration"] == 14.5
 
+    def test_extract_sleep_stages_from_map(self, garmin_247: Garmin247Data) -> None:
+        """Sleep stage intervals are parsed, sorted, and typed correctly."""
+        sleep_map = {
+            "deep": [{"startTimeInSeconds": 1705276800, "endTimeInSeconds": 1705280400}],
+            "light": [{"startTimeInSeconds": 1705273200, "endTimeInSeconds": 1705276800}],
+            "rem": [{"startTimeInSeconds": 1705280400, "endTimeInSeconds": 1705284000}],
+            "awake": [{"startTimeInSeconds": 1705284000, "endTimeInSeconds": 1705285800}],
+            "unknown_stage": [{"startTimeInSeconds": 1705285800, "endTimeInSeconds": 1705287600}],  # skipped
+            "deep_bad": [{"startTimeInSeconds": "bad"}],  # skipped
+        }
+        stages = garmin_247._extract_sleep_stages_from_map(sleep_map)
+
+        assert len(stages) == 4
+        assert [s.stage.value for s in stages] == ["light", "deep", "rem", "awake"]
+        assert all(s.start_time.tzinfo == timezone.utc for s in stages)
+
+    def test_normalize_sleep_end_datetime_from_stages(self, garmin_247: Garmin247Data) -> None:
+        """end_datetime and duration include awake time when sleepLevelsMap is present."""
+        user_id = uuid4()
+        # start at 22:00, durationInSeconds covers only asleep time (2h)
+        start_ts = 1705273200  # 2024-01-14 22:00:00 UTC
+        asleep_duration = 7200  # 2 hours (deep + light + rem only)
+        awake_end_ts = start_ts + 7200 + 1800  # last awake stage ends 30 min after asleep
+
+        sleep_data: dict[str, Any] = {
+            "summaryId": "sleep_stages_test",
+            "startTimeInSeconds": start_ts,
+            "durationInSeconds": asleep_duration,
+            "deepSleepDurationInSeconds": 3600,
+            "lightSleepDurationInSeconds": 1800,
+            "remSleepInSeconds": 1800,
+            "awakeDurationInSeconds": 1800,
+            "sleepLevelsMap": {
+                "light": [{"startTimeInSeconds": start_ts, "endTimeInSeconds": start_ts + 1800}],
+                "deep": [{"startTimeInSeconds": start_ts + 1800, "endTimeInSeconds": start_ts + 5400}],
+                "rem": [{"startTimeInSeconds": start_ts + 5400, "endTimeInSeconds": start_ts + 7200}],
+                "awake": [{"startTimeInSeconds": start_ts + 7200, "endTimeInSeconds": awake_end_ts}],
+            },
+        }
+
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
+
+        actual_end = datetime.fromisoformat(normalized["end_time"])
+        expected_end = datetime.fromtimestamp(awake_end_ts, tz=timezone.utc)
+        assert actual_end == expected_end
+        assert normalized["duration_seconds"] == 9000  # 7200 asleep + 1800 awake
+
     def test_normalize_sleep_missing_stages(self, garmin_247: Garmin247Data) -> None:
         """Test normalizing sleep with missing stage data."""
         user_id = uuid4()
@@ -207,7 +254,7 @@ class TestGarmin247Data:
             "durationInSeconds": 28800,
         }
 
-        normalized = garmin_247.normalize_sleep(sleep_data, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
 
         # Should handle missing stage data gracefully
         stages = normalized["stages"]
@@ -223,7 +270,7 @@ class TestGarmin247Data:
     def test_normalize_dailies(self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]) -> None:
         """Test normalizing daily summary data."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_dailies(sample_daily, user_id)
+        normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
 
         assert normalized["user_id"] == user_id
         assert normalized["calendar_date"] == "2024-01-15"
@@ -248,7 +295,7 @@ class TestGarmin247Data:
             "durationInSeconds": 86400,
         }
 
-        normalized = garmin_247.normalize_dailies(daily_data, user_id)
+        normalized, _ = garmin_247.normalize_dailies(daily_data, user_id)
 
         assert normalized["steps"] is None
         assert normalized["active_calories"] is None
@@ -461,7 +508,7 @@ class TestGarmin247Data:
     def test_build_dailies_samples(self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]) -> None:
         """Test _build_dailies_samples returns samples without DB call."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_dailies(sample_daily, user_id)
+        normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
         samples = garmin_247._build_dailies_samples(user_id, normalized)
 
         # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
@@ -513,8 +560,8 @@ class TestGarmin247Data:
         user_id = uuid4()
         stress_data = {
             "startTimeInSeconds": 1705276800,
-            "stressLevelValues": {"0": 25, "300": 30, "600": -1},  # -1 is skipped
-            "bodyBatteryValues": {"0": 80, "300": 78},
+            "timeOffsetStressLevelValues": {"0": 25, "300": 30, "600": -1},  # -1 is skipped
+            "timeOffsetBodyBatteryValues": {"0": 80, "300": 78},
         }
         samples = garmin_247._build_stress_samples(user_id, stress_data)
         assert len(samples) == 4  # 2 stress + 2 battery
@@ -522,7 +569,7 @@ class TestGarmin247Data:
     def test_build_sleep_record(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
         """Test _build_sleep_record returns record + detail without DB call."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_sleep(sample_sleep, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
         result = garmin_247._build_sleep_record(user_id, normalized)
 
         assert result is not None
@@ -608,8 +655,8 @@ class TestGarmin247Data:
         """Test batch processing multiple stress items."""
         user = UserFactory()
         items = [
-            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 25, "300": 30}},
-            {"startTimeInSeconds": 1705363200, "stressLevelValues": {"0": 40}},
+            {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
+            {"startTimeInSeconds": 1705363200, "timeOffsetStressLevelValues": {"0": 40}},
         ]
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
@@ -658,7 +705,7 @@ class TestGarmin247Data:
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
-            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 50}},  # Valid
+            {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 50}},  # Valid
         ]
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)

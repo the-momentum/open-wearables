@@ -114,6 +114,42 @@ class SDKWorkoutType(StrEnum):
     DANCE_INSPIRED_TRAINING = "dance_inspired_training"
     MIXED_METABOLIC_CARDIO_TRAINING = "mixed_metabolic_cardio_training"
 
+    # Health Connect (Android) exercise vocabulary — written by third-party
+    # writers like Peloton, Strava, and Zwift via the Health Connect SDK.
+    # These names mirror the strings emitted by the Open Wearables Android
+    # SDK's ``HealthConnectManager.mapExerciseType`` (see that file in the
+    # ``open_wearables_android_sdk`` repo). The wire format is uppercase,
+    # and ``get_unified_workout_type`` lowercases input before lookup so the
+    # snake_case keys below match. Entries whose wire name already overlaps
+    # an Apple HealthKit enum member (``BADMINTON``, ``CYCLING``, ``HIIT``,
+    # ``RUNNING``, ``OTHER`` …) are reused above and not repeated here.
+    CYCLING_STATIONARY = "cycling_stationary"
+    BOOT_CAMP = "boot_camp"
+    CALISTHENICS = "calisthenics"
+    DANCING = "dancing"
+    EXERCISE_CLASS = "exercise_class"
+    FOOTBALL_AMERICAN = "football_american"
+    FOOTBALL_AUSTRALIAN = "football_australian"
+    FRISBEE_DISC = "frisbee_disc"
+    GUIDED_BREATHING = "guided_breathing"
+    ICE_HOCKEY = "ice_hockey"
+    ICE_SKATING = "ice_skating"
+    PADDLING = "paddling"
+    PARAGLIDING = "paragliding"
+    ROCK_CLIMBING = "rock_climbing"
+    ROLLER_HOCKEY = "roller_hockey"
+    ROWING_MACHINE = "rowing_machine"
+    RUNNING_TREADMILL = "running_treadmill"
+    SCUBA_DIVING = "scuba_diving"
+    SKIING = "skiing"
+    SNOWSHOEING = "snowshoeing"
+    STAIR_CLIMBING_MACHINE = "stair_climbing_machine"
+    STRETCHING = "stretching"
+    SWIMMING_OPEN_WATER = "swimming_open_water"
+    SWIMMING_POOL = "swimming_pool"
+    WEIGHTLIFTING = "weightlifting"
+    WHEELCHAIR = "wheelchair"
+
     # Other
     OTHER = "other"
 
@@ -216,6 +252,37 @@ SDK_WORKOUT_TYPE_MAPPINGS: list[tuple[SDKWorkoutType, WorkoutType]] = [
     (SDKWorkoutType.DANCE, WorkoutType.DANCE),
     (SDKWorkoutType.DANCE_INSPIRED_TRAINING, WorkoutType.DANCE),
     (SDKWorkoutType.MIXED_METABOLIC_CARDIO_TRAINING, WorkoutType.CARDIO_TRAINING),
+    # Health Connect (Android) — third-party HC writers (Peloton, Strava,
+    # Zwift, …) emit these via ``HealthConnectManager.mapExerciseType`` in
+    # the OW Android SDK. Wire format is uppercase (``"CYCLING_STATIONARY"``);
+    # ``get_unified_workout_type`` lowercases input before lookup so the
+    # snake_case keys below match.
+    (SDKWorkoutType.CYCLING_STATIONARY, WorkoutType.INDOOR_CYCLING),
+    (SDKWorkoutType.BOOT_CAMP, WorkoutType.CARDIO_TRAINING),
+    (SDKWorkoutType.CALISTHENICS, WorkoutType.STRENGTH_TRAINING),
+    (SDKWorkoutType.DANCING, WorkoutType.DANCE),
+    (SDKWorkoutType.EXERCISE_CLASS, WorkoutType.CARDIO_TRAINING),
+    (SDKWorkoutType.FOOTBALL_AMERICAN, WorkoutType.AMERICAN_FOOTBALL),
+    (SDKWorkoutType.FOOTBALL_AUSTRALIAN, WorkoutType.FOOTBALL),
+    (SDKWorkoutType.FRISBEE_DISC, WorkoutType.OTHER),
+    (SDKWorkoutType.GUIDED_BREATHING, WorkoutType.MEDITATION),
+    (SDKWorkoutType.ICE_HOCKEY, WorkoutType.HOCKEY),
+    (SDKWorkoutType.ICE_SKATING, WorkoutType.ICE_SKATING),
+    (SDKWorkoutType.PADDLING, WorkoutType.PADDLING),
+    (SDKWorkoutType.PARAGLIDING, WorkoutType.OTHER),
+    (SDKWorkoutType.ROCK_CLIMBING, WorkoutType.ROCK_CLIMBING),
+    (SDKWorkoutType.ROLLER_HOCKEY, WorkoutType.HOCKEY),
+    (SDKWorkoutType.ROWING_MACHINE, WorkoutType.ROWING_MACHINE),
+    (SDKWorkoutType.RUNNING_TREADMILL, WorkoutType.TREADMILL),
+    (SDKWorkoutType.SCUBA_DIVING, WorkoutType.OTHER),
+    (SDKWorkoutType.SKIING, WorkoutType.ALPINE_SKIING),
+    (SDKWorkoutType.SNOWSHOEING, WorkoutType.SNOWSHOEING),
+    (SDKWorkoutType.STAIR_CLIMBING_MACHINE, WorkoutType.STAIR_CLIMBING),
+    (SDKWorkoutType.STRETCHING, WorkoutType.STRETCHING),
+    (SDKWorkoutType.SWIMMING_OPEN_WATER, WorkoutType.OPEN_WATER_SWIMMING),
+    (SDKWorkoutType.SWIMMING_POOL, WorkoutType.POOL_SWIMMING),
+    (SDKWorkoutType.WEIGHTLIFTING, WorkoutType.STRENGTH_TRAINING),
+    (SDKWorkoutType.WHEELCHAIR, WorkoutType.OTHER),
     # Other
     (SDKWorkoutType.OTHER, WorkoutType.OTHER),
 ]
@@ -231,8 +298,10 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
     Convert SDK activity type to unified WorkoutType.
 
     Args:
-        sdk_activity_type: SDK activity type string in snake_case
-                                (e.g., "running", "cycling", "yoga")
+        sdk_activity_type: SDK activity type string. Accepts both Apple
+            HealthKit snake_case (``"running"``) and Health Connect
+            uppercase vocabulary (``"CYCLING_STATIONARY"``) emitted by the
+            OW Android SDK's ``HealthConnectManager.mapExerciseType``.
 
     Returns:
         Unified WorkoutType enum value
@@ -244,6 +313,8 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
         WorkoutType.CYCLING
         >>> get_unified_workout_type("yoga")
         WorkoutType.YOGA
+        >>> get_unified_workout_type("CYCLING_STATIONARY")
+        WorkoutType.INDOOR_CYCLING
         >>> get_unified_workout_type("other")
         WorkoutType.OTHER
     Note:
@@ -252,7 +323,14 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
         - dance_inspired_training
         - mixed_metabolic_cardio_training
     """
-    return SDK_TO_UNIFIED.get(sdk_activity_type, WorkoutType.OTHER)  # type: ignore[arg-type]
+    # Normalise so we accept both Apple HealthKit (snake_case) and Health
+    # Connect (UPPER_CASE) vocabulary on the wire. Strip whitespace because
+    # some upstream writers pad the value.
+    if isinstance(sdk_activity_type, str):
+        normalised: SDKWorkoutType | str = sdk_activity_type.strip().lower()
+    else:
+        normalised = sdk_activity_type
+    return SDK_TO_UNIFIED.get(normalised, WorkoutType.OTHER)  # type: ignore[arg-type]
 
 
 def get_activity_name(sdk_activity_type: str) -> str:

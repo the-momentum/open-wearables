@@ -52,7 +52,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/TudorGR/open-wearables"
-Documentation = "https://docs.openwearables.io"
+Documentation = "https://openwearables.io/docs"
 Repository = "https://github.com/TudorGR/open-wearables"
 Issues = "https://github.com/TudorGR/open-wearables/issues"
 

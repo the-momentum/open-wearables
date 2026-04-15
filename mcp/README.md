@@ -11,7 +11,7 @@ MCP (Model Context Protocol) server for Open Wearables, enabling AI assistants l
 
 ## Prerequisites
 
-- [uv](https://docs.astral.sh/uv/) package manager
+- [uv](https://docs.astral.sh/uv/) **>=0.9.17** package manager — upgrade with `uv self update` if needed ([docs](https://docs.astral.sh/uv/getting-started/installation/#upgrading-uv))
 - Running Open Wearables backend (or access to a deployed instance)
 - Valid Open Wearables API key
 

@@ -25,6 +25,7 @@ from app.models import (
     Developer,
     EventRecord,
     EventRecordDetail,
+    HealthScore,
     PersonalRecord,
     ProviderSetting,
     SeriesTypeDefinition,
@@ -34,7 +35,7 @@ from app.models import (
     WorkoutDetails,
 )
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import ProviderName
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.utils.security import get_password_hash
 
 
@@ -181,6 +182,16 @@ class SeriesTypeDefinitionFactory(BaseFactory):
             if existing:
                 return existing
         return cls(id=3, code="heart_rate_variability_sdnn", unit="ms")
+
+    @classmethod
+    def get_or_create_heart_rate_variability_rmssd(cls) -> SeriesTypeDefinition:
+        """Get the pre-seeded heart_rate_variability_rmssd series type (ID=7)."""
+        session = cls._meta.sqlalchemy_session
+        if session:
+            existing = session.query(SeriesTypeDefinition).filter(SeriesTypeDefinition.id == 7).first()
+            if existing:
+                return existing
+        return cls(id=7, code="heart_rate_variability_rmssd", unit="ms")
 
     @classmethod
     def get_or_create_blood_pressure_systolic(cls) -> SeriesTypeDefinition:
@@ -478,6 +489,35 @@ class DataPointSeriesFactory(BaseFactory):
         if "value" in kwargs and not isinstance(kwargs["value"], Decimal):
             kwargs["value"] = Decimal(str(kwargs["value"]))
 
+        return super()._create(model_class, *args, **kwargs)
+
+
+class HealthScoreFactory(BaseFactory):
+    """Factory for HealthScore model."""
+
+    class Meta:
+        model = HealthScore
+
+    id = LazyFunction(uuid4)
+    category = HealthScoreCategory.SLEEP
+    value = LazyFunction(lambda: Decimal("75.00"))
+    qualifier = "GOOD"
+    recorded_at = LazyFunction(lambda: datetime.now(timezone.utc))
+    zone_offset = None
+    provider = ProviderName.GARMIN
+    components = None
+
+    @classmethod
+    def _create(cls, model_class: type[HealthScore], *args: Any, **kwargs: Any) -> HealthScore:
+        if "data_source_id" in kwargs:
+            kwargs.pop("data_source", None)
+        else:
+            data_source = kwargs.pop("data_source", None)
+            if data_source is None:
+                data_source = DataSourceFactory()
+            kwargs["data_source_id"] = data_source.id
+            if "user_id" not in kwargs:
+                kwargs["user_id"] = data_source.user_id
         return super()._create(model_class, *args, **kwargs)
 
 

@@ -25,6 +25,7 @@ from app.schemas.model_crud.credentials import (
     ProviderEndpoints,
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
+from app.services.outgoing_webhooks.events import on_connection_created
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -334,6 +335,13 @@ class BaseOAuthTemplate(ABC):
 
     def deregister_user(self, access_token: str) -> None:
         """Notify provider that user is disconnecting. Override in subclasses that support deregistration."""
+        log_structured(
+            logger,
+            "warning",
+            "Deregistering not supported",
+            provider=self.provider_name,
+            action="deregister_user",
+        )
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts provider user info. Default implementation returns None."""
@@ -384,4 +392,10 @@ class BaseOAuthTemplate(ABC):
                 token_expires_at=token_expires_at,
                 scope=scope,
             )
-            self.connection_repo.create(db, connection_create)
+            new_connection = self.connection_repo.create(db, connection_create)
+            on_connection_created(
+                user_id=user_id,
+                provider=self.provider_name,
+                connection_id=new_connection.id,  # type: ignore[union-attr]
+                connected_at=new_connection.created_at.isoformat(),  # type: ignore[union-attr]
+            )

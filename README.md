@@ -12,7 +12,7 @@
 
 ---
 
-**Documentation**: https://docs.openwearables.io
+**Documentation**: https://openwearables.io/docs
 
 ---
 
@@ -89,7 +89,7 @@ Get Open Wearables up and running in minutes.
    docker compose up -d
    ```
    
-   For local development setup without Docker take a look at [docs](https://docs.openwearables.io/quickstart#local-development-setup)
+   For local development setup without Docker take a look at [docs](https://openwearables.io/docs/quickstart#local-development-setup)
 
 4. **Log in to the developer portal:**
 

@@ -15,6 +15,7 @@ from app.database import DbSession
 from app.models import Developer
 from app.schemas.providers.oura import OuraWebhookNotification
 from app.services.providers.oura.webhook_service import oura_webhook_service
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import get_current_developer
 from app.utils.structured_logging import log_structured
 
@@ -73,6 +74,12 @@ def oura_webhook_notification(
         payload = json.loads(body)
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    store_raw_payload(
+        source="webhook",
+        provider="oura",
+        payload=payload,
+    )
 
     try:
         notification = OuraWebhookNotification(**payload)

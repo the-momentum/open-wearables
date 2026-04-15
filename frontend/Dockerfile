@@ -19,7 +19,8 @@ RUN pnpm install --frozen-lockfile
 # Copy source files
 COPY . .
 
-# Build the application
+# Build the application in production mode
+ENV NODE_ENV=production
 RUN pnpm run build
 
 # Determine build output directory and prepare it for copying
@@ -50,6 +51,7 @@ COPY --from=builder /app/.output ./.output
 EXPOSE 3000
 
 # Set the port for Nitro
+ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 

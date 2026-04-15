@@ -1,0 +1,545 @@
+---
+title: "Outgoing Webhooks | Open Wearables"
+sidebarTitle: "Outgoing Webhooks"
+description: "Receive real-time notifications when health data arrives for your users. Register HTTPS endpoints, filter by event type or user, verify signatures, and debug delivery."
+keywords: ["open wearables webhooks", "health data webhooks", "wearable data real-time", "webhook event types", "webhook signature verification"]
+"og:title": "Outgoing Webhooks | Open Wearables"
+"og:description": "Register HTTPS endpoints to receive real-time health data events. Filter by event type or user, verify payloads, debug delivery."
+"og:url": "https://docs.openwearables.io/api-reference/guides/webhooks"
+"og:type": "article"
+"twitter:title": "Outgoing Webhooks | Open Wearables"
+"twitter:description": "Register HTTPS endpoints to receive real-time health data events from Open Wearables."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+Outgoing webhooks let Open Wearables push events to your backend in real time, so you don't need to poll for new data. Each time a workout is saved, sleep is recorded, or a timeseries batch is ingested, Open Wearables fires an HTTP POST request to every registered endpoint that matches the event.
+
+Webhooks are delivered via [Svix](https://svix.com/), which handles retries, signature signing, and delivery history.
+
+<CardGroup cols={2}>
+  <Card title="Things you can do" icon="bolt">
+    Trigger downstream processing when a workout is synced, update your UI in real time when sleep data arrives, scope an endpoint to a single user's events, or verify payloads are genuinely from Open Wearables.
+  </Card>
+  <Card title="Requirements" icon="key">
+    A developer account and a Bearer token (from `POST /api/v1/auth/login`), plus a publicly reachable HTTPS URL for your endpoint.
+  </Card>
+</CardGroup>
+
+---
+
+## Quickstart
+
+<Steps>
+  <Step title="Register an endpoint">
+    Send the URL your server is listening on. This returns an endpoint object you'll use in subsequent calls.
+
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "url": "https://yourapp.com/webhooks/health",
+        "description": "Production health data handler"
+      }'
+    ```
+
+    **Response:**
+    ```json
+    {
+      "id": "ep_2t8Q4Xv9mNkRpLzYoB3cW7",
+      "url": "https://yourapp.com/webhooks/health",
+      "description": "Production health data handler",
+      "filter_types": null,
+      "user_id": null
+    }
+    ```
+
+    Save the `id` — you'll need it to fetch the signing secret and inspect delivery attempts.
+  </Step>
+
+  <Step title="Get the signing secret">
+    Retrieve the HMAC signing key for your endpoint to verify incoming payloads.
+
+    ```bash
+    curl "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/secret" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    ```
+
+    **Response:**
+    ```json
+    {
+      "key": "whsec_C2FVsBQIhrscChlQIMV+b5ND9vAIBZaM7ZqtLnNYGDA="
+    }
+    ```
+
+    Store this secret securely on your server — you'll use it to verify every incoming request.
+  </Step>
+
+  <Step title="Handle incoming events">
+    Open Wearables sends a `POST` to your URL with a JSON body and three signature headers. Verify the signature before processing.
+
+    <Tabs>
+      <Tab title="Python">
+        ```python
+        from svix.webhooks import Webhook, WebhookVerificationError
+        from fastapi import FastAPI, Request, HTTPException
+
+        app = FastAPI()
+        WEBHOOK_SECRET = "whsec_C2FVsBQIhrscChlQIMV+b5ND9vAIBZaM7ZqtLnNYGDA="
+
+        @app.post("/webhooks/health")
+        async def handle_webhook(request: Request):
+            headers = dict(request.headers)
+            payload = await request.body()
+
+            try:
+                wh = Webhook(WEBHOOK_SECRET)
+                event = wh.verify(payload, headers)
+            except WebhookVerificationError:
+                raise HTTPException(status_code=400, detail="Invalid signature")
+
+            event_type = event["type"]
+
+            if event_type == "workout.created":
+                data = event["data"]
+                print(f"New workout for user {data['user_id']}: "
+                      f"{data['type']} — {data['duration_seconds']}s")
+
+            elif event_type == "sleep.created":
+                data = event["data"]
+                print(f"New sleep for user {data['user_id']}: "
+                      f"efficiency {data.get('efficiency_percent')}%")
+
+            return {"ok": True}
+        ```
+      </Tab>
+      <Tab title="Node.js">
+        ```javascript
+        import { Webhook } from "svix";
+        import express from "express";
+
+        const app = express();
+        const WEBHOOK_SECRET = "whsec_C2FVsBQIhrscChlQIMV+b5ND9vAIBZaM7ZqtLnNYGDA=";
+
+        app.post(
+          "/webhooks/health",
+          express.raw({ type: "application/json" }),
+          (req, res) => {
+            const wh = new Webhook(WEBHOOK_SECRET);
+            let event;
+
+            try {
+              event = wh.verify(req.body, req.headers);
+            } catch (err) {
+              return res.status(400).json({ error: "Invalid signature" });
+            }
+
+            if (event.type === "workout.created") {
+              console.log(`Workout for user ${event.data.user_id}:`,
+                event.data.type, event.data.duration_seconds + "s");
+            }
+
+            res.json({ ok: true });
+          }
+        );
+        ```
+      </Tab>
+      <Tab title="cURL (manual verify)">
+        ```bash
+        # The three signature headers sent with every request:
+        # svix-id         — unique message ID (for idempotency)
+        # svix-timestamp  — Unix timestamp of delivery attempt
+        # svix-signature  — comma-separated list of v1,<base64_hmac> signatures
+        #
+        # To verify manually:
+        # 1. Build the signed content: "{svix-id}.{svix-timestamp}.{raw_body}"
+        # 2. HMAC-SHA256 the content with the base64-decoded key (strip "whsec_" prefix)
+        # 3. Base64-encode the result
+        # 4. Compare with the signature in the svix-signature header
+        ```
+      </Tab>
+    </Tabs>
+
+    <Tip>
+      Install the Svix library: `pip install svix` / `npm install svix`. The `Webhook.verify()` call handles timestamp tolerance (rejects messages older than 5 minutes) and all signature edge cases automatically.
+    </Tip>
+  </Step>
+
+  <Step title="Send a test event">
+    Trigger a realistic example payload to your endpoint to confirm end-to-end delivery before you go live.
+
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/test" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{ "event_type": "workout.created" }'
+    ```
+
+    Check delivery status at any time:
+    ```bash
+    curl "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/attempts" \
+      -H "Authorization: Bearer YOUR_JWT_TOKEN"
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Event Types
+
+All events follow the `resource.action` naming convention. Use `GET /api/v1/webhooks/event-types` to retrieve this list programmatically.
+
+### Session Events
+
+Fired once when a complete session is saved or merged.
+
+| Event | Description |
+|-------|-------------|
+| `connection.created` | A user successfully connected a wearable provider. |
+| `workout.created` | A new workout session was saved. |
+| `sleep.created` | A new (or merged) sleep session was saved. |
+| `activity.created` | A new generic activity session was saved. |
+
+### Timeseries Events
+
+Fired per ingestion batch — one event per distinct `(user, provider, series_type)` combination in a sync run. These events signal that raw samples are available to query via `GET /api/v1/users/{user_id}/timeseries`.
+
+| Event | Series types included |
+|-------|-----------------------|
+| `heart_rate.created` | `heart_rate`, `resting_heart_rate`, `walking_heart_rate_average`, `atrial_fibrillation_burden` |
+| `heart_rate_variability.created` | `heart_rate_variability_sdnn`, `heart_rate_variability_rmssd` |
+| `steps.created` | `steps` |
+| `calories.created` | `energy`, `basal_energy` |
+| `spo2.created` | `oxygen_saturation`, `peripheral_perfusion_index` |
+| `respiratory_rate.created` | `respiratory_rate`, `sleeping_breathing_disturbances` |
+| `body_temperature.created` | `body_temperature`, `skin_temperature`, `skin_temperature_deviation` |
+| `stress.created` | `garmin_stress_level`, `electrodermal_activity` |
+| `blood_glucose.created` | `blood_glucose`, `blood_alcohol_content`, `insulin_delivery` |
+| `blood_pressure.created` | `blood_pressure_systolic`, `blood_pressure_diastolic` |
+| `body_composition.created` | `weight`, `body_fat_percentage`, `body_mass_index`, `lean_body_mass`, … |
+| `fitness_metrics.created` | `vo2_max`, `cardiovascular_age`, `garmin_fitness_age` |
+| `recovery_score.created` | `recovery_score`, `garmin_body_battery` |
+| `activity_timeseries.created` | `stand_time`, `exercise_time`, `flights_climbed`, distance types, … |
+| `workout_metrics.created` | `cadence`, `power`, `speed`, running/walking/swimming metrics |
+| `environmental.created` | `environmental_audio_exposure`, `uv_exposure`, `weather_temperature`, … |
+| `timeseries.created` | Catch-all for series types not yet explicitly mapped. |
+
+---
+
+## Payload Reference
+
+Every payload envelope has `type` (the event name as a string) and `data`.
+
+### `connection.created`
+
+```json
+{
+  "type": "connection.created",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "provider": "garmin",
+    "connection_id": "7f3d9c2a-1b4e-4f8a-9d6c-8e5f2a0b3c7e",
+    "connected_at": "2025-12-19T10:30:00+00:00"
+  }
+}
+```
+
+### `workout.created`
+
+```json
+{
+  "type": "workout.created",
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "running",
+    "start_time": "2025-12-19T07:30:00+01:00",
+    "end_time": "2025-12-19T08:30:00+01:00",
+    "zone_offset": "+01:00",
+    "duration_seconds": 3600.0,
+    "source": {
+      "provider": "garmin",
+      "device": "Forerunner 255"
+    },
+    "calories_kcal": 480.0,
+    "distance_meters": 10200.0,
+    "avg_heart_rate_bpm": 158,
+    "max_heart_rate_bpm": 182,
+    "avg_pace_sec_per_km": 353,
+    "elevation_gain_meters": 95.0
+  }
+}
+```
+
+<Note>
+  Fields like `calories_kcal`, `distance_meters`, and heart-rate fields are `null` when the provider did not report them.
+</Note>
+
+### `sleep.created`
+
+```json
+{
+  "type": "sleep.created",
+  "data": {
+    "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "start_time": "2025-12-19T22:15:00+01:00",
+    "end_time": "2025-12-20T06:45:00+01:00",
+    "zone_offset": "+01:00",
+    "duration_seconds": 30600.0,
+    "source": {
+      "provider": "oura",
+      "device": "Oura Ring Gen3"
+    },
+    "efficiency_percent": 87.0,
+    "stages": {
+      "deep_minutes": 95,
+      "rem_minutes": 80,
+      "light_minutes": 215,
+      "awake_minutes": 12
+    },
+    "is_nap": false
+  }
+}
+```
+
+### `activity.created`
+
+```json
+{
+  "type": "activity.created",
+  "data": {
+    "id": "c3d4e5f6-a7b8-9012-cdef-012345678902",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "type": "walking",
+    "start_time": "2025-12-19T12:00:00+01:00",
+    "end_time": "2025-12-19T12:45:00+01:00",
+    "zone_offset": "+01:00",
+    "duration_seconds": 2700.0,
+    "source": {
+      "provider": "garmin",
+      "device": null
+    }
+  }
+}
+```
+
+### Timeseries events (all share the same shape)
+
+```json
+{
+  "type": "heart_rate.created",
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "provider": "garmin",
+    "series_type": "heart_rate",
+    "sample_count": 240,
+    "start_time": "2025-12-19T07:30:00+01:00",
+    "end_time": "2025-12-19T08:30:00+01:00"
+  }
+}
+```
+
+`start_time` / `end_time` are `null` when the ingestion run did not record time bounds (e.g. Apple Health XML imports). Fetch the actual samples via [`GET /api/v1/users/{user_id}/timeseries`](/api-reference/guides/quick-integration#step-4-fetch-health-data).
+
+---
+
+## Filtering Events
+
+### Filter by event type
+
+Pass `filter_types` when creating or updating an endpoint to receive only the events you care about.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhooks/workouts-only",
+    "description": "Workout and sleep events only",
+    "filter_types": ["workout.created", "sleep.created"]
+  }'
+```
+
+Omit the field entirely to receive all event types.
+
+### Filter by user
+
+Pass `user_id` to scope an endpoint to events for a single user. All other users' events are silently dropped before delivery.
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhooks/alice",
+    "description": "Only Alice'\''s data",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+To later remove the user filter (receive all users again), send a `PATCH` with `"user_id": null`:
+
+```bash
+curl -X PATCH "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "user_id": null }'
+```
+
+<Tip>
+  Combine both filters to receive e.g. only `workout.created` events for a specific user — pass both `filter_types` and `user_id` in the same request.
+</Tip>
+
+---
+
+## Signature Verification
+
+Every delivery includes three headers that let you confirm the payload was sent by Open Wearables and hasn't been tampered with:
+
+| Header | Description |
+|--------|-------------|
+| `svix-id` | Unique message ID. Use this for idempotency — the same ID is retried on failure. |
+| `svix-timestamp` | Unix seconds timestamp of the original send. Requests older than 5 minutes are auto-rejected by the Svix SDK. |
+| `svix-signature` | Comma-separated list of `v1,<base64_hmac>` values. |
+
+### Using the Svix SDK (recommended)
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    from svix.webhooks import Webhook, WebhookVerificationError
+
+    wh = Webhook("whsec_YOUR_SIGNING_SECRET")
+
+    try:
+        # headers must include svix-id, svix-timestamp, svix-signature
+        payload = wh.verify(raw_body_bytes, headers_dict)
+    except WebhookVerificationError:
+        # reject — signature invalid or timestamp too old
+        return 400
+    ```
+    Install: `pip install svix`
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript
+    import { Webhook } from "svix";
+
+    const wh = new Webhook("whsec_YOUR_SIGNING_SECRET");
+
+    try {
+      const payload = wh.verify(rawBodyBuffer, headersObject);
+    } catch (err) {
+      // reject — signature invalid or timestamp too old
+      return res.status(400).end();
+    }
+    ```
+    Install: `npm install svix`
+  </Tab>
+  <Tab title="Manual (any language)">
+    ```
+    # 1. Decode the key: base64_decode(key.removePrefix("whsec_"))
+    # 2. Build the signed string: "{svix-id}.{svix-timestamp}.{raw_body}"
+    # 3. Compute: HMAC-SHA256(key_bytes, signed_string)
+    # 4. Encode: base64(hmac_bytes)
+    # 5. Compare with each "v1,<value>" in the svix-signature header
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Always verify signatures **before** processing the payload. This prevents replay attacks and ensures events cannot be forged by third parties.
+</Warning>
+
+### Idempotency
+
+The `svix-id` header is stable across retries — the same logical event always carries the same ID. Store received IDs and skip duplicates to make your handler idempotent.
+
+---
+
+## Managing Endpoints
+
+### List all endpoints
+
+```bash
+curl "http://localhost:8000/api/v1/webhooks/endpoints" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Update an endpoint
+
+All fields are optional — send only what you want to change.
+
+```bash
+curl -X PATCH "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://yourapp.com/webhooks/health-v2",
+    "filter_types": ["workout.created", "sleep.created", "heart_rate.created"]
+  }'
+```
+
+### Delete an endpoint
+
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+Returns `204 No Content` on success.
+
+---
+
+## Delivery and Retries
+
+Open Wearables (via Svix) retries failed deliveries automatically with exponential back-off. A delivery is considered failed when your endpoint returns a non-2xx status code or does not respond within the timeout.
+
+<AccordionGroup>
+  <Accordion title="Retry schedule">
+    Svix retries each failed message at increasing intervals. If all retries are exhausted the message is marked as failed in delivery history — you can inspect it and manually trigger a resend from the Svix dashboard.
+  </Accordion>
+  <Accordion title="Expected endpoint behaviour">
+    - Respond with a `2xx` status code as quickly as possible (before doing any heavy processing).
+    - Offload slow work to a background queue — process the event asynchronously.
+    - Return `2xx` even for events you choose to ignore (otherwise they'll be retried).
+  </Accordion>
+  <Accordion title="Webhook availability">
+    Data ingestion is **never** blocked by webhook failures — if delivery infrastructure is temporarily unavailable, data continues to be stored and events are queued for retry.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Debugging
+
+### View delivery history for an endpoint
+
+```bash
+curl "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/attempts" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+Each attempt includes the HTTP status code returned by your server and the timestamp of the attempt.
+
+### View all sent messages
+
+```bash
+curl "http://localhost:8000/api/v1/webhooks/messages" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Send a test event
+
+Send a realistic example payload for any event type to an endpoint without waiting for real data:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/webhooks/endpoints/ep_2t8Q4Xv9mNkRpLzYoB3cW7/test" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "event_type": "sleep.created" }'
+```
+
+Omit the body to default to `workout.created`.

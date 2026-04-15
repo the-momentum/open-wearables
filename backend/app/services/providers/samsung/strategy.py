@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.samsung.workouts import SamsungWorkouts
 
 
@@ -24,3 +24,8 @@ class SamsungStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return ""  # Samsung Health doesn't have a cloud API
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Samsung Health data arrives exclusively via the mobile SDK (no cloud API).
+        return ProviderCapabilities(supports_sdk=True)

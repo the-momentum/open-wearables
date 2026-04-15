@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func, nullsfirst, nullslast, or_, select
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
 from app.models import User
+from app.models.user_connection import UserConnection
 from app.repositories.repositories import CrudRepository
 from app.schemas.model_crud.user_management import (
     USER_SORT_COLUMNS,
@@ -35,7 +36,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
         self,
         db_session: DbSession,
         query_params: UserQueryParams,
-    ) -> tuple[list[User], int]:
+    ) -> tuple[list[tuple[User, datetime | None, str | None]], int]:
         """Get users with filtering, searching, and pagination.
 
         Args:
@@ -43,12 +44,8 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             query_params: The query parameters.
 
         Returns:
-            A tuple containing a list of users and the total count of users.
-
-        Note:
-            If UserRead schema is extended to include relationships, add eager loading
-            with selectinload() to avoid N+1 queries. Example:
-            query = query.options(selectinload(self.model.personal_record))
+            A tuple containing a list of (user, last_synced_at, last_synced_provider) tuples
+            and the total count of users.
         """
         query: Query = db_session.query(self.model)
 
@@ -72,14 +69,41 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
 
         total_count = query.count()
 
+        # Add correlated subqueries for last sync info
+        last_synced_subq = (
+            select(func.max(UserConnection.last_synced_at))
+            .where(UserConnection.user_id == User.id)
+            .correlate(User)
+            .scalar_subquery()
+            .label("last_synced_at")
+        )
+        last_synced_provider_subq = (
+            select(UserConnection.provider)
+            .where(UserConnection.user_id == User.id)
+            .where(UserConnection.last_synced_at.isnot(None))
+            .order_by(UserConnection.last_synced_at.desc())
+            .limit(1)
+            .correlate(User)
+            .scalar_subquery()
+            .label("last_synced_provider")
+        )
+        query = query.add_columns(last_synced_subq, last_synced_provider_subq)
+
         # Validate sort_by against explicit allowlist (defense in depth)
         sort_by_column = query_params.sort_by or "created_at"
         if sort_by_column not in USER_SORT_COLUMNS:
             raise ValueError("Invalid sort column")
 
-        sort_column = getattr(self.model, sort_by_column)
-        order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
-        query = query.order_by(order_column)
+        if sort_by_column == "last_synced_at":
+            sort_column = last_synced_subq
+            if query_params.sort_order == "asc":
+                order_column = nullsfirst(sort_column.asc())
+            else:
+                order_column = nullslast(sort_column.desc())
+        else:
+            sort_column = getattr(self.model, sort_by_column)
+            order_column = sort_column if query_params.sort_order == "asc" else desc(sort_column)
+        query = query.order_by(order_column, self.model.id)
 
         offset = (query_params.page - 1) * query_params.limit
         query = query.offset(offset).limit(query_params.limit)

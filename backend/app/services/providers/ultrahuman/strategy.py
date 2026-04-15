@@ -1,6 +1,6 @@
 """Ultrahuman Ring Air provider strategy."""
 
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.ultrahuman.data_247 import Ultrahuman247Data
 from app.services.providers.ultrahuman.oauth import UltrahumanOAuth
 
@@ -21,6 +21,11 @@ class UltrahumanStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Ultrahuman Partner API is REST-only; no public webhook offering as of 2025.
+        return ProviderCapabilities(supports_pull=True)
 
     @property
     def name(self) -> str:

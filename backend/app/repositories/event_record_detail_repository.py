@@ -27,6 +27,19 @@ class EventRecordDetailRepository(
     def __init__(self, model: type[EventRecordDetail]):
         super().__init__(model)
 
+    def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
+        """Construct the polymorphic ORM object without touching the session."""
+        creation_data = creator.model_dump(exclude_none=True)
+        if detail_type == "workout":
+            return cast(EventRecordDetail, WorkoutDetails(**creation_data))
+        if detail_type == "sleep":
+            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+            # use Pydantic's JSON mode to convert datetimes to ISO strings.
+            if creator.sleep_stages:
+                creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
+            return cast(EventRecordDetail, SleepDetails(**creation_data))
+        raise ValueError(f"Unknown detail type: {detail_type}")
+
     @handle_exceptions
     @handle_duplicates
     def create(
@@ -36,22 +49,22 @@ class EventRecordDetailRepository(
         detail_type: DetailType = "workout",
     ) -> EventRecordDetail:
         """Create a detail record using the appropriate polymorphic model."""
-        creation_data = creator.model_dump(exclude_none=True)
-
-        if detail_type == "workout":
-            detail = WorkoutDetails(**creation_data)
-        elif detail_type == "sleep":
-            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
-            # use Pydantic's JSON mode to convert datetimes to ISO strings.
-            if creator.sleep_stages:
-                creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-            detail = SleepDetails(**creation_data)
-        else:
-            raise ValueError(f"Unknown detail type: {detail_type}")
-
+        detail = self._build_detail(creator, detail_type)
         db_session.add(detail)
         db_session.commit()
         db_session.refresh(detail)
+        return detail
+
+    def create_and_flush(
+        self,
+        db_session: DbSession,
+        creator: EventRecordDetailCreate,
+        detail_type: DetailType = "workout",
+    ) -> EventRecordDetail:
+        """Like create() but flushes instead of committing; caller is responsible for the commit."""
+        detail = self._build_detail(creator, detail_type)
+        db_session.add(detail)
+        db_session.flush()
         return detail
 
     @handle_exceptions
@@ -121,3 +134,11 @@ class EventRecordDetailRepository(
     def get_by_record_id(self, db_session: DbSession, record_id: UUID) -> EventRecordDetail | None:
         """Get detail by its associated event record ID."""
         return db_session.query(EventRecordDetail).filter(EventRecordDetail.record_id == record_id).one_or_none()
+
+    def delete_by_record_id(self, db_session: DbSession, record_id: UUID) -> None:
+        """Delete the detail row for a given record, flushing immediately so the
+        slot is free for a replacement insert in the same transaction."""
+        detail = self.get_by_record_id(db_session, record_id)
+        if detail is not None:
+            db_session.delete(detail)
+            db_session.flush()

@@ -4,6 +4,8 @@ import type {
   UserConnection,
   EventRecordResponse,
   HealthDataParams,
+  HealthScoreParams,
+  HealthScoreResponse,
   PaginatedResponse,
   TimeSeriesParams,
   TimeSeriesSample,
@@ -16,6 +18,7 @@ import type {
   RecoverySummary,
   SleepSession,
   SleepSessionsParams,
+  UserDataSummary,
 } from '../types';
 
 export interface WorkoutsParams {
@@ -57,6 +60,25 @@ export const healthService = {
     return apiClient.post<SyncResponse>(
       API_ENDPOINTS.providerSynchronization(provider, userId)
     );
+  },
+
+  /**
+   * Trigger historical data sync for a provider
+   * Garmin: 30-day webhook backfill; others: pull API with date range
+   */
+  async syncHistoricalData(
+    provider: string,
+    userId: string,
+    days?: number
+  ): Promise<{ success: boolean; task_id: string; method: string }> {
+    const params = days ? { days } : undefined;
+    return apiClient.post<{
+      success: boolean;
+      task_id: string;
+      method: string;
+    }>(`/api/v1/providers/${provider}/users/${userId}/sync/historical`, null, {
+      params,
+    });
   },
 
   /**
@@ -213,6 +235,19 @@ export const healthService = {
   },
 
   /**
+   * Get health scores (sleep, recovery, readiness, etc.) for a user
+   */
+  async getHealthScores(
+    userId: string,
+    params?: HealthScoreParams
+  ): Promise<PaginatedResponse<HealthScoreResponse>> {
+    return apiClient.get<PaginatedResponse<HealthScoreResponse>>(
+      API_ENDPOINTS.userHealthScores(userId),
+      { params }
+    );
+  },
+
+  /**
    * Get sleep sessions for a date range
    */
   async getSleepSessions(
@@ -222,6 +257,15 @@ export const healthService = {
     return apiClient.get<PaginatedResponse<SleepSession>>(
       API_ENDPOINTS.userSleepSessions(userId),
       { params }
+    );
+  },
+
+  /**
+   * Get per-user data summary with counts by type and provider
+   */
+  async getUserDataSummary(userId: string): Promise<UserDataSummary> {
+    return apiClient.get<UserDataSummary>(
+      API_ENDPOINTS.userDataSummary(userId)
     );
   },
 };

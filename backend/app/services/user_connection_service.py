@@ -47,13 +47,25 @@ class UserConnectionService(
 
         updated = self.crud.disconnect(db_session, user_id, provider)
         if updated:
-            self.logger.info("Disconnected user %s from provider %s", user_id, provider)
+            self.logger.info("Revoked connection for user %s from provider %s", user_id, provider)
             return
 
         # Nothing updated - check if connection exists (already revoked) or not found
         connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
         if not connection:
             raise ResourceNotFoundError("connection", user_id)
+
+    @handle_exceptions
+    def stamp_last_synced_at(self, db_session: DbSession, user_id: UUID, provider: str) -> None:
+        """Stamp last_synced_at=now on the user's connection for the given provider.
+
+        Used after OAuth completion so the first periodic sync uses the connection
+        timestamp as its live-sync cursor and won't attempt to pull all historical data.
+        No-op if the connection does not exist.
+        """
+        connection = self.crud.get_by_user_and_provider(db_session, user_id, provider)
+        if connection:
+            self.crud.update_last_synced_at(db_session, connection)
 
     def _deregister_from_provider(
         self, db_session: DbSession, user_id: UUID, provider: str, oauth: BaseOAuthTemplate

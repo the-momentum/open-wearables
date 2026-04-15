@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Eye, EyeOff, Copy, Trash2, Key } from 'lucide-react';
+import { Plus, Eye, EyeOff, Copy, Trash2, Key, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useApiKeys,
@@ -7,6 +7,7 @@ import {
   useDeleteApiKey,
 } from '@/hooks/api/use-credentials';
 import { copyToClipboard } from '@/lib/utils/clipboard';
+import { API_CONFIG } from '@/lib/api/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -110,6 +111,31 @@ export function CredentialsTab() {
           <Plus className="h-4 w-4" />
           Create API Key
         </Button>
+      </div>
+
+      {/* API Base URL */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Globe className="h-4 w-4 text-zinc-500" />
+            <div>
+              <p className="text-xs text-zinc-500">API Base URL</p>
+              <code className="font-mono text-sm text-zinc-300">
+                {API_CONFIG.baseUrl}
+              </code>
+            </div>
+          </div>
+          <Button
+            variant="ghost-faded"
+            size="icon-sm"
+            aria-label="Copy API URL"
+            onClick={() =>
+              copyToClipboard(API_CONFIG.baseUrl, 'API URL copied')
+            }
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* API Keys Table */}

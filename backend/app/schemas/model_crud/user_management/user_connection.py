@@ -56,3 +56,13 @@ class UserConnectionRead(UserConnectionBase):
     last_synced_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class UserConnectionWithCapabilities(UserConnectionRead):
+    """UserConnectionRead enriched with provider capability metadata.
+
+    Extra fields are populated by the endpoint, not from the ORM model.
+    """
+
+    max_historical_days: int | None = None
+    supports_pull: bool = False

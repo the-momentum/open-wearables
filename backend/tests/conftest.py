@@ -2,41 +2,68 @@
 Main pytest configuration for Open Wearables backend tests.
 
 Following patterns from know-how-tests.md:
-- PostgreSQL test database with transaction rollback
+- PostgreSQL test database with transaction rollback (via testcontainers or external DB)
 - Auto-use fixtures for global mocking
 - Factory pattern for test data
 """
 
 import os
+import sys
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
+import redis as redis_lib
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from testcontainers.postgres import PostgresContainer
+from testcontainers.redis import RedisContainer
+
+from app.config import settings
+from app.database import BaseDbModel, _get_db_dependency
+from app.integrations.redis_client import get_redis_client
+from app.main import api
+from app.models import SeriesTypeDefinition
+from app.schemas.enums import SERIES_TYPE_DEFINITIONS
+from tests import factories
 
 # Set test environment before importing app modules
 os.environ["ENV"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
 
-from app.database import BaseDbModel, _get_db_dependency
-from app.main import api
 
-# Test database URL - uses test PostgreSQL database
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://open-wearables:open-wearables@localhost:5432/open_wearables_test",
-)
+@pytest.fixture(scope="session")
+def _postgres_url() -> Generator[str, None, None]:
+    """
+    Provide a PostgreSQL connection URL for tests.
+
+    - If TEST_DATABASE_URL is set (e.g. in CI), use it directly.
+    - Otherwise, spin up a PostgreSQL container via testcontainers.
+    """
+    explicit_url = os.environ.get("TEST_DATABASE_URL")
+    if explicit_url:
+        yield explicit_url
+        return
+
+    with PostgresContainer(
+        image="postgres:18",
+        username="open-wearables",
+        password="open-wearables",
+        dbname="open_wearables_test",
+        driver="psycopg",
+    ) as pg:
+        yield pg.get_connection_url()
 
 
 @pytest.fixture(scope="session")
-def engine() -> Any:
+def engine(_postgres_url: str) -> Any:
     """Create test database engine and tables."""
     test_engine = create_engine(
-        TEST_DATABASE_URL,
+        _postgres_url,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
@@ -44,12 +71,7 @@ def engine() -> Any:
     BaseDbModel.metadata.create_all(bind=test_engine)
 
     # Seed series type definitions (these need to exist for foreign key constraints)
-    from sqlalchemy.orm import Session as SessionClass
-
-    from app.models import SeriesTypeDefinition
-    from app.schemas.enums import SERIES_TYPE_DEFINITIONS
-
-    with SessionClass(bind=test_engine) as session:
+    with Session(bind=test_engine) as session:
         for type_id, enum, unit in SERIES_TYPE_DEFINITIONS:
             # Skip series types with codes exceeding VARCHAR(32) limit
             if len(enum.value) > 32:
@@ -101,8 +123,6 @@ def db(engine: Any, session_factory: Any) -> Generator[Session, None, None]:
 @pytest.fixture(autouse=True)
 def set_factory_session(db: Session) -> Generator[None, None, None]:
     """Set database session for all factory-boy factories."""
-    from tests import factories
-
     for name, obj in vars(factories).items():
         if isinstance(obj, type) and hasattr(obj, "_meta") and hasattr(obj._meta, "sqlalchemy_session"):
             obj._meta.sqlalchemy_session = db
@@ -131,32 +151,70 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 
 
 # ============================================================================
+# Infrastructure: Redis
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def _redis_url() -> Generator[str, None, None]:
+    """
+    Provide a Redis connection URL for tests.
+
+    - If TEST_REDIS_URL is set (e.g. in CI), use it directly.
+    - Otherwise, spin up a Redis container via testcontainers.
+    """
+    explicit_url = os.environ.get("TEST_REDIS_URL")
+    if explicit_url:
+        yield explicit_url
+        return
+
+    with RedisContainer(image="redis:7") as r:
+        host = r.get_container_host_ip()
+        port = r.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_redis(_redis_url: str) -> Generator[None, None, None]:
+    """
+    Point app settings at the test Redis instance for the whole session.
+
+    Uses patch.object instead of env vars because settings is already
+    instantiated from config/.env at import time.
+    """
+    parsed = urlparse(_redis_url)
+    with (
+        patch.object(settings, "redis_host", parsed.hostname or "localhost"),
+        patch.object(settings, "redis_port", parsed.port or 6379),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def flush_redis(_redis_url: str) -> Generator[None, None, None]:
+    """Flush Redis state before each test to ensure isolation."""
+    redis_lib.from_url(_redis_url).flushdb()
+    get_redis_client.cache_clear()
+    yield
+    redis_lib.from_url(_redis_url).flushdb()
+    get_redis_client.cache_clear()
+
+
+# ============================================================================
 # Auto-use fixtures for global mocking
 # ============================================================================
 
 
 @pytest.fixture(autouse=True)
-def mock_redis(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Globally mock Redis to prevent connection errors in tests."""
-    mock = MagicMock()
-    mock.lock.return_value.__enter__ = MagicMock(return_value=None)
-    mock.lock.return_value.__exit__ = MagicMock(return_value=None)
-    mock.get.return_value = None
-    mock.set.return_value = True
-    mock.setex.return_value = True
-    mock.expire.return_value = True
-    mock.delete.return_value = True
-    mock.sadd.return_value = 1
-    mock.srem.return_value = 1
-    mock.smembers.return_value = set()
+def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
+    """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.
 
-    # Return mock for redis.from_url (used by get_redis_client)
-    # We also need to clear lru_cache of get_redis_client to ensure it picks up the mock
-    from app.integrations.redis_client import get_redis_client
-
-    get_redis_client.cache_clear()
-
-    with patch("redis.from_url", return_value=mock):
+    Patches the Celery task's delay so tests that don't care about webhook
+    emission never hang on a missing broker.  Tests that DO verify dispatch
+    behaviour override this via their own @patch decorator (innermost wins).
+    """
+    with patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event") as mock:
+        mock.delay.return_value = None
         yield mock
 
 
@@ -169,8 +227,8 @@ def mock_celery_tasks(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, N
 
     with (
         patch("celery.current_app") as mock_celery,
-        # Patch Garmin backfill chaining task used by webhook processing tasks
-        patch("app.integrations.celery.tasks.garmin_webhook_task.trigger_next_pending_type", mock_task),
+        # Prevent webhook handler from dispatching the backfill Celery task
+        patch("app.services.providers.garmin.webhook_handler.celery_app"),
     ):
         # Configure Celery to use in-memory broker and result backend
         # We Mock the conf object to return our test settings
@@ -212,6 +270,8 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
     mock_s3.head_bucket.return_value = {}
     mock_s3.put_object.return_value = {"ETag": "test-etag"}
 
+    garmin_handler = "app.services.providers.garmin.webhook_handler"
+
     with (
         patch("httpx.AsyncClient") as mock_httpx,
         patch("boto3.client", return_value=mock_s3) as mock_boto3,
@@ -223,6 +283,11 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
         patch("app.integrations.celery.tasks.process_aws_upload_task.get_s3_client", return_value=mock_s3),
         patch(
             "app.services.apple.apple_xml.presigned_url_service.presigned_url_service.s3_client", mock_s3, create=True
+        ),
+        patch(f"{garmin_handler}.mark_type_success", return_value=False),
+        patch(
+            f"{garmin_handler}.get_backfill_status",
+            return_value={"overall_status": "complete", "current_window": 0, "total_windows": 0},
         ),
     ):
         mocks["httpx"] = mock_httpx
@@ -236,7 +301,6 @@ def mock_external_apis() -> Generator[dict[str, MagicMock], None, None]:
 @pytest.fixture(autouse=True)
 def fast_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Speed up tests by using simple password hashing."""
-    import sys
 
     def simple_hash(password: str) -> str:
         return f"hashed_{password}"

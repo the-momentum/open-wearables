@@ -152,6 +152,16 @@ class SDKMetricType(StrEnum):
     CYCLING_POWER = "HKQuantityTypeIdentifierCyclingPower"
     CYCLING_SPEED = "HKQuantityTypeIdentifierCyclingSpeed"
 
+    # Health Connect top-level metric records (emitted by the Android SDK's
+    # HealthConnectManager when reading PowerRecord / SpeedRecord /
+    # CyclingPedalingCadenceRecord / TotalCaloriesBurnedRecord). These ride
+    # in the unified import payload under the same SDKMetricType vocabulary
+    # as the Apple HK identifiers and therefore need to be resolvable here.
+    ANDROID_POWER = "POWER"
+    ANDROID_SPEED = "SPEED"
+    ANDROID_CYCLING_PEDALING_CADENCE = "CYCLING_PEDALING_CADENCE"
+    ANDROID_TOTAL_CALORIES_BURNED = "TOTAL_CALORIES_BURNED"
+
     # Winter/Snow Sports
     CROSS_COUNTRY_SKIING_SPEED = "HKQuantityTypeIdentifierCrossCountrySkiingSpeed"
 
@@ -259,6 +269,11 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.CYCLING_POWER: SeriesType.power,
     SDKMetricType.CYCLING_FUNCTIONAL_THRESHOLD_POWER: SeriesType.power,
     SDKMetricType.CYCLING_SPEED: SeriesType.speed,
+    # Health Connect top-level metric records
+    SDKMetricType.ANDROID_POWER: SeriesType.power,
+    SDKMetricType.ANDROID_SPEED: SeriesType.speed,
+    SDKMetricType.ANDROID_CYCLING_PEDALING_CADENCE: SeriesType.cadence,
+    SDKMetricType.ANDROID_TOTAL_CALORIES_BURNED: SeriesType.energy,
     # Environmental
     SDKMetricType.ENVIRONMENTAL_AUDIO_EXPOSURE: SeriesType.environmental_audio_exposure,
     SDKMetricType.HEADPHONE_AUDIO_EXPOSURE: SeriesType.headphone_audio_exposure,

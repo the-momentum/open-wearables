@@ -12,6 +12,12 @@ if TYPE_CHECKING:
     from app.services import AppService
 
 
+class UnsupportedProviderError(Exception):
+    def __init__(self, provider: str, operation: str = "this operation"):
+        self.detail = f"Provider '{provider}' does not support {operation}."
+        super().__init__(self.detail)
+
+
 class ResourceNotFoundError(Exception):
     def __init__(self, entity_name: str, entity_id: int | UUID | None = None):
         self.entity_name = entity_name

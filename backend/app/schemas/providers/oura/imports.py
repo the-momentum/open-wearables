@@ -55,6 +55,7 @@ class OuraSleepJSON(BaseModel):
     readiness_score_delta: float | None = None
     rem_sleep_duration: int | None = None  # seconds
     restless_periods: int | None = None
+    sleep_phase_5_min: str | None = None  # 1 - deep, 2 - light, 3 - rem, 4 - awake
     sleep_score_delta: float | None = None
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
@@ -122,6 +123,7 @@ class OuraDailyActivityJSON(BaseModel):
     target_meters: int | None = None
     total_calories: int | None = None
     timestamp: str | None = None
+    contributors: dict | None = None
 
 
 class OuraActivityCollectionJSON(BaseModel):
@@ -176,6 +178,21 @@ class OuraSpo2CollectionJSON(BaseModel):
 
     data: list[OuraDailySpo2JSON] = []
     next_token: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Daily Sleep Score
+# ---------------------------------------------------------------------------
+
+
+class OuraDailySleepJSON(BaseModel):
+    """Daily sleep score from Oura API v2 /usercollection/daily_sleep."""
+
+    id: str
+    day: str | None = None  # YYYY-MM-DD
+    score: int | None = None  # 1-100
+    timestamp: str | None = None  # ISO 8601
+    contributors: dict | None = None
 
 
 # ---------------------------------------------------------------------------

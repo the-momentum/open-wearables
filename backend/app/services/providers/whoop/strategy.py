@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.oauth import WhoopOAuth
 from app.services.providers.whoop.workouts import WhoopWorkouts
@@ -43,3 +43,8 @@ class WhoopStrategy(BaseProviderStrategy):
     def api_base_url(self) -> str:
         """Base URL for the provider's API."""
         return "https://api.prod.whoop.com/developer"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        # Whoop Developer API is REST-only; no public webhook offering as of 2025.
+        return ProviderCapabilities(supports_pull=True)

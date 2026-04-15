@@ -13,6 +13,7 @@ build:	## Builds docker image
 
 run:	## Runs the envionment in detached mode
 	$(DOCKER_COMMAND) up -d --force-recreate
+	$(DOCKER_COMMAND) rm -f db-svix-init
 
 up:	## Runs the non-detached environment
 	$(DOCKER_COMMAND) up --force-recreate
@@ -27,7 +28,6 @@ down:	## Kills running instance
 	$(DOCKER_COMMAND) down
 
 test:	## Run the tests.
-	export ENV=backend/config/.env.test && \
 	cd backend && uv run pytest -v --cov=app
 
 migrate:  ## Apply all migrations
