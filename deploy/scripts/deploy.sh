@@ -194,18 +194,12 @@ for i in $(seq 1 30); do
 done
 
 log "Running alembic migrations in a throwaway container..."
-if ! docker run --rm \
-    --network ow-network \
-    --env-file "$APP_DIR/.env" \
-    --env-file "$APP_DIR/ow.env" \
-    -e DB_HOST=db \
-    -e DB_PORT=5432 \
-    -e DB_NAME="$OW_DB_NAME" \
-    -e DB_USER="$OW_DB_USER" \
-    -e DB_PASSWORD="$OW_DB_PASSWORD" \
-    -e REDIS_HOST=redis \
+# Use `compose run` (not `docker run`) so the compose project's network,
+# env_file merging, and service config are reused automatically. The
+# network is named `<project>_ow-network` at runtime, not `ow-network`.
+if ! "${COMPOSE[@]}" run --rm --no-deps \
     --entrypoint "" \
-    "$OW_IMAGE_BACKEND" \
+    app \
     uv run alembic upgrade head; then
   die "alembic migrations failed — aborting before touching live services"
 fi
