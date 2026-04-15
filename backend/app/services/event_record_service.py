@@ -205,10 +205,11 @@ class EventRecordService(
             # retry, score update).  Replace the detail with fresh values instead
             # of accumulating them on top of the existing ones.
             if record.external_id is not None and adjacent.external_id == record.external_id:
-                for field in ("start_datetime", "end_datetime", "duration_seconds", "zone_offset"):
+                for field in ("start_datetime", "end_datetime", "zone_offset"):
                     new_val = getattr(record, field, None)
                     if new_val is not None:
                         setattr(adjacent, field, new_val)
+                adjacent.duration_seconds = int((adjacent.end_datetime - adjacent.start_datetime).total_seconds())
                 db_session.flush()
                 self.event_record_detail_repo.delete_by_record_id(db_session, adjacent.id)
                 self.event_record_detail_repo.create_and_flush(
@@ -217,7 +218,7 @@ class EventRecordService(
                     detail_type="sleep",
                 )
                 db_session.commit()
-                return adjacent
+                return adjacent, False, detail
 
             adj_detail: SleepDetails | None = adjacent.detail if isinstance(adjacent.detail, SleepDetails) else None
 
