@@ -247,12 +247,15 @@ class SleepScoreService:
         earliest = min(dates)
         latest = max(dates)
 
-        # Extend one extra day on each side to accommodate UTC timezone offsets:
-        # a sleep session may start on the UTC-day before/after the local date.
+        # Extend the window on each side to accommodate UTC timezone offsets and
+        # the fact that sleep sessions end in the early morning hours of the next
+        # calendar day.  window_end must reach past the latest possible end_datetime
+        # (sleep starting at 23:59 local + 10 h = ~10:00 next day UTC) so we add
+        # 2 days instead of 1.
         window_start = datetime(earliest.year, earliest.month, earliest.day) - timedelta(
             days=sleep_config.rolling_window_nights + 2
         )
-        window_end = datetime(latest.year, latest.month, latest.day) + timedelta(days=1)
+        window_end = datetime(latest.year, latest.month, latest.day) + timedelta(days=2)
 
         all_records, _ = self.event_record_repo.get_records_with_filters(
             db_session,

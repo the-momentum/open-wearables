@@ -92,7 +92,7 @@ class TestSleepSummaryEndpoint:
 
         sleep_data = data["data"][0]
         assert sleep_data["date"] == "2025-12-25"
-        assert sleep_data["duration_minutes"] == 480  # 8 hours
+        assert sleep_data["duration_minutes"] == 420  # net sleep (sleep_total_duration_minutes), not time_in_bed
 
         # Verify sleep details are populated
         assert sleep_data["time_in_bed_minutes"] == 480
@@ -156,7 +156,7 @@ class TestSleepSummaryEndpoint:
         sleep_data = data["data"][0]
 
         # Verify basic fields
-        assert sleep_data["duration_minutes"] == 480  # 8 hours
+        assert sleep_data["duration_minutes"] == 420  # net sleep (sleep_total_duration_minutes), not time_in_bed
         assert sleep_data["efficiency_percent"] == 85.0
         assert sleep_data["stages"] is not None
 
