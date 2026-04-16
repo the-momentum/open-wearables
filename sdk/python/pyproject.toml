@@ -37,7 +37,7 @@ classifiers = [
     "Framework :: AsyncIO",
 ]
 dependencies = [
-    "httpx>=0.25.0",
+    "httpx>=0.28.1",
     "pydantic[email]>=2.0.0",
 ]
 
