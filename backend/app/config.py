@@ -196,6 +196,7 @@ class Settings(BaseSettings):
             f"postgresql+psycopg://"
             f"{self.db_user}:{self.db_password.get_secret_value()}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            f"?sslmode=require"
         )
 
     # 0. pytest ini_options

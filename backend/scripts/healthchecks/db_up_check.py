@@ -10,6 +10,7 @@ try:
         password=os.getenv("DB_PASSWORD", ""),
         host=os.getenv("DB_HOST", ""),
         port=os.getenv("DB_PORT", ""),
+        sslmode="require",
     )
 except psycopg.OperationalError:
     print("- PostgreSQL unavaliable - waiting")
