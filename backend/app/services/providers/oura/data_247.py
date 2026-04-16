@@ -29,7 +29,7 @@ from app.schemas.providers.oura import (
     OuraDailySleepJSON,
     OuraSleepJSON,
 )
-from app.schemas.providers.oura.imports import OuraPersonalInfoJSON
+from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
@@ -582,6 +582,8 @@ class Oura247Data(Base247DataTemplate):
                     "average_heart_rate": sleep.average_heart_rate,
                     "average_hrv": sleep.average_hrv,
                     "lowest_heart_rate": sleep.lowest_heart_rate,
+                    "heart_rate": sleep.heart_rate,
+                    "hrv": sleep.hrv,
                     "oura_sleep_id": sleep.id,
                     "raw": raw_sleep,
                 }
@@ -675,6 +677,42 @@ class Oura247Data(Base247DataTemplate):
                     sleep_id=str(sleep_id),
                     error=str(e),
                 )
+
+            hr: OuraIntervalData | None = normalized_sleep.get("heart_rate")
+            hrv: OuraIntervalData | None = normalized_sleep.get("hrv")
+
+            for interval_data, series_type, action in (
+                (hr, SeriesType.heart_rate, "oura_sleep_hr_save_error"),
+                (hrv, SeriesType.heart_rate_variability_sdnn, "oura_hrv_save_error"),
+            ):
+                if not (interval_data and interval_data.timestamp and interval_data.interval and interval_data.items):
+                    continue
+                try:
+                    start = datetime.fromisoformat(interval_data.timestamp.replace("Z", "+00:00"))
+                    samples = [
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=start + timedelta(seconds=interval_data.interval * i),
+                            value=Decimal(str(value)),
+                            series_type=series_type,
+                        )
+                        for i, value in enumerate(interval_data.items)
+                        if value is not None
+                    ]
+                    if samples:
+                        timeseries_service.bulk_create_samples(db, samples)
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save interval timeseries",
+                        action=action,
+                        sleep_id=str(sleep_id),
+                        error=str(e),
+                    )
+
         return count
 
     # -------------------------------------------------------------------------
