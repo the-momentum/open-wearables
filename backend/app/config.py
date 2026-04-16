@@ -184,7 +184,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def derive_svix_jwt_secret(self) -> "Settings":
-        if self.svix_jwt_secret is None:
+        if self.svix_jwt_secret is None or self.svix_jwt_secret.get_secret_value() == "":
             self.svix_jwt_secret = SecretStr(self.secret_key)
         return self
 
