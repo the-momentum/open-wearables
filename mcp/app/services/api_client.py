@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services.exceptions import AuthenticationError, ConfigurationError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class OpenWearablesClient:
             from app.config import Settings
 
             env_file = Settings.model_config.get("env_file")
-            raise ValueError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
+            raise ConfigurationError(f"OPEN_WEARABLES_API_KEY is not configured. Please set it in: {env_file}")
 
     @property
     def headers(self) -> dict[str, str]:
@@ -49,9 +50,9 @@ class OpenWearablesClient:
             )
 
             if response.status_code == 401:
-                raise ValueError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
+                raise AuthenticationError("Invalid API key. Check your OPEN_WEARABLES_API_KEY configuration.")
             if response.status_code == 404:
-                raise ValueError(f"Resource not found: {path}")
+                raise NotFoundError(f"Resource not found: {path}")
 
             response.raise_for_status()
             return response.json()
