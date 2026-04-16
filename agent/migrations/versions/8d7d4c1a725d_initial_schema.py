@@ -75,4 +75,6 @@ def downgrade() -> None:
     op.drop_table("sessions")
     op.drop_index(op.f("ix_conversations_user_id"), table_name="conversations")
     op.drop_table("conversations")
+    op.execute("DROP TYPE IF EXISTS messagerole")
+    op.execute("DROP TYPE IF EXISTS conversationstatus")
     # ### end Alembic commands ###
