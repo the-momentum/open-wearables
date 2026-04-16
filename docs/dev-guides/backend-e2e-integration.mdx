@@ -314,6 +314,62 @@ Connect users to their wearable devices via OAuth.
 | **Suunto** | ✅ | Workouts, 24/7 data (sleep, recovery) |
 | **Apple Health** | SDK only | All health data |
 
+### List Available Providers (Optional)
+
+If you want to build a dynamic provider selection screen (instead of hardcoding provider names), you can fetch the list of available providers:
+
+<CodeGroup>
+
+```bash cURL
+curl "http://localhost:8000/api/v1/oauth/providers?enabled_only=true&cloud_only=true" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
+```python Python
+async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{OPEN_WEARABLES_API_URL}/api/v1/oauth/providers",
+            headers={"X-Open-Wearables-API-Key": API_KEY},
+            params={"enabled_only": enabled_only, "cloud_only": cloud_only}
+        )
+        return response.json()
+```
+
+</CodeGroup>
+
+**Query parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enabled_only` | `false` | Return only providers enabled in your instance |
+| `cloud_only` | `false` | Return only cloud-based (OAuth) providers, excludes SDK-only providers like Apple Health |
+
+**Response:**
+
+```json
+[
+  {
+    "provider": "garmin",
+    "name": "Garmin",
+    "has_cloud_api": true,
+    "is_enabled": true,
+    "icon_url": "/static/provider-icons/garmin.svg"
+  },
+  {
+    "provider": "polar",
+    "name": "Polar",
+    "has_cloud_api": true,
+    "is_enabled": true,
+    "icon_url": "/static/provider-icons/polar.svg"
+  }
+]
+```
+
+<Warning>
+`icon_url` is a **relative path**. To render the provider icon, prepend your API base URL: `{OPEN_WEARABLES_API_URL}{icon_url}`.
+</Warning>
+
 ### Get Authorization URL
 
 <Warning>
@@ -520,7 +576,7 @@ curl "http://localhost:8000/api/v1/users/USER_ID/events/workouts?start_date=2025
     }
   ],
   "pagination": {
-    "cursor": null,
+    "next_cursor": null,
     "has_more": false
   }
 }
@@ -557,7 +613,7 @@ curl "http://localhost:8000/api/v1/users/USER_ID/events/sleep?start_date=2025-01
     }
   ],
   "pagination": {
-    "cursor": null,
+    "next_cursor": null,
     "has_more": false
   }
 }
