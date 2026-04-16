@@ -886,7 +886,7 @@ class Oura247Data(Base247DataTemplate):
 
         Oura limits the timerange to 30 days per request; chunk accordingly.
         """
-        _CHUNK_DAYS = 30
+        _CHUNK_DAYS = 30  # noqa: N806
         results: list[dict[str, Any]] = []
         chunk_start = start_time.astimezone(timezone.utc)
         end_utc = end_time.astimezone(timezone.utc)
