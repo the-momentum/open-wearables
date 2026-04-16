@@ -289,11 +289,11 @@ def _generate_workout(
     workout_id = uuid4()
     prov_config = PROVIDER_CONFIGS[provider]
 
-    has_device = fake.boolean(chance_of_getting_true=80)
+    # Oura doesn't expose device info via its API
     device_name: str | None = None
     device_provider: str | None = None
     sw_version: str | None = None
-    if has_device:
+    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
         device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
@@ -422,11 +422,11 @@ def _generate_sleep(
     sleep_id = uuid4()
     prov_config = PROVIDER_CONFIGS[provider]
 
-    has_device = fake.boolean(chance_of_getting_true=80)
+    # Oura doesn't expose device info via its API
     device_name: str | None = None
     device_provider: str | None = None
     sw_version: str | None = None
-    if has_device:
+    if provider != ProviderName.OURA and fake.boolean(chance_of_getting_true=80):
         device_name = fake.random.choice(prov_config["devices"])
         device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
