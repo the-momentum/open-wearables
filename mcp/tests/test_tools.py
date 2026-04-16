@@ -25,6 +25,7 @@ USER_PAYLOAD = {
 
 
 async def test_get_users_returns_empty_envelope_on_auth_error(httpx_mock: HTTPXMock) -> None:
+    """`get_users` translates a backend 401 into the documented empty-envelope shape."""
     httpx_mock.add_response(
         method="GET",
         url="https://api.test.com/api/v1/users?limit=10",
@@ -50,6 +51,7 @@ async def test_summary_tools_return_user_not_found_envelope_on_404(
     tool: object,
     httpx_mock: HTTPXMock,
 ) -> None:
+    """Summary tools turn a 404 on user lookup into the 'User not found' envelope (inner except block)."""
     httpx_mock.add_response(
         method="GET",
         url=f"https://api.test.com/api/v1/users/{USER_ID}",
@@ -67,6 +69,7 @@ async def test_summary_tools_return_user_not_found_envelope_on_404(
 
 
 async def test_get_timeseries_returns_user_not_found_envelope_on_404(httpx_mock: HTTPXMock) -> None:
+    """`get_timeseries` turns a 404 on user lookup into the 'User not found' envelope."""
     httpx_mock.add_response(
         method="GET",
         url=f"https://api.test.com/api/v1/users/{USER_ID}",
@@ -87,6 +90,7 @@ async def test_get_timeseries_returns_user_not_found_envelope_on_404(httpx_mock:
 async def test_get_activity_summary_returns_generic_error_envelope_on_downstream_401(
     httpx_mock: HTTPXMock,
 ) -> None:
+    """Downstream 401 (after user lookup succeeds) surfaces via the generic error envelope, not 'User not found'."""
     httpx_mock.add_response(
         method="GET",
         url=f"https://api.test.com/api/v1/users/{USER_ID}",

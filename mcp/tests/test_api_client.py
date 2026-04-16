@@ -29,6 +29,7 @@ async def test_request_raises_authentication_error_on_401(
     api_client: OpenWearablesClient,
     httpx_mock: HTTPXMock,
 ) -> None:
+    """A 401 from the backend surfaces as `AuthenticationError`."""
     httpx_mock.add_response(
         method="GET",
         url="https://api.test.com/api/v1/users?limit=100",
@@ -43,6 +44,7 @@ async def test_request_raises_not_found_error_on_404(
     api_client: OpenWearablesClient,
     httpx_mock: HTTPXMock,
 ) -> None:
+    """A 404 from the backend surfaces as `NotFoundError`."""
     user_id = "00000000-0000-0000-0000-000000000000"
     httpx_mock.add_response(
         method="GET",
@@ -55,6 +57,7 @@ async def test_request_raises_not_found_error_on_404(
 
 
 async def test_request_raises_configuration_error_when_key_missing() -> None:
+    """A request with no API key raises `ConfigurationError` before hitting the network."""
     client = OpenWearablesClient()
     client._api_key = ""
 
@@ -63,6 +66,7 @@ async def test_request_raises_configuration_error_when_key_missing() -> None:
 
 
 def test_typed_errors_inherit_from_base() -> None:
+    """Every typed error is catchable via the `OpenWearablesError` base class."""
     assert issubclass(AuthenticationError, OpenWearablesError)
     assert issubclass(NotFoundError, OpenWearablesError)
     assert issubclass(ConfigurationError, OpenWearablesError)
