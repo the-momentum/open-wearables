@@ -349,9 +349,19 @@ def sync_historical_data(
     webhook backfill, etc.). The ``days`` parameter may be ignored by
     providers that enforce their own limits.
 
-    Historical sync is not automatically triggered when a provider is
-    connected - it must be explicitly requested via this endpoint.
-    (Changed in v0.4.2.)
+    **Automatic historical sync on connect (grace period)**
+
+    As of v0.4.2, historical sync must be explicitly requested via this
+    endpoint. To ease migration, a grace-period flag
+    (``HISTORICAL_SYNC_ON_CONNECT``, default: ``true``) preserves the
+    pre-0.4.2 behaviour: a historical sync is auto-dispatched after a
+    successful OAuth callback (up to 90 days for pull-based providers,
+    full available history for providers that support async export such
+    as Garmin).
+
+    Set ``HISTORICAL_SYNC_ON_CONNECT=false`` once your integration calls
+    this endpoint explicitly. The flag will default to ``false`` in a
+    future release and is planned for removal afterwards.
     """
     strategy = factory.get_provider(provider.value)
 
