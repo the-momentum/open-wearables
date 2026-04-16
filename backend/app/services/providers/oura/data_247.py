@@ -846,12 +846,23 @@ class Oura247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601)."""
-        params = {
-            "start_datetime": start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "end_datetime": end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/heartrate", params)
+        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601).
+
+        Oura limits the timerange to 30 days per request; chunk accordingly.
+        """
+        _CHUNK_DAYS = 30
+        results: list[dict[str, Any]] = []
+        chunk_start = start_time.astimezone(timezone.utc)
+        end_utc = end_time.astimezone(timezone.utc)
+        while chunk_start < end_utc:
+            chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end_utc)
+            params = {
+                "start_datetime": chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "end_datetime": chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            results.extend(self._paginate(db, user_id, "/v2/usercollection/heartrate", params))
+            chunk_start = chunk_end
+        return results
 
     def save_heart_rate_data(
         self,
