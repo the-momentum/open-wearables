@@ -17,11 +17,14 @@ import { Route as AcceptInviteRouteImport } from './routes/accept-invite'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WidgetConnectRouteImport } from './routes/widget.connect'
+import { Route as AuthenticatedWebhooksRouteImport } from './routes/_authenticated/webhooks'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedWebhooksIndexRouteImport } from './routes/_authenticated/webhooks/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as UsersUserIdPairRouteImport } from './routes/users/$userId/pair'
+import { Route as AuthenticatedWebhooksEndpointIdRouteImport } from './routes/_authenticated/webhooks/$endpointId'
 import { Route as AuthenticatedUsersUserIdRouteImport } from './routes/_authenticated/users/$userId'
 import { Route as UsersUserIdPairIndexRouteImport } from './routes/users/$userId/pair.index'
 import { Route as UsersUserIdPairSuccessRouteImport } from './routes/users/$userId/pair.success'
@@ -66,6 +69,11 @@ const WidgetConnectRoute = WidgetConnectRouteImport.update({
   path: '/widget/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedWebhooksRoute = AuthenticatedWebhooksRouteImport.update({
+  id: '/webhooks',
+  path: '/webhooks',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -81,6 +89,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedWebhooksIndexRoute =
+  AuthenticatedWebhooksIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedWebhooksRoute,
+  } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -91,6 +105,12 @@ const UsersUserIdPairRoute = UsersUserIdPairRouteImport.update({
   path: '/users/$userId/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedWebhooksEndpointIdRoute =
+  AuthenticatedWebhooksEndpointIdRouteImport.update({
+    id: '/$endpointId',
+    path: '/$endpointId',
+    getParentRoute: () => AuthenticatedWebhooksRoute,
+  } as any)
 const AuthenticatedUsersUserIdRoute =
   AuthenticatedUsersUserIdRouteImport.update({
     id: '/$userId',
@@ -123,10 +143,13 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/users': typeof AuthenticatedUsersRouteWithChildren
+  '/webhooks': typeof AuthenticatedWebhooksRouteWithChildren
   '/widget/connect': typeof WidgetConnectRoute
   '/users/$userId': typeof AuthenticatedUsersUserIdRoute
+  '/webhooks/$endpointId': typeof AuthenticatedWebhooksEndpointIdRoute
   '/users/$userId/pair': typeof UsersUserIdPairRouteWithChildren
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/webhooks/': typeof AuthenticatedWebhooksIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
   '/users/$userId/pair/': typeof UsersUserIdPairIndexRoute
@@ -142,7 +165,9 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/widget/connect': typeof WidgetConnectRoute
   '/users/$userId': typeof AuthenticatedUsersUserIdRoute
+  '/webhooks/$endpointId': typeof AuthenticatedWebhooksEndpointIdRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/webhooks': typeof AuthenticatedWebhooksIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
   '/users/$userId/pair': typeof UsersUserIdPairIndexRoute
@@ -159,10 +184,13 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRouteWithChildren
+  '/_authenticated/webhooks': typeof AuthenticatedWebhooksRouteWithChildren
   '/widget/connect': typeof WidgetConnectRoute
   '/_authenticated/users/$userId': typeof AuthenticatedUsersUserIdRoute
+  '/_authenticated/webhooks/$endpointId': typeof AuthenticatedWebhooksEndpointIdRoute
   '/users/$userId/pair': typeof UsersUserIdPairRouteWithChildren
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/webhooks/': typeof AuthenticatedWebhooksIndexRoute
   '/users/$userId/pair/error': typeof UsersUserIdPairErrorRoute
   '/users/$userId/pair/success': typeof UsersUserIdPairSuccessRoute
   '/users/$userId/pair/': typeof UsersUserIdPairIndexRoute
@@ -179,10 +207,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/users'
+    | '/webhooks'
     | '/widget/connect'
     | '/users/$userId'
+    | '/webhooks/$endpointId'
     | '/users/$userId/pair'
     | '/users/'
+    | '/webhooks/'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
     | '/users/$userId/pair/'
@@ -198,7 +229,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/widget/connect'
     | '/users/$userId'
+    | '/webhooks/$endpointId'
     | '/users'
+    | '/webhooks'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
     | '/users/$userId/pair'
@@ -214,10 +247,13 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/settings'
     | '/_authenticated/users'
+    | '/_authenticated/webhooks'
     | '/widget/connect'
     | '/_authenticated/users/$userId'
+    | '/_authenticated/webhooks/$endpointId'
     | '/users/$userId/pair'
     | '/_authenticated/users/'
+    | '/_authenticated/webhooks/'
     | '/users/$userId/pair/error'
     | '/users/$userId/pair/success'
     | '/users/$userId/pair/'
@@ -293,6 +329,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WidgetConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/webhooks': {
+      id: '/_authenticated/webhooks'
+      path: '/webhooks'
+      fullPath: '/webhooks'
+      preLoaderRoute: typeof AuthenticatedWebhooksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/users': {
       id: '/_authenticated/users'
       path: '/users'
@@ -314,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/webhooks/': {
+      id: '/_authenticated/webhooks/'
+      path: '/'
+      fullPath: '/webhooks/'
+      preLoaderRoute: typeof AuthenticatedWebhooksIndexRouteImport
+      parentRoute: typeof AuthenticatedWebhooksRoute
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/'
@@ -327,6 +377,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/users/$userId/pair'
       preLoaderRoute: typeof UsersUserIdPairRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/webhooks/$endpointId': {
+      id: '/_authenticated/webhooks/$endpointId'
+      path: '/$endpointId'
+      fullPath: '/webhooks/$endpointId'
+      preLoaderRoute: typeof AuthenticatedWebhooksEndpointIdRouteImport
+      parentRoute: typeof AuthenticatedWebhooksRoute
     }
     '/_authenticated/users/$userId': {
       id: '/_authenticated/users/$userId'
@@ -372,16 +429,33 @@ const AuthenticatedUsersRouteChildren: AuthenticatedUsersRouteChildren = {
 const AuthenticatedUsersRouteWithChildren =
   AuthenticatedUsersRoute._addFileChildren(AuthenticatedUsersRouteChildren)
 
+interface AuthenticatedWebhooksRouteChildren {
+  AuthenticatedWebhooksEndpointIdRoute: typeof AuthenticatedWebhooksEndpointIdRoute
+  AuthenticatedWebhooksIndexRoute: typeof AuthenticatedWebhooksIndexRoute
+}
+
+const AuthenticatedWebhooksRouteChildren: AuthenticatedWebhooksRouteChildren = {
+  AuthenticatedWebhooksEndpointIdRoute: AuthenticatedWebhooksEndpointIdRoute,
+  AuthenticatedWebhooksIndexRoute: AuthenticatedWebhooksIndexRoute,
+}
+
+const AuthenticatedWebhooksRouteWithChildren =
+  AuthenticatedWebhooksRoute._addFileChildren(
+    AuthenticatedWebhooksRouteChildren,
+  )
+
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRouteWithChildren
+  AuthenticatedWebhooksRoute: typeof AuthenticatedWebhooksRouteWithChildren
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRouteWithChildren,
+  AuthenticatedWebhooksRoute: AuthenticatedWebhooksRouteWithChildren,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
