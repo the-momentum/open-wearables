@@ -84,6 +84,12 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
         "devices": ["WHOOP 5.0", "WHOOP 4.0", "WHOOP 3.0"],
         "os_versions": ["5.0", "4.0", "3.0"],
     },
+    ProviderName.OURA: {
+        "source_name": "Oura",
+        "manufacturer": "Oura Health",
+        "devices": ["Oura Ring Gen 3", "Oura Ring Gen 4"],
+        "os_versions": ["2.0", "3.0"],
+    },
 }
 
 SEED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
