@@ -1,8 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import UniqueConstraint
-from sqlalchemy.orm import Mapped
+from sqlalchemy import ForeignKey, Index, UniqueConstraint, text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
 from app.mappings import FKDataSource, FKUser, PrimaryKey, json_binary, numeric_5_2, str_10, str_32
@@ -21,6 +21,12 @@ class HealthScore(BaseDbModel):
             "recorded_at",
             name="uq_health_score_user_provider_category_time",
         ),
+        Index(
+            "uq_health_score_sleep_record",
+            "sleep_record_id",
+            unique=True,
+            postgresql_where=text("sleep_record_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[PrimaryKey[UUID]]
@@ -36,3 +42,7 @@ class HealthScore(BaseDbModel):
     zone_offset: Mapped[str_10 | None]
 
     components: Mapped[json_binary | None]
+
+    sleep_record_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("event_record.id", ondelete="CASCADE"), nullable=True, index=True
+    )
