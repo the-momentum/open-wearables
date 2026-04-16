@@ -129,7 +129,7 @@ async def get_timeseries(
                 resolution=resolution,
                 cursor=cursor,
             )
-            for sample in response.get("data", []) or []:
+            for sample in response.get("data", []):
                 source = sample.get("source", {})
                 records.append(
                     {
