@@ -351,17 +351,20 @@ def sync_historical_data(
 
     **Automatic historical sync on connect (grace period)**
 
-    As of v0.4.2, historical sync must be explicitly requested via this
-    endpoint. To ease migration, a grace-period flag
-    (``HISTORICAL_SYNC_ON_CONNECT``, default: ``true``) preserves the
-    pre-0.4.2 behaviour: a historical sync is auto-dispatched after a
-    successful OAuth callback (up to 90 days for pull-based providers,
-    full available history for providers that support async export such
-    as Garmin).
+    v0.4.2 introduced this endpoint as the canonical, opt-in way to
+    backfill historical data - the long-term goal is that connecting a
+    provider only sets up live sync, and history is pulled on demand.
 
-    Set ``HISTORICAL_SYNC_ON_CONNECT=false`` once your integration calls
-    this endpoint explicitly. The flag will default to ``false`` in a
-    future release and is planned for removal afterwards.
+    To make migration painless, the pre-0.4.2 behaviour is kept for now
+    behind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:
+    ``true``): a historical sync is auto-dispatched after a successful
+    OAuth callback (up to 90 days for pull-based providers, full
+    available history for providers that support async export such as
+    Garmin).
+
+    Once your integration calls this endpoint explicitly, set
+    ``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to
+    ``false`` in a future release and is planned for removal afterwards.
     """
     strategy = factory.get_provider(provider.value)
 
