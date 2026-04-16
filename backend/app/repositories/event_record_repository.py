@@ -437,8 +437,23 @@ class EventRecordRepository(
                 # Main sleep times (exclude naps)
                 func.min(case((is_main_sleep, EventRecord.start_datetime), else_=None)).label("min_start_time"),
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
-                # Main sleep duration (exclude naps)
-                func.sum(case((is_main_sleep, EventRecord.duration_seconds), else_=0)).label("total_duration"),
+                # Main sleep duration (exclude naps) — prefer net sleep time over
+                # wall-clock duration.  Oura (and some other providers) store
+                # time_in_bed in duration_seconds; sleep_total_duration_minutes
+                # holds the actual sleep time and should be used when available.
+                func.sum(
+                    case(
+                        (
+                            is_main_sleep,
+                            func.coalesce(
+                                SleepDetails.sleep_total_duration_minutes * 60,
+                                EventRecord.duration_seconds,
+                                0,
+                            ),
+                        ),
+                        else_=0,
+                    )
+                ).label("total_duration"),
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
