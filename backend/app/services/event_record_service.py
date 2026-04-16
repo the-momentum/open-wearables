@@ -150,9 +150,7 @@ class EventRecordService(
         session data has already been flushed so sleep_score_service sees the
         up-to-date detail rows within the same transaction.
         """
-        self.health_score_repo.delete_for_user_date(
-            db_session, user_id, sleep_date, HealthScoreCategory.SLEEP
-        )
+        self.health_score_repo.delete_for_user_date(db_session, user_id, sleep_date, HealthScoreCategory.SLEEP)
         scores = sleep_score_service.get_sleep_scores_for_date_range(db_session, user_id, [sleep_date])
         if not scores:
             return
