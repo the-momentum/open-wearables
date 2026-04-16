@@ -560,8 +560,6 @@ class Oura247Data(Base247DataTemplate):
             sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
 
             internal_id = uuid4()
-            with suppress(ValueError, TypeError):
-                internal_id = UUID(sleep.id)
 
             result.append(
                 {
