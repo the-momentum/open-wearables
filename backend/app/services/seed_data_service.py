@@ -21,11 +21,14 @@ from app.models import EventRecordDetail, PersonalRecord, UserConnection
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.schemas.auth import ConnectionStatus
-from app.schemas.enums import ProviderName, SeriesType, WorkoutType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType, WorkoutType
+from app.schemas.enums.workout_types import WORKOUTS_WITH_PACE
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    HealthScoreCreate,
     PersonalRecordCreate,
+    ScoreComponent,
     TimeSeriesSampleCreate,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -41,6 +44,7 @@ from app.schemas.utils.seed_data import (
     WorkoutConfig,
 )
 from app.services.event_record_service import event_record_service
+from app.services.health_score_service import health_score_service
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 from app.utils.structured_logging import log_structured
@@ -93,6 +97,40 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
 }
 
 SEED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
+
+# Workout types where elevation gain is realistic
+OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset({
+    WorkoutType.RUNNING,
+    WorkoutType.TRAIL_RUNNING,
+    WorkoutType.HIKING,
+    WorkoutType.CYCLING,
+    WorkoutType.MOUNTAIN_BIKING,
+    WorkoutType.MOUNTAINEERING,
+    WorkoutType.TRAIL_HIKING,
+    WorkoutType.CROSS_COUNTRY_SKIING,
+    WorkoutType.BACKCOUNTRY_SKIING,
+    WorkoutType.ALPINE_SKIING,
+    WorkoutType.DOWNHILL_SKIING,
+})
+
+# Oura health-score component keys (match real API contributors dicts)
+_OURA_SLEEP_COMPONENTS = [
+    "deep_sleep", "efficiency", "latency", "rem_sleep", "restfulness", "timing", "total_sleep"
+]
+_OURA_READINESS_COMPONENTS = [
+    "activity_balance", "body_temperature", "hrv_balance", "previous_day_activity",
+    "previous_night", "recovery_index", "resting_heart_rate", "sleep_balance",
+]
+_OURA_ACTIVITY_COMPONENTS = [
+    "meet_daily_targets", "move_every_hour", "recovery_time",
+    "stay_active", "training_frequency", "training_volume",
+]
+
+# Garmin health-score qualifiers
+_GARMIN_SLEEP_QUALIFIERS = ["EXCELLENT", "GOOD", "FAIR", "POOR"]
+_GARMIN_SLEEP_COMPONENTS = ["deepSleep", "remSleep", "restlessness", "sleepDuration", "sleepInterruption"]
+# Normalized form matching real parser: raw_qualifier.replace("_", " ").title()
+_GARMIN_STRESS_QUALIFIERS = ["Low Stress", "Medium Stress", "High Stress"]
 
 
 # ---------------------------------------------------------------------------
@@ -208,13 +246,11 @@ def _generate_sleep_stages(
 def _generate_workout(
     user_id: UUID,
     fake: Faker,
-    provider_sync_times: dict[ProviderName, datetime],
+    provider: ProviderName,
+    last_synced_at: datetime,
     config: WorkoutConfig,
 ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
     """Generate a single workout with parameters from *config*."""
-    provider = fake.random.choice(list(provider_sync_times.keys()))
-    last_synced_at = provider_sync_times[provider]
-
     start_bound, end_bound = _resolve_date_bounds(
         config.date_from,
         config.date_to,
@@ -252,6 +288,26 @@ def _generate_workout(
         device_provider = provider.value
         sw_version = fake.random.choice(prov_config["os_versions"])
 
+    # Provider-specific workout detail fields
+    energy_burned: Decimal | None = None
+    elevation_gain: Decimal | None = None
+    average_speed: Decimal | None = None
+
+    if provider == ProviderName.GARMIN:
+        energy_burned = Decimal(fake.random_int(min=200, max=800))
+        if workout_type in OUTDOOR_WORKOUT_TYPES:
+            elevation_gain = Decimal(fake.random_int(min=10, max=500))
+        if workout_type in WORKOUTS_WITH_PACE:
+            average_speed = Decimal(str(round(fake.random.uniform(1.5, 8.0), 3)))
+    elif provider == ProviderName.APPLE:
+        energy_burned = Decimal(fake.random_int(min=150, max=700))
+        if workout_type in OUTDOOR_WORKOUT_TYPES:
+            elevation_gain = Decimal(fake.random_int(min=5, max=300))
+    elif provider in (ProviderName.POLAR, ProviderName.SUUNTO):
+        energy_burned = Decimal(fake.random_int(min=100, max=700))
+        if workout_type in OUTDOOR_WORKOUT_TYPES:
+            elevation_gain = Decimal(fake.random_int(min=5, max=400))
+
     record = EventRecordCreate(
         id=workout_id,
         source=device_provider,
@@ -273,6 +329,9 @@ def _generate_workout(
         heart_rate_max=heart_rate_max,
         heart_rate_avg=heart_rate_avg,
         steps_count=steps,
+        energy_burned=energy_burned,
+        total_elevation_gain=elevation_gain,
+        average_speed=average_speed,
     )
 
     return record, detail
@@ -281,13 +340,11 @@ def _generate_workout(
 def _generate_sleep(
     user_id: UUID,
     fake: Faker,
-    provider_sync_times: dict[ProviderName, datetime],
+    provider: ProviderName,
+    last_synced_at: datetime,
     config: SleepConfig,
 ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
     """Generate a single sleep record with parameters from *config*."""
-    provider = fake.random.choice(list(provider_sync_times.keys()))
-    last_synced_at = provider_sync_times[provider]
-
     start_bound, end_bound = _resolve_date_bounds(
         config.date_from,
         config.date_to,
@@ -402,6 +459,185 @@ def _generate_personal_record(user_id: UUID, fake: Faker) -> PersonalRecordCreat
         birth_date=fake.date_of_birth(minimum_age=18, maximum_age=80),
         gender=fake.random.choice(GENDERS) if fake.boolean(chance_of_getting_true=80) else None,
     )
+
+
+def _generate_health_scores(
+    user_id: UUID,
+    provider: ProviderName,
+    start_bound: datetime,
+    end_bound: datetime,
+    fake: Faker,
+) -> list[HealthScoreCreate]:
+    """Generate realistic daily health scores for *provider* over a date range.
+
+    Oura produces SLEEP, READINESS, and ACTIVITY scores with named component
+    breakdowns.  Garmin produces SLEEP (with qualifier), BODY_BATTERY, and
+    STRESS scores.  Apple has no proprietary score system and returns an empty
+    list.  All other providers also return an empty list.
+    """
+    if provider not in (ProviderName.OURA, ProviderName.GARMIN, ProviderName.WHOOP):
+        return []
+
+    scores: list[HealthScoreCreate] = []
+    current = start_bound.replace(hour=8, minute=0, second=0, microsecond=0)
+
+    if provider == ProviderName.OURA:
+        base_sleep = fake.random_int(min=55, max=88)
+        base_readiness = fake.random_int(min=55, max=88)
+        base_activity = fake.random_int(min=50, max=85)
+
+        while current <= end_bound:
+            sleep_val = max(30, min(100, base_sleep + fake.random_int(min=-8, max=8)))
+            readiness_val = max(30, min(100, base_readiness + fake.random_int(min=-8, max=8)))
+            activity_val = max(30, min(100, base_activity + fake.random_int(min=-10, max=10)))
+
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.SLEEP,
+                value=sleep_val,
+                recorded_at=current,
+                components={k: ScoreComponent(value=fake.random_int(min=40, max=100)) for k in _OURA_SLEEP_COMPONENTS},
+            ))
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.READINESS,
+                value=readiness_val,
+                recorded_at=current,
+                components={
+                    k: ScoreComponent(value=fake.random_int(min=40, max=100))
+                    for k in _OURA_READINESS_COMPONENTS
+                },
+            ))
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.ACTIVITY,
+                value=activity_val,
+                recorded_at=current,
+                components={
+                    k: ScoreComponent(value=fake.random_int(min=40, max=100))
+                    for k in _OURA_ACTIVITY_COMPONENTS
+                },
+            ))
+
+            # Drift the bases slightly day-over-day for realism
+            base_sleep = max(40, min(95, base_sleep + fake.random_int(min=-3, max=3)))
+            base_readiness = max(40, min(95, base_readiness + fake.random_int(min=-3, max=3)))
+            base_activity = max(35, min(95, base_activity + fake.random_int(min=-4, max=4)))
+            current += timedelta(days=1)
+
+    elif provider == ProviderName.GARMIN:
+        base_sleep = fake.random_int(min=55, max=88)
+        base_battery = fake.random_int(min=50, max=90)
+        base_stress = fake.random_int(min=15, max=55)
+
+        while current <= end_bound:
+            sleep_val = max(30, min(100, base_sleep + fake.random_int(min=-8, max=8)))
+            battery_val = max(10, min(100, base_battery + fake.random_int(min=-10, max=10)))
+            stress_val = max(5, min(95, base_stress + fake.random_int(min=-8, max=8)))
+
+            sleep_qualifier = (
+                "EXCELLENT" if sleep_val >= 80
+                else "GOOD" if sleep_val >= 65
+                else "FAIR" if sleep_val >= 50
+                else "POOR"
+            )
+            stress_qualifier = (
+                "High Stress" if stress_val >= 60
+                else "Medium Stress" if stress_val >= 30
+                else "Low Stress"
+            )
+
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.SLEEP,
+                value=sleep_val,
+                qualifier=sleep_qualifier,
+                recorded_at=current,
+                components={
+                    k: ScoreComponent(qualifier=fake.random.choice(_GARMIN_SLEEP_QUALIFIERS))
+                    for k in _GARMIN_SLEEP_COMPONENTS
+                },
+            ))
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.BODY_BATTERY,
+                value=battery_val,
+                recorded_at=current,
+            ))
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.STRESS,
+                value=stress_val,
+                qualifier=stress_qualifier,
+                recorded_at=current,
+            ))
+
+            base_sleep = max(40, min(95, base_sleep + fake.random_int(min=-3, max=3)))
+            base_battery = max(15, min(95, base_battery + fake.random_int(min=-5, max=5)))
+            base_stress = max(5, min(90, base_stress + fake.random_int(min=-4, max=4)))
+            current += timedelta(days=1)
+
+    elif provider == ProviderName.WHOOP:
+        base_sleep = fake.random_int(min=50, max=90)
+        base_recovery = fake.random_int(min=40, max=85)
+
+        while current <= end_bound:
+            sleep_val = max(20, min(100, base_sleep + fake.random_int(min=-10, max=10)))
+            recovery_val = max(20, min(100, base_recovery + fake.random_int(min=-8, max=8)))
+
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.SLEEP,
+                value=sleep_val,
+                qualifier=None,
+                recorded_at=current,
+                components={
+                    "sleep_consistency_percentage": ScoreComponent(
+                        value=fake.random_int(min=40, max=100), qualifier=None
+                    ),
+                    "sleep_efficiency_percentage": ScoreComponent(
+                        value=fake.random_int(min=60, max=98), qualifier=None
+                    ),
+                    "respiratory_rate": ScoreComponent(value=round(fake.random.uniform(12.0, 20.0), 1), qualifier=None),
+                },
+            ))
+            scores.append(HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=provider,
+                category=HealthScoreCategory.RECOVERY,
+                value=recovery_val,
+                qualifier=None,
+                recorded_at=current,
+                components={
+                    "resting_heart_rate": ScoreComponent(value=fake.random_int(min=42, max=72), qualifier=None),
+                    "hrv_rmssd_milli": ScoreComponent(value=round(fake.random.uniform(20.0, 90.0), 1), qualifier=None),
+                    "spo2_percentage": ScoreComponent(value=round(fake.random.uniform(94.0, 100.0), 1), qualifier=None),
+                    "skin_temp_celsius": ScoreComponent(
+                        value=round(fake.random.uniform(33.5, 37.0), 1), qualifier=None
+                    ),
+                },
+            ))
+
+            base_sleep = max(20, min(100, base_sleep + fake.random_int(min=-4, max=4)))
+            base_recovery = max(20, min(100, base_recovery + fake.random_int(min=-4, max=4)))
+            current += timedelta(days=1)
+
+    return scores
 
 
 def _generate_time_series_samples(
@@ -524,6 +760,7 @@ class SeedDataService:
             "workouts": 0,
             "sleeps": 0,
             "time_series_samples": 0,
+            "health_scores": 0,
         }
 
         for user_num in range(1, request.num_users + 1):
@@ -559,7 +796,10 @@ class SeedDataService:
             # Workouts
             if profile.generate_workouts:
                 for _ in range(profile.workout_config.count):
-                    record, detail = _generate_workout(user.id, fake, provider_sync_times, profile.workout_config)
+                    prov = fake.random.choice(list(provider_sync_times.keys()))
+                    record, detail = _generate_workout(
+                        user.id, fake, prov, provider_sync_times[prov], profile.workout_config
+                    )
                     event_record_service.create(db, record)
                     event_record_service.create_detail(db, detail)
                     summary["workouts"] += 1
@@ -585,19 +825,36 @@ class SeedDataService:
             # Sleep records
             if profile.generate_sleep:
                 for _ in range(profile.sleep_config.count):
-                    record, detail = _generate_sleep(user.id, fake, provider_sync_times, profile.sleep_config)
+                    prov = fake.random.choice(list(provider_sync_times.keys()))
+                    record, detail = _generate_sleep(
+                        user.id, fake, prov, provider_sync_times[prov], profile.sleep_config
+                    )
                     event_record_service.create(db, record)
                     event_detail_repo.create(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
+            # Health scores — one batch per provider covering the full seeded date range
+            if profile.generate_workouts or profile.generate_sleep:
+                date_range_months = max(
+                    profile.workout_config.date_range_months if profile.generate_workouts else 0,
+                    profile.sleep_config.date_range_months if profile.generate_sleep else 0,
+                ) or 6
+                for prov, last_synced_at in provider_sync_times.items():
+                    sb = last_synced_at - timedelta(days=date_range_months * 30)
+                    scores = _generate_health_scores(user.id, prov, sb, last_synced_at, fake)
+                    if scores:
+                        health_score_service.bulk_create(db, scores)
+                        summary["health_scores"] += len(scores)
+
             db.commit()
             logger.info(
-                "Seed user %d/%d created (workouts=%d, sleeps=%d, ts=%d)",
+                "Seed user %d/%d created (workouts=%d, sleeps=%d, ts=%d, health_scores=%d)",
                 user_num,
                 request.num_users,
                 summary["workouts"],
                 summary["sleeps"],
                 summary["time_series_samples"],
+                summary["health_scores"],
             )
 
         summary["seed_used"] = seed
