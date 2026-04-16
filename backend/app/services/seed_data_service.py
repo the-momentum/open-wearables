@@ -99,31 +99,41 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
 SEED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
 
 # Workout types where elevation gain is realistic
-OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset({
-    WorkoutType.RUNNING,
-    WorkoutType.TRAIL_RUNNING,
-    WorkoutType.HIKING,
-    WorkoutType.CYCLING,
-    WorkoutType.MOUNTAIN_BIKING,
-    WorkoutType.MOUNTAINEERING,
-    WorkoutType.TRAIL_HIKING,
-    WorkoutType.CROSS_COUNTRY_SKIING,
-    WorkoutType.BACKCOUNTRY_SKIING,
-    WorkoutType.ALPINE_SKIING,
-    WorkoutType.DOWNHILL_SKIING,
-})
+OUTDOOR_WORKOUT_TYPES: frozenset[WorkoutType] = frozenset(
+    {
+        WorkoutType.RUNNING,
+        WorkoutType.TRAIL_RUNNING,
+        WorkoutType.HIKING,
+        WorkoutType.CYCLING,
+        WorkoutType.MOUNTAIN_BIKING,
+        WorkoutType.MOUNTAINEERING,
+        WorkoutType.TRAIL_HIKING,
+        WorkoutType.CROSS_COUNTRY_SKIING,
+        WorkoutType.BACKCOUNTRY_SKIING,
+        WorkoutType.ALPINE_SKIING,
+        WorkoutType.DOWNHILL_SKIING,
+    }
+)
 
 # Oura health-score component keys (match real API contributors dicts)
-_OURA_SLEEP_COMPONENTS = [
-    "deep_sleep", "efficiency", "latency", "rem_sleep", "restfulness", "timing", "total_sleep"
-]
+_OURA_SLEEP_COMPONENTS = ["deep_sleep", "efficiency", "latency", "rem_sleep", "restfulness", "timing", "total_sleep"]
 _OURA_READINESS_COMPONENTS = [
-    "activity_balance", "body_temperature", "hrv_balance", "previous_day_activity",
-    "previous_night", "recovery_index", "resting_heart_rate", "sleep_balance",
+    "activity_balance",
+    "body_temperature",
+    "hrv_balance",
+    "previous_day_activity",
+    "previous_night",
+    "recovery_index",
+    "resting_heart_rate",
+    "sleep_balance",
 ]
 _OURA_ACTIVITY_COMPONENTS = [
-    "meet_daily_targets", "move_every_hour", "recovery_time",
-    "stay_active", "training_frequency", "training_volume",
+    "meet_daily_targets",
+    "move_every_hour",
+    "recovery_time",
+    "stay_active",
+    "training_frequency",
+    "training_volume",
 ]
 
 # Garmin health-score qualifiers
@@ -491,39 +501,45 @@ def _generate_health_scores(
             readiness_val = max(30, min(100, base_readiness + fake.random_int(min=-8, max=8)))
             activity_val = max(30, min(100, base_activity + fake.random_int(min=-10, max=10)))
 
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.SLEEP,
-                value=sleep_val,
-                recorded_at=current,
-                components={k: ScoreComponent(value=fake.random_int(min=40, max=100)) for k in _OURA_SLEEP_COMPONENTS},
-            ))
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.READINESS,
-                value=readiness_val,
-                recorded_at=current,
-                components={
-                    k: ScoreComponent(value=fake.random_int(min=40, max=100))
-                    for k in _OURA_READINESS_COMPONENTS
-                },
-            ))
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.ACTIVITY,
-                value=activity_val,
-                recorded_at=current,
-                components={
-                    k: ScoreComponent(value=fake.random_int(min=40, max=100))
-                    for k in _OURA_ACTIVITY_COMPONENTS
-                },
-            ))
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.SLEEP,
+                    value=sleep_val,
+                    recorded_at=current,
+                    components={
+                        k: ScoreComponent(value=fake.random_int(min=40, max=100)) for k in _OURA_SLEEP_COMPONENTS
+                    },
+                )
+            )
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.READINESS,
+                    value=readiness_val,
+                    recorded_at=current,
+                    components={
+                        k: ScoreComponent(value=fake.random_int(min=40, max=100)) for k in _OURA_READINESS_COMPONENTS
+                    },
+                )
+            )
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.ACTIVITY,
+                    value=activity_val,
+                    recorded_at=current,
+                    components={
+                        k: ScoreComponent(value=fake.random_int(min=40, max=100)) for k in _OURA_ACTIVITY_COMPONENTS
+                    },
+                )
+            )
 
             # Drift the bases slightly day-over-day for realism
             base_sleep = max(40, min(95, base_sleep + fake.random_int(min=-3, max=3)))
@@ -542,47 +558,48 @@ def _generate_health_scores(
             stress_val = max(5, min(95, base_stress + fake.random_int(min=-8, max=8)))
 
             sleep_qualifier = (
-                "EXCELLENT" if sleep_val >= 80
-                else "GOOD" if sleep_val >= 65
-                else "FAIR" if sleep_val >= 50
-                else "POOR"
+                "EXCELLENT" if sleep_val >= 80 else "GOOD" if sleep_val >= 65 else "FAIR" if sleep_val >= 50 else "POOR"
             )
             stress_qualifier = (
-                "High Stress" if stress_val >= 60
-                else "Medium Stress" if stress_val >= 30
-                else "Low Stress"
+                "High Stress" if stress_val >= 60 else "Medium Stress" if stress_val >= 30 else "Low Stress"
             )
 
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.SLEEP,
-                value=sleep_val,
-                qualifier=sleep_qualifier,
-                recorded_at=current,
-                components={
-                    k: ScoreComponent(qualifier=fake.random.choice(_GARMIN_SLEEP_QUALIFIERS))
-                    for k in _GARMIN_SLEEP_COMPONENTS
-                },
-            ))
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.BODY_BATTERY,
-                value=battery_val,
-                recorded_at=current,
-            ))
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.STRESS,
-                value=stress_val,
-                qualifier=stress_qualifier,
-                recorded_at=current,
-            ))
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.SLEEP,
+                    value=sleep_val,
+                    qualifier=sleep_qualifier,
+                    recorded_at=current,
+                    components={
+                        k: ScoreComponent(qualifier=fake.random.choice(_GARMIN_SLEEP_QUALIFIERS))
+                        for k in _GARMIN_SLEEP_COMPONENTS
+                    },
+                )
+            )
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.BODY_BATTERY,
+                    value=battery_val,
+                    recorded_at=current,
+                )
+            )
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.STRESS,
+                    value=stress_val,
+                    qualifier=stress_qualifier,
+                    recorded_at=current,
+                )
+            )
 
             base_sleep = max(40, min(95, base_sleep + fake.random_int(min=-3, max=3)))
             base_battery = max(15, min(95, base_battery + fake.random_int(min=-5, max=5)))
@@ -597,41 +614,51 @@ def _generate_health_scores(
             sleep_val = max(20, min(100, base_sleep + fake.random_int(min=-10, max=10)))
             recovery_val = max(20, min(100, base_recovery + fake.random_int(min=-8, max=8)))
 
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.SLEEP,
-                value=sleep_val,
-                qualifier=None,
-                recorded_at=current,
-                components={
-                    "sleep_consistency_percentage": ScoreComponent(
-                        value=fake.random_int(min=40, max=100), qualifier=None
-                    ),
-                    "sleep_efficiency_percentage": ScoreComponent(
-                        value=fake.random_int(min=60, max=98), qualifier=None
-                    ),
-                    "respiratory_rate": ScoreComponent(value=round(fake.random.uniform(12.0, 20.0), 1), qualifier=None),
-                },
-            ))
-            scores.append(HealthScoreCreate(
-                id=uuid4(),
-                user_id=user_id,
-                provider=provider,
-                category=HealthScoreCategory.RECOVERY,
-                value=recovery_val,
-                qualifier=None,
-                recorded_at=current,
-                components={
-                    "resting_heart_rate": ScoreComponent(value=fake.random_int(min=42, max=72), qualifier=None),
-                    "hrv_rmssd_milli": ScoreComponent(value=round(fake.random.uniform(20.0, 90.0), 1), qualifier=None),
-                    "spo2_percentage": ScoreComponent(value=round(fake.random.uniform(94.0, 100.0), 1), qualifier=None),
-                    "skin_temp_celsius": ScoreComponent(
-                        value=round(fake.random.uniform(33.5, 37.0), 1), qualifier=None
-                    ),
-                },
-            ))
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.SLEEP,
+                    value=sleep_val,
+                    qualifier=None,
+                    recorded_at=current,
+                    components={
+                        "sleep_consistency_percentage": ScoreComponent(
+                            value=fake.random_int(min=40, max=100), qualifier=None
+                        ),
+                        "sleep_efficiency_percentage": ScoreComponent(
+                            value=fake.random_int(min=60, max=98), qualifier=None
+                        ),
+                        "respiratory_rate": ScoreComponent(
+                            value=round(fake.random.uniform(12.0, 20.0), 1), qualifier=None
+                        ),
+                    },
+                )
+            )
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=provider,
+                    category=HealthScoreCategory.RECOVERY,
+                    value=recovery_val,
+                    qualifier=None,
+                    recorded_at=current,
+                    components={
+                        "resting_heart_rate": ScoreComponent(value=fake.random_int(min=42, max=72), qualifier=None),
+                        "hrv_rmssd_milli": ScoreComponent(
+                            value=round(fake.random.uniform(20.0, 90.0), 1), qualifier=None
+                        ),
+                        "spo2_percentage": ScoreComponent(
+                            value=round(fake.random.uniform(94.0, 100.0), 1), qualifier=None
+                        ),
+                        "skin_temp_celsius": ScoreComponent(
+                            value=round(fake.random.uniform(33.5, 37.0), 1), qualifier=None
+                        ),
+                    },
+                )
+            )
 
             base_sleep = max(20, min(100, base_sleep + fake.random_int(min=-4, max=4)))
             base_recovery = max(20, min(100, base_recovery + fake.random_int(min=-4, max=4)))
@@ -835,10 +862,13 @@ class SeedDataService:
 
             # Health scores — one batch per provider covering the full seeded date range
             if profile.generate_workouts or profile.generate_sleep:
-                date_range_months = max(
-                    profile.workout_config.date_range_months if profile.generate_workouts else 0,
-                    profile.sleep_config.date_range_months if profile.generate_sleep else 0,
-                ) or 6
+                date_range_months = (
+                    max(
+                        profile.workout_config.date_range_months if profile.generate_workouts else 0,
+                        profile.sleep_config.date_range_months if profile.generate_sleep else 0,
+                    )
+                    or 6
+                )
                 for prov, last_synced_at in provider_sync_times.items():
                     sb = last_synced_at - timedelta(days=date_range_months * 30)
                     scores = _generate_health_scores(user.id, prov, sb, last_synced_at, fake)
