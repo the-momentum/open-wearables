@@ -30,6 +30,7 @@ from svix.api import (
     Svix,
     SvixOptions,
 )
+from svix.api.errors.http_error import HttpError
 
 from app.config import settings
 from app.constants.webhooks.test_payloads import get_test_payload
@@ -162,6 +163,17 @@ def send(
                 channels=channels or None,
             ),
         )
+    except HttpError as exc:
+        if exc.status_code == 409:
+            # Svix deduplication: the same event_id was already delivered.
+            # Treat as success so the Celery task does not retry.
+            logger.debug(
+                "Svix duplicate event_id=%s already delivered (409), skipping",
+                idempotency_key,
+            )
+            return True  # type: ignore[return-value]
+        logger.exception("Failed to send webhook event=%s to app=%s", event_type, app_id)
+        return None
     except Exception:
         logger.exception("Failed to send webhook event=%s to app=%s", event_type, app_id)
         return None

@@ -504,8 +504,8 @@ class Whoop247Data(Base247DataTemplate):
         if not body:
             return 0
 
-        count = 0
         recorded_at = datetime.now(timezone.utc)
+        samples_to_create: list[TimeSeriesSampleCreate] = []
 
         # Save height (convert meters to centimeters) if changed
         height_meter = body.get("height_meter")
@@ -515,21 +515,21 @@ class Whoop247Data(Base247DataTemplate):
                 latest_height = self._get_latest_value(db, user_id, SeriesType.height)
 
                 if latest_height is None or abs(latest_height - height_cm) > Decimal("0.01"):
-                    sample = TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=height_cm,
-                        series_type=SeriesType.height,
+                    samples_to_create.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=recorded_at,
+                            value=height_cm,
+                            series_type=SeriesType.height,
+                        )
                     )
-                    timeseries_service.crud.create(db, sample)
-                    count += 1
             except Exception as e:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Failed to save height data: {e}",
+                    f"Failed to build height sample: {e}",
                     provider="whoop",
                     task="load_and_save_body_measurement",
                 )
@@ -542,26 +542,29 @@ class Whoop247Data(Base247DataTemplate):
                 latest_weight = self._get_latest_value(db, user_id, SeriesType.weight)
 
                 if latest_weight is None or abs(latest_weight - weight) > Decimal("0.01"):
-                    sample = TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=recorded_at,
-                        value=weight,
-                        series_type=SeriesType.weight,
+                    samples_to_create.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=recorded_at,
+                            value=weight,
+                            series_type=SeriesType.weight,
+                        )
                     )
-                    timeseries_service.crud.create(db, sample)
-                    count += 1
             except Exception as e:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Failed to save weight data: {e}",
+                    f"Failed to build weight sample: {e}",
                     provider="whoop",
                     task="load_and_save_body_measurement",
                 )
 
-        return count
+        if samples_to_create:
+            timeseries_service.bulk_create_samples(db, samples_to_create)
+
+        return len(samples_to_create)
 
     # -------------------------------------------------------------------------
     # Recovery Data
@@ -738,8 +741,6 @@ class Whoop247Data(Base247DataTemplate):
         if not timestamp:
             return 0
 
-        count = 0
-
         # Map WHOOP fields to SeriesType
         metrics = [
             ("recovery_score", SeriesType.recovery_score),
@@ -749,30 +750,34 @@ class Whoop247Data(Base247DataTemplate):
             ("skin_temp_celsius", SeriesType.skin_temperature),
         ]
 
+        samples_to_create: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in metrics:
             value = normalized_recovery.get(field_name)
             if value is not None:
                 try:
-                    sample = TimeSeriesSampleCreate(
-                        id=uuid4(),
-                        user_id=user_id,
-                        source=self.provider_name,
-                        recorded_at=timestamp,
-                        value=Decimal(str(value)),
-                        series_type=series_type,
+                    samples_to_create.append(
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=timestamp,
+                            value=Decimal(str(value)),
+                            series_type=series_type,
+                        )
                     )
-                    timeseries_service.crud.create(db, sample)
-                    count += 1
                 except Exception as e:
                     log_structured(
                         self.logger,
                         "warning",
-                        f"Failed to save recovery {field_name}: {e}",
+                        f"Failed to build recovery sample {field_name}: {e}",
                         provider="whoop",
                         task="save_recovery_data",
                     )
 
-        return count
+        if samples_to_create:
+            timeseries_service.bulk_create_samples(db, samples_to_create)
+
+        return len(samples_to_create)
 
     def load_and_save_recovery(
         self,

@@ -36,7 +36,7 @@ from app.schemas.utils import (
 from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
-from app.services.outgoing_webhooks.events import on_activity_created, on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_created
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -448,18 +448,6 @@ class EventRecordService(
                 if detail.total_elevation_gain is not None
                 else None,
                 avg_pace_sec_per_km=avg_pace,
-            )
-        else:
-            on_activity_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                activity_type=record.type,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
             )
 
     def bulk_create(

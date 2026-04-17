@@ -30,17 +30,6 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "duration_seconds": 30600.0,
         },
     },
-    WebhookEventType.ACTIVITY_CREATED: {
-        "type": WebhookEventType.ACTIVITY_CREATED,
-        "data": {
-            "record_id": "00000000-0000-0000-0000-000000000001",
-            "user_id": "00000000-0000-0000-0000-000000000002",
-            "provider": "garmin",
-            "activity_type": "walking",
-            "start_datetime": "2024-01-01T12:00:00+00:00",
-            "end_datetime": "2024-01-01T12:30:00+00:00",
-        },
-    },
     WebhookEventType.HEART_RATE_CREATED: {
         "type": WebhookEventType.HEART_RATE_CREATED,
         "data": {

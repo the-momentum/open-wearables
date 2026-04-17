@@ -60,34 +60,37 @@ class TimeSeriesService(
         """Emit one webhook event per (user, provider, series_type) batch."""
         if not samples:
             return
-        groups: dict[tuple[UUID, str, str], list[Any]] = defaultdict(list)
-        for s in samples:
-            key = (s.user_id, s.provider or s.source or "unknown", s.series_type.value)
-            groups[key].append(s)
-        for (user_id, provider, series_type_value), group_samples in groups.items():
-            sorted_samples = sorted(group_samples, key=lambda s: s.recorded_at)
-            series_type_enum = SeriesType(series_type_value)
-            unit = get_series_type_unit(series_type_enum)
-            webhook_samples = [
-                {
-                    "timestamp": s.recorded_at.isoformat(),
-                    "zone_offset": s.zone_offset,
-                    "type": series_type_value,
-                    "value": float(s.value),
-                    "unit": unit,
-                    "source": {"provider": provider, "device": s.device_model},
-                }
-                for s in sorted_samples
-            ]
-            on_timeseries_batch_saved(
-                user_id=user_id,
-                provider=provider,
-                series_type=series_type_value,
-                sample_count=len(sorted_samples),
-                start_time=sorted_samples[0].recorded_at.isoformat(),
-                end_time=sorted_samples[-1].recorded_at.isoformat(),
-                samples=webhook_samples,
-            )
+        try:
+            groups: dict[tuple[UUID, str, str], list[Any]] = defaultdict(list)
+            for s in samples:
+                key = (s.user_id, s.provider or s.source or "unknown", s.series_type.value)
+                groups[key].append(s)
+            for (user_id, provider, series_type_value), group_samples in groups.items():
+                sorted_samples = sorted(group_samples, key=lambda s: s.recorded_at)
+                series_type_enum = SeriesType(series_type_value)
+                unit = get_series_type_unit(series_type_enum)
+                webhook_samples = [
+                    {
+                        "timestamp": s.recorded_at.isoformat(),
+                        "zone_offset": s.zone_offset,
+                        "type": series_type_value,
+                        "value": float(s.value),
+                        "unit": unit,
+                        "source": {"provider": provider, "device": s.device_model},
+                    }
+                    for s in sorted_samples
+                ]
+                on_timeseries_batch_saved(
+                    user_id=user_id,
+                    provider=provider,
+                    series_type=series_type_value,
+                    sample_count=len(sorted_samples),
+                    start_time=sorted_samples[0].recorded_at.isoformat(),
+                    end_time=sorted_samples[-1].recorded_at.isoformat(),
+                    samples=webhook_samples,
+                )
+        except Exception:
+            getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

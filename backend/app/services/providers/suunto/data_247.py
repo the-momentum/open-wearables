@@ -349,31 +349,35 @@ class Suunto247Data(Base247DataTemplate):
         if not recorded_at:
             return 0
 
-        count = 0
+        samples_to_create: list[TimeSeriesSampleCreate] = []
         for field_name, series_type in _RECOVERY_METRICS:
             value = normalized_recovery.get(field_name)
             if value is None:
                 continue
             try:
-                sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    source=self.provider_name,
-                    recorded_at=recorded_at,
-                    value=Decimal(str(value)),
-                    series_type=series_type,
+                samples_to_create.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
                 )
-                timeseries_service.crud.create(db, sample)
-                count += 1
             except Exception as e:
                 log_structured(
                     self.logger,
                     "warning",
-                    f"Failed to save recovery {field_name}: {e}",
+                    f"Failed to build recovery sample {field_name}: {e}",
                     provider="suunto",
                     task="save_recovery_data",
                 )
-        return count
+
+        if samples_to_create:
+            timeseries_service.bulk_create_samples(db, samples_to_create)
+
+        return len(samples_to_create)
 
     def load_and_save_recovery(
         self,

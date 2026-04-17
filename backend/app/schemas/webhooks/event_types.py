@@ -4,7 +4,7 @@ Each value follows the Svix convention: ``<resource>.<action>``.
 Keep in sync with the init script that registers them with the Svix server.
 
 All events use the ``created`` action — there is no update/patch flow.
-Discrete EventRecord events (workout, sleep, activity) represent complete
+Discrete EventRecord events (workout, sleep) represent complete
 sessions; TimeSeries events represent batched samples (HR, steps, etc.)
 received from a provider during an ingestion run.
 """
@@ -19,7 +19,6 @@ class WebhookEventType(StrEnum):
     # EventRecord-based (discrete sessions)
     WORKOUT_CREATED = "workout.created"
     SLEEP_CREATED = "sleep.created"
-    ACTIVITY_CREATED = "activity.created"
 
     # TimeSeries-based (batched samples per ingestion)
     HEART_RATE_CREATED = "heart_rate.created"
@@ -48,7 +47,6 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.CONNECTION_CREATED: "A user successfully connected a wearable provider.",
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
-    WebhookEventType.ACTIVITY_CREATED: "A new generic activity session was saved.",
     WebhookEventType.HEART_RATE_CREATED: "New heart-rate samples were ingested.",
     WebhookEventType.HEART_RATE_VARIABILITY_CREATED: "New HRV samples were ingested.",
     WebhookEventType.STEPS_CREATED: "New step samples were ingested.",

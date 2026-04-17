@@ -8,6 +8,7 @@ happens in the worker process.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,15 @@ logger = logging.getLogger(__name__)
 # consecutive chunk events, each carrying a ``chunk_index`` / ``total_chunks``
 # envelope so consumers can reassemble if needed.
 SVIX_MAX_SAMPLES_PER_EVENT = 2500
+
+# Svix eventId must match [a-zA-Z0-9\-_.] — colons, plus-signs, and other
+# characters in ISO 8601 timestamps are not allowed.
+_SVIX_ID_SAFE = re.compile(r"[^a-zA-Z0-9\-_.]")
+
+
+def _safe_key(raw: str) -> str:
+    """Replace characters forbidden in a Svix eventId with underscores."""
+    return _SVIX_ID_SAFE.sub("_", raw)
 
 
 def _dispatch(
@@ -125,38 +135,6 @@ def on_sleep_created(
     )
 
 
-def on_activity_created(
-    *,
-    record_id: UUID,
-    user_id: UUID,
-    provider: str,
-    device: str | None,
-    activity_type: str | None,
-    start_time: str,
-    end_time: str,
-    zone_offset: str | None,
-    duration_seconds: float | None,
-) -> None:
-    _dispatch(
-        WebhookEventType.ACTIVITY_CREATED,
-        {
-            "type": WebhookEventType.ACTIVITY_CREATED,
-            "data": {
-                "id": str(record_id),
-                "user_id": str(user_id),
-                "type": activity_type,
-                "start_time": start_time,
-                "end_time": end_time,
-                "zone_offset": zone_offset,
-                "duration_seconds": duration_seconds,
-                "source": {"provider": provider, "device": device},
-            },
-        },
-        idempotency_key=f"activity.created.{record_id}",
-        channels=[f"user.{user_id}"],
-    )
-
-
 def on_timeseries_batch_saved(
     *,
     user_id: UUID,
@@ -182,7 +160,9 @@ def on_timeseries_batch_saved(
     samples = samples or []
 
     if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
-        idempotency_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        idempotency_key = _safe_key(
+            f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        )
         _dispatch(
             event_type,
             {
@@ -208,7 +188,7 @@ def on_timeseries_batch_saved(
         for chunk_index, chunk in enumerate(chunks):
             chunk_start = chunk[0]["timestamp"] if chunk else start_time
             chunk_end = chunk[-1]["timestamp"] if chunk else end_time
-            idempotency_key = (
+            idempotency_key = _safe_key(
                 f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
             )
             _dispatch(
