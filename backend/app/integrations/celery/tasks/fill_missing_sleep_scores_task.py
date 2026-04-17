@@ -26,7 +26,8 @@ _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
         er.id AS record_id,
-        (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS wake_date
+        (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS wake_date,
+        (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval) AS local_end_datetime
     FROM event_record er
     JOIN data_source ds   ON ds.id = er.data_source_id
     JOIN sleep_details sd ON sd.record_id = er.id
@@ -60,10 +61,10 @@ def fill_missing_sleep_scores() -> dict:
         if not rows:
             return {"saved": 0, "skipped": 0}
 
-        # Group (record_id, wake_date) pairs per user
-        records_by_user: dict[UUID, list[tuple[UUID, date]]] = defaultdict(list)
-        for user_id, record_id, wake_date in rows:
-            records_by_user[UUID(str(user_id))].append((UUID(str(record_id)), wake_date))
+        # Group (record_id, wake_date, local_end_datetime) triples per user
+        records_by_user: dict[UUID, list[tuple[UUID, date, datetime]]] = defaultdict(list)
+        for user_id, record_id, wake_date, local_end in rows:
+            records_by_user[UUID(str(user_id))].append((UUID(str(record_id)), wake_date, local_end))
 
         log_structured(
             logger,
@@ -75,7 +76,11 @@ def fill_missing_sleep_scores() -> dict:
         total_saved = 0
         total_skipped = 0
 
-        for uid, record_wakes in records_by_user.items():
+        for uid, record_wakes_extended in records_by_user.items():
+            record_wakes = [(rid, wd) for rid, wd, _ in record_wakes_extended]
+            # Map record_id → local end datetime so recorded_at is unique per
+            # session even when two sessions share the same local wake date.
+            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, le in record_wakes_extended}
             try:
                 scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
             except Exception as e:
@@ -101,7 +106,7 @@ def fill_missing_sleep_scores() -> dict:
                     category=HealthScoreCategory.SLEEP,
                     value=result.overall_score,
                     sleep_record_id=record_id,
-                    recorded_at=datetime(wake_date.year, wake_date.month, wake_date.day, tzinfo=timezone.utc),
+                    recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
                     components={
                         "duration": ScoreComponent(value=result.breakdown.duration.score),
                         "stages": ScoreComponent(value=result.breakdown.stages.score),
@@ -109,7 +114,7 @@ def fill_missing_sleep_scores() -> dict:
                         "interruptions": ScoreComponent(value=result.breakdown.interruptions.score),
                     },
                 )
-                for (record_id, wake_date), result in scores_by_record.items()
+                for (record_id, _), result in scores_by_record.items()
             ]
 
             try:
@@ -119,7 +124,7 @@ def fill_missing_sleep_scores() -> dict:
                 total_skipped += len(record_wakes) - len(scores_to_save)
             except Exception as e:
                 db.rollback()
-                total_skipped += len(scores_to_save)
+                total_skipped += len(record_wakes)
                 log_and_capture_error(
                     e,
                     logger,
