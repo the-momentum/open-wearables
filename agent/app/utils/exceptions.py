@@ -90,7 +90,7 @@ def _(exc: RequestValidationError, _: str) -> HTTPException:
     ctx = err_args.get("ctx", {})
     error = ctx.get("error", "") if ctx else ""
     detail = f"{msg} - {error}" if error else msg
-    return HTTPException(status_code=400, detail=detail)
+    return HTTPException(status_code=422, detail=detail)
 
 
 @overload

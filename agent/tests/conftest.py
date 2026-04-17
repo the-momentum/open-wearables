@@ -24,10 +24,12 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Must be set before importing any app modules so pydantic-settings picks them up.
-os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing-only")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-key")
-os.environ.setdefault("CELERY_BROKER_URL", "memory://")
-os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
+# Use `or` instead of setdefault so CI env vars set to "" (missing secrets) are
+# overridden with safe test values rather than left as empty strings.
+os.environ["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "test-secret-key-for-testing-only"
+os.environ["ANTHROPIC_API_KEY"] = os.environ.get("ANTHROPIC_API_KEY") or "sk-ant-test-key"
+os.environ["CELERY_BROKER_URL"] = os.environ.get("CELERY_BROKER_URL") or "memory://"
+os.environ["CELERY_RESULT_BACKEND"] = os.environ.get("CELERY_RESULT_BACKEND") or "cache+memory://"
 
 import jwt
 import pytest

@@ -22,23 +22,23 @@ class TestBuildHistory:
         result = _build_history(history)
         assert len(result) == 1
 
-    def test_assistant_messages_are_skipped(self) -> None:
+    def test_assistant_messages_are_included(self) -> None:
         history = [
             {"role": "user", "content": "Question"},
             {"role": "assistant", "content": "Answer"},
         ]
         result = _build_history(history)
-        # Only user turns are seeded into the history
-        assert len(result) == 1
+        # Both user and assistant turns are seeded into the history
+        assert len(result) == 2
 
-    def test_mixed_history_preserves_user_order(self) -> None:
+    def test_mixed_history_preserves_order(self) -> None:
         history = [
             {"role": "user", "content": "First"},
             {"role": "assistant", "content": "Reply"},
             {"role": "user", "content": "Second"},
         ]
         result = _build_history(history)
-        assert len(result) == 2
+        assert len(result) == 3
 
 
 class TestWorkflowEngineRun:
@@ -99,7 +99,7 @@ class TestWorkflowEngineRun:
 
         deps = graph_run.call_args.kwargs["deps"]
         assert "chat_history" in deps
-        assert len(deps["chat_history"]) == 1  # only user turn seeded
+        assert len(deps["chat_history"]) == 2  # both user and assistant turns seeded
 
     async def test_run_passes_agent_router_guardrails_in_deps(self, engine: WorkflowEngine) -> None:
         mock_result = MagicMock()
