@@ -1,21 +1,21 @@
 ---
 title: Resilience Score
-description: A weekly HRV-based score computed by Open Wearables that measures the stability of the body's autonomic nervous system during sleep.
+description: A HRV-CV computed by Open Wearables that measures the stability of the body's autonomic nervous system.
 ---
 
 ## Overview
 
-The Resilience Score is an **Open Wearables native score** that measures how stable a user's heart rate variability (HRV) is across nights of sleep. It is computed from raw overnight biometric data — not sourced from or influenced by any manufacturer's proprietary score.
+The Resilience Score is an **Open Wearables native score** that measures how stable a user's heart rate variability (HRV) is. It is computed from raw overnight biometric data - not sourced from or influenced by any manufacturer's proprietary score.
 
-HRV consistency during sleep is a well-established marker of autonomic nervous system resilience: the more stable the overnight HRV, the better the body is recovering and adapting to physiological stress.
+HRV-CV during sleep is an established marker of autonomic nervous system resilience: the more stable the overnight HRV, the better the body is recovering and adapting to physiological stress.
 
-| Property   | Value                                                   |
-|------------|---------------------------------------------------------|
-| Range      | Continuous (HRV coefficient of variation)               |
-| Frequency  | Weekly rolling window, updated daily                    |
-| Daily view | Per-night HRV value shown alongside the weekly score    |
-| Component  | Heart Rate Variability (overnight, sleep-filtered)      |
-| Source     | Computed by Open Wearables — not a provider-sourced score |
+| Property   | Value                                                     |
+|------------|-----------------------------------------------------------|
+| Range      | 0-100                                                     |
+| Frequency  | Weekly rolling window, updated daily                      |
+| Daily view | Per-night HRV value shown alongside the weekly score      |
+| Component  | Heart Rate Variability (overnight, sleep-filtered)        |
+| Source     | Computed by Open Wearables - not a provider-sourced score |
 
 ---
 
@@ -24,17 +24,17 @@ HRV consistency during sleep is a well-established marker of autonomic nervous s
 ### Data syncing
 
 - The user must have at least one connected provider that syncs **heart rate data** and **sleep data**.
-- The device must be **worn during sleep** — overnight HR samples outside of detected sleep windows are excluded from the calculation.
+- The device must be **worn during sleep** - overnight HR samples outside of detected sleep windows are excluded from the calculation.
 
 ### Minimum data threshold
 
 A Resilience Score is only computed when there is sufficient data to produce a statistically meaningful result:
 
-| Requirement                        | Value  |
-|------------------------------------|--------|
-| Lookback window                    | 7 nights |
-| Minimum nights with HRV data       | 5 nights |
-| Minimum HR samples per night       | 20 samples |
+| Requirement                  | Value    |
+|------------------------------|----------|
+| Lookback window              | 7 nights |
+| Minimum nights with HRV data | 5 nights |
+| Minimum HR samples per night | 20 samples |
 
 If fewer than 5 of the 7 nights have valid overnight HRV recordings, the score is returned as `null`. The daily breakdown is still returned so you can show users how many nights have been counted and encourage consistent device wear.
 
@@ -54,13 +54,9 @@ Only HR samples recorded during confirmed sleep are used. The algorithm:
 
 1. Fetches all sleep sessions in the lookback window.
 2. Extracts stage-level windows where the user was in any asleep stage (Light, Deep, REM, or generic Sleeping).
-3. Filters HR data points to those timestamps — excluding awake periods, sleep latency, and morning lie-in.
+3. Filters HR data points to those timestamps - excluding awake periods and sleep latency.
 
 If a sleep session has no stage-level data, the full session window is used as a conservative fallback.
-
-### Open Wearables overnight HRV (RMSSD_OW / SDNN_OW)
-
-In addition to device-reported HRV values, Open Wearables can recompute overnight RMSSD and SDNN directly from the raw HR time series via RR-interval conversion. These are referred to as **RMSSD_OW** and **SDNN_OW** (OW = Open Wearables). This gives full control over the filtering and thresholding logic, independently of what the manufacturer reports.
 
 ### Coefficient of variation (HRV-CV)
 
@@ -70,7 +66,7 @@ The weekly score is the **coefficient of variation** of nightly average HRV valu
 HRV-CV = standard deviation of nightly HRV averages / mean of nightly HRV averages
 ```
 
-A **lower HRV-CV means more consistent overnight HRV** — the body is recovering steadily night to night. A higher HRV-CV indicates more variability, which can reflect stress, illness, overtraining, or lifestyle disruption.
+A **lower HRV-CV means more consistent overnight HRV** - the body is recovering steadily night to night. A higher HRV-CV indicates more variability, which can reflect stress, illness, overtraining, or lifestyle disruption.
 
 ### Daily view
 

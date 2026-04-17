@@ -30,8 +30,9 @@
             ]
           },
           {
-            "group": "Scores",
+            "group": "Health Scores",
             "pages": [
+              "scores/health-scores",
               "scores/sleep-score",
               "scores/resilience-score"
             ]
