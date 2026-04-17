@@ -144,9 +144,8 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Text Editor — ignore .vscode contents but track shared settings
-**/.vscode/*
-!**/.vscode/settings.json
+# Text Editor
+.vscode
 .idea/
 
 # macOS automatic files
@@ -172,5 +171,3 @@ CLAUDE.local.md
 
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
-# Exception: per-folder VS Code settings for multi-root workspace
-!**/.vscode/settings.json

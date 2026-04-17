@@ -15,7 +15,6 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./agent/scripts/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh
     restart: unless-stopped
 
   app:
@@ -99,72 +98,6 @@ services:
       - redis_data:/var/lib/redis/data
     restart: unless-stopped
 
-  agent:
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
-    container_name: agent__open-wearables
-    image: open-wearables-agent:latest
-    pull_policy: never
-    command: scripts/start/app.sh
-    env_file:
-      - ./agent/config/.env
-    environment:
-      - DB_HOST=db
-      - REDIS_HOST=redis
-    ports:
-      - "8001:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/db')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    restart: unless-stopped
-
-  agent-celery-worker:
-    container_name: agent-celery-worker__open-wearables
-    image: open-wearables-agent:latest
-    pull_policy: never
-    command: scripts/start/worker.sh
-    env_file:
-      - ./agent/config/.env
-    environment:
-      - DB_HOST=db
-      - REDIS_HOST=redis
-    depends_on:
-      redis:
-        condition: service_started
-      db:
-        condition: service_healthy
-      agent:
-        condition: service_healthy
-    restart: unless-stopped
-
-  agent-celery-beat:
-    container_name: agent-celery-beat__open-wearables
-    image: open-wearables-agent:latest
-    pull_policy: never
-    command: scripts/start/beat.sh
-    env_file:
-      - ./agent/config/.env
-    environment:
-      - DB_HOST=db
-      - REDIS_HOST=redis
-    depends_on:
-      redis:
-        condition: service_started
-      db:
-        condition: service_healthy
-      agent:
-        condition: service_healthy
-    restart: unless-stopped
-    
   svix-server:
     container_name: svix-server__open-wearables
     image: svix/svix-server:v1
