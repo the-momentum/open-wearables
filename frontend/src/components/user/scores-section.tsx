@@ -600,8 +600,7 @@ export function ScoresSection({
                             <ChartTooltipContent
                               formatter={
                                 selectedCategory === 'resilience'
-                                  ? (value) =>
-                                      `${Number(value).toFixed(1)}%`
+                                  ? (value) => `${Number(value).toFixed(1)}%`
                                   : undefined
                               }
                             />
