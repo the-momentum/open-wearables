@@ -19,9 +19,12 @@ logger = getLogger(__name__)
 
 # Find all non-nap sleep sessions that have no corresponding OW sleep score.
 # The match is on sleep_record_id (direct FK) so each session gets exactly one
-# score regardless of timezone-induced date collisions. wake_date (end_datetime
-# local date) is used purely to set recorded_at for API range queries.
-# Limited to sessions within the configured backfill window.
+# score regardless of timezone-induced date collisions. wake_date (local end
+# date) is used as the lookup key for get_sleep_scores_for_records and for
+# result ordering. recorded_at is set to the session's exact local end datetime
+# (local_end_datetime) so two sessions sharing the same wake date still produce
+# distinct recorded_at values. Limited to sessions within the configured
+# backfill window.
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
