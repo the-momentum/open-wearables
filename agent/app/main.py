@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from logging import INFO, basicConfig
 
 from fastapi import FastAPI, Request
@@ -15,11 +17,16 @@ from app.utils.healthcheck import healthcheck_router
 
 basicConfig(level=INFO, format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s")
 
-api = FastAPI(title=settings.api_name)
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+    validate_llm_config()
+    yield
+
+
+api = FastAPI(title=settings.api_name, lifespan=_lifespan)
 celery_app = create_celery()
 init_sentry()
-
-validate_llm_config()
 
 add_cors_middleware(api)
 

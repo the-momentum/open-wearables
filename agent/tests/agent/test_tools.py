@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -18,6 +18,15 @@ from app.agent.tools.ow_tools import (
     get_user_profile,
     get_workouts,
 )
+
+
+def _make_ctx(user_id: UUID | None = None) -> MagicMock:
+    """Return a minimal mock RunContext[HealthAgentDeps] for tool unit tests."""
+    ctx = MagicMock()
+    ctx.deps = MagicMock()
+    ctx.deps.user_id = user_id if user_id is not None else uuid4()
+    return ctx
+
 
 # ---------------------------------------------------------------------------
 # Date tools
@@ -84,7 +93,7 @@ def mock_client() -> Iterator[MagicMock]:
 
 class TestGetUserProfile:
     async def test_calls_ow_client_and_returns_string(self, mock_client: MagicMock) -> None:
-        result = await get_user_profile(str(uuid4()))
+        result = await get_user_profile(_make_ctx())
 
         assert "Alice" in result
         mock_client.get_user_profile.assert_called_once()
@@ -92,14 +101,14 @@ class TestGetUserProfile:
     async def test_returns_error_string_on_exception(self) -> None:
         with patch("app.agent.tools.ow_tools.ow_client") as mock:
             mock.get_user_profile = AsyncMock(side_effect=Exception("network error"))
-            result = await get_user_profile(str(uuid4()))
+            result = await get_user_profile(_make_ctx())
 
         assert "Error" in result
 
 
 class TestGetBodyComposition:
     async def test_calls_ow_client(self, mock_client: MagicMock) -> None:
-        result = await get_body_composition(str(uuid4()))
+        result = await get_body_composition(_make_ctx())
 
         assert isinstance(result, str)
         mock_client.get_body_summary.assert_called_once()
@@ -107,20 +116,20 @@ class TestGetBodyComposition:
     async def test_returns_error_on_failure(self) -> None:
         with patch("app.agent.tools.ow_tools.ow_client") as mock:
             mock.get_body_summary = AsyncMock(side_effect=RuntimeError("oops"))
-            result = await get_body_composition(str(uuid4()))
+            result = await get_body_composition(_make_ctx())
 
         assert "Error" in result
 
 
 class TestGetRecentActivity:
     async def test_calls_activity_summaries(self, mock_client: MagicMock) -> None:
-        result = await get_recent_activity(str(uuid4()), days=7)
+        result = await get_recent_activity(_make_ctx(), days=7)
 
         assert isinstance(result, str)
         mock_client.get_activity_summaries.assert_called_once()
 
     async def test_clamps_days_to_maximum(self, mock_client: MagicMock) -> None:
-        await get_recent_activity(str(uuid4()), days=999)
+        await get_recent_activity(_make_ctx(), days=999)
 
         call_args = mock_client.get_activity_summaries.call_args
         start_date = date.fromisoformat(call_args[0][1])
@@ -128,7 +137,7 @@ class TestGetRecentActivity:
         assert (end_date - start_date).days <= 30
 
     async def test_clamps_days_to_minimum(self, mock_client: MagicMock) -> None:
-        await get_recent_activity(str(uuid4()), days=0)
+        await get_recent_activity(_make_ctx(), days=0)
 
         call_args = mock_client.get_activity_summaries.call_args
         start_date = date.fromisoformat(call_args[0][1])
@@ -138,7 +147,7 @@ class TestGetRecentActivity:
 
 class TestGetRecentSleep:
     async def test_calls_sleep_summaries(self, mock_client: MagicMock) -> None:
-        result = await get_recent_sleep(str(uuid4()), days=7)
+        result = await get_recent_sleep(_make_ctx(), days=7)
 
         assert isinstance(result, str)
         mock_client.get_sleep_summaries.assert_called_once()
@@ -146,7 +155,7 @@ class TestGetRecentSleep:
 
 class TestGetRecoveryData:
     async def test_calls_recovery_summaries(self, mock_client: MagicMock) -> None:
-        result = await get_recovery_data(str(uuid4()), days=7)
+        result = await get_recovery_data(_make_ctx(), days=7)
 
         assert isinstance(result, str)
         mock_client.get_recovery_summaries.assert_called_once()
@@ -154,13 +163,13 @@ class TestGetRecoveryData:
 
 class TestGetWorkouts:
     async def test_calls_workout_events(self, mock_client: MagicMock) -> None:
-        result = await get_workouts(str(uuid4()), days=14)
+        result = await get_workouts(_make_ctx(), days=14)
 
         assert isinstance(result, str)
         mock_client.get_workout_events.assert_called_once()
 
     async def test_clamps_days_to_60(self, mock_client: MagicMock) -> None:
-        await get_workouts(str(uuid4()), days=100)
+        await get_workouts(_make_ctx(), days=100)
 
         call_args = mock_client.get_workout_events.call_args
         start_date = date.fromisoformat(call_args[0][1])
@@ -170,13 +179,13 @@ class TestGetWorkouts:
 
 class TestGetSleepEvents:
     async def test_calls_sleep_events(self, mock_client: MagicMock) -> None:
-        result = await get_sleep_events(str(uuid4()), days=7)
+        result = await get_sleep_events(_make_ctx(), days=7)
 
         assert isinstance(result, str)
         mock_client.get_sleep_events.assert_called_once()
 
     async def test_clamps_days_to_14(self, mock_client: MagicMock) -> None:
-        await get_sleep_events(str(uuid4()), days=100)
+        await get_sleep_events(_make_ctx(), days=100)
 
         call_args = mock_client.get_sleep_events.call_args
         start_date = date.fromisoformat(call_args[0][1])
@@ -186,7 +195,7 @@ class TestGetSleepEvents:
 
 class TestGetHeartRateTimeseries:
     async def test_calls_timeseries_with_heart_rate_type(self, mock_client: MagicMock) -> None:
-        result = await get_heart_rate_timeseries(str(uuid4()), hours=24)
+        result = await get_heart_rate_timeseries(_make_ctx(), hours=24)
 
         assert isinstance(result, str)
         mock_client.get_timeseries.assert_called_once()
@@ -194,7 +203,7 @@ class TestGetHeartRateTimeseries:
         assert "heart_rate" in call_args[1].get("types", call_args[0][3] if len(call_args[0]) > 3 else [])
 
     async def test_clamps_hours_to_168(self, mock_client: MagicMock) -> None:
-        await get_heart_rate_timeseries(str(uuid4()), hours=9999)
+        await get_heart_rate_timeseries(_make_ctx(), hours=9999)
 
         # Should not raise; clamped internally
         mock_client.get_timeseries.assert_called_once()

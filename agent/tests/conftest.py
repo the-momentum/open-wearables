@@ -228,6 +228,13 @@ def auth_headers(auth_token: str) -> dict[str, str]:
 
 
 @pytest.fixture(autouse=True)
+def mock_validate_llm_config() -> Generator[None, None, None]:
+    """Suppress LLM provider validation so tests never need a real API key."""
+    with patch("app.main.validate_llm_config"):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def mock_celery(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Prevent Celery tasks from actually dispatching."""
     mock_task = MagicMock()
