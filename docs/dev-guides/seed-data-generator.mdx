@@ -96,6 +96,10 @@ Every generated user's first name is prefixed with the seed and preset:
 - `1838273645` - the seed used
 - `active_athlete` - the preset id, or `custom` if the form was edited
 
+<Warning>
+**You need both the seed and the preset to reproduce a dataset.** The seed determines the random rolls; the preset tells the generator which configuration to apply on top. That's why both values are baked into every generated user name - so anyone looking at the dashboard can rebuild the exact same dataset without guessing which preset was used.
+</Warning>
+
 ### Reproducing someone else's data
 
 1. Ask them for a user name (or grab it from a screenshot / bug report).
