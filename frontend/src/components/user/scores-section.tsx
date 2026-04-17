@@ -289,22 +289,35 @@ function ScoreDayCard({
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {categoryScores.map((score) => (
-                      <div
-                        key={score.id}
-                        className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/30"
-                      >
-                        <SourceBadge provider={score.provider || 'unknown'} />
-                        <span className="text-sm font-semibold text-white">
-                          {formatScore(score.value, category)}
-                        </span>
-                        {score.qualifier && (
-                          <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                            {score.qualifier}
+                    {categoryScores.map((score) => {
+                      const resilienceScore =
+                        category === 'resilience'
+                          ? (score.components?.resilience_score?.value ?? null)
+                          : null;
+                      return (
+                        <div
+                          key={score.id}
+                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/30"
+                        >
+                          <SourceBadge provider={score.provider || 'unknown'} />
+                          <span className="text-sm font-semibold text-white">
+                            {resilienceScore !== null
+                              ? Number(resilienceScore).toFixed(0)
+                              : formatScore(score.value, category)}
                           </span>
-                        )}
-                      </div>
-                    ))}
+                          {resilienceScore !== null && (
+                            <span className="text-[10px] text-zinc-500">
+                              {formatScore(score.value, 'resilience')}
+                            </span>
+                          )}
+                          {score.qualifier && (
+                            <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                              {score.qualifier}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
