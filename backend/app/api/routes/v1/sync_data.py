@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any
 from uuid import UUID
@@ -12,13 +12,13 @@ from app.integrations.celery.tasks import (
     get_garmin_backfill_status,
     reset_garmin_type_status,
     set_garmin_cancel_flag,
-    start_garmin_full_backfill,
     sync_vendor_data,
     trigger_garmin_backfill_for_type,
 )
 from app.schemas.enums import ProviderName
 from app.services import ApiKeyDep
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -337,7 +337,7 @@ def sync_historical_data(
         int,
         Query(
             description="Days of historical data to fetch (default: 90, max: 365). "
-            "Ignored for Garmin (uses its own 30-day limit).",
+            "Ignored for providers with their own limits (e.g. Garmin: 30 days).",
             ge=1,
             le=365,
         ),
@@ -345,56 +345,45 @@ def sync_historical_data(
 ) -> dict[str, Any]:
     """Trigger a historical sync of the user's data from a connected provider.
 
-    - **Garmin**: Triggers a 30-day webhook-based backfill (Garmin limits
-      historical access to 30 days before the user's consent/connection date).
-    - **Other providers**: Dispatches an async pull-API sync with the
-      requested date range.
+    Each provider strategy decides how to dispatch the sync (REST polling,
+    webhook backfill, etc.). The ``days`` parameter may be ignored by
+    providers that enforce their own limits.
 
-    Historical sync is not automatically triggered when a provider is
-    connected - it must be explicitly requested via this endpoint.
-    (Changed in v0.4.2.)
+    **Automatic historical sync on connect (grace period)**
+
+    v0.4.2 introduced this endpoint as the canonical, opt-in way to
+    backfill historical data - the long-term goal is that connecting a
+    provider only sets up live sync, and history is pulled on demand.
+
+    To make migration painless, the pre-0.4.2 behaviour is kept for now
+    behind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:
+    ``true``): a historical sync is auto-dispatched after a successful
+    OAuth callback (up to 90 days for pull-based providers, full
+    available history for providers that support async export such as
+    Garmin).
+
+    Once your integration calls this endpoint explicitly, set
+    ``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to
+    ``false`` in a future release and is planned for removal afterwards.
     """
     strategy = factory.get_provider(provider.value)
-    caps = strategy.capabilities
 
-    # Webhook-based async export providers (e.g. Garmin)
-    if caps.supports_async_export:
-        task = start_garmin_full_backfill.delay(str(user_id))
-        return {
-            "success": True,
-            "provider": provider.value,
-            "user_id": str(user_id),
-            "method": "webhook_backfill",
-            "task_id": task.id,
-            "message": "Garmin 30-day backfill started. Progress available via backfill/status.",
-        }
-
-    # Pull-API providers: dispatch async sync with historical date range
-    if not caps.supports_pull:
+    try:
+        result = strategy.start_historical_sync(user_id, days)
+    except UnsupportedProviderError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Provider '{provider.value}' does not support cloud-based historical sync.",
+            detail=exc.detail,
         )
-
-    end_date = datetime.now(timezone.utc)
-    start_date = end_date - timedelta(days=days)
-
-    task = _queue_pull_sync(
-        user_id,
-        provider.value,
-        start_date.isoformat(),
-        end_date.isoformat(),
-        is_historical=True,
-    )
 
     return {
         "success": True,
         "provider": provider.value,
         "user_id": str(user_id),
-        "method": "pull_api",
-        "task_id": task.id,
-        "days": days,
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-        "message": f"Historical sync queued for {days} days of {provider.value} data.",
+        "method": result.method,
+        "task_id": result.task_id,
+        "message": result.message,
+        **({"days": result.days} if result.days is not None else {}),
+        **({"start_date": result.start_date} if result.start_date is not None else {}),
+        **({"end_date": result.end_date} if result.end_date is not None else {}),
     }

@@ -26,6 +26,16 @@ def _get_original_source_name(source: SourceInfo | None) -> str | None:
         return source.name
     if source.device_name:
         return source.device_name
+    # Third-party Health Connect writers (Peloton, Strava, Zwift, etc.)
+    # never set ``name`` or ``device_name`` — they only populate the
+    # writer's package identifier via ``appId`` (HC SDK ``DataOrigin``)
+    # or ``bundleIdentifier`` (HealthKit Source bundle id). Falling back
+    # to those keeps the workout's original provenance instead of
+    # collapsing it to "unknown".
+    if source.app_id:
+        return source.app_id
+    if source.bundle_identifier:
+        return source.bundle_identifier
     return None
 
 

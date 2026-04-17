@@ -1,4 +1,6 @@
-"""Service for generating parameterized seed data.
+# Re-export for backward compatibility.
+# Implementation lives in app.services.seed_data.
+from app.services.seed_data import seed_data_service
 
 Refactored from scripts/init/seed_activity_data.py to support
 dashboard-driven data generation with configurable profiles.
@@ -83,6 +85,12 @@ PROVIDER_CONFIGS: dict[ProviderName, dict] = {
         "manufacturer": "WHOOP Inc.",
         "devices": ["WHOOP 5.0", "WHOOP 4.0", "WHOOP 3.0"],
         "os_versions": ["5.0", "4.0", "3.0"],
+    },
+    ProviderName.OURA: {
+        "source_name": "Oura",
+        "manufacturer": "Oura Health",
+        "devices": ["Oura Ring Gen 3", "Oura Ring Gen 4"],
+        "os_versions": ["2.0", "3.0"],
     },
 }
 

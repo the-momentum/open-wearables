@@ -1,13 +1,12 @@
 """Garmin webhook handler.
 
-Garmin delivers data in two ways that share the same top-level payload format:
+Garmin delivers data inline (PUSH mode). ``dispatch()`` stores the raw
+payload, enqueues a Celery task for async processing, and returns
+``{"status": "accepted"}`` immediately so Garmin's 30-second timeout is
+never exceeded.
 
-* **PUSH** – the webhook body contains the full inline records.
-* **PING** – each item carries a ``callbackURL``; we must fetch the actual
-  records from that URL ourselves.
-
-Both modes are handled by a single ``dispatch()`` which detects PING vs PUSH
-per data-type by checking whether items contain a ``callbackURL`` field.
+PING (callbackURL-based) mode is not supported — those notifications are
+ignored and the endpoint still returns 200 so Garmin stops retrying.
 """
 
 import contextlib
@@ -36,7 +35,6 @@ from app.services.providers.garmin.handlers.wellness import process_wellness_ite
 from app.services.providers.garmin.workouts import GarminWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
-from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -59,8 +57,9 @@ WELLNESS_TYPES: list[str] = [
     "activityDetails",
 ]
 
-# Celery task path — used with send_task() to avoid a circular import
+# Celery task paths — used with send_task() to avoid circular imports
 _TRIGGER_NEXT_TASK = "app.integrations.celery.tasks.garmin_backfill_task.trigger_next_pending_type"
+_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.garmin_webhook_task.process_push"
 
 
 class GarminWebhookHandler(BaseWebhookHandler):
@@ -101,6 +100,12 @@ class GarminWebhookHandler(BaseWebhookHandler):
             raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
+        """Accept the webhook and enqueue async processing.
+
+        Returns ``{"status": "accepted"}`` immediately so Garmin's 30-second
+        timeout is never exceeded. Actual processing runs in ``process_push``
+        Celery task.
+        """
         request_trace_id = str(uuid4())[:8]
 
         item_counts = {k: len(v) if isinstance(v, list) else 1 for k, v in payload.items()}
@@ -125,69 +130,54 @@ class GarminWebhookHandler(BaseWebhookHandler):
 
         store_raw_payload(source="webhook", provider="garmin", payload=payload, trace_id=request_trace_id)
 
-        try:
-            errors: list[str] = []
-            synced_user_ids: set[UUID] = set()
-            users_with_new_success: set[str] = set()
+        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=[payload, request_trace_id])
+        log_structured(
+            logger,
+            "info",
+            "Enqueued Garmin webhook processing task",
+            provider="garmin",
+            trace_id=request_trace_id,
+            task_id=getattr(task, "id", None),
+        )
 
-            # --- data processing -----------------------------------------
-            act_result = self._process_activities(
-                db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
-            )
-            well_result = self._process_wellness(
-                db, payload, errors, synced_user_ids, users_with_new_success, request_trace_id
-            )
+        return {"status": "accepted"}
 
-            # --- commit + update last_synced_at ---------------------------
-            db.commit()
+    def process_payload(self, db: DbSession, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
+        """Process a Garmin PUSH payload synchronously.
 
-            for uid in synced_user_ids:
-                try:
-                    connection = self.connection_repo.get_active_connection(db, uid, "garmin")
-                    if connection:
-                        self.connection_repo.update_last_synced_at(db, connection)
-                except Exception as e:
-                    log_and_capture_error(
-                        e,
-                        logger,
-                        f"Failed to update last_synced_at for user {uid}",
-                        extra={"user_id": str(uid), "provider": "garmin"},
-                    )
+        Called by the ``process_push`` Celery task with its own DB session.
+        Raises on infrastructure errors so the task can retry.
+        """
+        errors: list[str] = []
+        synced_user_ids: set[UUID] = set()
+        users_with_new_success: set[str] = set()
 
-            # --- build response -------------------------------------------
-            response: dict[str, Any] = {
-                "processed": act_result["processed_count"],
-                "saved": act_result["saved_count"],
-                "errors": errors,
-                "activities": act_result["details"],
-                "wellness": well_result,
-                "backfill_chained": [],
-            }
+        # --- data processing ---------------------------------------------
+        act_result = self._process_activities(db, payload, errors, synced_user_ids, users_with_new_success, trace_id)
+        well_result = self._process_wellness(db, payload, errors, synced_user_ids, users_with_new_success, trace_id)
 
-            self._process_lifecycle_events(db, payload, response, request_trace_id)
-            response["backfill_chained"] = self._chain_backfills(users_with_new_success, request_trace_id)
-            return response
+        # --- commit + update last_synced_at ------------------------------
+        db.commit()
 
-        except Exception as exc:
-            log_structured(
-                logger,
-                "error",
-                "Unexpected error in Garmin webhook dispatch",
-                provider="garmin",
-                trace_id=request_trace_id,
-                error=str(exc),
-                exc_info=True,
-            )
+        for uid in synced_user_ids:
             with contextlib.suppress(Exception):
-                db.rollback()
-            return {
-                "processed": 0,
-                "saved": 0,
-                "errors": [str(exc)],
-                "activities": [],
-                "wellness": {},
-                "backfill_chained": [],
-            }
+                connection = self.connection_repo.get_active_connection(db, uid, "garmin")
+                if connection:
+                    self.connection_repo.update_last_synced_at(db, connection)
+
+        # --- build response ----------------------------------------------
+        response: dict[str, Any] = {
+            "processed": act_result["processed_count"],
+            "saved": act_result["saved_count"],
+            "errors": errors,
+            "activities": act_result["details"],
+            "wellness": well_result,
+            "backfill_chained": [],
+        }
+
+        self._process_lifecycle_events(db, payload, response, trace_id)
+        response["backfill_chained"] = self._chain_backfills(users_with_new_success, trace_id)
+        return response
 
     # ------------------------------------------------------------------
     # Private dispatch helpers

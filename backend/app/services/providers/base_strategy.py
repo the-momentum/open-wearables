@@ -1,5 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Literal
+from uuid import UUID
+
+from celery import current_app as celery_app
 
 from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
@@ -9,6 +14,19 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.utils.exceptions import UnsupportedProviderError
+
+
+@dataclass
+class HistoricalSyncResult:
+    """Result of dispatching a historical sync task."""
+
+    task_id: str
+    method: Literal["pull_api", "webhook_backfill"]
+    message: str
+    days: int | None
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +118,40 @@ class BaseProviderStrategy(ABC):
                     webhook_notify_only=True,
                 )
         """
+
+    def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
+        """Dispatch an async historical data sync.
+
+        Default implementation works for pull-based providers. Override for
+        providers that use a different mechanism (e.g. Garmin webhook backfill).
+
+        Raises UnsupportedProviderError for providers that don't support historical sync.
+        """
+        if not self.capabilities.supports_pull:
+            raise UnsupportedProviderError(self.name, "historical sync")
+
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days)
+
+        task = celery_app.send_task(
+            "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data",
+            kwargs={
+                "user_id": str(user_id),
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "providers": [self.name],
+                "is_historical": True,
+            },
+        )
+
+        return HistoricalSyncResult(
+            task_id=task.id,
+            method="pull_api",
+            message=f"Historical sync queued for {days} days of {self.name} data.",
+            days=days,
+            start_date=start_date.isoformat(),
+            end_date=end_date.isoformat(),
+        )
 
     @property
     def display_name(self) -> str:

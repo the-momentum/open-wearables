@@ -16,10 +16,15 @@ def time_to_hours_past_noon(dt: datetime) -> float:
     return hours - 12.0
 
 
+_MAX_EXP = 709.0  # math.exp overflows above ~709.78 (sys.float_info.max)
+
+
 def score_sigmoid(x: float, k: float, base: float, midpoint: float, anchor: float) -> float:
     """Scaled sigmoid that equals base exactly at anchor.
 
     Pass a negative k for a rising curve (under-sleeping) and a positive k for
     a falling curve (over-sleeping).
     """
-    return base * (1 + math.exp(k * (anchor - midpoint))) / (1 + math.exp(k * (x - midpoint)))
+    numerator = 1 + math.exp(min(_MAX_EXP, k * (anchor - midpoint)))
+    denominator = 1 + math.exp(min(_MAX_EXP, k * (x - midpoint)))
+    return base * numerator / denominator

@@ -113,6 +113,7 @@ const COMMON_WORKOUT_TYPES = [
 const PROVIDERS = [
   { id: 'apple', label: 'Apple Health' },
   { id: 'garmin', label: 'Garmin' },
+  { id: 'oura', label: 'Oura' },
   { id: 'polar', label: 'Polar' },
   { id: 'suunto', label: 'Suunto' },
   { id: 'whoop', label: 'WHOOP' },

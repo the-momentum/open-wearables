@@ -108,6 +108,19 @@ export function useActivitySummaries(userId: string, params: SummaryParams) {
 }
 
 /**
+ * Get per-user data summary with counts by type and provider
+ * Uses GET /api/v1/users/{user_id}/summaries/data
+ */
+export function useUserDataSummary(userId: string) {
+  return useQuery({
+    queryKey: queryKeys.health.dataSummary(userId),
+    queryFn: () => healthService.getUserDataSummary(userId),
+    enabled: !!userId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+/**
  * Get body summary for a user (static, averaged, latest metrics)
  * Uses GET /api/v1/users/{user_id}/summaries/body
  */
@@ -158,6 +171,9 @@ export function useSynchronizeDataFromProvider(
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.bodySummary(userId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.health.dataSummary(userId),
       });
       queryClient.invalidateQueries({
         queryKey: queryKeys.health.healthScores(userId),

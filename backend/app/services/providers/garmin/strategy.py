@@ -1,4 +1,7 @@
-from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from uuid import UUID
+
+from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill as start_garmin_full_backfill
+from app.services.providers.base_strategy import BaseProviderStrategy, HistoricalSyncResult, ProviderCapabilities
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
@@ -55,3 +58,18 @@ class GarminStrategy(BaseProviderStrategy):
         # There is no plain REST polling path for wellness data; all data
         # arrives via the push/backfill mechanism.
         return ProviderCapabilities(supports_push=True, supports_async_export=True, max_historical_days=30)
+
+    def start_historical_sync(self, user_id: UUID, days: int) -> HistoricalSyncResult:
+        """Trigger Garmin's webhook-based 30-day backfill.
+
+        The ``days`` parameter is ignored - Garmin limits historical access
+        to 30 days before the user's consent date.
+        """
+        task = start_garmin_full_backfill.delay(str(user_id))
+        return HistoricalSyncResult(
+            task_id=task.id,
+            method="webhook_backfill",
+            message=f"Garmin {self.capabilities.max_historical_days}-day backfill started. "
+            "Progress available via backfill/status.",
+            days=None,
+        )

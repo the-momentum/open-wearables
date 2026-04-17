@@ -10,8 +10,9 @@ from app.schemas.responses.activity import (
     RecoverySummary,
     SleepSummary,
 )
+from app.schemas.responses.dashboard import UserDataSummaryResponse
 from app.schemas.utils import PaginatedResponse
-from app.services import ApiKeyDep
+from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
 from app.utils.dates import parse_query_datetime
 
@@ -93,3 +94,13 @@ def get_body_summary(
     Returns null if no body data exists for the user.
     """
     return summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)
+
+
+@router.get("/users/{user_id}/summaries/data")
+def get_data_summary(
+    user_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> UserDataSummaryResponse:
+    """Returns per-user data counts grouped by series type, event type, and provider."""
+    return system_info_service.get_user_data_summary(db, user_id)

@@ -70,9 +70,11 @@ def create_celery() -> Celery:
         task_queues={
             "default": {},
             "sdk_sync": {},
+            "garmin_sync": {},
         },
         task_routes={
             "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
+            "app.integrations.celery.tasks.garmin_webhook_task.process_push": {"queue": "garmin_sync"},
         },
     )
 
@@ -106,6 +108,12 @@ def create_celery() -> Celery:
         "fill-missing-sleep-scores": {
             "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
             "schedule": float(settings.sleep_score_interval_seconds),
+            "args": (),
+            "kwargs": {},
+        },
+        "fill-missing-resilience-scores": {
+            "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
+            "schedule": float(settings.resilience_score_interval_seconds),
             "args": (),
             "kwargs": {},
         },

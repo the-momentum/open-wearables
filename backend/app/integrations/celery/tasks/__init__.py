@@ -19,6 +19,7 @@ from app.services.providers.garmin.backfill_state import (
 
 from .archival_task import run_daily_archival
 from .emit_webhook_event_task import emit_webhook_event
+from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
 from .finalize_stale_sleep_task import finalize_stale_sleeps
 from .garmin_backfill_task import (
@@ -34,6 +35,7 @@ from .garmin_backfill_trigger import (
     trigger_backfill_for_type as trigger_garmin_backfill_for_type,
 )
 from .garmin_gc_task import gc_stuck_backfills
+from .garmin_webhook_task import process_push as process_garmin_push
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
@@ -59,6 +61,8 @@ __all__ = [
     "run_daily_archival",
     # Sleep score calculation
     "fill_missing_sleep_scores",
+    # Resilience score calculation
+    "fill_missing_resilience_scores",
     # Other tasks
     "finalize_stale_sleeps",
     "process_sdk_upload",
@@ -68,6 +72,7 @@ __all__ = [
     "sync_all_users",
     "generate_seed_data",
     "send_invitation_email_task",
+    "process_garmin_push",
     # Outgoing webhooks
     "emit_webhook_event",
 ]

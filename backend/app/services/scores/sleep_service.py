@@ -8,7 +8,6 @@ four-pillar algorithm (duration, stages, consistency, interruptions):
 - SleepScoreService.get_sleep_scores_for_date_range - DB-backed; multiple dates, one DB query
 """
 
-from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
@@ -24,6 +23,7 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
+from app.utils.structured_logging import log_structured
 
 
 class WasoData(BaseModel):
@@ -247,12 +247,15 @@ class SleepScoreService:
         earliest = min(dates)
         latest = max(dates)
 
-        # Extend one extra day on each side to accommodate UTC timezone offsets:
-        # a sleep session may start on the UTC-day before/after the local date.
+        # Extend the window on each side to accommodate UTC timezone offsets and
+        # the fact that sleep sessions end in the early morning hours of the next
+        # calendar day.  window_end must reach past the latest possible end_datetime
+        # (sleep starting at 23:59 local + 10 h = ~10:00 next day UTC) so we add
+        # 2 days instead of 1.
         window_start = datetime(earliest.year, earliest.month, earliest.day) - timedelta(
             days=sleep_config.rolling_window_nights + 2
         )
-        window_end = datetime(latest.year, latest.month, latest.day) + timedelta(days=1)
+        window_end = datetime(latest.year, latest.month, latest.day) + timedelta(days=2)
 
         all_records, _ = self.event_record_repo.get_records_with_filters(
             db_session,
@@ -284,6 +287,7 @@ class SleepScoreService:
         target_dates = set(dates)
 
         results: dict[date, SleepScoreResult] = {}
+        skipped: list[tuple[date, str, str]] = []  # (date, record_id, reason)
         for i, sleep_date in enumerate(all_nights_asc):
             if sleep_date not in target_dates:
                 continue
@@ -304,7 +308,7 @@ class SleepScoreService:
             if detail.sleep_stages:
                 sleep_stages = [SleepStage(**s) for s in detail.sleep_stages]
 
-            with suppress(ValueError):
+            try:
                 results[sleep_date] = self.get_sleep_score(
                     total_sleep_duration_minutes=float(detail.sleep_total_duration_minutes or 0),
                     deep_minutes=float(detail.sleep_deep_minutes or 0),
@@ -314,6 +318,16 @@ class SleepScoreService:
                     historical_bedtimes=historical_bedtimes,
                     sleep_stages=sleep_stages,
                 )
+            except (ValueError, OverflowError) as exc:
+                skipped.append((sleep_date, str(record.id), str(exc)))
+
+        if skipped:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Skipped sleep score for {len(skipped)} date(s): invalid session data",
+                skipped=[{"date": str(d), "record_id": rid, "reason": reason} for d, rid, reason in skipped],
+            )
 
         return results
 

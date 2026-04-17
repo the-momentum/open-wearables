@@ -352,5 +352,84 @@ class ResilienceScoreService:
         result = calculate_sdnn([v for _, v in filtered])
         return None if math.isnan(result) else result
 
+    def get_hrv_cv_scores_for_date_range(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        reference_dates: list[date],
+    ) -> dict[date, HrvCvScoreResult]:
+        """Calculate HRV-CV scores for multiple reference dates with a single DB fetch.
+
+        Fetches the full combined window (min reference_date - lookback_days to
+        max reference_date) once for sleep windows and HRV data, then computes
+        per-date CV in memory — avoiding the repeated overlapping queries that
+        individual get_hrv_cv_score calls would incur.
+
+        The metric type (RMSSD vs SDNN) is determined once across the full window:
+        RMSSD is preferred; SDNN is used only when no RMSSD data survives the
+        sleep-window filter.
+
+        Returns a dict mapping each reference_date to its HrvCvScoreResult.
+        Dates with insufficient data have hrv_cv=None in the result.
+        """
+        if not reference_dates:
+            return {}
+
+        earliest = min(reference_dates)
+        latest = max(reference_dates)
+
+        start_dt = datetime.combine(
+            earliest - timedelta(days=resilience_config.lookback_days),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        end_dt = datetime.combine(latest, time.min, tzinfo=timezone.utc)
+
+        # Fetch sleep windows and HRV data once for the full combined window.
+        windows = self._extract_asleep_windows(db_session, user_id, start_dt, end_dt, _ASLEEP_STAGES)
+
+        rmssd_type_id = get_series_type_id(SeriesType.heart_rate_variability_rmssd)
+        hrv_pts = self._query_data_series(db_session, user_id, rmssd_type_id, start_dt, end_dt)
+        filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
+        metric_type: str = "RMSSD"
+
+        if not filtered_hrv:
+            sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
+            sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
+            filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
+            metric_type = "SDNN"
+
+        # Group all filtered points by UTC date once; reused for every reference_date.
+        by_day = self._group_by_day(filtered_hrv)
+
+        results: dict[date, HrvCvScoreResult] = {}
+        for ref_date in reference_dates:
+            all_days = [ref_date - timedelta(days=i) for i in range(resilience_config.lookback_days, 0, -1)]
+
+            daily_scores: list[DailyHrvScore] = []
+            for d in all_days:
+                vals = by_day.get(d, [])
+                avg = sum(vals) / len(vals) if vals else None
+                daily_scores.append(DailyHrvScore(date=d, hrv_value_ms=avg, has_data=(avg is not None)))
+
+            days_counted = sum(1 for ds in daily_scores if ds.has_data)
+            hrv_cv: float | None = None
+
+            if days_counted >= resilience_config.min_days_required:
+                valid_avgs = [ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None]
+                raw_cv = calculate_hrv_cv(valid_avgs)
+                if not math.isnan(raw_cv):
+                    hrv_cv = raw_cv
+
+            results[ref_date] = HrvCvScoreResult(
+                hrv_cv=hrv_cv,
+                metric_type=metric_type if filtered_hrv else None,
+                days_counted=days_counted,
+                lookback_days=resilience_config.lookback_days,
+                daily_scores=daily_scores,
+            )
+
+        return results
+
 
 resilience_score_service = ResilienceScoreService(log=getLogger(__name__))

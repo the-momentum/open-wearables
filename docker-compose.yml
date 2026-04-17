@@ -16,27 +16,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
-  db-svix-init:
-    image: postgres:18
-    environment:
-      PGPASSWORD: ${DB_PASSWORD:-open-wearables}
-    command:
-      - bash
-      - -c
-      - |
-        createdb -h ${DB_HOST:-db} -U ${DB_USER:-open-wearables} svix || \
-          psql -h ${DB_HOST:-db} -U ${DB_USER:-open-wearables} -d svix -c 'SELECT 1'
-        if [ ! -f /run/svix-secrets/jwt_secret ]; then
-          openssl rand -hex 32 > /run/svix-secrets/jwt_secret
-          chmod 644 /run/svix-secrets/jwt_secret
-        fi
-    volumes:
-      - svix_secrets:/run/svix-secrets
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: on-failure
-
   app:
     build:
         context: ./backend
@@ -50,8 +29,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-    volumes:
-      - svix_secrets:/run/svix-secrets:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -59,8 +36,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      svix-server:
-        condition: service_healthy
     develop:
       watch:
         - action: sync
@@ -92,8 +67,6 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-    volumes:
-      - svix_secrets:/run/svix-secrets:ro
     depends_on:
       - redis
       - db
@@ -169,23 +142,26 @@ services:
       - sh
       - -c
       - |
-        export SVIX_JWT_SECRET=$(cat /run/svix-secrets/jwt_secret)
-        exec /usr/local/bin/svix-server "$@"
+        : "$${SVIX_JWT_SECRET:=$$SECRET_KEY}"
+        export SVIX_JWT_SECRET
+        exec svix-server "$$@"
       - --
     command: ["--run-migrations"]
+    env_file:
+      - ./backend/config/.env
     environment:
       SVIX_DB_DSN: "postgresql://${DB_USER:-open-wearables}:${DB_PASSWORD:-open-wearables}@${DB_HOST:-db}:${DB_PORT:-5432}/svix"
       SVIX_QUEUE_TYPE: "redis"
       SVIX_REDIS_DSN: "redis://redis:6379/1"
       SVIX_CACHE_TYPE: "redis"
-    volumes:
-      - svix_secrets:/run/svix-secrets
     ports:
       - "8071:8071"
     depends_on:
-      db-svix-init:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
       redis:
+        condition: service_started
+      app:
         condition: service_started
     healthcheck:
       test: ["CMD", "svix-server", "healthcheck", "http://localhost:8071"]
@@ -225,4 +201,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  svix_secrets:

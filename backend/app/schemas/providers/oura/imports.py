@@ -2,6 +2,15 @@
 
 from pydantic import BaseModel
 
+
+class OuraIntervalData(BaseModel):
+    """5-minute interval data (HRV, HR, SpO2, etc.) returned by Oura sleep endpoint."""
+
+    interval: int  # seconds between samples
+    items: list[float | None] = []
+    timestamp: str  # ISO 8601 start of first sample
+
+
 # ---------------------------------------------------------------------------
 # Workouts
 # ---------------------------------------------------------------------------
@@ -60,6 +69,8 @@ class OuraSleepJSON(BaseModel):
     time_in_bed: int | None = None  # seconds
     total_sleep_duration: int | None = None  # seconds
     type: str | None = None  # deleted / sleep / long_sleep / rest
+    heart_rate: OuraIntervalData | None = None  # heart rate values at 5-min intervals
+    hrv: OuraIntervalData | None = None  # SDNN values at 5-min intervals
 
 
 class OuraSleepCollectionJSON(BaseModel):

@@ -112,9 +112,7 @@ def register_event_types() -> None:
     for evt in WebhookEventType:
         description = EVENT_TYPE_DESCRIPTIONS.get(evt, "")
         try:
-            _client.event_type.create(
-                EventTypeIn(name=evt.value, description=description),
-            )
+            _client.event_type.create(EventTypeIn(name=evt.value, description=description))
             logger.info("Registered event type: %s", evt.value)
         except Exception:
             try:
