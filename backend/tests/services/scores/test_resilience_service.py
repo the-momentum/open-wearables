@@ -1,8 +1,9 @@
 """Tests for ResilienceScoreService.
 
-Covers two layers:
+Covers three layers:
 - Pure helpers (_ensure_utc, _filter_points_to_windows, _group_by_day,
   _extract_asleep_windows, _empty_daily_scores) — no DB.
+- Pure scoring helper (_hrv_cv_to_resilience_score) — no DB.
 - DB-backed methods (get_hrv_cv_score, calculate_rmssd_ow, calculate_sdnn_ow)
   using real Postgres via testcontainers with transaction-rollback isolation.
 """
@@ -393,6 +394,85 @@ class TestExtractAsleepWindowsLogic:
 
 
 # ---------------------------------------------------------------------------
+# Pure helper: _hrv_cv_to_resilience_score
+# ---------------------------------------------------------------------------
+
+
+class TestHrvCvToResilienceScore:
+    """Tests for ResilienceScoreService._hrv_cv_to_resilience_score.
+
+    Inputs are raw HRV-CV fractions (e.g. 0.05 == 5 %).
+    Sweet spot: [sweet_spot_min_pct, sweet_spot_max_pct] = [3 %, 7 %] → 100.
+    Below sweet spot: rising sigmoid (low but non-zero at 0 %).
+    Above sweet spot: falling sigmoid (near-zero at ~20 %+).
+    """
+
+    def test_sweet_spot_lower_bound_returns_100(self) -> None:
+        """CV exactly at sweet_spot_min_pct (3 %) → 100."""
+        cv = resilience_config.sweet_spot_min_pct / 100.0
+        assert service._hrv_cv_to_resilience_score(cv) == 100
+
+    def test_sweet_spot_upper_bound_returns_100(self) -> None:
+        """CV exactly at sweet_spot_max_pct (7 %) → 100."""
+        cv = resilience_config.sweet_spot_max_pct / 100.0
+        assert service._hrv_cv_to_resilience_score(cv) == 100
+
+    def test_sweet_spot_midpoint_returns_100(self) -> None:
+        """CV at midpoint of sweet spot (5 %) → 100."""
+        mid = (resilience_config.sweet_spot_min_pct + resilience_config.sweet_spot_max_pct) / 2.0
+        assert service._hrv_cv_to_resilience_score(mid / 100.0) == 100
+
+    def test_below_sweet_spot_returns_less_than_100(self) -> None:
+        """CV at 1 % (below sweet spot) → score < 100."""
+        assert service._hrv_cv_to_resilience_score(0.01) < 100
+
+    def test_above_sweet_spot_returns_less_than_100(self) -> None:
+        """CV at 10 % (above sweet spot) → score < 100."""
+        assert service._hrv_cv_to_resilience_score(0.10) < 100
+
+    def test_score_decreases_monotonically_above_sweet_spot(self) -> None:
+        """Rising CV above sweet spot → strictly falling score."""
+        pcts = [0.08, 0.10, 0.14, 0.18, 0.22]
+        scores = [service._hrv_cv_to_resilience_score(cv) for cv in pcts]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_score_increases_toward_sweet_spot_from_below(self) -> None:
+        """Rising CV below sweet spot → rising score (toward 100)."""
+        pcts = [0.005, 0.01, 0.015, 0.02, 0.025]
+        scores = [service._hrv_cv_to_resilience_score(cv) for cv in pcts]
+        assert scores == sorted(scores)
+
+    def test_very_high_cv_returns_near_zero(self) -> None:
+        """CV at 30 % is far above normal range → score close to 0."""
+        assert service._hrv_cv_to_resilience_score(0.30) < 5
+
+    def test_zero_cv_returns_low_score(self) -> None:
+        """Zero CV (perfectly stable HRV, pathological) → low but non-negative score."""
+        score = service._hrv_cv_to_resilience_score(0.0)
+        assert 0 <= score < 50
+
+    def test_returns_int(self) -> None:
+        """Return type must be int, not float."""
+        assert isinstance(service._hrv_cv_to_resilience_score(0.05), int)
+
+    def test_score_clamped_to_0_100(self) -> None:
+        """Score must always be in [0, 100] regardless of extreme input."""
+        for cv in [0.0, 0.001, 0.5, 1.0, 5.0]:
+            score = service._hrv_cv_to_resilience_score(cv)
+            assert 0 <= score <= 100, f"score {score} out of range for cv={cv}"
+
+    def test_notably_below_sweet_spot_is_less_than_100(self) -> None:
+        """CV noticeably below sweet spot (1.5 %) → score < 100 (sigmoid has diverged)."""
+        below = (resilience_config.sweet_spot_min_pct - 1.5) / 100.0
+        assert service._hrv_cv_to_resilience_score(below) < 100
+
+    def test_notably_above_sweet_spot_is_less_than_100(self) -> None:
+        """CV noticeably above sweet spot (8.5 %) → score < 100 (sigmoid has diverged)."""
+        above = (resilience_config.sweet_spot_max_pct + 1.5) / 100.0
+        assert service._hrv_cv_to_resilience_score(above) < 100
+
+
+# ---------------------------------------------------------------------------
 # DB-backed: get_hrv_cv_score
 # ---------------------------------------------------------------------------
 
@@ -436,11 +516,12 @@ class TestGetHrvCvScore:
         db.flush()
 
     def test_no_data_returns_none_hrv_cv(self, db: Session) -> None:
-        """No HRV data at all → hrv_cv=None, metric_type=None."""
+        """No HRV data at all → hrv_cv=None, resilience_score=None, metric_type=None."""
         user = UserFactory()
         db.flush()
         result = service.get_hrv_cv_score(db, user.id, date(2026, 3, 10))
         assert result.hrv_cv is None
+        assert result.resilience_score is None
         assert result.metric_type is None
         assert result.days_counted == 0
         assert len(result.daily_scores) == resilience_config.lookback_days
@@ -542,7 +623,7 @@ class TestGetHrvCvScore:
         assert result.days_counted == 1
 
     def test_hrv_cv_none_when_fewer_than_min_days(self, db: Session) -> None:
-        """Fewer valid days than min_days_required → hrv_cv stays None."""
+        """Fewer valid days than min_days_required → hrv_cv and resilience_score both None."""
         user = UserFactory()
         ds = DataSourceFactory(user=user)
         db.flush()
@@ -564,6 +645,7 @@ class TestGetHrvCvScore:
 
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.hrv_cv is None
+        assert result.resilience_score is None
         assert result.days_counted == 2
 
     def test_hrv_cv_computed_when_enough_days(self, db: Session) -> None:
@@ -594,6 +676,9 @@ class TestGetHrvCvScore:
         assert result.hrv_cv is not None
         assert not math.isnan(result.hrv_cv)
         assert result.days_counted >= resilience_config.min_days_required
+        assert result.resilience_score is not None
+        assert isinstance(result.resilience_score, int)
+        assert 0 <= result.resilience_score <= 100
 
     def test_hrv_outside_sleep_windows_not_counted(self, db: Session) -> None:
         """HRV data points outside sleep periods are excluded from daily averages."""

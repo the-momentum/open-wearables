@@ -1,13 +1,22 @@
-"""Resilience score service: HRV-CV calculation and overnight HRV helpers.
+"""Resilience score service: HRV-CV calculation, scoring, and overnight HRV helpers.
 
-Exposes two categories of functionality:
+Exposes three categories of functionality:
 
 - ResilienceScoreService.get_hrv_cv_score – DB-backed; computes a multi-day
-  HRV coefficient of variation using only samples recorded during sleep.
+  HRV coefficient of variation using only samples recorded during sleep, and
+  maps that CV to a 0–100 resilience score via a sigmoid curve.
 - ResilienceScoreService.calculate_rmssd_ow (RMSSD_OW) – overnight RMSSD from
   raw HR data filtered to sleep windows; intended for scheduled tasks.
 - ResilienceScoreService.calculate_sdnn_ow  (SDNN_OW) – same as RMSSD_OW but
   for SDNN.
+
+Scoring:
+    The raw HRV-CV (stored as a 3-decimal-place fraction, e.g. 0.123 = 12.3%)
+    is mapped to a 0–100 score using ``_hrv_cv_to_resilience_score``.
+    The sweet spot [``sweet_spot_min_pct``, ``sweet_spot_max_pct``] (default
+    3–7 %) maps to 100.  A rising sigmoid applies below that range; a falling
+    sigmoid applies above it, reaching near-zero around 20 %.
+    Tuning parameters live in ``ResilienceScoreConfig``.
 """
 
 import math
