@@ -170,7 +170,7 @@ function formatScore(value: number | null, category?: string): string {
   if (value === null) return '-';
   const num = Number(value);
   if (category === 'resilience') {
-    return (num * 100).toFixed(2) + '%';
+    return (num * 100).toFixed(1) + '%';
   }
   return Number.isInteger(num) ? String(num) : num.toFixed(1);
 }
@@ -588,7 +588,7 @@ export function ScoresSection({
                               formatter={
                                 selectedCategory === 'resilience'
                                   ? (value) =>
-                                      `${Number(value).toFixed(2)}%`
+                                      `${Number(value).toFixed(1)}%`
                                   : undefined
                               }
                             />

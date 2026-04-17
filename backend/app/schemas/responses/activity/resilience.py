@@ -16,6 +16,7 @@ class HrvCvScoreResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     hrv_cv: float | None
+    resilience_score: int | None
     metric_type: Literal["RMSSD", "SDNN"] | None
     days_counted: int
     lookback_days: int

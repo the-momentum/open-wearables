@@ -117,6 +117,7 @@ def fill_missing_resilience_scores() -> dict:
                     components={
                         "days_counted": ScoreComponent(value=result.days_counted),
                         "metric_type": ScoreComponent(qualifier=result.metric_type),
+                        "resilience_score": ScoreComponent(value=result.resilience_score),
                     },
                 )
                 for ref_date, result in scores_by_date.items()

@@ -64,6 +64,17 @@ class ResilienceScoreConfig(BaseModel):
     min_days_required: int = Field(default=5, ge=2)
     min_rr_samples: int = Field(default=20, ge=2)
 
+    # 0-100 SCORING — sigmoid mapping of HRV-CV (expressed as %)
+    # Sweet-spot interval [sweet_spot_min_pct, sweet_spot_max_pct] → score 100
+    sweet_spot_min_pct: float = Field(default=3.0)
+    sweet_spot_max_pct: float = Field(default=7.0)
+    # Rising curve below sweet spot (negative k → score rises as CV increases toward min)
+    low_cv_k: float = Field(default=-1.0)
+    low_cv_midpoint: float = Field(default=1.5)
+    # Falling curve above sweet spot (positive k → score falls as CV increases past max)
+    high_cv_k: float = Field(default=0.5)
+    high_cv_midpoint: float = Field(default=13.5)
+
     @model_validator(mode="after")
     def validate_ranges(self) -> Self:
         if self.min_days_required > self.lookback_days:
