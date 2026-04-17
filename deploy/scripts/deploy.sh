@@ -3,7 +3,7 @@
 #
 # Strategy:
 #   1. Pull new images
-#   2. Ensure stateful services are up (db, redis, traefik) — idempotent
+#   2. Ensure stateful services are up (db, redis, traefik, svix-server) — idempotent
 #   3. Wait for DB to accept connections
 #   4. Run alembic upgrade in a THROWAWAY container — abort if it fails,
 #      before touching any live service
@@ -180,8 +180,8 @@ roll_service() {
 log "Pulling new images..."
 "${COMPOSE[@]}" pull "${ROLLING_SERVICES[@]}" "${SINGLETON_SERVICES[@]}"
 
-log "Ensuring stateful services are running (db, redis, traefik)..."
-"${COMPOSE[@]}" up -d db redis traefik
+log "Ensuring stateful services are running (db, redis, traefik, svix-server)..."
+"${COMPOSE[@]}" up -d db redis traefik svix-server
 
 log "Waiting for database..."
 for i in $(seq 1 30); do
