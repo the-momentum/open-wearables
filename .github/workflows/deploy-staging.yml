@@ -207,6 +207,11 @@ jobs:
           SENTRY_DSN=${SENTRY_DSN}
           SENTRY_ENV=staging
 
+          # AWS (staging) — EC2 instance role handles auth, no access keys
+          AWS_REGION=us-east-1
+          AWS_BUCKET_NAME=getlucie-ow-xml-staging
+          AWS_SNS_TOPIC_ARN=arn:aws:sns:us-east-1:031244176128:owear-staging
+
           # Garmin
           GARMIN_CLIENT_ID=${GARMIN_CLIENT_ID}
           GARMIN_CLIENT_SECRET=${GARMIN_CLIENT_SECRET}
