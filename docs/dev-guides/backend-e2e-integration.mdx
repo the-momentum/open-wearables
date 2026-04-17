@@ -299,8 +299,12 @@ model User {
 </CodeGroup>
 
 <Note>
-Open Wearables does **not** enforce any uniqueness constraints on users - there's no unique index on `email` or any other field, so calling `POST /api/v1/users` twice will happily create two separate user records. Your backend is the source of truth for user identity and is responsible for ensuring you only create one Open Wearables user per user in your system (e.g. by storing `open_wearables_user_id` on your own user row and checking it before creating).
+Open Wearables does **not** enforce uniqueness on `email`, `first_name`, or `last_name` - calling `POST /api/v1/users` twice with the same email will happily create two separate user records. Your backend is the source of truth for user identity and is responsible for ensuring you only create one Open Wearables user per user in your system (e.g. by storing `open_wearables_user_id` on your own user row and checking it before creating).
 </Note>
+
+<Warning>
+The legacy `external_user_id` column does still carry a DB-level unique constraint, so sending a duplicate value there will fail with an integrity error. **The field is deprecated** and no data-fetching endpoint accepts it - do not rely on it for deduplication. Use the pattern above (store the Open Wearables UUID on your side) instead.
+</Warning>
 
 ---
 
@@ -880,7 +884,7 @@ async def main():
   </Accordion>
   
   <Accordion title="Multiple users created for the same email">
-    Open Wearables does not enforce uniqueness on any user field - calling `POST /api/v1/users` twice will create two separate records. Your backend is the source of truth for user identity, so store the Open Wearables `id` (UUID) on your own user row the first time you create it, and reuse that ID for every subsequent call:
+    `email` has no unique constraint in Open Wearables - calling `POST /api/v1/users` twice with the same email will create two separate records. Your backend is the source of truth for user identity, so store the Open Wearables `id` (UUID) on your own user row the first time you create it, and reuse that ID for every subsequent call:
 
     ```python
     if not local_user.open_wearables_user_id:
@@ -888,6 +892,8 @@ async def main():
         local_user.open_wearables_user_id = resp.json()["id"]
         # persist local_user
     ```
+
+    The legacy `external_user_id` field is still DB-unique, but **it is deprecated** and no data-fetching endpoint accepts it - don't use it for deduplication.
   </Accordion>
   
   <Accordion title="Sync returns 400/422 but no clear error">
