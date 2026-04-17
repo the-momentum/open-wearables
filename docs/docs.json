@@ -97,7 +97,8 @@
             "pages": [
               "dev-guides/backend-e2e-integration",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/ngrok-setup"
+              "dev-guides/ngrok-setup",
+              "dev-guides/seed-data-generator"
             ]
           },
           {

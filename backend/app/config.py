@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from app.schemas.enums import ProviderName
 
-from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.utils.config_utils import (
@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
     sleep_score_interval_seconds: int = 600  # How often to run the fill-missing-scores task (default: 10 min)
+    resilience_score_interval_seconds: int = (
+        600  # How often to run the fill-missing-resilience-scores task (default: 10 min)
+    )
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"
@@ -181,6 +184,12 @@ class Settings(BaseSettings):
     svix_jwt_secret: SecretStr | None = None
     # Bearer token for the Svix API.  If unset, auto-generated from svix_jwt_secret at startup.
     svix_auth_token: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def derive_svix_jwt_secret(self) -> "Settings":
+        if self.svix_jwt_secret is None or self.svix_jwt_secret.get_secret_value() == "":
+            self.svix_jwt_secret = SecretStr(self.secret_key)
+        return self
 
     @field_validator("cors_origins", mode="after")
     @classmethod

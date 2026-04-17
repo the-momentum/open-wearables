@@ -1,7 +1,6 @@
 ---
-title: "HealthKit Integration with Open Wearables | Apple Health"
-sidebarTitle: "Apple Health"
-description: "Integrate Apple Health via HealthKit using the Open Wearables Flutter SDK. Push-based sync for steps, heart rate, sleep, workouts, and HRV. Requires iOS 13+ and Apple Developer account."
+title: "HealthKit Integration with Open Wearables"
+description: "Integrate Apple Health via HealthKit using the Open Wearables Flutter SDK. Push-based sync for steps, heart rate, sleep, and workouts. iOS 13+ required."
 keywords: ["healthkit integration", "apple health api", "apple health data", "healthkit open source"]
 "og:title": "HealthKit Integration with Open Wearables | Apple Health"
 "og:description": "Sync Apple Health via HealthKit with the Flutter SDK. Covers steps, heart rate, sleep, workouts, HRV. iOS 13+, push-based."
@@ -84,4 +83,141 @@ Apple Health provides the widest range of health data types:
 - **Nutrition**: Dietary intake tracking
 
 See the [Flutter SDK documentation](/sdk/flutter#supported-health-data-types) for the complete list of supported types.
+
+## Apple Health as a Data Bridge
+
+Even if a provider is **not yet directly supported** by Open Wearables, its data can still be collected by syncing it into Apple Health first.
+
+<Warning>
+  **Data scope may differ.** Third-party providers often write a limited subset of their data to Apple Health compared to what's available through their native APIs. For example, a device might expose detailed HRV metrics in its own app but only sync basic heart rate samples to HealthKit. If you need the full data scope, prefer a direct provider integration when available.
+</Warning>
+
+Apple doesn't publish an official, exhaustive list of HealthKit-compatible apps. The tables below were compiled from internet research using Claude (as of April 2026).
+
+### Watches & Fitness Trackers
+
+| Device / Platform | Companion App |
+|---|---|
+| Garmin (full lineup) | Garmin Connect |
+| Polar | Polar Flow |
+| Suunto | Suunto App |
+| COROS | COROS App |
+| Amazfit | Zepp App |
+| Withings ScanWatch / Move | Health Mate |
+| Xiaomi Mi Watch | Zepp / Mi Fitness |
+| Huawei Watch | Huawei Health |
+| Myzone | Myzone App |
+| Biostrap | Biostrap App |
+| Wear OS (most watches) | Google Fit / Health Connect |
+
+### Rings & Bands
+
+| Device | Companion App |
+|---|---|
+| Oura Ring | Oura App |
+| Ultrahuman Ring | Ultrahuman App |
+| WHOOP | WHOOP App |
+| Luna Smart Ring | Luna App |
+
+### Sleep Monitors
+
+| Device | Companion App |
+|---|---|
+| Beddit Sleep Monitor | Beddit App |
+| Eight Sleep | Eight Sleep App |
+
+### CGM & Metabolism Monitors
+
+| Device | Companion App |
+|---|---|
+| Dexcom G6 / G7 | Dexcom App |
+| Freestyle Libre | LibreLink |
+| Lumen (breath analyzer) | Lumen App |
+| Keto-Mojo (glucose & ketones) | Keto-Mojo App |
+
+### Medical Devices (Blood Pressure, ECG, Body Composition)
+
+| Device | Companion App |
+|---|---|
+| Withings BPM Connect | Health Mate |
+| Omron (Connect series) | Omron Connect |
+| A&D Medical | A&D Heart Track |
+| KardiaMobile (AliveCor) | Kardia App |
+| InBody (body composition analyzers) | InBody App |
+| Renpho (smart scales) | Renpho App |
+| Hume Health | Hume App |
+| QardioBase 2 | Qardio App |
+| Withings Body Scan / Body Cardio | Health Mate |
+
+### Heart Rate Monitors & External Sensors
+
+| Device | Notes |
+|---|---|
+| Wahoo TICKR / TrackR | Chest strap, Bluetooth + ANT+ |
+| Polar H-series | Chest straps |
+| Moxy | Muscle oxygen saturation (SmO2) |
+| CORE | Core body temperature monitor |
+| Cardiomood | Medical heart health monitor |
+
+### Fitness & Workout Apps
+
+| App | Category |
+|---|---|
+| Strava | Running, cycling |
+| Nike Run Club | Running |
+| Peloton | Cycling, strength |
+| MapMyFitness / MapMyRun / MapMyRide / MapMyWalk | General activity |
+| Zwift | Virtual cycling |
+| TrainingPeaks | Training planning |
+| iFIT | Fitness equipment |
+| Wahoo SYSTM | Cycling |
+| Concept2 | Rowing |
+| Decathlon Coach | General activity |
+| Ride with GPS | Cycling navigation |
+| Komoot | Outdoor routes |
+| Rouvy | Cycling simulator |
+| Xert | Performance analysis |
+| Cycling Analytics | Cycling analysis |
+| Hammerhead Karoo | Cycling computer |
+| Lezyne GPS | Cycling navigation |
+| Outdooractive | Outdoor activities |
+
+### Wellness & Mindfulness Apps
+
+| App | Category |
+|---|---|
+| Headspace | Meditation, sleep |
+| Calm | Meditation, sleep |
+| Sleep Cycle | Sleep analysis |
+| AutoSleep | Sleep analysis (iOS) |
+| NaturalCycles | Reproductive health |
+
+### Nutrition Apps
+
+| App | Category |
+|---|---|
+| MyFitnessPal | Calories, macros |
+| Cronometer | Micronutrients, diet |
+| FatSecret | Diet tracking |
+| Nutracheck | Calories (UK) |
+| MacrosFirst | Macros |
+| My Macros+ | Macros |
+| Clue | Menstrual cycle |
+| Proov Insight | Hormones & fertility |
+
+### Other
+
+| App / Device | Notes |
+|---|---|
+| Healthify | Health app |
+| Gabit | Activity tracker |
+| HeyTap OHealth | OnePlus / OPPO |
+| Virtuagym | Workout management |
+
+### What Apple Health Does NOT Support Natively
+
+| Platform | Reason |
+|---|---|
+| Fitbit | No official HealthKit integration from Google/Fitbit |
+| Samsung Galaxy Watch / Samsung Health | Ecosystem designed exclusively for Android |
 
