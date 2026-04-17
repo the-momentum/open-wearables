@@ -22,9 +22,45 @@ env:
 
 jobs:
   # ===========================================================================
+  # Resolve EC2 public DNS (needed as VITE_API_URL at frontend build time)
+  # ===========================================================================
+  resolve-host:
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      instance_id: ${{ steps.inst.outputs.instance_id }}
+      public_dns: ${{ steps.inst.outputs.public_dns }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve staging instance id + public DNS
+        id: inst
+        run: |
+          INSTANCE=$(aws ec2 describe-instances \
+            --filters "Name=tag:app,Values=open-wearables" \
+                      "Name=tag:environment,Values=staging" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].[InstanceId,PublicDnsName]' --output text)
+          ID=$(echo "$INSTANCE" | awk '{print $1}')
+          DNS=$(echo "$INSTANCE" | awk '{print $2}')
+          if [[ "$ID" == "None" || -z "$ID" ]]; then
+            echo "No running ow-staging instance found"; exit 1
+          fi
+          if [[ -z "$DNS" || "$DNS" == "None" ]]; then
+            echo "Instance $ID has no public DNS — check that it has a public IP"; exit 1
+          fi
+          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
+          echo "public_dns=$DNS" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
   # Build + push backend and frontend images to ECR
   # ===========================================================================
   build:
+    needs: resolve-host
     runs-on: ubuntu-latest
     environment: staging
     outputs:
@@ -75,6 +111,8 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          build-args: |
+            VITE_API_URL=http://${{ needs.resolve-host.outputs.public_dns }}:8000
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:staging
             ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:sha-${{ steps.tags.outputs.sha_short }}
@@ -83,7 +121,7 @@ jobs:
   # Deploy: push compose + env to EC2 via SSM, run deploy.sh
   # ===========================================================================
   deploy:
-    needs: build
+    needs: [resolve-host, build]
     runs-on: ubuntu-latest
     environment: staging
 
@@ -96,22 +134,9 @@ jobs:
           role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolve staging instance id
-        id: inst
-        run: |
-          ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:app,Values=open-wearables" \
-                      "Name=tag:environment,Values=staging" \
-                      "Name=instance-state-name,Values=running" \
-            --query 'Reservations[0].Instances[0].InstanceId' --output text)
-          if [[ "$ID" == "None" || -z "$ID" ]]; then
-            echo "No running ow-staging instance found"; exit 1
-          fi
-          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
-
       - name: Wait for SSM agent
         env:
-          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          INSTANCE_ID: ${{ needs.resolve-host.outputs.instance_id }}
         run: |
           for i in $(seq 1 30); do
             STATUS=$(aws ssm describe-instance-information \
@@ -126,17 +151,13 @@ jobs:
         id: env_gen
         env:
           OW_DB_PASSWORD: ${{ secrets.OW_DB_PASSWORD }}
-          ACME_EMAIL: ${{ secrets.ACME_EMAIL }}
-          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
-          OW_DASHBOARD_DOMAIN: ${{ secrets.OW_DASHBOARD_DOMAIN }}
+          OW_PUBLIC_HOST: ${{ needs.resolve-host.outputs.public_dns }}
           BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
           FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
         run: |
           cat > .env.deploy <<EOF
           ENVIRONMENT=staging
-          OW_DOMAIN=${OW_DOMAIN}
-          OW_DASHBOARD_DOMAIN=${OW_DASHBOARD_DOMAIN}
-          ACME_EMAIL=${ACME_EMAIL}
+          OW_PUBLIC_HOST=${OW_PUBLIC_HOST}
           OW_DB_NAME=open-wearables
           OW_DB_USER=open-wearables
           OW_DB_PASSWORD=${OW_DB_PASSWORD}
@@ -152,9 +173,7 @@ jobs:
           OW_ADMIN_EMAIL: ${{ secrets.OW_ADMIN_EMAIL }}
           OW_ADMIN_PASSWORD: ${{ secrets.OW_ADMIN_PASSWORD }}
           OPEN_WEARABLES_API_KEY: ${{ secrets.OPEN_WEARABLES_API_KEY }}
-          API_BASE_URL: ${{ secrets.OW_DOMAIN }}
-          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
-          OW_DASHBOARD_DOMAIN: ${{ secrets.OW_DASHBOARD_DOMAIN }}
+          OW_PUBLIC_HOST: ${{ needs.resolve-host.outputs.public_dns }}
           # Providers
           GARMIN_CLIENT_ID: ${{ secrets.GARMIN_CLIENT_ID }}
           GARMIN_CLIENT_SECRET: ${{ secrets.GARMIN_CLIENT_SECRET }}
@@ -173,10 +192,10 @@ jobs:
           ADMIN_EMAIL=${OW_ADMIN_EMAIL}
           ADMIN_PASSWORD=${OW_ADMIN_PASSWORD}
           OPEN_WEARABLES_API_KEY=${OPEN_WEARABLES_API_KEY}
-          API_BASE_URL=https://${API_BASE_URL}
-          SERVER_HOST=https://${OW_DOMAIN}
-          FRONTEND_URL=https://${OW_DASHBOARD_DOMAIN}
-          CORS_ORIGINS=["https://${OW_DASHBOARD_DOMAIN}"]
+          API_BASE_URL=http://${OW_PUBLIC_HOST}:8000
+          SERVER_HOST=http://${OW_PUBLIC_HOST}:8000
+          FRONTEND_URL=http://${OW_PUBLIC_HOST}
+          CORS_ORIGINS=["http://${OW_PUBLIC_HOST}"]
 
           # Email
           RESEND_API_KEY=${RESEND_API_KEY}
@@ -210,7 +229,7 @@ jobs:
 
       - name: Upload deploy tree + env to /app via SSM
         env:
-          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          INSTANCE_ID: ${{ needs.resolve-host.outputs.instance_id }}
           ENV_B64: ${{ steps.env_gen.outputs.env_b64 }}
           OW_ENV_B64: ${{ steps.ow_env_gen.outputs.ow_env_b64 }}
         run: |
@@ -251,7 +270,7 @@ jobs:
 
       - name: Run deploy.sh via SSM
         env:
-          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          INSTANCE_ID: ${{ needs.resolve-host.outputs.instance_id }}
         run: |
           jq -n '{commands: ["bash /app/deploy/scripts/deploy.sh"]}' > /tmp/ssm-run.json
 
@@ -271,10 +290,10 @@ jobs:
 
       - name: Summary
         env:
-          INSTANCE_ID: ${{ steps.inst.outputs.instance_id }}
+          INSTANCE_ID: ${{ needs.resolve-host.outputs.instance_id }}
           BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
           FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
-          OW_DOMAIN: ${{ secrets.OW_DOMAIN }}
+          OW_PUBLIC_HOST: ${{ needs.resolve-host.outputs.public_dns }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           {
@@ -285,5 +304,7 @@ jobs:
             echo "| Backend | \`$BACKEND_IMAGE\` |"
             echo "| Frontend | \`$FRONTEND_IMAGE\` |"
             echo "| SHA | \`$COMMIT_SHA\` |"
-            echo "| URL | https://$OW_DOMAIN |"
+            echo "| Dashboard | http://$OW_PUBLIC_HOST |"
+            echo "| API | http://$OW_PUBLIC_HOST:8000 |"
+            echo "| API Docs | http://$OW_PUBLIC_HOST:8000/docs |"
           } >> "$GITHUB_STEP_SUMMARY"

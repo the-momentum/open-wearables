@@ -1,24 +1,24 @@
 # OpenWearables deployment stack
 #
 # Deployed to a dedicated EC2 (separate from lucie-api).
-# Uses Traefik for TLS termination + routing.
+# Uses Traefik as HTTP reverse proxy (no TLS — accessed via EC2 public DNS).
 # Images pulled from ECR; this file is synced to /app on the box by CI.
 #
 # Required env (written by CI from GH Secrets → /app/.env):
 #   ENVIRONMENT          = staging | production
-#   OW_DOMAIN            = ow-staging.getlucie.ai
-#   OW_DASHBOARD_DOMAIN  = ow-dashboard-staging.getlucie.ai
+#   OW_PUBLIC_HOST       = ec2-xx-xx-xx-xx.compute-1.amazonaws.com (auto-detected by CI)
 #   OW_IMAGE_BACKEND     = 031244176128.dkr.ecr.us-east-1.amazonaws.com/rhiseai/open-wearables-backend:<tag>
 #   OW_IMAGE_FRONTEND    = 031244176128.dkr.ecr.us-east-1.amazonaws.com/rhiseai/open-wearables-frontend:<tag>
 #   OW_DB_NAME           = open-wearables
 #   OW_DB_USER           = open-wearables
 #   OW_DB_PASSWORD       = <secret>
-#   ACME_EMAIL           = admin@getlucie.ai
 #   # plus any provider credentials the backend needs (loaded via env_file /app/ow.env)
 
 services:
   # ---------------------------------------------------------------------------
-  # Traefik — TLS termination, automatic Let's Encrypt certs
+  # Traefik — HTTP reverse proxy (no TLS, EC2 public DNS)
+  # Port 80  → frontend dashboard
+  # Port 8000 → backend API
   # ---------------------------------------------------------------------------
   traefik:
     image: traefik:v3.2
@@ -28,21 +28,14 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--entrypoints.api.address=:8000"
       - "--log.level=INFO"
       - "--accesslog=true"
     ports:
       - "80:80"
-      - "443:443"
+      - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_letsencrypt:/letsencrypt
     networks:
       - ow-network
 
@@ -85,7 +78,7 @@ services:
       - ow-network
 
   # ---------------------------------------------------------------------------
-  # Backend API — routed by Traefik at https://${OW_DOMAIN}
+  # Backend API — routed by Traefik on port 8000
   # container_name intentionally omitted so the deploy script can scale to 2
   # replicas for zero-downtime rollouts.
   # ---------------------------------------------------------------------------
@@ -105,9 +98,9 @@ services:
       - DB_PASSWORD=${OW_DB_PASSWORD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - SERVER_HOST=https://${OW_DOMAIN}
-      - FRONTEND_URL=https://${OW_DASHBOARD_DOMAIN}
-      - CORS_ORIGINS=["https://${OW_DASHBOARD_DOMAIN}"]
+      - SERVER_HOST=http://${OW_PUBLIC_HOST}:8000
+      - FRONTEND_URL=http://${OW_PUBLIC_HOST}
+      - CORS_ORIGINS=["http://${OW_PUBLIC_HOST}"]
     # TCP-connect probe (curl is not present in the OW backend image; python is).
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import socket,sys; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1',8000)); s.close()\" || exit 1"]
@@ -122,9 +115,8 @@ services:
       - ow-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ow-api.rule=Host(`${OW_DOMAIN}`)"
-      - "traefik.http.routers.ow-api.entrypoints=websecure"
-      - "traefik.http.routers.ow-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ow-api.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.ow-api.entrypoints=api"
       - "traefik.http.services.ow-api.loadbalancer.server.port=8000"
 
   celery-worker:
@@ -193,14 +185,13 @@ services:
     pull_policy: always
     restart: unless-stopped
     environment:
-      - VITE_API_URL=https://${OW_DOMAIN}
+      - VITE_API_URL=http://${OW_PUBLIC_HOST}:8000
     networks:
       - ow-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ow-dashboard.rule=Host(`${OW_DASHBOARD_DOMAIN}`)"
-      - "traefik.http.routers.ow-dashboard.entrypoints=websecure"
-      - "traefik.http.routers.ow-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ow-dashboard.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.ow-dashboard.entrypoints=web"
       - "traefik.http.services.ow-dashboard.loadbalancer.server.port=3000"
 
 networks:
@@ -210,4 +201,3 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  traefik_letsencrypt:
