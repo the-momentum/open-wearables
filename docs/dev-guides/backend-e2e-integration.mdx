@@ -467,7 +467,7 @@ You do **not** need to explicitly trigger a sync after OAuth completes. On the f
 - Up to **90 days** for pull-based providers (Polar, Suunto)
 - Full available history for providers that support async export (Garmin)
 
-This behaviour is controlled by the `HISTORICAL_SYNC_ON_CONNECT` flag (default: `true`). It's a grace-period flag introduced in v0.4.2 - the default will flip to `false` in a future release and the flag will eventually be removed. Once you're ready to control historical backfill yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly. See [PR #897](https://github.com/the-momentum/open-wearables/pull/897) for background.
+This behaviour is controlled by the `HISTORICAL_SYNC_ON_CONNECT` flag (default: `true`). It's a grace-period flag introduced in v0.4.3 - the default will flip to `false` in a future release and the flag will eventually be removed. Once you're ready to control historical backfill yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly. See [PR #897](https://github.com/the-momentum/open-wearables/pull/897) for background.
 
 <Note>
 Ongoing sync after the initial backfill happens automatically - webhooks push updates for providers that support them, and pull-based providers are polled on a schedule. Your integration only needs to connect the user; fetching data (next step) is the read side.
