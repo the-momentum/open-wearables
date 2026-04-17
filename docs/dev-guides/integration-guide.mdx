@@ -465,7 +465,7 @@ curl "http://localhost:8000/api/v1/users/176be8de-8452-4eb7-a7ea-147fec925d9d/co
 You do **not** need to explicitly trigger a sync after OAuth completes. On the first successful provider connection, Open Wearables automatically dispatches a historical backfill:
 
 - Up to **90 days** for pull-based providers (Polar, Suunto)
-- Full available history for providers that support async export (Garmin)
+- Up to **30 days** for Garmin (webhook-based backfill capped at 30 days from the user's consent date - further back is not retrievable)
 
 This behaviour is controlled by the `HISTORICAL_SYNC_ON_CONNECT` flag (default: `true`). It's a grace-period flag introduced in v0.4.3 - the default will flip to `false` in a future release and the flag will eventually be removed. Once you're ready to control historical backfill yourself, set `HISTORICAL_SYNC_ON_CONNECT=false` and call `POST /api/v1/providers/{provider}/users/{user_id}/sync/historical` explicitly. See [PR #897](https://github.com/the-momentum/open-wearables/pull/897) for background.
 
