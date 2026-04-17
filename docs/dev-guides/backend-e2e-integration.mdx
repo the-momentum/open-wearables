@@ -182,6 +182,14 @@ When a user registers in your application, create a corresponding user in Open W
 
 ### Create User
 
+All fields in the create-user payload are **optional** - you can even `POST` an empty body and get back a valid user.
+
+| Field        | Type     | Required | Notes                                                                                        |
+| ------------ | -------- | -------- | -------------------------------------------------------------------------------------------- |
+| `email`      | `string` | Optional | Must be a valid email if provided. Not enforced unique - see the note below.                 |
+| `first_name` | `string` | Optional | Max 100 characters. Useful for display in the Open Wearables dashboard.                      |
+| `last_name`  | `string` | Optional | Max 100 characters. Useful for display in the Open Wearables dashboard.                      |
+
 <CodeGroup>
 
 ```bash cURL
@@ -190,28 +198,44 @@ curl -X POST http://localhost:8000/api/v1/users \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
-    "external_user_id": "your-internal-user-id"
+    "first_name": "Ada",
+    "last_name": "Lovelace"
   }'
 ```
 
 ```python Python
 import httpx
 
-async def create_user(email: str, external_id: str) -> dict:
+async def create_user(
+    email: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+) -> dict:
+    payload: dict = {}
+    if email:
+        payload["email"] = email
+    if first_name:
+        payload["first_name"] = first_name
+    if last_name:
+        payload["last_name"] = last_name
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{OPEN_WEARABLES_API_URL}/api/v1/users",
             headers={"X-Open-Wearables-API-Key": API_KEY},
-            json={
-                "email": email,
-                "external_user_id": external_id  # e.g., Auth0 ID, your DB user ID
-            }
+            json=payload,
         )
         return response.json()
 ```
 
 ```typescript TypeScript
-async function createUser(email: string, externalId: string): Promise<User> {
+type CreateUserInput = {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
+async function createUser(input: CreateUserInput): Promise<User> {
   const response = await fetch(`${OPEN_WEARABLES_API_URL}/api/v1/users`, {
     method: 'POST',
     headers: {
@@ -219,8 +243,9 @@ async function createUser(email: string, externalId: string): Promise<User> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      email: email,
-      external_user_id: externalId,
+      email: input.email,
+      first_name: input.firstName,
+      last_name: input.lastName,
     }),
   });
   return response.json();
@@ -235,12 +260,13 @@ async function createUser(email: string, externalId: string): Promise<User> {
 {
   "id": "176be8de-8452-4eb7-a7ea-147fec925d9d",
   "email": "user@example.com",
-  "external_user_id": "your-internal-user-id",
-  "created_at": "2025-01-15T10:30:00Z",
-  "first_name": null,
-  "last_name": null
+  "first_name": "Ada",
+  "last_name": "Lovelace",
+  "created_at": "2025-01-15T10:30:00Z"
 }
 ```
+
+Any field you omit from the request will come back as `null`.
 
 <Warning>
 **Store the Open Wearables User ID!** You'll need this ID for all subsequent API calls.
@@ -272,32 +298,9 @@ model User {
 
 </CodeGroup>
 
-### Handling Duplicate Users
-
-Open Wearables allows multiple users with the same email. To prevent duplicates in concurrent requests (common in SPAs), implement a check-then-create pattern:
-
-```python
-async def get_or_create_user(email: str, external_id: str) -> dict:
-    async with httpx.AsyncClient() as client:
-        # Check if user exists by external_user_id
-        response = await client.get(
-            f"{OPEN_WEARABLES_API_URL}/api/v1/users",
-            headers={"X-Open-Wearables-API-Key": API_KEY},
-            params={"external_user_id": external_id, "limit": 1}
-        )
-        
-        users = response.json().get("items", [])
-        if users:
-            return users[0]
-        
-        # Create new user
-        response = await client.post(
-            f"{OPEN_WEARABLES_API_URL}/api/v1/users",
-            headers={"X-Open-Wearables-API-Key": API_KEY},
-            json={"email": email, "external_user_id": external_id}
-        )
-        return response.json()
-```
+<Note>
+Open Wearables does **not** enforce any uniqueness constraints on users - there's no unique index on `email` or any other field, so calling `POST /api/v1/users` twice will happily create two separate user records. Your backend is the source of truth for user identity and is responsible for ensuring you only create one Open Wearables user per user in your system (e.g. by storing `open_wearables_user_id` on your own user row and checking it before creating).
+</Note>
 
 ---
 
@@ -679,26 +682,29 @@ class OpenWearablesClient:
         self.base_url = base_url
         self.headers = {"X-Open-Wearables-API-Key": api_key}
     
-    async def get_or_create_user(self, email: str, external_id: str) -> dict:
-        """Create user or return existing."""
+    async def get_or_create_user(self, local_user) -> dict:
+        """Create an Open Wearables user if we haven't already, otherwise reuse the stored ID.
+
+        `local_user` is your own user row - it stores `open_wearables_user_id` once set
+        so we never create a second Open Wearables user for the same person.
+        """
         async with httpx.AsyncClient() as client:
-            # Check if exists
-            resp = await client.get(
-                f"{self.base_url}/api/v1/users",
-                headers=self.headers,
-                params={"external_user_id": external_id, "limit": 1}
-            )
-            users = resp.json().get("items", [])
-            if users:
-                return users[0]
-            
-            # Create new
+            if local_user.open_wearables_user_id:
+                resp = await client.get(
+                    f"{self.base_url}/api/v1/users/{local_user.open_wearables_user_id}",
+                    headers=self.headers,
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+
             resp = await client.post(
                 f"{self.base_url}/api/v1/users",
                 headers=self.headers,
-                json={"email": email, "external_user_id": external_id}
+                json={"email": local_user.email},
             )
-            return resp.json()
+            user = resp.json()
+            local_user.open_wearables_user_id = user["id"]  # persist on your side
+            return user
     
     async def get_auth_url(
         self, 
@@ -811,11 +817,8 @@ async def main():
         api_key="sk-your-api-key"
     )
     
-    # 1. Create or get user
-    user = await client.get_or_create_user(
-        email="user@example.com",
-        external_id="auth0|123456"
-    )
+    # 1. Create or get user (pass your own user row; see get_or_create_user above)
+    user = await client.get_or_create_user(local_user)
     user_id = user["id"]
     
     # 2. Get OAuth URL for Garmin
@@ -877,14 +880,13 @@ async def main():
   </Accordion>
   
   <Accordion title="Multiple users created for the same email">
-    Open Wearables allows duplicate emails by design. Use `external_user_id` to identify users uniquely:
-    
+    Open Wearables does not enforce uniqueness on any user field - calling `POST /api/v1/users` twice will create two separate records. Your backend is the source of truth for user identity, so store the Open Wearables `id` (UUID) on your own user row the first time you create it, and reuse that ID for every subsequent call:
+
     ```python
-    # Always check by external_user_id before creating
-    existing = await client.get(
-        "/api/v1/users",
-        params={"external_user_id": your_user_id}
-    )
+    if not local_user.open_wearables_user_id:
+        resp = await client.post("/api/v1/users", json={"email": local_user.email})
+        local_user.open_wearables_user_id = resp.json()["id"]
+        # persist local_user
     ```
   </Accordion>
   
