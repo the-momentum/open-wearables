@@ -763,29 +763,30 @@ class TestGetSleepScoresForRecords:
             rem_minutes=40,
             awake_minutes=20,
         )
-        # Session B: normal overnight on the same calendar day (longer)
+        # Session B: also ends on 2026-03-10 — same local wake date as A.
+        # This is the core collision case: a date-keyed implementation would
+        # silently drop one score, but record-id keying returns both.
         record_b = self._make_sleep_record(
             db,
             ds,
-            start=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc),
-            end=datetime(2026, 3, 11, 7, 0, tzinfo=timezone.utc),
+            start=datetime(2026, 3, 9, 23, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 10, 7, 0, tzinfo=timezone.utc),
             duration_minutes=460,
             deep_minutes=100,
             rem_minutes=90,
             awake_minutes=20,
         )
 
-        wake_a = date(2026, 3, 10)
-        wake_b = date(2026, 3, 11)
-        results = service.get_sleep_scores_for_records(db, user.id, [(record_a.id, wake_a), (record_b.id, wake_b)])
+        wake = date(2026, 3, 10)  # both sessions share the same local wake date
+        results = service.get_sleep_scores_for_records(db, user.id, [(record_a.id, wake), (record_b.id, wake)])
 
         assert len(results) == 2
-        assert (record_a.id, wake_a) in results
-        assert (record_b.id, wake_b) in results
+        assert (record_a.id, wake) in results
+        assert (record_b.id, wake) in results
         # Longer session should score better on duration
         assert (
-            results[(record_b.id, wake_b)].breakdown.duration.score
-            > results[(record_a.id, wake_a)].breakdown.duration.score
+            results[(record_b.id, wake)].breakdown.duration.score
+            > results[(record_a.id, wake)].breakdown.duration.score
         )
 
     def test_history_contributes_to_consistency_score(self, db: Session) -> None:

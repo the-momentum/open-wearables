@@ -46,6 +46,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # NOTE: The internal sleep-score rows deleted in upgrade() cannot be restored
+    # here. fill_missing_sleep_scores will recreate them on the next run.
     op.drop_index("uq_health_score_sleep_record", table_name="health_score")
     op.drop_constraint("fk_health_score_sleep_record_id", "health_score", type_="foreignkey")
     op.drop_column("health_score", "sleep_record_id")
