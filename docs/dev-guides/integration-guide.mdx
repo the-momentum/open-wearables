@@ -886,7 +886,7 @@ async def main():
     ?start_time=2025-01-15T00:00:00Z&end_time=2025-01-15T23:59:59Z&types=heart_rate&types=steps
     ```
 
-    Also verify the `SeriesType` you're requesting exists for this user - check `GET /api/v1/users/{user_id}/summaries/data` for a breakdown of what's been ingested.
+    If you're not sure whether anything has synced yet, `GET /api/v1/users/{user_id}/data-sources` returns the list of devices and providers that have produced samples for this user - an empty list means historical backfill hasn't finished (see the previous accordion).
   </Accordion>
   
   <Accordion title="OAuth callback not redirecting to my app">
