@@ -8,6 +8,12 @@
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
+  "redirects": [
+    {
+      "source": "/dev-guides/backend-e2e-integration",
+      "destination": "/dev-guides/integration-guide"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -95,9 +101,10 @@
           {
             "group": "Developer Guides",
             "pages": [
-              "dev-guides/backend-e2e-integration",
+              "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/ngrok-setup"
+              "dev-guides/ngrok-setup",
+              "dev-guides/seed-data-generator"
             ]
           },
           {
@@ -189,7 +196,8 @@
               "GET /api/v1/users/{user_id}/summaries/activity",
               "GET /api/v1/users/{user_id}/summaries/sleep",
               "GET /api/v1/users/{user_id}/summaries/body",
-              "GET /api/v1/users/{user_id}/summaries/recovery"
+              "GET /api/v1/users/{user_id}/summaries/recovery",
+              "GET /api/v1/users/{user_id}/summaries/data"
             ]
           },
           {

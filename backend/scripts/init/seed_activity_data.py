@@ -3,12 +3,12 @@
 
 This script is a thin wrapper around the SeedDataService, kept for
 backward compatibility with `make seed`. All generation logic lives
-in app.services.seed_data_service.
+in app.services.seed_data.
 """
 
 from app.database import SessionLocal
 from app.schemas.utils.seed_data import SeedDataRequest, SeedProfileConfig
-from app.services.seed_data_service import seed_data_service
+from app.services.seed_data import seed_data_service
 
 
 def seed_activity_data() -> None:
