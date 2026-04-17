@@ -94,4 +94,15 @@ export const API_ENDPOINTS = {
   seedGenerate: '/api/v1/settings/seed',
   seedPresets: '/api/v1/settings/seed/presets',
   seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
+
+  // Webhooks endpoints
+  webhookEventTypes: '/api/v1/webhooks/event-types',
+  webhookEndpoints: '/api/v1/webhooks/endpoints',
+  webhookEndpointDetail: (id: string) => `/api/v1/webhooks/endpoints/${id}`,
+  webhookEndpointSecret: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/secret`,
+  webhookEndpointTest: (id: string) => `/api/v1/webhooks/endpoints/${id}/test`,
+  webhookEndpointAttempts: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/attempts`,
+  webhookMessages: '/api/v1/webhooks/messages',
 } as const;

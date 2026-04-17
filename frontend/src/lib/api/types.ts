@@ -671,3 +671,71 @@ export interface GarminBackfillStatus {
   max_attempts: number;
   permanently_failed: boolean;
 }
+
+export interface WebhookEventType {
+  name: string;
+  description: string;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  description: string | null;
+  filter_types: string[] | null;
+  user_id: string | null;
+}
+
+export interface WebhookEndpointCreate {
+  url: string;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointUpdate {
+  url?: string | null;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointSecret {
+  key: string;
+}
+
+export interface WebhookTestEventResponse {
+  message: string;
+  message_id: string;
+}
+
+export interface WebhookMessage {
+  id: string;
+  event_type: string;
+  event_id: string | null;
+  timestamp: string;
+  channels: string[] | null;
+  tags: string[] | null;
+  payload: Record<string, unknown>;
+}
+
+export interface WebhookMessageAttempt {
+  id: string;
+  endpoint_id: string;
+  msg_id: string;
+  url: string;
+  response: string;
+  response_status_code: number;
+  response_duration_ms: number;
+  status: number | string;
+  status_text?: string;
+  trigger_type: number | string;
+  timestamp: string;
+  msg?: WebhookMessage | null;
+}
+
+export interface WebhookListResponse<T> {
+  data: T[];
+  done: boolean;
+  iterator: string | null;
+  prev_iterator: string | null;
+}

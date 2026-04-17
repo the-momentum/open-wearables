@@ -6,6 +6,7 @@ import {
   LogOut,
   Settings,
   ExternalLink,
+  Webhook,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,11 @@ const menuItems = [
     title: 'Users',
     url: ROUTES.users,
     icon: Users,
+  },
+  {
+    title: 'Webhooks',
+    url: ROUTES.webhooks,
+    icon: Webhook,
   },
   {
     title: 'Settings',
