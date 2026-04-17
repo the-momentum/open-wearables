@@ -341,7 +341,7 @@ async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> l
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `enabled_only` | `false` | Return only providers enabled in your instance |
-| `cloud_only` | `false` | Return only cloud-based (OAuth) providers, excludes SDK-only providers like Apple Health |
+| `cloud_only` | `false` | Return only cloud-based (OAuth) providers, excludes SDK-only providers like Apple Health. If you're implementing an integration flow on web, you likely want to enable this flag. |
 
 **Response:**
 
