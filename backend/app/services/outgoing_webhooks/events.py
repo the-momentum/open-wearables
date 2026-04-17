@@ -16,6 +16,13 @@ from app.schemas.webhooks.event_types import WebhookEventType
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of samples included in a single Svix message.
+# At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
+# Svix's 1 MB payload limit.  Batches larger than this are split into
+# consecutive chunk events, each carrying a ``chunk_index`` / ``total_chunks``
+# envelope so consumers can reassemble if needed.
+SVIX_MAX_SAMPLES_PER_EVENT = 2500
+
 
 def _dispatch(
     event_type: str,
@@ -158,26 +165,71 @@ def on_timeseries_batch_saved(
     sample_count: int,
     start_time: str | None = None,
     end_time: str | None = None,
+    samples: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Emit one webhook event per data-type per ingestion batch."""
+    """Emit one webhook event per data-type per ingestion batch.
+
+    Each event carries the full ``samples`` array so consumers can operate in
+    a webhook-first architecture without issuing follow-up API calls.
+
+    When ``samples`` exceeds ``SVIX_MAX_SAMPLES_PER_EVENT`` the batch is split
+    into multiple consecutive chunk events.  Every chunk includes
+    ``chunk_index`` (0-based) and ``total_chunks`` so consumers can detect and
+    reassemble split deliveries.  Single-chunk payloads omit these fields to
+    keep the common case clean.
+    """
     event_type = SERIES_TYPE_TO_WEBHOOK_EVENT.get(series_type, WebhookEventType.TIMESERIES_CREATED)
-    idempotency_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
-    _dispatch(
-        event_type,
-        {
-            "type": event_type,
-            "data": {
-                "user_id": str(user_id),
-                "provider": provider,
-                "series_type": series_type,
-                "sample_count": sample_count,
-                "start_time": start_time,
-                "end_time": end_time,
+    samples = samples or []
+
+    if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
+        idempotency_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        _dispatch(
+            event_type,
+            {
+                "type": event_type,
+                "data": {
+                    "user_id": str(user_id),
+                    "provider": provider,
+                    "series_type": series_type,
+                    "sample_count": sample_count,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "samples": samples,
+                },
             },
-        },
-        idempotency_key=idempotency_key,
-        channels=[f"user.{user_id}"],
-    )
+            idempotency_key=idempotency_key,
+            channels=[f"user.{user_id}"],
+        )
+    else:
+        chunks = [
+            samples[i : i + SVIX_MAX_SAMPLES_PER_EVENT] for i in range(0, len(samples), SVIX_MAX_SAMPLES_PER_EVENT)
+        ]
+        total_chunks = len(chunks)
+        for chunk_index, chunk in enumerate(chunks):
+            chunk_start = chunk[0]["timestamp"] if chunk else start_time
+            chunk_end = chunk[-1]["timestamp"] if chunk else end_time
+            idempotency_key = (
+                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+            )
+            _dispatch(
+                event_type,
+                {
+                    "type": event_type,
+                    "data": {
+                        "user_id": str(user_id),
+                        "provider": provider,
+                        "series_type": series_type,
+                        "sample_count": sample_count,
+                        "start_time": chunk_start,
+                        "end_time": chunk_end,
+                        "samples": chunk,
+                        "chunk_index": chunk_index,
+                        "total_chunks": total_chunks,
+                    },
+                },
+                idempotency_key=idempotency_key,
+                channels=[f"user.{user_id}"],
+            )
 
 
 def on_connection_created(
