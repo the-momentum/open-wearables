@@ -1,9 +1,13 @@
 #!/bin/bash
 set -e -x
 
-    # Init database
-    echo 'Applying migrations...'
-    uv run --frozen --no-sync alembic upgrade head
+# Ensure the agent database exists (idempotent — safe on existing deployments)
+echo 'Ensuring database exists...'
+uv run --frozen --no-sync python scripts/postgres/ensure_db.py
+
+# Init database
+echo 'Applying migrations...'
+uv run --frozen --no-sync alembic upgrade head
 
 # Init app
 echo "Starting the FastAPI application..."

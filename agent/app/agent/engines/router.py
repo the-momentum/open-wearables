@@ -7,8 +7,7 @@ from pygentic_ai.engines.routers import GenericRouter, RoutingResponse
 
 from app.agent.prompts.worker_prompts import WorkerType, build_worker_prompt
 from app.agent.utils.model_utils import get_llm
-
-_CONTEXT_HISTORY_TURNS = 3  # number of recent user/assistant pairs to include
+from app.config import settings
 
 
 class HealthRouter(GenericRouter):
@@ -55,7 +54,7 @@ class HealthRouter(GenericRouter):
 
     def _build_context(self, message: str) -> str:
         """Prepend the last N conversation turns to *message* for the router."""
-        recent = self._history[-(_CONTEXT_HISTORY_TURNS * 2) :]
+        recent = self._history[-(settings.router_context_turns * 2) :]
         parts = [line for msg in recent for line in self._msg_to_line(msg)]
 
         if not parts:

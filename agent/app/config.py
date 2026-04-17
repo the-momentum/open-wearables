@@ -78,8 +78,14 @@ class Settings(BaseSettings):
     session_timeout_minutes: int = 10
     conversation_close_hours: int = 24
     history_summary_threshold: int = 20
-    max_retries: int = 3
     max_tool_calls: int = 10
+
+    # Agent tuning
+    guardrails_soft_word_limit: int = 150
+    router_context_turns: int = 3
+
+    # OW backend client
+    ow_api_timeout: int = 30
 
     _PROVIDER_DEFAULTS: ClassVar[dict[LLMProvider, dict[str, str]]] = {
         LLMProvider.ANTHROPIC: {

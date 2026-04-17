@@ -6,8 +6,7 @@ from pygentic_ai.engines.guardrails import GuardrailsAgent
 
 from app.agent.prompts.worker_prompts import WorkerType, build_worker_prompt
 from app.agent.utils.model_utils import get_llm
-
-_DEFAULT_SOFT_WORD_LIMIT = 150
+from app.config import settings
 
 
 class HealthGuardrailsAgent(GuardrailsAgent):
@@ -20,8 +19,10 @@ class HealthGuardrailsAgent(GuardrailsAgent):
     def __init__(
         self,
         language: str = "English",
-        soft_word_limit: int | None = _DEFAULT_SOFT_WORD_LIMIT,
+        soft_word_limit: int | None = None,
     ) -> None:
+        if soft_word_limit is None:
+            soft_word_limit = settings.guardrails_soft_word_limit
         vendor, model, api_key = get_llm(is_worker=True)
         prompt = build_worker_prompt(
             WorkerType.GUARDRAILS,

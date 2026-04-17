@@ -12,7 +12,7 @@ def create_celery() -> Celery:
         task_serializer="json",
         accept_content=["json"],
         result_serializer="json",
-        timezone="Europe/Warsaw",
+        timezone="UTC",
         enable_utc=True,
         task_default_queue="agent-default",
         task_default_exchange="agent-default",

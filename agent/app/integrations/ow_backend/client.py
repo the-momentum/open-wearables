@@ -26,7 +26,7 @@ class OWClient:
 
     async def get_user_profile(self, user_id: UUID) -> dict:
         """GET /users/{user_id} — basic profile (name, email, birth_date, sex, gender)."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}",
                 headers=self._headers(),
@@ -36,7 +36,7 @@ class OWClient:
 
     async def get_body_summary(self, user_id: UUID) -> dict:
         """GET /users/{user_id}/summaries/body — weight, height, BMI, body fat, resting HR, HRV."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/summaries/body",
                 headers=self._headers(),
@@ -60,7 +60,7 @@ class OWClient:
         ]
         for t in types:
             params.append(("types[]", t))
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/timeseries",
                 headers=self._headers(),
@@ -76,7 +76,7 @@ class OWClient:
         end_date: date | str,
     ) -> dict:
         """GET /users/{user_id}/summaries/activity — daily steps, calories, HR."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/summaries/activity",
                 headers=self._headers(),
@@ -92,7 +92,7 @@ class OWClient:
         end_date: date | str,
     ) -> dict:
         """GET /users/{user_id}/summaries/sleep — duration, efficiency, stages."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/summaries/sleep",
                 headers=self._headers(),
@@ -108,7 +108,7 @@ class OWClient:
         end_date: date | str,
     ) -> dict:
         """GET /users/{user_id}/summaries/recovery — resting HR, HRV, SpO2, sleep efficiency."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/summaries/recovery",
                 headers=self._headers(),
@@ -124,7 +124,7 @@ class OWClient:
         end_date: date | str,
     ) -> dict:
         """GET /users/{user_id}/events/workouts — workout sessions with HR and calories."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/events/workouts",
                 headers=self._headers(),
@@ -140,7 +140,7 @@ class OWClient:
         end_date: date | str,
     ) -> dict:
         """GET /users/{user_id}/events/sleep — detailed sleep sessions with stage intervals."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=settings.ow_api_timeout) as client:
             resp = await client.get(
                 f"{self._base()}/api/v1/users/{user_id}/events/sleep",
                 headers=self._headers(),

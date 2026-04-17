@@ -2,21 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 from uuid import UUID
 
 import httpx
 
 from app.agent.static.default_msgs import get_workflow_error_msg
 from app.agent.workflows.agent_workflow import workflow_engine
-from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.repositories import conversation_repository, session_repository
 from app.schemas.agent import AgentMode
 from app.schemas.language import Language
 from app.services.conversation import ConversationService
-from celery import shared_task
+from celery import current_task, shared_task
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +84,8 @@ async def _run(
         logger.warning("Callback failed for task %s: %s", task_id, exc)
 
 
-@shared_task(bind=True, max_retries=settings.max_retries, default_retry_delay=5)
+@shared_task
 def process_message(
-    self: Any,
     session_id: str,
     conversation_id: str,
     user_id: str,
@@ -97,7 +94,7 @@ def process_message(
 ) -> None:
     asyncio.run(
         _run(
-            task_id=self.request.id,
+            task_id=current_task.request.id or "",
             session_id=session_id,
             conversation_id=conversation_id,
             user_id=user_id,
