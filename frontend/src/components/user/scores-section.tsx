@@ -156,16 +156,22 @@ function buildChartData(
       };
       for (const score of dateScores) {
         if (score.value !== null && score.provider) {
-          point[score.provider] = Number(score.value);
+          point[score.provider] =
+            category === 'resilience'
+              ? Number(score.value) * 100
+              : Number(score.value);
         }
       }
       return point;
     });
 }
 
-function formatScore(value: number | null): string {
+function formatScore(value: number | null, category?: string): string {
   if (value === null) return '-';
   const num = Number(value);
+  if (category === 'resilience') {
+    return (num * 100).toFixed(2) + '%';
+  }
   return Number.isInteger(num) ? String(num) : num.toFixed(1);
 }
 
@@ -290,7 +296,7 @@ function ScoreDayCard({
                       >
                         <SourceBadge provider={score.provider || 'unknown'} />
                         <span className="text-sm font-semibold text-white">
-                          {formatScore(score.value)}
+                          {formatScore(score.value, category)}
                         </span>
                         {score.qualifier && (
                           <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
@@ -568,11 +574,25 @@ export function ScoresSection({
                           tickMargin={8}
                           tick={{ fill: '#71717a', fontSize: 11 }}
                           domain={[0, categoryConfig?.maxScale || 100]}
-                          width={35}
+                          width={selectedCategory === 'resilience' ? 45 : 35}
+                          tickFormatter={
+                            selectedCategory === 'resilience'
+                              ? (v) => `${v}%`
+                              : undefined
+                          }
                         />
                         <ChartTooltip
                           cursor={false}
-                          content={<ChartTooltipContent />}
+                          content={
+                            <ChartTooltipContent
+                              formatter={
+                                selectedCategory === 'resilience'
+                                  ? (value) =>
+                                      `${Number(value).toFixed(2)}%`
+                                  : undefined
+                              }
+                            />
+                          }
                         />
                         {providers.map((provider) => (
                           <Line
