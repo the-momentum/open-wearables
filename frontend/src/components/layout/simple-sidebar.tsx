@@ -29,6 +29,7 @@ const menuItems = [
     title: 'Webhooks',
     url: ROUTES.webhooks,
     icon: Webhook,
+    badge: 'Beta',
   },
   {
     title: 'Settings',
@@ -93,6 +94,11 @@ export function SimpleSidebar() {
                 )}
               />
               <span>{item.title}</span>
+              {item.badge ? (
+                <span className="ml-auto rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+                  {item.badge}
+                </span>
+              ) : null}
             </Link>
           );
         })}
