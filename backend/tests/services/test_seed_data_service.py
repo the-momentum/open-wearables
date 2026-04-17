@@ -10,7 +10,7 @@ from app.schemas.utils.seed_data import (
     SleepConfig,
     WorkoutConfig,
 )
-from app.services.seed_data_service import seed_data_service
+from app.services.seed_data import seed_data_service
 
 
 class TestSeedDataServiceGenerate:
