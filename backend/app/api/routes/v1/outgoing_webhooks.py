@@ -22,7 +22,7 @@ from app.schemas.webhooks.endpoints import (
     EventTypeResponse,
     TestEventRequest,
 )
-from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
+from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, EVENT_TYPE_GROUPS, WebhookEventType
 from app.services import DeveloperDep
 from app.services.outgoing_webhooks import svix as svix_service
 
@@ -105,7 +105,12 @@ def get_endpoint_secret(endpoint_id: str, app_id: SvixAppId) -> EndpointSecretRe
 @router.get("/event-types")
 def list_event_types() -> list[EventTypeResponse]:
     return [
-        EventTypeResponse(name=evt.value, description=EVENT_TYPE_DESCRIPTIONS.get(evt, "")) for evt in WebhookEventType
+        EventTypeResponse(
+            name=evt.value,
+            description=EVENT_TYPE_DESCRIPTIONS.get(evt, ""),
+            child_events=EVENT_TYPE_GROUPS.get(evt.value) or None,
+        )
+        for evt in WebhookEventType
     ]
 
 

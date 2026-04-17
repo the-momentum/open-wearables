@@ -140,23 +140,9 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
             "end_datetime": "2024-01-01T20:00:00+00:00",
         },
     },
-    WebhookEventType.TIMESERIES_CREATED: {
-        "type": WebhookEventType.TIMESERIES_CREATED,
-        "data": {
-            "user_id": "00000000-0000-0000-0000-000000000002",
-            "provider": "garmin",
-            "series_type": "unknown",
-            "sample_count": 10,
-            "start_datetime": "2024-01-01T08:00:00+00:00",
-            "end_datetime": "2024-01-01T09:00:00+00:00",
-        },
-    },
 }
 
 
 def get_test_payload(event_type: str) -> dict:
-    """Return the example payload for the given event type.
-
-    Falls back to the TIMESERIES_CREATED example for unknown types.
-    """
-    return EXAMPLE_PAYLOADS.get(event_type, EXAMPLE_PAYLOADS[WebhookEventType.TIMESERIES_CREATED])
+    """Return the example payload for the given event type."""
+    return EXAMPLE_PAYLOADS.get(event_type, {})

@@ -1,13 +1,18 @@
-"""Maps SeriesType slugs to their outgoing webhook event type.
+"""Maps SeriesType slugs to their outgoing webhook event types.
 
-Used by the timeseries emit helper to select the most specific event type
-for a given measurement kind. Falls back to ``WebhookEventType.TIMESERIES_CREATED``
-when the series type is not listed here.
+Each series type is mapped to:
+- a GROUP event  (``SERIES_TYPE_TO_GROUP_EVENT``)   — fires for any sample in that category
+- a GRANULAR event (``SERIES_TYPE_TO_GRANULAR_EVENT``) — fires for this specific metric only
+
+Both events are emitted for every ingestion batch.  Series types not listed here are silently skipped.
 """
 
 from app.schemas.webhooks.event_types import WebhookEventType
 
-SERIES_TYPE_TO_WEBHOOK_EVENT: dict[str, str] = {
+# ---------------------------------------------------------------------------
+# GROUP mapping  (series_type slug → group/category event)
+# ---------------------------------------------------------------------------
+SERIES_TYPE_TO_GROUP_EVENT: dict[str, str] = {
     # Heart & Cardiovascular
     "heart_rate": WebhookEventType.HEART_RATE_CREATED,
     "resting_heart_rate": WebhookEventType.HEART_RATE_CREATED,
@@ -105,4 +110,100 @@ SERIES_TYPE_TO_WEBHOOK_EVENT: dict[str, str] = {
     "inhaler_usage": WebhookEventType.ENVIRONMENTAL_CREATED,
     "weather_temperature": WebhookEventType.ENVIRONMENTAL_CREATED,
     "weather_humidity": WebhookEventType.ENVIRONMENTAL_CREATED,
+}
+
+# Backwards-compat alias (was the only mapping before granular events were added)
+SERIES_TYPE_TO_WEBHOOK_EVENT = SERIES_TYPE_TO_GROUP_EVENT
+
+# ---------------------------------------------------------------------------
+# GRANULAR mapping  (series_type slug → series.<slug>.created event)
+# ---------------------------------------------------------------------------
+SERIES_TYPE_TO_GRANULAR_EVENT: dict[str, str] = {
+    "heart_rate": WebhookEventType.SERIES_HEART_RATE,
+    "resting_heart_rate": WebhookEventType.SERIES_RESTING_HEART_RATE,
+    "heart_rate_recovery_one_minute": WebhookEventType.SERIES_HEART_RATE_RECOVERY_ONE_MINUTE,
+    "walking_heart_rate_average": WebhookEventType.SERIES_WALKING_HEART_RATE_AVERAGE,
+    "atrial_fibrillation_burden": WebhookEventType.SERIES_ATRIAL_FIBRILLATION_BURDEN,
+    "heart_rate_variability_sdnn": WebhookEventType.SERIES_HEART_RATE_VARIABILITY_SDNN,
+    "heart_rate_variability_rmssd": WebhookEventType.SERIES_HEART_RATE_VARIABILITY_RMSSD,
+    "recovery_score": WebhookEventType.SERIES_RECOVERY_SCORE,
+    "garmin_body_battery": WebhookEventType.SERIES_GARMIN_BODY_BATTERY,
+    "oxygen_saturation": WebhookEventType.SERIES_OXYGEN_SATURATION,
+    "peripheral_perfusion_index": WebhookEventType.SERIES_PERIPHERAL_PERFUSION_INDEX,
+    "blood_glucose": WebhookEventType.SERIES_BLOOD_GLUCOSE,
+    "blood_alcohol_content": WebhookEventType.SERIES_BLOOD_ALCOHOL_CONTENT,
+    "insulin_delivery": WebhookEventType.SERIES_INSULIN_DELIVERY,
+    "blood_pressure_systolic": WebhookEventType.SERIES_BLOOD_PRESSURE_SYSTOLIC,
+    "blood_pressure_diastolic": WebhookEventType.SERIES_BLOOD_PRESSURE_DIASTOLIC,
+    "respiratory_rate": WebhookEventType.SERIES_RESPIRATORY_RATE,
+    "sleeping_breathing_disturbances": WebhookEventType.SERIES_SLEEPING_BREATHING_DISTURBANCES,
+    "breathing_disturbance_index": WebhookEventType.SERIES_BREATHING_DISTURBANCE_INDEX,
+    "forced_vital_capacity": WebhookEventType.SERIES_FORCED_VITAL_CAPACITY,
+    "forced_expiratory_volume_1": WebhookEventType.SERIES_FORCED_EXPIRATORY_VOLUME_1,
+    "peak_expiratory_flow_rate": WebhookEventType.SERIES_PEAK_EXPIRATORY_FLOW_RATE,
+    "height": WebhookEventType.SERIES_HEIGHT,
+    "weight": WebhookEventType.SERIES_WEIGHT,
+    "body_fat_percentage": WebhookEventType.SERIES_BODY_FAT_PERCENTAGE,
+    "body_mass_index": WebhookEventType.SERIES_BODY_MASS_INDEX,
+    "lean_body_mass": WebhookEventType.SERIES_LEAN_BODY_MASS,
+    "body_fat_mass": WebhookEventType.SERIES_BODY_FAT_MASS,
+    "skeletal_muscle_mass": WebhookEventType.SERIES_SKELETAL_MUSCLE_MASS,
+    "waist_circumference": WebhookEventType.SERIES_WAIST_CIRCUMFERENCE,
+    "body_temperature": WebhookEventType.SERIES_BODY_TEMPERATURE,
+    "skin_temperature": WebhookEventType.SERIES_SKIN_TEMPERATURE,
+    "skin_temperature_deviation": WebhookEventType.SERIES_SKIN_TEMPERATURE_DEVIATION,
+    "skin_temperature_trend_deviation": WebhookEventType.SERIES_SKIN_TEMPERATURE_TREND_DEVIATION,
+    "garmin_skin_temperature": WebhookEventType.SERIES_GARMIN_SKIN_TEMPERATURE,
+    "garmin_stress_level": WebhookEventType.SERIES_GARMIN_STRESS_LEVEL,
+    "electrodermal_activity": WebhookEventType.SERIES_ELECTRODERMAL_ACTIVITY,
+    "vo2_max": WebhookEventType.SERIES_VO2_MAX,
+    "six_minute_walk_test_distance": WebhookEventType.SERIES_SIX_MINUTE_WALK_TEST_DISTANCE,
+    "cardiovascular_age": WebhookEventType.SERIES_CARDIOVASCULAR_AGE,
+    "garmin_fitness_age": WebhookEventType.SERIES_GARMIN_FITNESS_AGE,
+    "steps": WebhookEventType.SERIES_STEPS,
+    "energy": WebhookEventType.SERIES_ENERGY,
+    "basal_energy": WebhookEventType.SERIES_BASAL_ENERGY,
+    "stand_time": WebhookEventType.SERIES_STAND_TIME,
+    "exercise_time": WebhookEventType.SERIES_EXERCISE_TIME,
+    "physical_effort": WebhookEventType.SERIES_PHYSICAL_EFFORT,
+    "flights_climbed": WebhookEventType.SERIES_FLIGHTS_CLIMBED,
+    "average_met": WebhookEventType.SERIES_AVERAGE_MET,
+    "push_count": WebhookEventType.SERIES_PUSH_COUNT,
+    "number_of_times_fallen": WebhookEventType.SERIES_NUMBER_OF_TIMES_FALLEN,
+    "number_of_alcoholic_beverages": WebhookEventType.SERIES_NUMBER_OF_ALCOHOLIC_BEVERAGES,
+    "nike_fuel": WebhookEventType.SERIES_NIKE_FUEL,
+    "hydration": WebhookEventType.SERIES_HYDRATION,
+    "distance_walking_running": WebhookEventType.SERIES_DISTANCE_WALKING_RUNNING,
+    "distance_cycling": WebhookEventType.SERIES_DISTANCE_CYCLING,
+    "distance_swimming": WebhookEventType.SERIES_DISTANCE_SWIMMING,
+    "distance_downhill_snow_sports": WebhookEventType.SERIES_DISTANCE_DOWNHILL_SNOW_SPORTS,
+    "distance_other": WebhookEventType.SERIES_DISTANCE_OTHER,
+    "cadence": WebhookEventType.SERIES_CADENCE,
+    "power": WebhookEventType.SERIES_POWER,
+    "speed": WebhookEventType.SERIES_SPEED,
+    "workout_effort_score": WebhookEventType.SERIES_WORKOUT_EFFORT_SCORE,
+    "estimated_workout_effort_score": WebhookEventType.SERIES_ESTIMATED_WORKOUT_EFFORT_SCORE,
+    "walking_step_length": WebhookEventType.SERIES_WALKING_STEP_LENGTH,
+    "walking_speed": WebhookEventType.SERIES_WALKING_SPEED,
+    "walking_double_support_percentage": WebhookEventType.SERIES_WALKING_DOUBLE_SUPPORT_PERCENTAGE,
+    "walking_asymmetry_percentage": WebhookEventType.SERIES_WALKING_ASYMMETRY_PERCENTAGE,
+    "walking_steadiness": WebhookEventType.SERIES_WALKING_STEADINESS,
+    "stair_descent_speed": WebhookEventType.SERIES_STAIR_DESCENT_SPEED,
+    "stair_ascent_speed": WebhookEventType.SERIES_STAIR_ASCENT_SPEED,
+    "running_power": WebhookEventType.SERIES_RUNNING_POWER,
+    "running_speed": WebhookEventType.SERIES_RUNNING_SPEED,
+    "running_vertical_oscillation": WebhookEventType.SERIES_RUNNING_VERTICAL_OSCILLATION,
+    "running_ground_contact_time": WebhookEventType.SERIES_RUNNING_GROUND_CONTACT_TIME,
+    "running_stride_length": WebhookEventType.SERIES_RUNNING_STRIDE_LENGTH,
+    "swimming_stroke_count": WebhookEventType.SERIES_SWIMMING_STROKE_COUNT,
+    "underwater_depth": WebhookEventType.SERIES_UNDERWATER_DEPTH,
+    "environmental_audio_exposure": WebhookEventType.SERIES_ENVIRONMENTAL_AUDIO_EXPOSURE,
+    "headphone_audio_exposure": WebhookEventType.SERIES_HEADPHONE_AUDIO_EXPOSURE,
+    "environmental_sound_reduction": WebhookEventType.SERIES_ENVIRONMENTAL_SOUND_REDUCTION,
+    "time_in_daylight": WebhookEventType.SERIES_TIME_IN_DAYLIGHT,
+    "water_temperature": WebhookEventType.SERIES_WATER_TEMPERATURE,
+    "uv_exposure": WebhookEventType.SERIES_UV_EXPOSURE,
+    "inhaler_usage": WebhookEventType.SERIES_INHALER_USAGE,
+    "weather_temperature": WebhookEventType.SERIES_WEATHER_TEMPERATURE,
+    "weather_humidity": WebhookEventType.SERIES_WEATHER_HUMIDITY,
 }

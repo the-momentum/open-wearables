@@ -68,6 +68,8 @@ class EndpointSecretResponse(BaseModel):
 class EventTypeResponse(BaseModel):
     name: str
     description: str
+    child_events: list[str] | None = None
+    """Granular (series.*) events that belong to this group, if any."""
 
 
 class TestEventRequest(BaseModel):

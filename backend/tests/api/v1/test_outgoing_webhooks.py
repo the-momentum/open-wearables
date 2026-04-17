@@ -133,9 +133,14 @@ class TestWebhookEmit:
             end_time="2026-04-16T06:05:00+00:00",
             samples=samples,
         )
-        mock_task.delay.assert_called_once()
-        args = mock_task.delay.call_args
-        assert args[0][0] == "heart_rate.created"
+        mock_task.delay.assert_called()
+        assert mock_task.delay.call_count == 2
+        calls = {c[0][0] for c in mock_task.delay.call_args_list}
+        assert "heart_rate.created" in calls
+        assert "series.heart_rate.created" in calls
+        # validate payload on the group event
+        group_call = next(c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created")
+        args = group_call
         data = args[0][1]["data"]
         assert data["start_time"] == "2026-04-16T06:00:00+00:00"
         assert data["end_time"] == "2026-04-16T06:05:00+00:00"
@@ -154,10 +159,12 @@ class TestWebhookEmit:
             series_type="heart_rate",
             sample_count=100,
         )
-        mock_task.delay.assert_called_once()
-        args = mock_task.delay.call_args
-        assert args[0][0] == "heart_rate.created"
-        data = args[0][1]["data"]
+        assert mock_task.delay.call_count == 2
+        calls = {c[0][0] for c in mock_task.delay.call_args_list}
+        assert "heart_rate.created" in calls
+        assert "series.heart_rate.created" in calls
+        group_call = next(c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created")
+        data = group_call[0][1]["data"]
         assert data["samples"] == []
         assert data["sample_count"] == 100
 
@@ -185,12 +192,12 @@ class TestWebhookEmit:
             end_time=large_samples[-1]["timestamp"],
             samples=large_samples,
         )
-        # Should have dispatched 2 chunk events
-        assert mock_task.delay.call_count == 2
-        first_call = mock_task.delay.call_args_list[0]
-        second_call = mock_task.delay.call_args_list[1]
-        first_data = first_call[0][1]["data"]
-        second_data = second_call[0][1]["data"]
+        # 2 chunks × 2 event types (group + granular) = 4 calls
+        assert mock_task.delay.call_count == 4
+        group_calls = [c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created"]
+        assert len(group_calls) == 2
+        first_data = group_calls[0][0][1]["data"]
+        second_data = group_calls[1][0][1]["data"]
         assert first_data["chunk_index"] == 0
         assert first_data["total_chunks"] == 2
         assert second_data["chunk_index"] == 1
@@ -202,7 +209,7 @@ class TestWebhookEmit:
         assert second_data["sample_count"] == len(large_samples)
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
-    def test_on_timeseries_fallback_event_type(self, mock_task: MagicMock) -> None:
+    def test_on_timeseries_skips_unmapped_series_type(self, mock_task: MagicMock) -> None:
         uid = uuid4()
         on_timeseries_batch_saved(
             user_id=uid,
@@ -210,8 +217,7 @@ class TestWebhookEmit:
             series_type="unknown_type_xyz",
             sample_count=5,
         )
-        mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "timeseries.created"
+        mock_task.delay.assert_not_called()
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_connection_created_dispatches(self, mock_task: MagicMock) -> None:

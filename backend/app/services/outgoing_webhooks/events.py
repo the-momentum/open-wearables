@@ -12,7 +12,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from app.constants.webhooks.events import SERIES_TYPE_TO_WEBHOOK_EVENT
+from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 
 logger = logging.getLogger(__name__)
@@ -155,31 +155,43 @@ def on_timeseries_batch_saved(
     ``chunk_index`` (0-based) and ``total_chunks`` so consumers can detect and
     reassemble split deliveries.  Single-chunk payloads omit these fields to
     keep the common case clean.
+
+    Two events are emitted per batch:
+    - a *group* event (e.g. ``heart_rate.created``) for broad subscriptions
+    - a *granular* event (e.g. ``series.resting_heart_rate.created``) for
+      narrow subscriptions to a specific metric
     """
-    event_type = SERIES_TYPE_TO_WEBHOOK_EVENT.get(series_type, WebhookEventType.TIMESERIES_CREATED)
+    group_event = SERIES_TYPE_TO_GROUP_EVENT.get(series_type)
+    if group_event is None:
+        return
+    granular_event = SERIES_TYPE_TO_GRANULAR_EVENT.get(series_type)
+    if granular_event and granular_event != group_event:
+        event_types_to_emit = [group_event, granular_event]
+    else:
+        event_types_to_emit = [group_event]
     samples = samples or []
 
-    if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
-        idempotency_key = _safe_key(
-            f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
-        )
+    def _emit(event_type: str, payload_data: dict[str, Any], ikey: str) -> None:
         _dispatch(
             event_type,
-            {
-                "type": event_type,
-                "data": {
-                    "user_id": str(user_id),
-                    "provider": provider,
-                    "series_type": series_type,
-                    "sample_count": sample_count,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "samples": samples,
-                },
-            },
-            idempotency_key=idempotency_key,
+            {"type": event_type, "data": payload_data},
+            idempotency_key=_safe_key(f"{ikey}.{event_type}"),
             channels=[f"user.{user_id}"],
         )
+
+    if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
+        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        data: dict[str, Any] = {
+            "user_id": str(user_id),
+            "provider": provider,
+            "series_type": series_type,
+            "sample_count": sample_count,
+            "start_time": start_time,
+            "end_time": end_time,
+            "samples": samples,
+        }
+        for event_type in event_types_to_emit:
+            _emit(event_type, data, base_key)
     else:
         chunks = [
             samples[i : i + SVIX_MAX_SAMPLES_PER_EVENT] for i in range(0, len(samples), SVIX_MAX_SAMPLES_PER_EVENT)
@@ -188,28 +200,23 @@ def on_timeseries_batch_saved(
         for chunk_index, chunk in enumerate(chunks):
             chunk_start = chunk[0]["timestamp"] if chunk else start_time
             chunk_end = chunk[-1]["timestamp"] if chunk else end_time
-            idempotency_key = _safe_key(
-                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+            base_key = (
+                f"timeseries.{user_id}.{provider}.{series_type}"
+                f".{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
             )
-            _dispatch(
-                event_type,
-                {
-                    "type": event_type,
-                    "data": {
-                        "user_id": str(user_id),
-                        "provider": provider,
-                        "series_type": series_type,
-                        "sample_count": sample_count,
-                        "start_time": chunk_start,
-                        "end_time": chunk_end,
-                        "samples": chunk,
-                        "chunk_index": chunk_index,
-                        "total_chunks": total_chunks,
-                    },
-                },
-                idempotency_key=idempotency_key,
-                channels=[f"user.{user_id}"],
-            )
+            data = {
+                "user_id": str(user_id),
+                "provider": provider,
+                "series_type": series_type,
+                "sample_count": sample_count,
+                "start_time": chunk_start,
+                "end_time": chunk_end,
+                "samples": chunk,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+            }
+            for event_type in event_types_to_emit:
+                _emit(event_type, data, base_key)
 
 
 def on_connection_created(
