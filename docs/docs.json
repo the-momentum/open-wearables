@@ -30,6 +30,13 @@
             ]
           },
           {
+            "group": "Scores",
+            "pages": [
+              "scores/sleep-score",
+              "scores/resilience-score"
+            ]
+          },
+          {
             "group": "Providers",
             "pages": [
               "providers/supported",
