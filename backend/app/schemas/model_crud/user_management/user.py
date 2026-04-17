@@ -7,6 +7,13 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 # Allowlist for user sort columns - keep in sync with Literal type below
 USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name", "last_synced_at"})
 
+_EXTERNAL_USER_ID_DEPRECATION = (
+    "Deprecated: no data-fetching endpoint (timeseries, workouts, sleep, summaries, health-scores, etc.) "
+    "accepts external_user_id - they all require the Open Wearables UUID. This field was added early in the "
+    "project but never wired into those endpoints, so it only works as a filter on GET /users. Store the "
+    "UUID returned by POST /users in your own system instead."
+)
+
 
 class UserQueryParams(BaseModel):
     """Query parameters for filtering and searching users.
@@ -36,7 +43,11 @@ class UserQueryParams(BaseModel):
     )
 
     email: EmailStr | None = Field(None, description="Filter by exact email")
-    external_user_id: str | None = Field(None, description="Filter by external user ID")
+    external_user_id: str | None = Field(
+        None,
+        description=f"Filter by external user ID. {_EXTERNAL_USER_ID_DEPRECATION}",
+        deprecated=True,
+    )
 
 
 class UserRead(BaseModel):
@@ -47,7 +58,7 @@ class UserRead(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     email: EmailStr | None = None
-    external_user_id: str | None = None
+    external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
     last_synced_at: datetime | None = None
     last_synced_provider: str | None = None
 
@@ -56,7 +67,7 @@ class UserCreate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr | None = None
-    external_user_id: str | None = None
+    external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
 
 
 class UserCreateInternal(UserCreate):
@@ -68,7 +79,7 @@ class UserUpdate(BaseModel):
     first_name: str | None = Field(None, max_length=100)
     last_name: str | None = Field(None, max_length=100)
     email: EmailStr | None = None
-    external_user_id: str | None = None
+    external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
 
 
 class UserUpdateInternal(UserUpdate):
