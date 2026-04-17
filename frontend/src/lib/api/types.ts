@@ -675,6 +675,7 @@ export interface GarminBackfillStatus {
 export interface WebhookEventType {
   name: string;
   description: string;
+  child_events?: string[] | null;
 }
 
 export interface WebhookEndpoint {

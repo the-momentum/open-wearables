@@ -201,8 +201,7 @@ def on_timeseries_batch_saved(
             chunk_start = chunk[0]["timestamp"] if chunk else start_time
             chunk_end = chunk[-1]["timestamp"] if chunk else end_time
             base_key = (
-                f"timeseries.{user_id}.{provider}.{series_type}"
-                f".{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
             )
             data = {
                 "user_id": str(user_id),

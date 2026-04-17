@@ -273,9 +273,7 @@ EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     WebhookEventType.SERIES_POWER: "Power output samples were ingested.",
     WebhookEventType.SERIES_SPEED: "Speed samples were ingested.",
     WebhookEventType.SERIES_WORKOUT_EFFORT_SCORE: "Workout effort score samples were ingested.",
-    WebhookEventType.SERIES_ESTIMATED_WORKOUT_EFFORT_SCORE: (
-        "Estimated workout effort score samples were ingested."
-    ),
+    WebhookEventType.SERIES_ESTIMATED_WORKOUT_EFFORT_SCORE: ("Estimated workout effort score samples were ingested."),
     WebhookEventType.SERIES_WALKING_STEP_LENGTH: "Walking step length samples were ingested.",
     WebhookEventType.SERIES_WALKING_SPEED: "Walking speed samples were ingested.",
     WebhookEventType.SERIES_WALKING_DOUBLE_SUPPORT_PERCENTAGE: (

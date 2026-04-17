@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import {
   webhookEndpointFormSchema,
   type WebhookEndpointFormData,
 } from '@/lib/validation/webhooks.schemas';
-import type { WebhookEndpoint } from '@/lib/api/types';
+import type { WebhookEndpoint, WebhookEventType } from '@/lib/api/types';
 
 interface WebhookFormProps {
   initial?: WebhookEndpoint;
@@ -31,6 +31,7 @@ export function WebhookForm({
 }: WebhookFormProps) {
   const eventTypes = useWebhookEventTypes();
   const [eventFilter, setEventFilter] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const form = useForm<WebhookEndpointFormData>({
     resolver: zodResolver(webhookEndpointFormSchema),
@@ -62,9 +63,51 @@ export function WebhookForm({
     });
   });
 
-  const filtered = eventTypes.data?.filter((t) =>
-    t.name.toLowerCase().includes(eventFilter.toLowerCase())
+  const allTypes = eventTypes.data ?? [];
+
+  const childrenByGroup = new Map<string, WebhookEventType[]>(
+    allTypes
+      .filter((t) => t.child_events && t.child_events.length > 0)
+      .map((t) => [
+        t.name,
+        (t.child_events ?? [])
+          .map((cn) => allTypes.find((x) => x.name === cn))
+          .filter(Boolean) as WebhookEventType[],
+      ])
   );
+
+  const granularSet = new Set(
+    [...childrenByGroup.values()].flatMap((cs) => cs.map((c) => c.name))
+  );
+
+  // child name → parent group name (for mutual-exclusion logic)
+  const childToGroup = new Map<string, string>(
+    [...childrenByGroup.entries()].flatMap(([groupName, children]) =>
+      children.map((c) => [c.name, groupName])
+    )
+  );
+
+  const topLevel = allTypes.filter(
+    (t) => !granularSet.has(t.name) || childrenByGroup.has(t.name)
+  );
+
+  const q = eventFilter.toLowerCase();
+  const filteredTop = q
+    ? allTypes.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q)
+      )
+    : topLevel;
+
+  const toggleExpanded = (name: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   return (
     <form onSubmit={handleFormSubmit} className="space-y-4">
@@ -146,12 +189,70 @@ export function WebhookForm({
             name="filter_types"
             render={({ field }) => {
               const selected = new Set(field.value ?? []);
+
               const toggle = (name: string) => {
                 const next = new Set(selected);
-                if (next.has(name)) next.delete(name);
-                else next.add(name);
+                if (next.has(name)) {
+                  next.delete(name);
+                } else {
+                  next.add(name);
+                  // selecting a child → deselect its parent catch-all
+                  const parentGroup = childToGroup.get(name);
+                  if (parentGroup) next.delete(parentGroup);
+                  // selecting a parent catch-all → deselect all its children
+                  const ownChildren = childrenByGroup.get(name);
+                  if (ownChildren) ownChildren.forEach((c) => next.delete(c.name));
+                }
                 field.onChange(Array.from(next));
               };
+
+              const toggleAllChildren = (
+                groupName: string,
+                children: WebhookEventType[]
+              ) => {
+                const allOn = children.every((c) => selected.has(c.name));
+                const next = new Set(selected);
+                if (allOn) {
+                  children.forEach((c) => next.delete(c.name));
+                } else {
+                  children.forEach((c) => next.add(c.name));
+                  // selecting specific events → deselect the catch-all parent
+                  next.delete(groupName);
+                  setExpandedGroups((prev) => new Set([...prev, groupName]));
+                }
+                field.onChange(Array.from(next));
+              };
+
+              const EventBadge = ({
+                name,
+                description,
+                isOn,
+                onToggle,
+              }: {
+                name: string;
+                description: string;
+                isOn: boolean;
+                onToggle: () => void;
+              }) => (
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  title={description}
+                  className="focus:outline-none"
+                >
+                  <Badge
+                    variant={isOn ? 'default' : 'outline'}
+                    className={
+                      isOn
+                        ? 'cursor-pointer bg-white text-black hover:bg-zinc-200'
+                        : 'cursor-pointer border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+                    }
+                  >
+                    {name}
+                  </Badge>
+                </button>
+              );
+
               return (
                 <div className="space-y-2">
                   <Input
@@ -161,29 +262,106 @@ export function WebhookForm({
                     onChange={(e) => setEventFilter(e.target.value)}
                     className="bg-zinc-800 border-zinc-700 h-8 text-xs"
                   />
-                  <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
-                    {filtered?.length ? (
-                      filtered.map((t) => {
-                        const isOn = selected.has(t.name);
-                        return (
-                          <button
-                            type="button"
-                            key={t.name}
-                            onClick={() => toggle(t.name)}
-                            title={t.description}
-                            className="focus:outline-none"
-                          >
-                            <Badge
-                              variant={isOn ? 'default' : 'outline'}
-                              className={
-                                isOn
-                                  ? 'cursor-pointer bg-white text-black hover:bg-zinc-200'
-                                  : 'cursor-pointer border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
-                              }
+                  <div className="flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+                    {filteredTop.length ? (
+                      filteredTop.map((t) => {
+                        const children = childrenByGroup.get(t.name);
+                        const hasChildren = children && children.length > 0;
+                        const isExpanded = expandedGroups.has(t.name);
+
+                        if (!hasChildren) {
+                          return (
+                            <div
+                              key={t.name}
+                              className="flex items-center gap-1.5 py-0.5"
                             >
-                              {t.name}
-                            </Badge>
-                          </button>
+                              <EventBadge
+                                name={t.name}
+                                description={t.description}
+                                isOn={selected.has(t.name)}
+                                onToggle={() => toggle(t.name)}
+                              />
+                            </div>
+                          );
+                        }
+
+                        const selectedCount = children.filter((c) =>
+                          selected.has(c.name)
+                        ).length;
+                        const allChildrenOn = selectedCount === children.length;
+                        const someChildrenOn =
+                          selectedCount > 0 && !allChildrenOn;
+
+                        return (
+                          <div key={t.name}>
+                            <div className="flex items-center gap-1.5 py-0.5">
+                              {/* Expand/collapse chevron */}
+                              <button
+                                type="button"
+                                onClick={() => toggleExpanded(t.name)}
+                                className="text-zinc-500 hover:text-zinc-300 focus:outline-none flex-shrink-0"
+                                title={
+                                  isExpanded
+                                    ? 'Collapse'
+                                    : 'Expand specific events'
+                                }
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="h-3 w-3" />
+                                ) : (
+                                  <ChevronRight className="h-3 w-3" />
+                                )}
+                              </button>
+
+                              {/* Group catch-all badge */}
+                              <EventBadge
+                                name={t.name}
+                                description={`${t.description}\n\nCatch-all: fires for every specific metric in this group. Select individual metrics below for finer control.`}
+                                isOn={selected.has(t.name)}
+                                onToggle={() => toggle(t.name)}
+                              />
+
+                              {/* Select all / deselect all children */}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  toggleAllChildren(t.name, children)
+                                }
+                                className="text-[10px] text-zinc-500 hover:text-zinc-300 focus:outline-none flex-shrink-0"
+                                title={
+                                  allChildrenOn
+                                    ? 'Deselect all specific events'
+                                    : 'Select all specific events'
+                                }
+                              >
+                                {allChildrenOn ? (
+                                  <span className="text-zinc-300">
+                                    − all specific
+                                  </span>
+                                ) : someChildrenOn ? (
+                                  <span>
+                                    {selectedCount}/{children.length} specific
+                                  </span>
+                                ) : (
+                                  '+ all specific'
+                                )}
+                              </button>
+                            </div>
+
+                            {isExpanded && (
+                              <div className="mt-1 ml-4 flex flex-wrap gap-1.5 border-l border-zinc-800 pl-2.5 pb-1.5">
+                                {children.map((c) => (
+                                  <EventBadge
+                                    key={c.name}
+                                    name={c.name}
+                                    description={c.description}
+                                    isOn={selected.has(c.name)}
+                                    onToggle={() => toggle(c.name)}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         );
                       })
                     ) : (
@@ -194,7 +372,8 @@ export function WebhookForm({
                   </div>
                   {selected.size > 0 && (
                     <p className="text-[10px] text-zinc-600">
-                      {selected.size} selected
+                      {selected.size} event type{selected.size !== 1 ? 's' : ''}{' '}
+                      selected
                     </p>
                   )}
                 </div>
