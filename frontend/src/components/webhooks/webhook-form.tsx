@@ -201,7 +201,8 @@ export function WebhookForm({
                   if (parentGroup) next.delete(parentGroup);
                   // selecting a parent catch-all → deselect all its children
                   const ownChildren = childrenByGroup.get(name);
-                  if (ownChildren) ownChildren.forEach((c) => next.delete(c.name));
+                  if (ownChildren)
+                    ownChildren.forEach((c) => next.delete(c.name));
                 }
                 field.onChange(Array.from(next));
               };

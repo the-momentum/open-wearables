@@ -14,6 +14,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import httpx
 from jose import jwt
 from svix.api import (
     ApplicationIn,
@@ -135,6 +136,8 @@ def ensure_application(developer_id: str, developer_email: str) -> str:
         _client.application.get_or_create(
             ApplicationIn(name=developer_email, uid=uid),
         )
+    except httpx.ConnectError:
+        logger.warning("Svix server unreachable — skipping application setup for developer %s", uid)
     except Exception:
         logger.exception("Failed to ensure Svix application for developer %s", uid)
     return uid
@@ -163,6 +166,13 @@ def send(
                 channels=channels or None,
             ),
         )
+    except httpx.ConnectError:
+        logger.warning(
+            "Svix server unreachable — dropping event=%s for app=%s (no retry)",
+            event_type,
+            app_id,
+        )
+        return True  # type: ignore[return-value]  # truthy = don't count as failure
     except HttpError as exc:
         if exc.status_code == 409:
             # Svix deduplication: the same event_id was already delivered.
