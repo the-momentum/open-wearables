@@ -20,8 +20,9 @@ class HrvCvScoreResult(BaseModel):
     stored in the DB as NUMERIC(6,3) and displayed on the UI as X.X %.
 
     ``resilience_score`` is the same value mapped to a 0–100 scale via a
-    sigmoid curve, analogous to sleep/recovery scores.  None when ``hrv_cv``
-    is None (insufficient data).
+    linear drop: CV ≤ 7 % → 100, CV ≥ 40 % → 0, linear between.
+    Analogous to sleep/recovery scores.  None when ``hrv_cv`` is None
+    (insufficient data).
     """
 
     model_config = ConfigDict(from_attributes=True)

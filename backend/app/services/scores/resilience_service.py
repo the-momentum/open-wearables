@@ -4,7 +4,7 @@ Exposes three categories of functionality:
 
 - ResilienceScoreService.get_hrv_cv_score – DB-backed; computes a multi-day
   HRV coefficient of variation using only samples recorded during sleep, and
-  maps that CV to a 0–100 resilience score via a sigmoid curve.
+  maps that CV to a 0–100 resilience score via a linear scale.
 - ResilienceScoreService.calculate_rmssd_ow (RMSSD_OW) – overnight RMSSD from
   raw HR data filtered to sleep windows; intended for scheduled tasks.
 - ResilienceScoreService.calculate_sdnn_ow  (SDNN_OW) – same as RMSSD_OW but
@@ -13,9 +13,9 @@ Exposes three categories of functionality:
 Scoring:
     The raw HRV-CV (stored as a 3-decimal-place fraction, e.g. 0.123 = 12.3%)
     is mapped to a 0–100 score using ``_hrv_cv_to_resilience_score``.
-    The sweet spot [``sweet_spot_min_pct``, ``sweet_spot_max_pct``] (default
-    3–7 %) maps to 100.  A rising sigmoid applies below that range; a falling
-    sigmoid applies above it, reaching near-zero around 20 %.
+    CV ≤ ``cv_ceiling`` (default 7 %) → 100.
+    CV ≥ ``cv_floor``   (default 40 %) → 0.
+    Between ceiling and floor the score drops linearly.
     Tuning parameters live in ``ResilienceScoreConfig``.
 """
 
@@ -27,7 +27,6 @@ from uuid import UUID
 
 from app.algorithms.config_algorithms import resilience_config
 from app.algorithms.resilience import calculate_hrv_cv, calculate_rmssd, calculate_sdnn
-from app.algorithms.scoring_primitives import score_sigmoid
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord
@@ -185,34 +184,22 @@ class ResilienceScoreService:
     def _hrv_cv_to_resilience_score(hrv_cv: float) -> int:
         """Map HRV-CV (0.0–1.0+) to a 0–100 resilience score.
 
-        The sweet spot [sweet_spot_min_pct, sweet_spot_max_pct] maps to 100.
-        A rising sigmoid applies below the sweet spot (very stable HRV is good
-        but uncommon); a falling sigmoid applies above it down to ~0 at 20%+.
+        CV ≤ cv_ceiling (default 7 %)  → 100.
+        CV ≥ cv_floor   (default 40 %) → 0.
+        Between ceiling and floor the score drops linearly.
         Result is clamped to [0, 100].
         """
         cv_pct = hrv_cv * 100.0
 
-        if resilience_config.sweet_spot_min_pct <= cv_pct <= resilience_config.sweet_spot_max_pct:
+        if cv_pct <= resilience_config.cv_ceiling:
             return 100
+        if cv_pct >= resilience_config.cv_floor:
+            return 0
 
-        if cv_pct < resilience_config.sweet_spot_min_pct:
-            raw = score_sigmoid(
-                cv_pct,
-                k=resilience_config.low_cv_k,
-                base=100.0,
-                midpoint=resilience_config.low_cv_midpoint,
-                anchor=resilience_config.sweet_spot_min_pct,
-            )
-        else:
-            raw = score_sigmoid(
-                cv_pct,
-                k=resilience_config.high_cv_k,
-                base=100.0,
-                midpoint=resilience_config.high_cv_midpoint,
-                anchor=resilience_config.sweet_spot_max_pct,
-            )
-
-        return max(0, min(100, round(raw)))
+        score = (
+            100.0 * (resilience_config.cv_floor - cv_pct) / (resilience_config.cv_floor - resilience_config.cv_ceiling)
+        )
+        return max(0, min(100, round(score)))
 
     # ------------------------------------------------------------------
     # Public interface

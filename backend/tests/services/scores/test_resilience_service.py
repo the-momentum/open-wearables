@@ -402,58 +402,52 @@ class TestHrvCvToResilienceScore:
     """Tests for ResilienceScoreService._hrv_cv_to_resilience_score.
 
     Inputs are raw HRV-CV fractions (e.g. 0.05 == 5 %).
-    Sweet spot: [sweet_spot_min_pct, sweet_spot_max_pct] = [3 %, 7 %] → 100.
-    Below sweet spot: rising sigmoid (low but non-zero at 0 %).
-    Above sweet spot: falling sigmoid (near-zero at ~20 %+).
+    Scoring: CV ≤ cv_ceiling (7 %) → 100; CV ≥ cv_floor (40 %) → 0;
+    linear drop between ceiling and floor.
     """
 
-    def test_sweet_spot_lower_bound_returns_100(self) -> None:
-        """CV exactly at sweet_spot_min_pct (3 %) → 100."""
-        cv = resilience_config.sweet_spot_min_pct / 100.0
-        assert service._hrv_cv_to_resilience_score(cv) == 100
+    def test_at_ceiling_returns_100(self) -> None:
+        """CV exactly at cv_ceiling (7 %) → 100."""
+        assert service._hrv_cv_to_resilience_score(resilience_config.cv_ceiling / 100.0) == 100
 
-    def test_sweet_spot_upper_bound_returns_100(self) -> None:
-        """CV exactly at sweet_spot_max_pct (7 %) → 100."""
-        cv = resilience_config.sweet_spot_max_pct / 100.0
-        assert service._hrv_cv_to_resilience_score(cv) == 100
+    def test_below_ceiling_returns_100(self) -> None:
+        """Any CV at or below ceiling scores 100."""
+        for pct in [0.0, 1.0, 3.5, resilience_config.cv_ceiling]:
+            assert service._hrv_cv_to_resilience_score(pct / 100.0) == 100
 
-    def test_sweet_spot_midpoint_returns_100(self) -> None:
-        """CV at midpoint of sweet spot (5 %) → 100."""
-        mid = (resilience_config.sweet_spot_min_pct + resilience_config.sweet_spot_max_pct) / 2.0
-        assert service._hrv_cv_to_resilience_score(mid / 100.0) == 100
+    def test_at_floor_returns_0(self) -> None:
+        """CV exactly at cv_floor (40 %) → 0."""
+        assert service._hrv_cv_to_resilience_score(resilience_config.cv_floor / 100.0) == 0
 
-    def test_below_sweet_spot_returns_less_than_100(self) -> None:
-        """CV at 1 % (below sweet spot) → score < 100."""
-        assert service._hrv_cv_to_resilience_score(0.01) < 100
+    def test_above_floor_returns_0(self) -> None:
+        """CV above cv_floor is clamped to 0."""
+        for pct in [resilience_config.cv_floor + 1.0, 60.0, 100.0]:
+            assert service._hrv_cv_to_resilience_score(pct / 100.0) == 0
 
-    def test_above_sweet_spot_returns_less_than_100(self) -> None:
-        """CV at 10 % (above sweet spot) → score < 100."""
-        assert service._hrv_cv_to_resilience_score(0.10) < 100
+    def test_midpoint_returns_50(self) -> None:
+        """CV at the midpoint between ceiling and floor → score ≈ 50."""
+        mid_pct = (resilience_config.cv_ceiling + resilience_config.cv_floor) / 2.0
+        score = service._hrv_cv_to_resilience_score(mid_pct / 100.0)
+        assert score == pytest.approx(50, abs=1)
 
-    def test_score_decreases_monotonically_above_sweet_spot(self) -> None:
-        """Rising CV above sweet spot → strictly falling score."""
-        pcts = [0.08, 0.10, 0.14, 0.18, 0.22]
+    def test_linear_interpolation(self) -> None:
+        """Score at a known point between ceiling and floor matches the linear formula."""
+        # e.g. cv = 23.5 % (midpoint of 7–40): expected score = 50
+        cv_pct = 23.5
+        expected = round(
+            100.0 * (resilience_config.cv_floor - cv_pct) / (resilience_config.cv_floor - resilience_config.cv_ceiling)
+        )
+        assert service._hrv_cv_to_resilience_score(cv_pct / 100.0) == expected
+
+    def test_score_decreases_monotonically_between_bounds(self) -> None:
+        """Score must be strictly non-increasing as CV rises from ceiling to floor."""
+        pcts = [0.08, 0.12, 0.18, 0.25, 0.33, 0.40]
         scores = [service._hrv_cv_to_resilience_score(cv) for cv in pcts]
         assert scores == sorted(scores, reverse=True)
 
-    def test_score_increases_toward_sweet_spot_from_below(self) -> None:
-        """Rising CV below sweet spot → rising score (toward 100)."""
-        pcts = [0.005, 0.01, 0.015, 0.02, 0.025]
-        scores = [service._hrv_cv_to_resilience_score(cv) for cv in pcts]
-        assert scores == sorted(scores)
-
-    def test_very_high_cv_returns_near_zero(self) -> None:
-        """CV at 30 % is far above normal range → score close to 0."""
-        assert service._hrv_cv_to_resilience_score(0.30) < 5
-
-    def test_zero_cv_returns_low_score(self) -> None:
-        """Zero CV (perfectly stable HRV, pathological) → low but non-negative score."""
-        score = service._hrv_cv_to_resilience_score(0.0)
-        assert 0 <= score < 50
-
     def test_returns_int(self) -> None:
         """Return type must be int, not float."""
-        assert isinstance(service._hrv_cv_to_resilience_score(0.05), int)
+        assert isinstance(service._hrv_cv_to_resilience_score(0.15), int)
 
     def test_score_clamped_to_0_100(self) -> None:
         """Score must always be in [0, 100] regardless of extreme input."""
@@ -461,15 +455,15 @@ class TestHrvCvToResilienceScore:
             score = service._hrv_cv_to_resilience_score(cv)
             assert 0 <= score <= 100, f"score {score} out of range for cv={cv}"
 
-    def test_notably_below_sweet_spot_is_less_than_100(self) -> None:
-        """CV noticeably below sweet spot (1.5 %) → score < 100 (sigmoid has diverged)."""
-        below = (resilience_config.sweet_spot_min_pct - 1.5) / 100.0
-        assert service._hrv_cv_to_resilience_score(below) < 100
-
-    def test_notably_above_sweet_spot_is_less_than_100(self) -> None:
-        """CV noticeably above sweet spot (8.5 %) → score < 100 (sigmoid has diverged)."""
-        above = (resilience_config.sweet_spot_max_pct + 1.5) / 100.0
+    def test_just_above_ceiling_is_less_than_100(self) -> None:
+        """CV meaningfully above ceiling (e.g. ceiling + 2 %) → score < 100."""
+        above = (resilience_config.cv_ceiling + 2.0) / 100.0
         assert service._hrv_cv_to_resilience_score(above) < 100
+
+    def test_just_below_floor_is_greater_than_0(self) -> None:
+        """CV meaningfully below floor (e.g. floor - 2 %) → score > 0."""
+        below = (resilience_config.cv_floor - 2.0) / 100.0
+        assert service._hrv_cv_to_resilience_score(below) > 0
 
 
 # ---------------------------------------------------------------------------
