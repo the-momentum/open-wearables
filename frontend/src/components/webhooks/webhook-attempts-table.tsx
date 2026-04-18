@@ -154,9 +154,7 @@ export function WebhookAttemptsTable({
                     {selected.responseStatusCode}
                   </span>
                 </Field>
-                <Field label="Duration">
-                  {selected.responseDurationMs} ms
-                </Field>
+                <Field label="Duration">{selected.responseDurationMs} ms</Field>
                 <Field label="When">
                   {selected.timestamp
                     ? new Date(selected.timestamp).toLocaleString()

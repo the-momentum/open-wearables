@@ -10,10 +10,11 @@ A Svix Application per developer is created lazily on first use.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from svix.api import EndpointOut
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from svix.api import EndpointOut, MessageAttemptListByEndpointOptions, MessageListOptions, MessageStatus
 
 from app.schemas.webhooks.endpoints import (
     EndpointCreateRequest,
@@ -21,7 +22,10 @@ from app.schemas.webhooks.endpoints import (
     EndpointSecretResponse,
     EndpointUpdateRequest,
     EventTypeResponse,
+    PaginatedResponse,
     TestEventRequest,
+    WebhookMessageAttemptResponse,
+    WebhookMessageResponse,
 )
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, EVENT_TYPE_GROUPS, WebhookEventType
 from app.services import DeveloperDep
@@ -115,24 +119,67 @@ def list_event_types() -> list[EventTypeResponse]:
     ]
 
 
-@router.get("/messages")
-def list_messages(app_id: SvixAppId) -> Any:
-    return svix_service.list_messages(app_id)
+@router.get("/messages", response_model=PaginatedResponse[WebhookMessageResponse])
+def list_messages(
+    app_id: SvixAppId,
+    limit: Annotated[int, Query(ge=1, le=250, description="Items per page.")] = 50,
+    iterator: Annotated[str | None, Query(description="Cursor from the previous page's `iterator` field.")] = None,
+    before: Annotated[datetime | None, Query(description="Only messages created before this timestamp.")] = None,
+    after: Annotated[datetime | None, Query(description="Only messages created after this timestamp.")] = None,
+) -> Any:
+    result = svix_service.list_messages(
+        app_id,
+        MessageListOptions(limit=limit, iterator=iterator, before=before, after=after),
+    )
+    return PaginatedResponse[WebhookMessageResponse](
+        data=[
+            WebhookMessageResponse(
+                id=m.id,
+                eventType=m.event_type,
+                eventId=m.event_id,
+                timestamp=m.timestamp.isoformat(),
+                channels=m.channels,
+                tags=m.tags,
+            )
+            for m in result.data
+        ],
+        done=result.done,
+        iterator=result.iterator,
+        prevIterator=result.prev_iterator,
+    )
 
 
-@router.get("/endpoints/{endpoint_id}/attempts")
-def list_endpoint_attempts(endpoint_id: str, app_id: SvixAppId) -> Any:
-    result = svix_service.list_message_attempts(app_id, endpoint_id)
+@router.get(
+    "/endpoints/{endpoint_id}/attempts",
+    response_model=PaginatedResponse[WebhookMessageAttemptResponse],
+)
+def list_endpoint_attempts(
+    endpoint_id: str,
+    app_id: SvixAppId,
+    limit: Annotated[int, Query(ge=1, le=250, description="Items per page.")] = 50,
+    iterator: Annotated[str | None, Query(description="Cursor from the previous page's `iterator` field.")] = None,
+    before: Annotated[datetime | None, Query(description="Only attempts created before this timestamp.")] = None,
+    after: Annotated[datetime | None, Query(description="Only attempts created after this timestamp.")] = None,
+    status: Annotated[
+        int | None, Query(description="Filter by status: 0=success, 1=pending, 2=failed, 3=sending.")
+    ] = None,
+    event_types: Annotated[list[str] | None, Query(description="Filter by event type(s).")] = None,
+) -> Any:
+    options = MessageAttemptListByEndpointOptions(
+        limit=limit,
+        iterator=iterator,
+        before=before,
+        after=after,
+        status=MessageStatus(status) if status is not None else None,
+        event_types=event_types,
+    )
+    result = svix_service.list_message_attempts(app_id, endpoint_id, options)
 
-    # Enrich each attempt with its message (event_type + payload).
-    # The page is at most 50 items; we deduplicate msg_ids and fetch in parallel
-    # so the overhead is bounded and fast (loopback to local Svix).
+    # Enrich each attempt with its message (eventType + payload).
+    # Page is bounded by `limit`; unique msg_ids ≤ limit (retries share same msg_id).
     unique_msg_ids = {a.msg_id for a in result.data}
     with ThreadPoolExecutor(max_workers=10) as pool:
-        futures = {
-            pool.submit(svix_service.get_message, app_id, mid): mid
-            for mid in unique_msg_ids
-        }
+        futures = {pool.submit(svix_service.get_message, app_id, mid): mid for mid in unique_msg_ids}
         msg_map: dict[str, Any] = {}
         for future in as_completed(futures):
             mid = futures[future]
@@ -140,11 +187,38 @@ def list_endpoint_attempts(endpoint_id: str, app_id: SvixAppId) -> Any:
             if msg is not None:
                 msg_map[mid] = msg
 
-    for attempt in result.data:
-        if attempt.msg_id in msg_map:
-            attempt.msg = msg_map[attempt.msg_id]
-
-    return result
+    return PaginatedResponse[WebhookMessageAttemptResponse](
+        data=[
+            WebhookMessageAttemptResponse(
+                id=a.id,
+                endpointId=a.endpoint_id,
+                msgId=a.msg_id,
+                url=a.url,
+                response=a.response,
+                responseStatusCode=a.response_status_code,
+                responseDurationMs=a.response_duration_ms,
+                status=int(a.status),
+                statusText=str(a.status_text) if a.status_text else None,
+                triggerType=int(a.trigger_type),
+                timestamp=a.timestamp.isoformat(),
+                msg=WebhookMessageResponse(
+                    id=msg_map[a.msg_id].id,
+                    eventType=msg_map[a.msg_id].event_type,
+                    eventId=msg_map[a.msg_id].event_id,
+                    timestamp=msg_map[a.msg_id].timestamp.isoformat(),
+                    channels=msg_map[a.msg_id].channels,
+                    tags=msg_map[a.msg_id].tags,
+                    payload=msg_map[a.msg_id].payload,
+                )
+                if a.msg_id in msg_map
+                else None,
+            )
+            for a in result.data
+        ],
+        done=result.done,
+        iterator=result.iterator,
+        prevIterator=result.prev_iterator,
+    )
 
 
 @router.post("/endpoints/{endpoint_id}/test")

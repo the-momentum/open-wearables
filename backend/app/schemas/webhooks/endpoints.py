@@ -83,6 +83,7 @@ class TestEventRequest(BaseModel):
 # Paginated list responses (for messages and delivery attempts)
 # ---------------------------------------------------------------------------
 
+
 class WebhookMessageResponse(BaseModel):
     """A single webhook message (outgoing event emitted to all subscribed endpoints)."""
 
@@ -93,7 +94,6 @@ class WebhookMessageResponse(BaseModel):
     channels: list[str] | None = None
     tags: list[str] | None = None
     payload: dict | None = None
-    """Populated only when ``with_content=true`` is requested."""
 
 
 class WebhookMessageAttemptResponse(BaseModel):
@@ -111,7 +111,6 @@ class WebhookMessageAttemptResponse(BaseModel):
     triggerType: int  # noqa: N815
     timestamp: str
     msg: WebhookMessageResponse | None = None
-    """Populated automatically; contains eventType and payload for this attempt."""
 
 
 class PaginatedResponse[T](BaseModel):

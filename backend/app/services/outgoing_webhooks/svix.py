@@ -291,17 +291,22 @@ def get_message(app_id: str, msg_id: str) -> MessageOut | None:
         return None
 
 
-def list_messages(app_id: str) -> ListResponseMessageOut:
+def list_messages(
+    app_id: str,
+    options: MessageListOptions | None = None,
+) -> ListResponseMessageOut:
     assert _client is not None
-    return _client.message.list(app_id)
+    return _client.message.list(app_id, options or MessageListOptions())
 
 
-def list_message_attempts(app_id: str, endpoint_id: str) -> ListResponseMessageAttemptOut:
+def list_message_attempts(
+    app_id: str,
+    endpoint_id: str,
+    options: MessageAttemptListByEndpointOptions | None = None,
+) -> ListResponseMessageAttemptOut:
     assert _client is not None
     return _client.message_attempt.list_by_endpoint(
-        app_id,
-        endpoint_id,
-        MessageAttemptListByEndpointOptions(with_msg=True, with_content=True),
+        app_id, endpoint_id, options or MessageAttemptListByEndpointOptions()
     )
 
 
