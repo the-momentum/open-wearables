@@ -197,15 +197,24 @@ def create_endpoint(
     *,
     user_id: UUID | None = None,
 ) -> EndpointOut:
+    # Build via model_validate so that fields absent from the dict are NOT set
+    # in model_fields_set.  EndpointIn uses exclude_unset=True serialisation;
+    # passing channels=None explicitly would serialize as "channels":null and
+    # Svix would treat it as "no channel = receive only untagged messages",
+    # blocking all delivery (every message carries a user channel tag).
     assert _client is not None
+    endpoint_data: dict[str, object] = {
+        "url": url,
+        "description": description or "",
+    }
+    if filter_types is not None:
+        endpoint_data["filter_types"] = filter_types
+    channels = _user_channels(user_id)
+    if channels is not None:
+        endpoint_data["channels"] = channels
     return _client.endpoint.create(
         app_id,
-        EndpointIn(
-            url=url,
-            description=description or "",
-            filter_types=filter_types or None,
-            channels=_user_channels(user_id),
-        ),
+        EndpointIn.model_validate(endpoint_data),
     )
 
 
@@ -245,15 +254,24 @@ def patch_endpoint(
     else:
         # None = don't touch the channels field (PATCH semantics).
         channels = None
+    # Build via model_validate so only keys we actually want to update end up in
+    # model_fields_set (EndpointPatch uses exclude_unset=True serialisation).
+    # Rule: include a key → Svix UPDATES it (null = clear/remove the value).
+    #       Omit a key → Svix LEAVES it unchanged.
+    # channels is special: None means "don't touch" not "clear"; passing None
+    # explicitly would serialize as "channels":null, telling Svix to switch the
+    # endpoint to "receive only untagged messages" — breaking all delivery.
+    patch_data: dict[str, object] = {
+        "url": url,
+        "description": description,
+        "filter_types": filter_types,
+    }
+    if channels is not None:
+        patch_data["channels"] = channels
     return _client.endpoint.patch(
         app_id,
         endpoint_id,
-        EndpointPatch(
-            url=url,
-            description=description,
-            filter_types=filter_types,
-            channels=channels,
-        ),
+        EndpointPatch.model_validate(patch_data),
     )
 
 
