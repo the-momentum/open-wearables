@@ -1,8 +1,11 @@
+import threading
 from collections import defaultdict
 from datetime import datetime
 from logging import Logger, getLogger
 from typing import Any
 from uuid import UUID
+
+from sqlalchemy import event as sa_event
 
 from app.database import DbSession
 from app.models import DataPointSeries
@@ -51,7 +54,19 @@ class TimeSeriesService(
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
         self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
-        self._emit_timeseries_webhooks(samples)
+        # Webhooks must fire AFTER the transaction commits so consumers can
+        # query the API and already find the data.  Register a one-shot
+        # after_commit listener on the session; the daemon thread is started
+        # only once the rows are durably written.  No callers need changing.
+        samples_copy = list(samples)
+
+        @sa_event.listens_for(db_session, "after_commit", once=True)
+        def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
+            threading.Thread(
+                target=self._emit_timeseries_webhooks,
+                args=(samples_copy,),
+                daemon=True,
+            ).start()
 
     @staticmethod
     def _emit_timeseries_webhooks(
