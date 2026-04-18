@@ -738,5 +738,14 @@ export interface WebhookListResponse<T> {
   data: T[];
   done: boolean;
   iterator: string | null;
-  prev_iterator: string | null;
+  prevIterator: string | null;
+}
+
+export interface WebhookAttemptsParams {
+  limit?: number;
+  iterator?: string | null;
+  before?: string | null;
+  after?: string | null;
+  status?: number | null;
+  event_types?: string[];
 }

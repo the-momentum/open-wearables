@@ -1,6 +1,7 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import type {
+  WebhookAttemptsParams,
   WebhookEndpoint,
   WebhookEndpointCreate,
   WebhookEndpointSecret,
@@ -71,10 +72,12 @@ export const webhooksService = {
   },
 
   async listAttempts(
-    id: string
+    id: string,
+    params?: WebhookAttemptsParams
   ): Promise<WebhookListResponse<WebhookMessageAttempt>> {
     return apiClient.get<WebhookListResponse<WebhookMessageAttempt>>(
-      API_ENDPOINTS.webhookEndpointAttempts(id)
+      API_ENDPOINTS.webhookEndpointAttempts(id),
+      { params: params as Record<string, unknown> }
     );
   },
 };

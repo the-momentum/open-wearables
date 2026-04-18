@@ -4,6 +4,7 @@ import { webhooksService } from '@/lib/api';
 import { getErrorMessage } from '@/lib/errors/handler';
 import { queryKeys } from '@/lib/query/keys';
 import type {
+  WebhookAttemptsParams,
   WebhookEndpointCreate,
   WebhookEndpointUpdate,
 } from '@/lib/api/types';
@@ -111,10 +112,10 @@ export function useWebhookMessages(options?: { enabled?: boolean }) {
   });
 }
 
-export function useWebhookAttempts(id: string) {
+export function useWebhookAttempts(id: string, params?: WebhookAttemptsParams) {
   return useQuery({
-    queryKey: queryKeys.webhooks.attempts(id),
-    queryFn: () => webhooksService.listAttempts(id),
+    queryKey: [...queryKeys.webhooks.attempts(id), params],
+    queryFn: () => webhooksService.listAttempts(id, params),
     enabled: !!id,
   });
 }
