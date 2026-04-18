@@ -4,6 +4,8 @@ from .exercise_import import (
     HRSamplesJSON,
     HRZoneJSON,
 )
+from .heart_rate_import import PolarContinuousHRJSON, PolarContinuousHRSample
+from .sleep_import import PolarSleepJSON, PolarSleepNightsJSON
 
 __all__ = [
     # Activity import (daily summaries)
@@ -12,4 +14,10 @@ __all__ = [
     "HRSamplesJSON",
     "HRZoneJSON",
     "ExerciseJSON",
+    # Sleep Plus Stages
+    "PolarSleepJSON",
+    "PolarSleepNightsJSON",
+    # Continuous HR
+    "PolarContinuousHRJSON",
+    "PolarContinuousHRSample",
 ]
