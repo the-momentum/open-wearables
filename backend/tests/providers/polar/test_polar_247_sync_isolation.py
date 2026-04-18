@@ -80,3 +80,64 @@ class TestSessionIsolation:
         assert results["sleep_sessions_synced"] == 0
         assert results["continuous_hr_synced"] == 9
         assert db.rollback.called
+
+    def test_continuous_hr_failure_rolls_back_and_nightly_recharge_runs(
+        self, data_247: PolarData247Template, monkeypatch
+    ) -> None:
+        db = MagicMock()
+
+        monkeypatch.setattr(data_247, "get_daily_activity_statistics", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_daily_activity", lambda *a, **k: {})
+        monkeypatch.setattr(data_247, "save_daily_activity_statistics", lambda *a, **k: 2)
+
+        monkeypatch.setattr(data_247, "get_sleep_data", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_sleep", lambda *a, **k: {})
+        monkeypatch.setattr(data_247, "save_sleep_data", lambda *a, **k: 4)
+
+        def hr_boom(*args: Any, **kwargs: Any) -> int:
+            raise RuntimeError("continuous HR save crashed")
+
+        monkeypatch.setattr(data_247, "get_continuous_hr_data", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_continuous_hr", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "save_continuous_hr", hr_boom)
+
+        monkeypatch.setattr(data_247, "load_and_save_recovery", lambda *a, **k: 11)
+
+        results = data_247.load_and_save_all(db=db, user_id=uuid4())
+
+        assert results["daily_activity_synced"] == 2
+        assert results["sleep_sessions_synced"] == 4
+        assert results["continuous_hr_synced"] == 0
+        assert results["nightly_recharge_synced"] == 11
+        assert db.rollback.called
+
+    def test_nightly_recharge_failure_does_not_poison_previous_blocks(
+        self, data_247: PolarData247Template, monkeypatch
+    ) -> None:
+        """A crash in the Phase 3 block must not undo the earlier synced counts."""
+        db = MagicMock()
+
+        monkeypatch.setattr(data_247, "get_daily_activity_statistics", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_daily_activity", lambda *a, **k: {})
+        monkeypatch.setattr(data_247, "save_daily_activity_statistics", lambda *a, **k: 3)
+
+        monkeypatch.setattr(data_247, "get_sleep_data", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_sleep", lambda *a, **k: {})
+        monkeypatch.setattr(data_247, "save_sleep_data", lambda *a, **k: 5)
+
+        monkeypatch.setattr(data_247, "get_continuous_hr_data", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "normalize_continuous_hr", lambda *a, **k: [])
+        monkeypatch.setattr(data_247, "save_continuous_hr", lambda *a, **k: 7)
+
+        def recharge_boom(*args: Any, **kwargs: Any) -> int:
+            raise RuntimeError("nightly recharge save crashed")
+
+        monkeypatch.setattr(data_247, "load_and_save_recovery", recharge_boom)
+
+        results = data_247.load_and_save_all(db=db, user_id=uuid4())
+
+        assert results["daily_activity_synced"] == 3
+        assert results["sleep_sessions_synced"] == 5
+        assert results["continuous_hr_synced"] == 7
+        assert results["nightly_recharge_synced"] == 0
+        assert db.rollback.called
