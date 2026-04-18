@@ -592,6 +592,43 @@ def _combine_date_time(day: datetime, sample_time: str | None) -> datetime | Non
     return day.replace(hour=h, minute=m, second=s, microsecond=0)
 
 
+def _hhmm_transitions_to_datetimes(
+    hhmm_map: dict[str, Any] | None,
+    base_date: datetime,
+) -> list[tuple[datetime, Any]]:
+    """Parse a ``{"HH:MM": value}`` transition map into ``(datetime, value)`` pairs.
+
+    Each key is anchored to ``base_date``'s calendar date (using its tzinfo).
+    Transitions are walked in HH:MM-sorted order; whenever a candidate
+    regresses past the previous transition (e.g. the night crosses midnight),
+    we bump it forward by one day. Malformed HH:MM keys are skipped.
+    """
+    if not hhmm_map:
+        return []
+
+    calendar_date = base_date.date()
+    tzinfo = base_date.tzinfo
+
+    pairs: list[tuple[datetime, Any]] = []
+    prev_dt: datetime | None = None
+    for hhmm, value in sorted(hhmm_map.items()):
+        try:
+            parts = hhmm.split(":")
+            h, m = int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            continue
+        candidate = datetime(
+            calendar_date.year, calendar_date.month, calendar_date.day,
+            h, m, tzinfo=tzinfo,
+        )
+        while prev_dt is not None and candidate <= prev_dt:
+            candidate += timedelta(days=1)
+        pairs.append((candidate, value))
+        prev_dt = candidate
+
+    return pairs
+
+
 def _hypnogram_to_stage_intervals(
     hypnogram: dict[str, int] | None,
     sleep_start: datetime,
@@ -600,29 +637,11 @@ def _hypnogram_to_stage_intervals(
     """Convert Polar's ``{"HH:MM": stage_code}`` transition map into intervals.
 
     Each key marks when that stage begins; duration runs until the next key,
-    or ``sleep_end`` for the final interval. Transitions are anchored to
-    ``sleep_start``'s calendar date and bumped by one day whenever they would
-    regress past the previous transition (e.g. nights that cross midnight).
+    or ``sleep_end`` for the final interval.
     """
-    if not hypnogram:
+    transitions = _hhmm_transitions_to_datetimes(hypnogram, sleep_start)
+    if not transitions:
         return []
-
-    base_date = sleep_start.date()
-    tzinfo = sleep_start.tzinfo
-
-    transitions: list[tuple[datetime, int]] = []
-    prev_dt: datetime | None = None
-    for hhmm, code in sorted(hypnogram.items()):
-        try:
-            parts = hhmm.split(":")
-            h, m = int(parts[0]), int(parts[1])
-        except (ValueError, IndexError):
-            continue
-        candidate = datetime(base_date.year, base_date.month, base_date.day, h, m, tzinfo=tzinfo)
-        while prev_dt is not None and candidate <= prev_dt:
-            candidate += timedelta(days=1)
-        transitions.append((candidate, code))
-        prev_dt = candidate
 
     intervals: list[SleepStage] = []
     for i, (start_dt, code) in enumerate(transitions):
