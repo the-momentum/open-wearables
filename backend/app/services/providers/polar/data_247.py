@@ -180,10 +180,12 @@ class PolarData247Template(Base247DataTemplate):
     ) -> int:
         """Persist normalized daily activity as EventRecord + detail pairs.
 
-        Each day is keyed by (source="polar", external_id=<YYYY-MM-DD>). When a
-        record already exists for the same day we replace only the detail
-        (the record itself is stable since duration/window are derived from
-        the Polar response, which is authoritative).
+        ``event_record_repository.create`` is idempotent on the
+        ``(data_source_id, start_datetime, end_datetime)`` unique index — on
+        collision it rolls back and returns the existing record — so we trust
+        its return value as the authoritative record id and attach the detail
+        to that id. Re-syncs of the same day therefore just refresh the detail
+        instead of duplicating a row.
         """
         saved = 0
         for item in normalized:
@@ -192,14 +194,8 @@ class PolarData247Template(Base247DataTemplate):
             record: EventRecordCreate = item["record"]
             detail: EventRecordDetailCreate = item["detail"]
 
-            existing = self.event_record_repo.get_by_external_id(
-                db, source="polar", external_id=item["external_id"], user_id=user_id,
-            ) if hasattr(self.event_record_repo, "get_by_external_id") else None
-
-            target_id = existing.id if existing else record.id
-            if not existing:
-                event_record_service.create(db, record)
-            detail_for_record = detail.model_copy(update={"record_id": target_id})
+            persisted = event_record_service.create(db, record)
+            detail_for_record = detail.model_copy(update={"record_id": persisted.id})
             event_record_service.create_detail(db, detail_for_record, detail_type="workout")
             saved += 1
         return saved
@@ -499,12 +495,18 @@ class PolarData247Template(Base247DataTemplate):
             "nightly_recharge_synced": 0,  # Phase 3
         }
 
+        # Each data type runs in its own try block and rolls back on failure
+        # so a DB error in one path doesn't poison the SQLAlchemy session for
+        # the next — tests for this session-isolation contract live in
+        # test_polar_247_sync_isolation.py.
+
         # Daily activity (Phase 1)
         try:
             raw_daily = self.get_daily_activity_statistics(db, user_id, start_dt, end_dt)
             normalized = [self.normalize_daily_activity(item, user_id) for item in raw_daily]
             results["daily_activity_synced"] = self.save_daily_activity_statistics(db, user_id, normalized)
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -519,6 +521,7 @@ class PolarData247Template(Base247DataTemplate):
             normalized_sleep = [self.normalize_sleep(n, user_id) for n in raw_nights]
             results["sleep_sessions_synced"] = self.save_sleep_data(db, user_id, normalized_sleep)
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -533,6 +536,7 @@ class PolarData247Template(Base247DataTemplate):
             samples = self.normalize_continuous_hr(raw_hr, user_id)
             results["continuous_hr_synced"] = self.save_continuous_hr(db, user_id, samples)
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger,
                 "error",
