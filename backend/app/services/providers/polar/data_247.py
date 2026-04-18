@@ -531,7 +531,8 @@ class PolarData247Template(Base247DataTemplate):
             )
             response = None
 
-        if isinstance(response, dict) and response.get("recharges"):
+        if isinstance(response, dict) and isinstance(response.get("recharges"), list):
+            # Empty list is a valid "no data" response — don't waste per-day calls
             return list(response["recharges"])
 
         # Per-day fallback
@@ -775,9 +776,10 @@ def _hhmm_transitions_to_datetimes(
     """Parse a ``{"HH:MM": value}`` transition map into ``(datetime, value)`` pairs.
 
     Each key is anchored to ``base_date``'s calendar date (using its tzinfo).
-    Transitions are walked in HH:MM-sorted order; whenever a candidate
-    regresses past the previous transition (e.g. the night crosses midnight),
-    we bump it forward by one day. Malformed HH:MM keys are skipped.
+    Transitions are walked in night-centric order (hours 12-23 sort before 0-11
+    via :func:`_sort_key`); whenever a candidate regresses past the previous
+    transition (e.g. the night crosses midnight), we bump it forward by one day.
+    Malformed HH:MM keys are skipped.
     """
     if not hhmm_map:
         return []
