@@ -38,6 +38,7 @@ from app.schemas.utils import (
 from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
+from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_created
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -399,6 +400,8 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
+        if not svix_service.is_enabled():
+            return
         category = (record.category or "").lower()
         provider = str(data_source.provider)
         device = data_source.device_model
