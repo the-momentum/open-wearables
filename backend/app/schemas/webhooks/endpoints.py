@@ -77,3 +77,50 @@ class TestEventRequest(BaseModel):
         default=WebhookEventType.WORKOUT_CREATED,
         description="Event type to include in the test payload.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Paginated list responses (for messages and delivery attempts)
+# ---------------------------------------------------------------------------
+
+class WebhookMessageResponse(BaseModel):
+    """A single webhook message (outgoing event emitted to all subscribed endpoints)."""
+
+    id: str
+    eventType: str  # noqa: N815
+    eventId: str | None = None  # noqa: N815
+    timestamp: str
+    channels: list[str] | None = None
+    tags: list[str] | None = None
+    payload: dict | None = None
+    """Populated only when ``with_content=true`` is requested."""
+
+
+class WebhookMessageAttemptResponse(BaseModel):
+    """A single delivery attempt for a webhook message to one endpoint."""
+
+    id: str
+    endpointId: str  # noqa: N815
+    msgId: str  # noqa: N815
+    url: str
+    response: str
+    responseStatusCode: int  # noqa: N815
+    responseDurationMs: int  # noqa: N815
+    status: int
+    statusText: str | None = None  # noqa: N815
+    triggerType: int  # noqa: N815
+    timestamp: str
+    msg: WebhookMessageResponse | None = None
+    """Populated automatically; contains eventType and payload for this attempt."""
+
+
+class PaginatedResponse[T](BaseModel):
+    """Cursor-paginated list wrapper (Svix iterator pattern)."""
+
+    data: list[T]
+    done: bool = Field(description="True when this is the last page.")
+    iterator: str | None = Field(
+        None,
+        description="Pass as `iterator` in the next request to fetch the following page.",
+    )
+    prevIterator: str | None = None  # noqa: N815

@@ -9,6 +9,7 @@ A Svix Application per developer is created lazily on first use.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -121,7 +122,29 @@ def list_messages(app_id: SvixAppId) -> Any:
 
 @router.get("/endpoints/{endpoint_id}/attempts")
 def list_endpoint_attempts(endpoint_id: str, app_id: SvixAppId) -> Any:
-    return svix_service.list_message_attempts(app_id, endpoint_id)
+    result = svix_service.list_message_attempts(app_id, endpoint_id)
+
+    # Enrich each attempt with its message (event_type + payload).
+    # The page is at most 50 items; we deduplicate msg_ids and fetch in parallel
+    # so the overhead is bounded and fast (loopback to local Svix).
+    unique_msg_ids = {a.msg_id for a in result.data}
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futures = {
+            pool.submit(svix_service.get_message, app_id, mid): mid
+            for mid in unique_msg_ids
+        }
+        msg_map: dict[str, Any] = {}
+        for future in as_completed(futures):
+            mid = futures[future]
+            msg = future.result()
+            if msg is not None:
+                msg_map[mid] = msg
+
+    for attempt in result.data:
+        if attempt.msg_id in msg_map:
+            attempt.msg = msg_map[attempt.msg_id]
+
+    return result
 
 
 @router.post("/endpoints/{endpoint_id}/test")

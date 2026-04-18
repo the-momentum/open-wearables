@@ -105,15 +105,15 @@ export function WebhookAttemptsTable({
               >
                 <TableCell>{statusBadge(a.status)}</TableCell>
                 <TableCell
-                  className={`font-mono text-xs ${statusCodeColor(a.response_status_code)}`}
+                  className={`font-mono text-xs ${statusCodeColor(a.responseStatusCode)}`}
                 >
-                  {a.response_status_code || '-'}
+                  {a.responseStatusCode || '-'}
                 </TableCell>
                 <TableCell className="text-xs text-zinc-300">
-                  {a.msg?.event_type ?? a.msg_id}
+                  {a.msg?.eventType ?? a.msgId}
                 </TableCell>
                 <TableCell className="text-xs text-zinc-400">
-                  {a.response_duration_ms} ms
+                  {a.responseDurationMs} ms
                 </TableCell>
                 <TableCell className="text-xs text-zinc-400">
                   {a.timestamp
@@ -149,13 +149,13 @@ export function WebhookAttemptsTable({
                 <Field label="Status">{statusBadge(selected.status)}</Field>
                 <Field label="HTTP code">
                   <span
-                    className={`font-mono ${statusCodeColor(selected.response_status_code)}`}
+                    className={`font-mono ${statusCodeColor(selected.responseStatusCode)}`}
                   >
-                    {selected.response_status_code}
+                    {selected.responseStatusCode}
                   </span>
                 </Field>
                 <Field label="Duration">
-                  {selected.response_duration_ms} ms
+                  {selected.responseDurationMs} ms
                 </Field>
                 <Field label="When">
                   {selected.timestamp
@@ -170,7 +170,7 @@ export function WebhookAttemptsTable({
               </Field>
               <Field label="Event type">
                 <code className="font-mono text-xs text-zinc-300">
-                  {selected.msg?.event_type ?? '-'}
+                  {selected.msg?.eventType ?? '-'}
                 </code>
               </Field>
               <Field label="Response body">

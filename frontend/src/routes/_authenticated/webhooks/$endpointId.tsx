@@ -13,6 +13,7 @@ import {
   useUpdateWebhookEndpoint,
   useWebhookAttempts,
   useWebhookEndpoint,
+  useWebhookMessages,
 } from '@/hooks/api/use-webhooks';
 import { ROUTES } from '@/lib/constants/routes';
 
@@ -26,6 +27,7 @@ function WebhookDetailPage() {
   const endpoint = useWebhookEndpoint(endpointId);
   const update = useUpdateWebhookEndpoint();
   const attempts = useWebhookAttempts(endpointId);
+  const messages = useWebhookMessages();
 
   const [tab, setTab] = useState<'overview' | 'deliveries'>('overview');
   const [isTestOpen, setIsTestOpen] = useState(false);
