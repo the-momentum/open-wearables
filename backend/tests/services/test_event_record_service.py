@@ -769,3 +769,58 @@ class TestCreateOrMergeSleep:
         # Stages should be sorted by start_time (early first)
         assert stages[0]["stage"] == "light"
         assert stages[1]["stage"] == "deep"
+
+
+class TestGetSleepSessions:
+    """Test get_sleep_sessions response fields."""
+
+    def test_returns_sleep_duration_and_time_in_bed_when_details_present(self, db: Session) -> None:
+        """sleep_duration_seconds should come from sleep_total_duration_minutes; duration_seconds stays time-in-bed."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="oura")
+        start = datetime(2026, 4, 10, 23, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 11, 7, 0, tzinfo=timezone.utc)  # 8h in bed = 28800s
+        record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=28800,
+        )
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_total_duration_minutes=450,  # 7h30m of actual sleep
+            sleep_awake_minutes=30,
+        )
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        session = next(s for s in response.data if s.id == record.id)
+        assert session.duration_seconds == 28800  # time in bed (unchanged)
+        assert session.sleep_duration_seconds == 450 * 60  # actual sleep
+
+    def test_sleep_duration_none_when_details_missing(self, db: Session) -> None:
+        """sleep_duration_seconds should be None if SleepDetails has no total duration."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="oura")
+        record = EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            type_="sleep",
+            duration_seconds=28800,
+        )
+
+        params = EventRecordQueryParams(
+            start_datetime=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        )
+        response = event_record_service.get_sleep_sessions(db, user.id, params)
+
+        session = next(s for s in response.data if s.id == record.id)
+        assert session.duration_seconds == 28800
+        assert session.sleep_duration_seconds is None

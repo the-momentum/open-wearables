@@ -259,6 +259,7 @@ export interface SleepSession {
   end_time: string;
   source: SourceMetadata;
   duration_seconds: number;
+  sleep_duration_seconds: number | null;
   efficiency_percent: number | null;
   stages: SleepStagesSummary | null;
   sleep_stage_intervals: SleepStage[] | null;

@@ -735,6 +735,11 @@ class EventRecordService(
         for record, data_source in records:
             details: SleepDetails | None = record.detail if isinstance(record.detail, SleepDetails) else None
 
+            sleep_duration_seconds = (
+                details.sleep_total_duration_minutes * 60
+                if details and details.sleep_total_duration_minutes is not None
+                else None
+            )
             session = SleepSession(
                 id=record.id,
                 start_time=record.start_datetime,
@@ -742,6 +747,7 @@ class EventRecordService(
                 zone_offset=record.zone_offset,
                 source=self._map_source(data_source),
                 duration_seconds=record.duration_seconds or 0,
+                sleep_duration_seconds=sleep_duration_seconds,
                 efficiency_percent=float(details.sleep_efficiency_score)
                 if details and details.sleep_efficiency_score
                 else None,
