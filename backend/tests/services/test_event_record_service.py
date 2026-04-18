@@ -10,6 +10,7 @@ Tests cover:
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -102,6 +103,68 @@ class TestEventRecordServiceCreateDetail:
         # All optional fields should be None
         assert getattr(detail, "heart_rate_min", None) is None
         assert getattr(detail, "steps_count", None) is None
+
+
+class TestEventRecordServiceBulkCreateDetails:
+    """bulk_create_details must dispatch a webhook per detail on commit.
+
+    Before the fix, Apple/Google/Samsung SDK imports saved workouts through
+    bulk_create + bulk_create_details and no webhook was ever emitted.
+    """
+
+    def test_bulk_create_details_emits_workout_webhooks(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        rec1 = EventRecordFactory(mapping=data_source, category="workout", type_="running")
+        rec2 = EventRecordFactory(mapping=data_source, category="workout", type_="cycling")
+
+        details = [
+            EventRecordDetailCreate(
+                record_id=rec1.id,
+                energy_burned=Decimal("300.0"),
+                distance=Decimal("5000.0"),
+            ),
+            EventRecordDetailCreate(
+                record_id=rec2.id,
+                energy_burned=Decimal("500.0"),
+                distance=Decimal("20000.0"),
+            ),
+        ]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="workout")
+            db.commit()
+
+        assert mock_workout.call_count == 2
+        dispatched_ids = {c.kwargs["record_id"] for c in mock_workout.call_args_list}
+        assert dispatched_ids == {rec1.id, rec2.id}
+
+    def test_bulk_create_details_silent_when_svix_disabled(self, db: Session) -> None:
+        data_source = DataSourceFactory(source="apple")
+        rec = EventRecordFactory(mapping=data_source, category="workout", type_="running")
+
+        details = [EventRecordDetailCreate(record_id=rec.id, energy_burned=Decimal("250.0"))]
+
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=False),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, details, detail_type="workout")
+            db.commit()
+
+        mock_workout.assert_not_called()
+
+    def test_bulk_create_details_empty_list_is_noop(self, db: Session) -> None:
+        with (
+            patch("app.services.event_record_service.svix_service.is_enabled", return_value=True),
+            patch("app.services.event_record_service.on_workout_created") as mock_workout,
+        ):
+            event_record_service.bulk_create_details(db, [], detail_type="workout")
+            db.commit()
+
+        mock_workout.assert_not_called()
 
 
 class TestEventRecordServiceGetRecordsResponse:
