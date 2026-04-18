@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -105,10 +106,14 @@ class TestPolarContinuousHRFetchAndSave:
         assert len(result) == 1
         assert result[0]["date"] == "2024-01-01"
 
-    def test_save_continuous_hr_delegates_to_bulk_create(
+    def test_save_continuous_hr_delegates_and_commits(
         self, data_247: PolarData247Template, monkeypatch
     ) -> None:
-        """``save_continuous_hr`` must hand samples to ``timeseries_service.bulk_create_samples``."""
+        """Samples go to ``bulk_create_samples`` AND the session is committed.
+
+        The sync route doesn't commit on our behalf and ``bulk_create_samples``
+        only stages the INSERTs, so a missing commit here silently drops rows.
+        """
         calls: list[list[TimeSeriesSampleCreate]] = []
 
         def fake_bulk_create(db, samples):  # noqa: ANN001
@@ -118,6 +123,7 @@ class TestPolarContinuousHRFetchAndSave:
 
         monkeypatch.setattr(mod.timeseries_service, "bulk_create_samples", fake_bulk_create)
 
+        db = MagicMock()
         user_id = uuid4()
         sample_one = TimeSeriesSampleCreate(
             id=uuid4(),
@@ -127,14 +133,16 @@ class TestPolarContinuousHRFetchAndSave:
             value=Decimal("72"),
             series_type=SeriesType.heart_rate,
         )
-        count = data_247.save_continuous_hr(db=None, user_id=user_id, samples=[sample_one])  # type: ignore[arg-type]
+        count = data_247.save_continuous_hr(db=db, user_id=user_id, samples=[sample_one])
 
         assert count == 1
         assert calls == [[sample_one]]
+        assert db.commit.called, "save_continuous_hr must commit or samples are dropped"
 
     def test_save_continuous_hr_skips_when_empty(
         self, data_247: PolarData247Template, monkeypatch
     ) -> None:
+        """Empty sample list must not touch the DB at all — no insert, no commit."""
         called = False
 
         def fake_bulk_create(db, samples):  # noqa: ANN001
@@ -145,6 +153,9 @@ class TestPolarContinuousHRFetchAndSave:
 
         monkeypatch.setattr(mod.timeseries_service, "bulk_create_samples", fake_bulk_create)
 
-        count = data_247.save_continuous_hr(db=None, user_id=uuid4(), samples=[])  # type: ignore[arg-type]
+        db = MagicMock()
+        count = data_247.save_continuous_hr(db=db, user_id=uuid4(), samples=[])
+
         assert count == 0
         assert called is False
+        assert not db.commit.called

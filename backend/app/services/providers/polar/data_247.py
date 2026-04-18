@@ -452,8 +452,16 @@ class PolarData247Template(Base247DataTemplate):
         user_id: UUID,  # kept for signature symmetry with Oura/Suunto
         samples: list[TimeSeriesSampleCreate],
     ) -> int:
-        if samples:
-            timeseries_service.bulk_create_samples(db, samples)
+        """Persist continuous-HR samples and commit.
+
+        ``bulk_create_samples`` only stages the INSERTs; the sync route
+        handler does not commit on our behalf, so we commit here to avoid
+        silently dropping the samples when the request-scoped session closes.
+        """
+        if not samples:
+            return 0
+        timeseries_service.bulk_create_samples(db, samples)
+        db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
