@@ -3,6 +3,8 @@ from decimal import Decimal
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
+from sqlalchemy import event as sa_event
+
 from app.database import DbSession
 from app.models import (
     DataPointSeries,
@@ -111,7 +113,12 @@ class EventRecordService(
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                self._emit_event_record_webhook(record, data_source, detail)
+                _record, _data_source, _detail = record, data_source, detail
+
+                @sa_event.listens_for(db_session, "after_commit", once=True)
+                def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
+                    self._emit_event_record_webhook(_record, _data_source, _detail)
+
         return result  # type: ignore[return-value]
 
     def find_adjacent_sleep_record(
