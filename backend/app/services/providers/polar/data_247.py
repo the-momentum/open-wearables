@@ -32,6 +32,7 @@ from app.schemas.model_crud.activities import (
 from app.schemas.providers.polar import (
     PolarActivityJSON,
     PolarContinuousHRJSON,
+    PolarNightlyRechargeEntryJSON,
     PolarSleepJSON,
     PolarSleepNightsJSON,
 )
@@ -464,15 +465,175 @@ class PolarData247Template(Base247DataTemplate):
         db.commit()
         return len(samples)
 
+    def save_recovery_data(
+        self,
+        db: DbSession,
+        user_id: UUID,  # kept for signature symmetry with Oura/Suunto
+        samples: list[TimeSeriesSampleCreate],
+    ) -> int:
+        """Persist Nightly Recharge samples and commit.
+
+        ``bulk_create_samples`` only stages the INSERTs; the sync route
+        handler does not commit on our behalf, so we commit here — same
+        pattern as ``save_continuous_hr``. Idempotent via unique index
+        + on_conflict_do_update on (data_source_id, series_type_definition_id, recorded_at).
+        """
+        if not samples:
+            return 0
+        timeseries_service.bulk_create_samples(db, samples)
+        db.commit()
+        return len(samples)
+
+    def load_and_save_recovery(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> int:
+        """Orchestrate get → normalize → save for Nightly Recharge.
+
+        Returns total number of DataPointSeries samples persisted.
+        """
+        raw_nights = self.get_recovery_data(db, user_id, start_time, end_time)
+        all_samples: list[TimeSeriesSampleCreate] = []
+        for raw in raw_nights:
+            all_samples.extend(self.normalize_recovery(raw, user_id))
+        return self.save_recovery_data(db, user_id, all_samples)
+
     # -------------------------------------------------------------------------
     # Recovery / Activity Samples — Phase 3 stubs (base-class compatibility)
     # -------------------------------------------------------------------------
 
-    def get_recovery_data(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict[str, Any]]:
-        return []
+    def get_recovery_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch Nightly Recharge entries across the window.
 
-    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any]:
-        return {}
+        Primary path hits the list endpoint ``/v3/users/nightly-recharge``
+        (returns up to the last 28 nights in one shot). On failure, fall back
+        to per-day ``/v3/users/nightly-recharge/{date}`` — same shape the
+        daily-activity path uses and easier to recover day-by-day.
+        """
+        try:
+            response = self._make_api_request(db, user_id, "/v3/users/nightly-recharge")
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Polar nightly-recharge list fetch failed, falling back per-day: {e}",
+                provider="polar",
+                task="get_recovery_data",
+            )
+            response = None
+
+        if isinstance(response, dict) and response.get("recharges"):
+            return list(response["recharges"])
+
+        # Per-day fallback
+        results: list[dict[str, Any]] = []
+        current = start_time.date()
+        last = end_time.date()
+        while current <= last:
+            endpoint = f"/v3/users/nightly-recharge/{current.isoformat()}"
+            try:
+                per_day = self._make_api_request(db, user_id, endpoint)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Polar nightly-recharge fetch failed for {current}: {e}",
+                    provider="polar",
+                    task="get_recovery_data",
+                )
+                current += timedelta(days=1)
+                continue
+            if isinstance(per_day, dict):
+                if per_day.get("recharges"):
+                    results.extend(per_day["recharges"])
+                elif per_day.get("date"):
+                    results.append(per_day)
+            current += timedelta(days=1)
+        return results
+
+    def normalize_recovery(
+        self,
+        raw_recovery: dict[str, Any],
+        user_id: UUID,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Convert a single Nightly Recharge entry into DataPointSeries samples.
+
+        Emits up to 5 sample streams per night:
+        - hrv_samples      -> SeriesType.heart_rate_variability_rmssd (one per HH:MM)
+        - breathing_samples -> SeriesType.respiratory_rate (one per HH:MM)
+        - nightly_recharge_status -> polar_nightly_recharge_status (single-point, midnight UTC of `date`)
+        - ans_charge -> polar_ans_charge (single-point)
+        - ans_charge_status -> polar_ans_charge_status (single-point)
+
+        Deliberately skips derivable averages (heart_rate_avg,
+        beat_to_beat_avg, heart_rate_variability_avg, breathing_rate_avg).
+        """
+        try:
+            entry = PolarNightlyRechargeEntryJSON.model_validate(raw_recovery)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "warning",
+                f"Polar nightly-recharge parse failed: {e}",
+                provider="polar",
+                task="normalize_recovery",
+            )
+            return []
+
+        try:
+            base_date = datetime.strptime(entry.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            return []
+
+        samples: list[TimeSeriesSampleCreate] = []
+
+        # Intra-night sample streams
+        for hhmm_map, series_type in (
+            (entry.hrv_samples, SeriesType.heart_rate_variability_rmssd),
+            (entry.breathing_samples, SeriesType.respiratory_rate),
+        ):
+            for recorded_at, value in _hhmm_transitions_to_datetimes(hhmm_map, base_date):
+                samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
+
+        # Single-point score fields at midnight UTC of the reported date
+        single_points = (
+            (entry.nightly_recharge_status, SeriesType.polar_nightly_recharge_status),
+            (entry.ans_charge, SeriesType.polar_ans_charge),
+            (entry.ans_charge_status, SeriesType.polar_ans_charge_status),
+        )
+        for value, series_type in single_points:
+            if value is None:
+                continue
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=base_date,
+                    value=Decimal(str(value)),
+                    series_type=series_type,
+                )
+            )
+
+        return samples
 
     def get_activity_samples(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> list[dict[str, Any]]:
         return []
@@ -553,6 +714,21 @@ class PolarData247Template(Base247DataTemplate):
                 task="load_and_save_all",
             )
 
+        # Nightly Recharge (Phase 3)
+        try:
+            results["nightly_recharge_synced"] = self.load_and_save_recovery(
+                db, user_id, start_dt, end_dt
+            )
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "error",
+                f"Polar nightly recharge sync failed: {e}",
+                provider="polar",
+                task="load_and_save_all",
+            )
+
         return results
 
 
@@ -609,18 +785,35 @@ def _hhmm_transitions_to_datetimes(
     calendar_date = base_date.date()
     tzinfo = base_date.tzinfo
 
+    def _sort_key(item: tuple[str, Any]) -> tuple[int, int]:
+        """Sort HH:MM keys for nightly data that can cross midnight.
+
+        Hours in [0, 11] are treated as hour+24 so they sort after evening
+        hours [12, 23].  This lets bump-on-regress handle midnight correctly
+        whether the night starts at 22:xx or 23:xx.  Malformed keys sort last.
+        """
+        try:
+            parts = item[0].split(":")
+            h, m = int(parts[0]), int(parts[1])
+            return (h + 24 if h < 12 else h, m)
+        except (ValueError, IndexError):
+            return (48, 0)
+
     pairs: list[tuple[datetime, Any]] = []
     prev_dt: datetime | None = None
-    for hhmm, value in sorted(hhmm_map.items()):
+    for hhmm, value in sorted(hhmm_map.items(), key=_sort_key):
         try:
             parts = hhmm.split(":")
             h, m = int(parts[0]), int(parts[1])
         except (ValueError, IndexError):
             continue
-        candidate = datetime(
-            calendar_date.year, calendar_date.month, calendar_date.day,
-            h, m, tzinfo=tzinfo,
-        )
+        try:
+            candidate = datetime(
+                calendar_date.year, calendar_date.month, calendar_date.day,
+                h, m, tzinfo=tzinfo,
+            )
+        except ValueError:
+            continue
         while prev_dt is not None and candidate <= prev_dt:
             candidate += timedelta(days=1)
         pairs.append((candidate, value))
