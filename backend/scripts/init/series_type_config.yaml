@@ -179,14 +179,24 @@ series_types:
     interval_seconds: 30
     min_value: 60
     max_value: 200
-    workout_types: [running, trail_running, treadmill, cycling, indoor_cycling, mountain_biking]
+    workout_types:
+      - running
+      - trail_running
+      - treadmill
+      - cycling
+      - indoor_cycling
+      - mountain_biking
+      - cyclocross
+      - e_biking
+      - rowing
+      - rowing_machine
 
   power:
     cadence: workout_bound
     interval_seconds: 30
     min_value: 100
     max_value: 300
-    workout_types: [cycling, indoor_cycling, mountain_biking]
+    workout_types: [cycling, indoor_cycling, mountain_biking, cyclocross, e_biking, rowing_machine]
 
   swimming_stroke_count:
     cadence: workout_bound
