@@ -162,11 +162,12 @@ class SeedDataService:
                     event_record_service.create_detail(db, detail)
                     summary["workouts"] += 1
 
-                    if profile.generate_time_series and record.type is not None:
+                    if profile.generate_time_series and record.type is not None and enabled_types:
                         samples = _generate_time_series_samples(
                             record.start_datetime,
                             record.end_datetime,
                             WorkoutType(record.type),
+                            enabled_types,
                             fake,
                             user_id=user.id,
                             source=record.source or "unknown",

@@ -141,6 +141,16 @@ const CONTINUOUS_SERIES_GROUPS: {
       { id: 'headphone_audio_exposure', label: 'Headphone audio' },
     ],
   },
+  {
+    label: 'During workouts only',
+    types: [
+      { id: 'running_power', label: 'Running power' },
+      { id: 'running_speed', label: 'Running speed' },
+      { id: 'cadence', label: 'Cadence' },
+      { id: 'power', label: 'Power' },
+      { id: 'swimming_stroke_count', label: 'Swim stroke count' },
+    ],
+  },
 ];
 
 const DEFAULT_STAGE_DISTRIBUTION: SleepStageDistribution = {

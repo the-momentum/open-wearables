@@ -162,7 +162,7 @@ class TimeSeriesConfig(BaseModel):
         ),
     )
     include_blood_pressure: bool = Field(
-        True,
+        False,
         description="Emit paired blood_pressure_systolic + blood_pressure_diastolic.",
     )
     date_range_months: int = Field(6, ge=1, le=24)

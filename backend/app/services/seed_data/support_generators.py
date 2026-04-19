@@ -14,17 +14,19 @@ from app.schemas.model_crud.user_management import UserConnectionCreate
 from .constants import SEED_PROVIDERS, SERIES_TYPE_SPECS, Cadence
 
 
-def _workout_bound_types_for(workout_type: WorkoutType) -> list[SeriesType]:
-    """Return series types whose workout_types spec includes this workout type."""
+def _workout_bound_types_for(workout_type: WorkoutType, enabled_types: set[SeriesType]) -> list[SeriesType]:
+    """Return series types emitted during a workout of this type.
+
+    A type is included only if the user has opted in via ``enabled_types``.
+    ``heart_rate`` follows the same rule - no implicit fallback.
+    """
     matches: list[SeriesType] = []
     for series_type, spec in SERIES_TYPE_SPECS.items():
-        if spec.cadence is not Cadence.WORKOUT_BOUND:
+        if series_type not in enabled_types:
             continue
-        if workout_type in spec.workout_types:
+        is_workout_bound_match = spec.cadence is Cadence.WORKOUT_BOUND and workout_type in spec.workout_types
+        if is_workout_bound_match or series_type is SeriesType.heart_rate:
             matches.append(series_type)
-    # Heart rate is always included during workouts regardless of sport
-    if SeriesType.heart_rate in SERIES_TYPE_SPECS and SeriesType.heart_rate not in matches:
-        matches.append(SeriesType.heart_rate)
     return matches
 
 
@@ -32,6 +34,7 @@ def _generate_time_series_samples(
     workout_start: datetime,
     workout_end: datetime,
     workout_type: WorkoutType,
+    enabled_types: set[SeriesType],
     fake: Faker,
     *,
     user_id: UUID,
@@ -42,14 +45,13 @@ def _generate_time_series_samples(
 ) -> list[TimeSeriesSampleCreate]:
     """Generate time-series samples within a single workout window.
 
-    Samples are emitted for:
-    - ``heart_rate`` (every workout)
-    - any ``workout_bound`` series whose ``workout_types`` spec matches
+    Only types present in ``enabled_types`` are emitted. Workout-bound types
+    require the workout type to match their ``workout_types`` spec.
     """
     if not SERIES_TYPE_SPECS:
         return []
 
-    applicable = _workout_bound_types_for(workout_type)
+    applicable = _workout_bound_types_for(workout_type, enabled_types)
     if not applicable:
         return []
 

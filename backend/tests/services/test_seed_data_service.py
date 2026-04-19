@@ -271,7 +271,7 @@ class TestContinuousTimeSeries:
                     duration_max_minutes=15,
                 ),
                 time_series_config=TimeSeriesConfig(
-                    enabled_types=[],  # disable continuous
+                    enabled_types=[SeriesType.running_power, SeriesType.power],
                     include_blood_pressure=False,
                 ),
             ),
@@ -284,3 +284,26 @@ class TestContinuousTimeSeries:
         # power is allowed for cycling and should be emitted
         power = _samples_by_series(db, SeriesType.power)
         assert power, "power should be emitted for cycling workouts"
+
+    def test_no_samples_when_nothing_selected(self, db: Session) -> None:
+        """With empty enabled_types and BP off, zero time-series samples emit."""
+        request = SeedDataRequest(
+            num_users=1,
+            random_seed=5,
+            profile=SeedProfileConfig(
+                generate_workouts=True,
+                generate_sleep=False,
+                generate_time_series=True,
+                providers=[ProviderName.GARMIN],
+                num_connections=1,
+                workout_config=WorkoutConfig(count=3),
+                time_series_config=TimeSeriesConfig(
+                    enabled_types=[],
+                    include_blood_pressure=False,
+                ),
+            ),
+        )
+
+        summary = seed_data_service.generate(db, request)
+
+        assert summary["time_series_samples"] == 0
