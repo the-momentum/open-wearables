@@ -1014,7 +1014,6 @@ export function SeedDataTab() {
                 );
                 const enabled = profile.time_series_config.enabled_types;
                 const allEnabled =
-                  enabled !== null &&
                   allTypeIds.every((id) => enabled.includes(id)) &&
                   profile.time_series_config.include_blood_pressure;
                 return (
@@ -1048,8 +1047,7 @@ export function SeedDataTab() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {group.types.map((type) => {
-                      const enabled =
-                        profile.time_series_config.enabled_types ?? [];
+                      const enabled = profile.time_series_config.enabled_types;
                       const selected = enabled.includes(type.id);
                       return (
                         <button

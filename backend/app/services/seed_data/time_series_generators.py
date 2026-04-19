@@ -192,23 +192,22 @@ def _generate_continuous_time_series(
     user_id: UUID,
     start: datetime,
     end: datetime,
-    enabled_types: set[SeriesType] | None,
+    enabled_types: set[SeriesType],
     include_blood_pressure: bool,
     provider_map: dict[SeriesType, ProviderDescriptor],
     fake: Faker,
 ) -> list[TimeSeriesSampleCreate]:
     """Generate continuous time-series samples across [start, end].
 
-    ``enabled_types=None`` emits every non-workout-bound type defined in the
-    YAML config. Workout-bound types are always skipped here (handled by the
-    workout generator).
+    Only types present in ``enabled_types`` are emitted. Workout-bound types
+    are skipped here (handled by the workout generator).
     """
     samples: list[TimeSeriesSampleCreate] = []
 
     for series_type, spec in SERIES_TYPE_SPECS.items():
         if spec.cadence is Cadence.WORKOUT_BOUND:
             continue
-        if enabled_types is not None and series_type not in enabled_types:
+        if series_type not in enabled_types:
             continue
         provider_desc = provider_map.get(series_type)
         if provider_desc is None:

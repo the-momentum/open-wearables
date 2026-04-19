@@ -18,7 +18,7 @@ export interface WorkoutConfig {
 }
 
 export interface TimeSeriesConfig {
-  enabled_types: string[] | null;
+  enabled_types: string[];
   include_blood_pressure: boolean;
   date_range_months: number;
   date_from: string | null;
