@@ -223,6 +223,55 @@ class SeedPresetInfo(BaseModel):
 # Preset definitions
 # ---------------------------------------------------------------------------
 
+_ACTIVITY_CORE_TYPES = [
+    SeriesType.heart_rate,
+    SeriesType.steps,
+    SeriesType.energy,
+    SeriesType.basal_energy,
+    SeriesType.distance_walking_running,
+    SeriesType.flights_climbed,
+]
+
+_SLEEP_RECOVERY_TYPES = [
+    SeriesType.resting_heart_rate,
+    SeriesType.heart_rate_variability_sdnn,
+    SeriesType.oxygen_saturation,
+    SeriesType.skin_temperature,
+    SeriesType.respiratory_rate,
+]
+
+_BODY_COMPOSITION_TYPES = [
+    SeriesType.weight,
+    SeriesType.body_fat_percentage,
+    SeriesType.vo2_max,
+]
+
+_WORKOUT_BOUND_TYPES = [
+    SeriesType.running_power,
+    SeriesType.running_speed,
+    SeriesType.cadence,
+    SeriesType.power,
+    SeriesType.swimming_stroke_count,
+]
+
+_ALL_CONTINUOUS_TYPES = list(
+    dict.fromkeys(
+        _ACTIVITY_CORE_TYPES
+        + _SLEEP_RECOVERY_TYPES
+        + _BODY_COMPOSITION_TYPES
+        + [
+            SeriesType.body_temperature,
+            SeriesType.blood_glucose,
+            SeriesType.stand_time,
+            SeriesType.exercise_time,
+            SeriesType.time_in_daylight,
+            SeriesType.environmental_audio_exposure,
+            SeriesType.headphone_audio_exposure,
+        ]
+    )
+)
+
+
 SEED_PRESETS: dict[str, dict] = {
     "active_athlete": {
         "label": "Active Athlete",
@@ -247,6 +296,14 @@ SEED_PRESETS: dict[str, dict] = {
                 steps_range=(2000, 25_000),
             ),
             sleep_config=SleepConfig(count=30, stage_profile="athlete_recovery"),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_SLEEP_RECOVERY_TYPES,
+                    *_BODY_COMPOSITION_TYPES,
+                    *_WORKOUT_BOUND_TYPES,
+                ],
+            ),
         ),
     },
     "boxer_footballer": {
@@ -270,6 +327,14 @@ SEED_PRESETS: dict[str, dict] = {
                 hr_min_range=(85, 115),
                 hr_max_range=(155, 190),
             ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    SeriesType.running_power,
+                    SeriesType.running_speed,
+                    SeriesType.cadence,
+                ],
+            ),
         ),
     },
     "sleep_deprived": {
@@ -288,6 +353,15 @@ SEED_PRESETS: dict[str, dict] = {
                 nap_chance_pct=5,
                 stage_profile="deep_deficit",
             ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    SeriesType.heart_rate,
+                    SeriesType.steps,
+                    SeriesType.energy,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
+                include_blood_pressure=True,  # elevated BP correlates with poor sleep
+            ),
         ),
     },
     "weekend_catchup": {
@@ -304,6 +378,12 @@ SEED_PRESETS: dict[str, dict] = {
                 duration_min_minutes=240,
                 duration_max_minutes=360,
                 weekend_catchup=True,
+            ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
             ),
         ),
     },
@@ -323,6 +403,12 @@ SEED_PRESETS: dict[str, dict] = {
                 nap_chance_pct=20,
                 stage_profile="restless",
             ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    SeriesType.heart_rate,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
+            ),
         ),
     },
     "activity_only": {
@@ -334,6 +420,12 @@ SEED_PRESETS: dict[str, dict] = {
             generate_sleep=False,
             generate_time_series=True,
             workout_config=WorkoutConfig(count=80),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_WORKOUT_BOUND_TYPES,
+                ],
+            ),
         ),
     },
     "sleep_only": {
@@ -374,6 +466,10 @@ SEED_PRESETS: dict[str, dict] = {
                 duration_max_minutes=240,
             ),
             sleep_config=SleepConfig(count=60),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[*_ALL_CONTINUOUS_TYPES, *_WORKOUT_BOUND_TYPES],
+                include_blood_pressure=True,
+            ),
         ),
     },
 }
