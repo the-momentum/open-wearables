@@ -153,12 +153,12 @@ class TimeSeriesConfig(BaseModel):
     windows and are not controlled by this config.
     """
 
-    enabled_types: list[SeriesType] | None = Field(
-        None,
+    enabled_types: list[SeriesType] = Field(
+        default_factory=list,
         description=(
-            "Specific series types to emit. None = emit every type defined in "
-            "series_type_config.yaml. Workout-bound types are never affected by "
-            "this list - they follow the workout generator."
+            "Specific series types to emit. Empty list = no continuous series "
+            "emitted. Workout-bound types are never affected by this list - "
+            "they follow the workout generator."
         ),
     )
     include_blood_pressure: bool = Field(

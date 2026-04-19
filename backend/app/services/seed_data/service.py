@@ -115,11 +115,7 @@ class SeedDataService:
             "health_scores": 0,
         }
 
-        enabled_types: set[SeriesType] | None = (
-            set(profile.time_series_config.enabled_types)
-            if profile.time_series_config.enabled_types is not None
-            else None
-        )
+        enabled_types: set[SeriesType] = set(profile.time_series_config.enabled_types)
 
         for user_num in range(1, request.num_users + 1):
             user = user_service.create(
