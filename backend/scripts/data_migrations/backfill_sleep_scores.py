@@ -19,12 +19,18 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import text
 
+from app.algorithms.config_algorithms import sleep_config
 from app.config import settings
 from app.database import SessionLocal
 from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.schemas.model_crud.activities.health_score import HealthScoreCreate, ScoreComponent
 from app.services.health_score_service import health_score_service
 from app.services.scores.sleep_service import sleep_score_service
+
+# EventRecordQueryParams caps limit at 1000. The service formula is
+# (chunk_size + rolling_window_nights) * 4, so solve for chunk_size:
+_QUERY_LIMIT_CAP = 1000
+_CHUNK_SIZE = _QUERY_LIMIT_CAP // 4 - sleep_config.rolling_window_nights
 
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
@@ -89,51 +95,55 @@ def main() -> None:
         total_skipped = 0
 
         for uid, record_wakes_extended in records_by_user.items():
-            record_wakes = [(rid, wd) for rid, _, wd, _ in record_wakes_extended]
             local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, _, le in record_wakes_extended}
             data_source_by_id: dict[UUID, UUID] = {rid: dsid for rid, dsid, _, _ in record_wakes_extended}
 
-            try:
-                scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
-            except Exception as e:
-                total_skipped += len(record_wakes)
-                print(f"ERROR: failed to fetch sleep data for user {uid}: {e}", file=sys.stderr)
-                continue
+            for chunk_start in range(0, len(record_wakes_extended), _CHUNK_SIZE):
+                chunk = record_wakes_extended[chunk_start : chunk_start + _CHUNK_SIZE]
+                record_wakes = [(rid, wd) for rid, _, wd, _ in chunk]
 
-            if not scores_by_record:
-                total_skipped += len(record_wakes)
-                continue
+                try:
+                    scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
+                except Exception as e:
+                    total_skipped += len(record_wakes)
+                    print(f"ERROR: failed to fetch sleep data for user {uid}: {e}", file=sys.stderr)
+                    continue
 
-            scores_to_save = [
-                HealthScoreCreate(
-                    id=uuid4(),
-                    user_id=uid,
-                    data_source_id=data_source_by_id[record_id],
-                    provider=ProviderName.INTERNAL,
-                    category=HealthScoreCategory.SLEEP,
-                    value=result.overall_score,
-                    sleep_record_id=record_id,
-                    recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
-                    components={
-                        "duration": ScoreComponent(value=result.breakdown.duration.score),
-                        "stages": ScoreComponent(value=result.breakdown.stages.score),
-                        "consistency": ScoreComponent(value=result.breakdown.consistency.score),
-                        "interruptions": ScoreComponent(value=result.breakdown.interruptions.score),
-                    },
-                )
-                for (record_id, _), result in scores_by_record.items()
-            ]
+                if not scores_by_record:
+                    total_skipped += len(record_wakes)
+                    continue
 
-            try:
-                health_score_service.bulk_create(db, scores_to_save)
-                db.commit()
-                total_saved += len(scores_to_save)
-                total_skipped += len(record_wakes) - len(scores_to_save)
-                print(f"  user {uid}: saved {len(scores_to_save)} score(s)")
-            except Exception as e:
-                db.rollback()
-                total_skipped += len(record_wakes)
-                print(f"ERROR: failed to save scores for user {uid}: {e}", file=sys.stderr)
+                scores_to_save = [
+                    HealthScoreCreate(
+                        id=uuid4(),
+                        user_id=uid,
+                        data_source_id=data_source_by_id[record_id],
+                        provider=ProviderName.INTERNAL,
+                        category=HealthScoreCategory.SLEEP,
+                        value=result.overall_score,
+                        sleep_record_id=record_id,
+                        recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
+                        components={
+                            "duration": ScoreComponent(value=result.breakdown.duration.score),
+                            "stages": ScoreComponent(value=result.breakdown.stages.score),
+                            "consistency": ScoreComponent(value=result.breakdown.consistency.score),
+                            "interruptions": ScoreComponent(value=result.breakdown.interruptions.score),
+                        },
+                    )
+                    for (record_id, _), result in scores_by_record.items()
+                ]
+
+                try:
+                    health_score_service.bulk_create(db, scores_to_save)
+                    db.commit()
+                    total_saved += len(scores_to_save)
+                    total_skipped += len(record_wakes) - len(scores_to_save)
+                    chunk_end = chunk_start + len(chunk)
+                    print(f"  user {uid} [{chunk_start + 1}-{chunk_end}]: saved {len(scores_to_save)} score(s)")
+                except Exception as e:
+                    db.rollback()
+                    total_skipped += len(record_wakes)
+                    print(f"ERROR: failed to save scores for user {uid}: {e}", file=sys.stderr)
 
         print(f"\nDone: {total_saved} saved, {total_skipped} skipped.")
 

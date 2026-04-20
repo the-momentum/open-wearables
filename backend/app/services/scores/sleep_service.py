@@ -266,7 +266,7 @@ class SleepScoreService:
                 end_datetime=window_end,
                 sort_by="start_datetime",
                 sort_order="asc",
-                limit=(len(record_wakes) + sleep_config.rolling_window_nights) * 4,
+                limit=min(1000, (len(record_wakes) + sleep_config.rolling_window_nights) * 4),
             ),
             str(user_id),
         )
