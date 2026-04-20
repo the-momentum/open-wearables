@@ -37,7 +37,6 @@ Edit `config/.env` with your settings:
 ```bash
 OPEN_WEARABLES_API_URL=http://localhost:8000
 OPEN_WEARABLES_API_KEY=ow_your_api_key_here
-
 ```
 
 ### 3. Test the server
