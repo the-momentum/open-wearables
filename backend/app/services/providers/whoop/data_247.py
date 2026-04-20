@@ -124,6 +124,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Error fetching Whoop sleep data: {e}",
                     provider="whoop",
                     task="get_sleep_data",
+                    user_id=str(user_id),
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_sleep_data:
@@ -133,6 +134,7 @@ class Whoop247Data(Base247DataTemplate):
                         f"Returning partial sleep data due to error: {e}",
                         provider="whoop",
                         task="get_sleep_data",
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -287,6 +289,7 @@ class Whoop247Data(Base247DataTemplate):
                 f"Skipping sleep record {sleep_id}: missing start/end time",
                 provider="whoop",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
             return
 
@@ -340,6 +343,7 @@ class Whoop247Data(Base247DataTemplate):
                 f"Error saving sleep record {sleep_id}: {e}",
                 provider="whoop",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
 
     def load_and_save_sleep(
@@ -367,6 +371,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Failed to save sleep data: {e}",
                     provider="whoop",
                     task="load_and_save_sleep",
+                    user_id=str(user_id),
                 )
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
@@ -412,14 +417,24 @@ class Whoop247Data(Base247DataTemplate):
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
             log_structured(
-                self.logger, "error", f"Failed to sync sleep data: {e}", provider="whoop", task="load_and_save_all"
+                self.logger,
+                "error",
+                f"Failed to sync sleep data: {e}",
+                provider="whoop",
+                task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
         except Exception as e:
             log_structured(
-                self.logger, "error", f"Failed to sync recovery data: {e}", provider="whoop", task="load_and_save_all"
+                self.logger,
+                "error",
+                f"Failed to sync recovery data: {e}",
+                provider="whoop",
+                task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         try:
@@ -431,6 +446,7 @@ class Whoop247Data(Base247DataTemplate):
                 f"Failed to sync body measurement data: {e}",
                 provider="whoop",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         return results
@@ -466,6 +482,7 @@ class Whoop247Data(Base247DataTemplate):
                 f"Error fetching Whoop body measurement: {e}",
                 provider="whoop",
                 task="get_body_measurement",
+                user_id=str(user_id),
             )
             return {}
 
@@ -532,6 +549,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Failed to build height sample: {e}",
                     provider="whoop",
                     task="load_and_save_body_measurement",
+                    user_id=str(user_id),
                 )
 
         # Save weight (already in kilograms) if changed
@@ -559,6 +577,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Failed to build weight sample: {e}",
                     provider="whoop",
                     task="load_and_save_body_measurement",
+                    user_id=str(user_id),
                 )
 
         if samples_to_create:
@@ -628,6 +647,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Error fetching Whoop recovery data: {e}",
                     provider="whoop",
                     task="get_recovery_data",
+                    user_id=str(user_id),
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_recovery_data:
@@ -637,6 +657,7 @@ class Whoop247Data(Base247DataTemplate):
                         f"Returning partial recovery data due to error: {e}",
                         provider="whoop",
                         task="get_recovery_data",
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -772,6 +793,7 @@ class Whoop247Data(Base247DataTemplate):
                         f"Failed to build recovery sample {field_name}: {e}",
                         provider="whoop",
                         task="save_recovery_data",
+                        user_id=str(user_id),
                     )
 
         if samples_to_create:
@@ -808,6 +830,7 @@ class Whoop247Data(Base247DataTemplate):
                     f"Failed to save recovery data: {e}",
                     provider="whoop",
                     task="load_and_save_recovery",
+                    user_id=str(user_id),
                 )
 
         if health_scores:

@@ -157,6 +157,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Error fetching chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="fetch_in_chunks",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -238,6 +239,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Skipping sleep record {sleep_id}: missing start/end time",
                 provider="suunto",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
             return
 
@@ -286,6 +288,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Error saving sleep record {sleep_id}: {e}",
                 provider="suunto",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
 
     # ------------------------------------------------------------------
@@ -372,6 +375,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Failed to build recovery sample {field_name}: {e}",
                     provider="suunto",
                     task="save_recovery_data",
+                    user_id=str(user_id),
                 )
 
         if samples_to_create:
@@ -405,6 +409,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Failed to save recovery data: {e}",
                     provider="suunto",
                     task="load_and_save_recovery",
+                    user_id=str(user_id),
                 )
 
         return total_count
@@ -556,6 +561,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Error fetching daily activity chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="get_daily_activity_statistics",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -655,6 +661,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Failed to save sleep data: {e}",
                     provider="suunto",
                     task="load_and_save_sleep",
+                    user_id=str(user_id),
                 )
         return count
 
@@ -695,6 +702,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync sleep data: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # 2. Recovery → DataPointSeries (recovery_score, resting HR, HRV, …)
@@ -707,6 +715,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync recovery data: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
@@ -721,6 +730,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync activity samples: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
@@ -735,6 +745,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync daily activity statistics: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # Commit all pending bulk inserts (activity samples, daily stats) that were

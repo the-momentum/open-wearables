@@ -116,6 +116,7 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_api_fetch_error",
                     endpoint=endpoint,
                     error=str(e),
+                    user_id=str(user_id),
                 )
                 if all_data:
                     log_structured(
@@ -125,6 +126,7 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_api_partial_data",
                         endpoint=endpoint,
                         error=str(e),
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -258,6 +260,7 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_activity_save_error",
                         metric=key,
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
         if samples:
@@ -336,6 +339,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save cardiovascular age data",
                     action="oura_cardiovascular_age_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
@@ -481,6 +485,7 @@ class Oura247Data(Base247DataTemplate):
                             action="oura_readiness_save_error",
                             field=field_name,
                             error=str(e),
+                            user_id=str(user_id),
                         )
 
         if samples:
@@ -624,6 +629,7 @@ class Oura247Data(Base247DataTemplate):
                     "Skipping sleep record: missing start/end time",
                     action="oura_sleep_skip",
                     sleep_id=str(sleep_id),
+                    user_id=str(user_id),
                 )
                 continue
 
@@ -676,6 +682,7 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_sleep_save_error",
                     sleep_id=str(sleep_id),
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
             hr: OuraIntervalData | None = normalized_sleep.get("heart_rate")
@@ -711,6 +718,7 @@ class Oura247Data(Base247DataTemplate):
                         action=action,
                         sleep_id=str(sleep_id),
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
         return count
@@ -843,6 +851,7 @@ class Oura247Data(Base247DataTemplate):
                         "Failed to save SpO2 data",
                         action="oura_spo2_save_error",
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
             bdi = item.get("breathing_disturbance_index")
@@ -865,6 +874,7 @@ class Oura247Data(Base247DataTemplate):
                         "Failed to save breathing disturbance index",
                         action="oura_bdi_save_error",
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
         if samples:
@@ -933,6 +943,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save HR sample",
                     action="oura_hr_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
@@ -970,6 +981,7 @@ class Oura247Data(Base247DataTemplate):
                 "Failed to normalize personal info",
                 action="oura_personal_info_normalization_error",
                 error=str(e),
+                user_id=str(user_id),
             )
             return {}
 
@@ -1079,6 +1091,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save Vo2 data",
                     action="oura_vo2_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
