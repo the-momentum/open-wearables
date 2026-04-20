@@ -116,6 +116,14 @@
             ]
           },
           {
+            "group": "Data Migrations",
+            "pages": [
+              "data-migrations/index",
+              "data-migrations/backfill-garmin-sleep-end-datetime",
+              "data-migrations/backfill-sleep-scores"
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "dev-guides/aws-setup",
