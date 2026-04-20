@@ -11,7 +11,6 @@ from logging import getLogger
 from typing import Any, cast
 
 from app.database import SessionLocal
-from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
 from app.utils.structured_logging import log_structured
 from celery import Task, shared_task
@@ -38,6 +37,7 @@ def process_push(self: Task, payload: dict[str, Any], request_trace_id: str) -> 
     """
     db = SessionLocal()
     try:
+        from app.services.providers.garmin.strategy import GarminStrategy  # deferred: breaks circular import
         strategy = GarminStrategy()
         handler = cast(GarminWebhookHandler, strategy.webhooks)
         return handler.process_payload(db, payload, request_trace_id)
