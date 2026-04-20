@@ -20,6 +20,11 @@ services:
   # Port 80  → frontend dashboard
   # Port 8000 → backend API
   # ---------------------------------------------------------------------------
+  # Single HTTPS entrypoint on :443 (TLS via Let's Encrypt TLS-ALPN challenge).
+  # Both services share ``ow-staging.getlucie.ai``; routing is path-based:
+  #   /api/* → ow-api     (stripPrefix middleware removes /api before forward)
+  #   /*     → ow-dashboard
+  # :80 exists only to redirect to :443 (required for ACME renewals anyway).
   traefik:
     image: traefik:v3.2
     container_name: traefik
@@ -28,14 +33,20 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.api.address=:8000"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.email=${SERVER_EMAIL:-admin@getlucie.ai}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--log.level=INFO"
       - "--accesslog=true"
     ports:
       - "80:80"
-      - "8000:8000"
+      - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
     networks:
       - ow-network
 
@@ -150,8 +161,11 @@ services:
       - ow-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ow-api.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.ow-api.entrypoints=api"
+      - "traefik.http.routers.ow-api.rule=Host(`${OW_DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.ow-api.entrypoints=websecure"
+      - "traefik.http.routers.ow-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.ow-api.middlewares=ow-api-strip"
+      - "traefik.http.middlewares.ow-api-strip.stripprefix.prefixes=/api"
       - "traefik.http.services.ow-api.loadbalancer.server.port=8000"
 
   celery-worker:
@@ -225,8 +239,9 @@ services:
       - ow-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.ow-dashboard.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.ow-dashboard.entrypoints=web"
+      - "traefik.http.routers.ow-dashboard.rule=Host(`${OW_DOMAIN}`)"
+      - "traefik.http.routers.ow-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.ow-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.services.ow-dashboard.loadbalancer.server.port=3000"
 
 networks:
@@ -236,3 +251,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  traefik_letsencrypt:

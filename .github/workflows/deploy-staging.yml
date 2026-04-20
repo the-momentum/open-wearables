@@ -112,7 +112,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
           build-args: |
-            VITE_API_URL=http://${{ needs.resolve-host.outputs.public_dns }}:8000
+            VITE_API_URL=https://ow-staging.getlucie.ai/api
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:staging
             ${{ steps.ecr.outputs.registry }}/${{ matrix.repo }}:sha-${{ steps.tags.outputs.sha_short }}
@@ -158,6 +158,8 @@ jobs:
           cat > .env.deploy <<EOF
           ENVIRONMENT=staging
           OW_PUBLIC_HOST=${OW_PUBLIC_HOST}
+          OW_DOMAIN=ow-staging.getlucie.ai
+          SERVER_EMAIL=admin@getlucie.ai
           OW_DB_NAME=open-wearables
           OW_DB_USER=open-wearables
           OW_DB_PASSWORD=${OW_DB_PASSWORD}
@@ -194,15 +196,14 @@ jobs:
           ADMIN_EMAIL=${OW_ADMIN_EMAIL}
           ADMIN_PASSWORD=${OW_ADMIN_PASSWORD}
           OPEN_WEARABLES_API_KEY=${OPEN_WEARABLES_API_KEY}
-          # API_BASE_URL drives OAuth redirect_uri generation. Whoop/Oura
-          # require HTTPS, so it points at the CloudFront distribution
-          # (dblsjq323zkkx.cloudfront.net → EC2 :8000 origin, HTTP).
-          # Clients may still hit the EC2 directly via SERVER_HOST for lower
-          # latency on non-OAuth traffic.
-          API_BASE_URL=https://dblsjq323zkkx.cloudfront.net
-          SERVER_HOST=http://${OW_PUBLIC_HOST}:8000
-          FRONTEND_URL=http://${OW_PUBLIC_HOST}
-          CORS_ORIGINS=["http://${OW_PUBLIC_HOST}","https://dblsjq323zkkx.cloudfront.net"]
+          # Single-domain path routing. Traefik terminates TLS via Let's
+          # Encrypt at ``ow-staging.getlucie.ai``; ``/api/*`` is stripped
+          # and forwarded to ow-api, ``/*`` serves the dashboard.
+          # Whoop/Oura receive redirect_uri rooted at ``/api`` below.
+          API_BASE_URL=https://ow-staging.getlucie.ai/api
+          SERVER_HOST=https://ow-staging.getlucie.ai/api
+          FRONTEND_URL=https://ow-staging.getlucie.ai
+          CORS_ORIGINS=["https://ow-staging.getlucie.ai"]
 
           # Email
           RESEND_API_KEY=${RESEND_API_KEY}
@@ -316,7 +317,7 @@ jobs:
             echo "| Backend | \`$BACKEND_IMAGE\` |"
             echo "| Frontend | \`$FRONTEND_IMAGE\` |"
             echo "| SHA | \`$COMMIT_SHA\` |"
-            echo "| Dashboard | http://$OW_PUBLIC_HOST |"
-            echo "| API | http://$OW_PUBLIC_HOST:8000 |"
-            echo "| API Docs | http://$OW_PUBLIC_HOST:8000/docs |"
+            echo "| Dashboard | https://ow-staging.getlucie.ai |"
+            echo "| API | https://ow-staging.getlucie.ai/api |"
+            echo "| API Docs | https://ow-staging.getlucie.ai/api/docs |"
           } >> "$GITHUB_STEP_SUMMARY"
