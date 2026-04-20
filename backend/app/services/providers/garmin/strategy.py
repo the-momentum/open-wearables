@@ -1,6 +1,5 @@
 from uuid import UUID
 
-from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill as start_garmin_full_backfill
 from app.services.providers.base_strategy import BaseProviderStrategy, HistoricalSyncResult, ProviderCapabilities
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -65,6 +64,7 @@ class GarminStrategy(BaseProviderStrategy):
         The ``days`` parameter is ignored - Garmin limits historical access
         to 30 days before the user's consent date.
         """
+        from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill as start_garmin_full_backfill  # deferred: breaks circular import
         task = start_garmin_full_backfill.delay(str(user_id))
         return HistoricalSyncResult(
             task_id=task.id,
