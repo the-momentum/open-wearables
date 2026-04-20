@@ -8,7 +8,9 @@ WORKDIR /app
 
 # Build arguments for environment variables
 ARG VITE_API_URL=http://localhost:8000
+ARG VITE_AI_API_URL=http://localhost:8081
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_AI_API_URL=${VITE_AI_API_URL}
 
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
