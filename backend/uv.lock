@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-04-13T00:34:08.779168094Z"
+exclude-newer = "2026-04-17T07:29:58.545078Z"
 exclude-newer-span = "P3D"
 
 [[package]]
@@ -951,6 +951,7 @@ dependencies = [
     { name = "celery" },
     { name = "cryptography" },
     { name = "email-validator" },
+    { name = "faker" },
     { name = "fastapi" },
     { name = "fastapi-cli" },
     { name = "flower" },
@@ -978,7 +979,6 @@ code-quality = [
 ]
 dev = [
     { name = "factory-boy" },
-    { name = "faker" },
     { name = "freezegun" },
     { name = "psycopg-binary" },
     { name = "pytest" },
@@ -996,6 +996,7 @@ requires-dist = [
     { name = "celery", specifier = ">=5.5.3" },
     { name = "cryptography", specifier = ">=45.0.4" },
     { name = "email-validator", specifier = ">=2.2.0" },
+    { name = "faker", specifier = ">=33.1.0" },
     { name = "fastapi", specifier = ">=0.120.4" },
     { name = "fastapi-cli", specifier = ">=0.0.8" },
     { name = "flower", specifier = ">=2.0.1" },
@@ -1023,7 +1024,6 @@ code-quality = [
 ]
 dev = [
     { name = "factory-boy", specifier = ">=3.3.0" },
-    { name = "faker", specifier = ">=33.1.0" },
     { name = "freezegun", specifier = ">=1.5.0" },
     { name = "psycopg-binary", specifier = ">=3.3.2" },
     { name = "pytest", specifier = ">=8.4.1" },
