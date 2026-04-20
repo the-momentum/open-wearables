@@ -14,7 +14,7 @@ Usage (inside Docker):
 import argparse
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -29,6 +29,7 @@ from app.services.scores.sleep_service import sleep_score_service
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
+        ds.id AS data_source_id,
         er.id AS record_id,
         (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS wake_date,
         (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval) AS local_end_datetime
@@ -75,21 +76,22 @@ def main() -> None:
         if args.dry_run:
             print(f"\n{'User ID':<38} {'Record ID':<38} {'Wake Date':<12} {'Local End'}")
             print("-" * 110)
-            for user_id, record_id, wake_date, local_end in rows:
+            for user_id, data_source_id, record_id, wake_date, local_end in rows:
                 print(f"{user_id!s:<38} {record_id!s:<38} {wake_date!s:<12} {local_end!s}")
             print("\nDry run — no changes made.")
             return
 
-        records_by_user: dict[UUID, list[tuple[UUID, object, datetime]]] = defaultdict(list)
-        for user_id, record_id, wake_date, local_end in rows:
-            records_by_user[UUID(str(user_id))].append((UUID(str(record_id)), wake_date, local_end))
+        records_by_user: dict[UUID, list[tuple[UUID, UUID, date, datetime]]] = defaultdict(list)
+        for user_id, data_source_id, record_id, wake_date, local_end in rows:
+            records_by_user[user_id].append((record_id, data_source_id, wake_date, local_end))
 
         total_saved = 0
         total_skipped = 0
 
         for uid, record_wakes_extended in records_by_user.items():
-            record_wakes = [(rid, wd) for rid, wd, _ in record_wakes_extended]
-            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, le in record_wakes_extended}
+            record_wakes = [(rid, wd) for rid, _, wd, _ in record_wakes_extended]
+            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, _, le in record_wakes_extended}
+            data_source_by_id: dict[UUID, UUID] = {rid: dsid for rid, dsid, _, _ in record_wakes_extended}
 
             try:
                 scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
@@ -106,7 +108,7 @@ def main() -> None:
                 HealthScoreCreate(
                     id=uuid4(),
                     user_id=uid,
-                    data_source_id=None,
+                    data_source_id=data_source_by_id[record_id],
                     provider=ProviderName.INTERNAL,
                     category=HealthScoreCategory.SLEEP,
                     value=result.overall_score,

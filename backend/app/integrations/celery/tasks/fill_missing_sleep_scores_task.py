@@ -28,6 +28,7 @@ logger = getLogger(__name__)
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
+        ds.id AS data_source_id,
         er.id AS record_id,
         (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS wake_date,
         (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval) AS local_end_datetime
@@ -65,9 +66,9 @@ def fill_missing_sleep_scores() -> dict:
             return {"saved": 0, "skipped": 0}
 
         # Group (record_id, wake_date, local_end_datetime) triples per user
-        records_by_user: dict[UUID, list[tuple[UUID, date, datetime]]] = defaultdict(list)
-        for user_id, record_id, wake_date, local_end in rows:
-            records_by_user[UUID(str(user_id))].append((UUID(str(record_id)), wake_date, local_end))
+        records_by_user: dict[UUID, list[tuple[UUID, UUID, date, datetime]]] = defaultdict(list)
+        for user_id, data_source_id, record_id, wake_date, local_end in rows:
+            records_by_user[user_id].append((record_id, data_source_id, wake_date, local_end))
 
         log_structured(
             logger,
@@ -80,10 +81,11 @@ def fill_missing_sleep_scores() -> dict:
         total_skipped = 0
 
         for uid, record_wakes_extended in records_by_user.items():
-            record_wakes = [(rid, wd) for rid, wd, _ in record_wakes_extended]
+            record_wakes = [(rid, wd) for rid, _, wd, _ in record_wakes_extended]
             # Map record_id → local end datetime so recorded_at is unique per
             # session even when two sessions share the same local wake date.
-            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, le in record_wakes_extended}
+            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, _, le in record_wakes_extended}
+            data_source_by_id: dict[UUID, UUID] = {rid: dsid for rid, dsid, _, _ in record_wakes_extended}
             try:
                 scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
             except Exception as e:
@@ -104,7 +106,7 @@ def fill_missing_sleep_scores() -> dict:
                 HealthScoreCreate(
                     id=uuid4(),
                     user_id=uid,
-                    data_source_id=None,
+                    data_source_id=data_source_by_id[record_id],
                     provider=ProviderName.INTERNAL,
                     category=HealthScoreCategory.SLEEP,
                     value=result.overall_score,
