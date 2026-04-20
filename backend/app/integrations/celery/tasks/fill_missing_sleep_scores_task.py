@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from logging import getLogger
 from uuid import UUID, uuid4
 
+from celery import shared_task
 from sqlalchemy import text
 
 from app.config import settings
@@ -13,33 +14,38 @@ from app.services.health_score_service import health_score_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 
 # Find all non-nap sleep sessions that have no corresponding OW sleep score.
-# The match is on user + calendar date (UTC) of start_datetime vs recorded_at.
-# Limited to sessions within the configured backfill window to avoid scanning
-# the entire history on every run.
+# The match is on sleep_record_id (direct FK) so each session gets exactly one
+# score regardless of timezone-induced date collisions. wake_date (local end
+# date) is used as the lookup key for get_sleep_scores_for_records and for
+# result ordering. recorded_at is set to the session's exact local end datetime
+# (local_end_datetime) so two sessions sharing the same wake date still produce
+# distinct recorded_at values. Limited to sessions within the configured
+# backfill window.
 _MISSING_SCORES_QUERY = text("""
     SELECT DISTINCT
         ds.user_id,
-        (er.start_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS sleep_date
+        ds.id AS data_source_id,
+        er.id AS record_id,
+        (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date AS wake_date,
+        (er.end_datetime + COALESCE(er.zone_offset, '+00:00')::interval) AS local_end_datetime
     FROM event_record er
     JOIN data_source ds   ON ds.id = er.data_source_id
     JOIN sleep_details sd ON sd.record_id = er.id
     LEFT JOIN health_score hs
-           ON hs.user_id     = ds.user_id
+           ON hs.sleep_record_id = er.id
           AND hs.category     = 'sleep'
           AND hs.provider     = 'internal'
-          AND hs.recorded_at::date = (er.start_datetime + COALESCE(er.zone_offset, '+00:00')::interval)::date
     WHERE er.category = 'sleep'
       AND (sd.is_nap IS NULL OR sd.is_nap = false)
       AND sd.sleep_total_duration_minutes IS NOT NULL
       AND sd.sleep_total_duration_minutes > 0
       AND hs.id IS NULL
       AND er.start_datetime >= :cutoff
-    ORDER BY ds.user_id, sleep_date DESC
+    ORDER BY ds.user_id, wake_date DESC
 """)
 
 
@@ -48,8 +54,8 @@ def fill_missing_sleep_scores() -> dict:
     """Find sleep sessions without an OW sleep score and calculate them.
 
     Runs frequently (every few minutes) so scores appear shortly after any sync
-    path (periodic pull, webhook, SDK upload). Uses a LEFT JOIN to guarantee
-    idempotency — already-scored sessions are never re-processed.
+    path (periodic pull, webhook, SDK upload). Uses a LEFT JOIN on sleep_record_id
+    to guarantee idempotency — already-scored sessions are never re-processed.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.score_backfill_days)
 
@@ -59,26 +65,31 @@ def fill_missing_sleep_scores() -> dict:
         if not rows:
             return {"saved": 0, "skipped": 0}
 
-        # Group dates per user
-        dates_by_user: dict[UUID, list[date]] = defaultdict(list)
-        for user_id, sleep_date in rows:
-            dates_by_user[UUID(str(user_id))].append(sleep_date)
+        # Group (record_id, wake_date, local_end_datetime) triples per user
+        records_by_user: dict[UUID, list[tuple[UUID, UUID, date, datetime]]] = defaultdict(list)
+        for user_id, data_source_id, record_id, wake_date, local_end in rows:
+            records_by_user[user_id].append((record_id, data_source_id, wake_date, local_end))
 
         log_structured(
             logger,
             "info",
-            f"Found {len(rows)} session(s) missing scores across {len(dates_by_user)} user(s)",
+            f"Found {len(rows)} session(s) missing scores across {len(records_by_user)} user(s)",
             task="fill_missing_sleep_scores",
         )
 
         total_saved = 0
         total_skipped = 0
 
-        for uid, dates in dates_by_user.items():
+        for uid, record_wakes_extended in records_by_user.items():
+            record_wakes = [(rid, wd) for rid, _, wd, _ in record_wakes_extended]
+            # Map record_id → local end datetime so recorded_at is unique per
+            # session even when two sessions share the same local wake date.
+            local_end_by_id: dict[UUID, datetime] = {rid: le for rid, _, _, le in record_wakes_extended}
+            data_source_by_id: dict[UUID, UUID] = {rid: dsid for rid, dsid, _, _ in record_wakes_extended}
             try:
-                scores_by_date = sleep_score_service.get_sleep_scores_for_date_range(db, uid, dates)
+                scores_by_record = sleep_score_service.get_sleep_scores_for_records(db, uid, record_wakes)
             except Exception as e:
-                total_skipped += len(dates)
+                total_skipped += len(record_wakes)
                 log_and_capture_error(
                     e,
                     logger,
@@ -87,19 +98,20 @@ def fill_missing_sleep_scores() -> dict:
                 )
                 continue
 
-            if not scores_by_date:
-                total_skipped += len(dates)
+            if not scores_by_record:
+                total_skipped += len(record_wakes)
                 continue
 
             scores_to_save = [
                 HealthScoreCreate(
                     id=uuid4(),
                     user_id=uid,
-                    data_source_id=None,
+                    data_source_id=data_source_by_id[record_id],
                     provider=ProviderName.INTERNAL,
                     category=HealthScoreCategory.SLEEP,
                     value=result.overall_score,
-                    recorded_at=datetime(d.year, d.month, d.day, tzinfo=timezone.utc),
+                    sleep_record_id=record_id,
+                    recorded_at=local_end_by_id[record_id].replace(tzinfo=timezone.utc),
                     components={
                         "duration": ScoreComponent(value=result.breakdown.duration.score),
                         "stages": ScoreComponent(value=result.breakdown.stages.score),
@@ -107,17 +119,17 @@ def fill_missing_sleep_scores() -> dict:
                         "interruptions": ScoreComponent(value=result.breakdown.interruptions.score),
                     },
                 )
-                for d, result in scores_by_date.items()
+                for (record_id, _), result in scores_by_record.items()
             ]
 
             try:
                 health_score_service.bulk_create(db, scores_to_save)
                 db.commit()
                 total_saved += len(scores_to_save)
-                total_skipped += len(dates) - len(scores_to_save)
+                total_skipped += len(record_wakes) - len(scores_to_save)
             except Exception as e:
                 db.rollback()
-                total_skipped += len(scores_to_save)
+                total_skipped += len(record_wakes)
                 log_and_capture_error(
                     e,
                     logger,

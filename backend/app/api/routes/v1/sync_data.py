@@ -358,9 +358,9 @@ def sync_historical_data(
     To make migration painless, the pre-0.4.2 behaviour is kept for now
     behind a grace-period flag (``HISTORICAL_SYNC_ON_CONNECT``, default:
     ``true``): a historical sync is auto-dispatched after a successful
-    OAuth callback (up to 90 days for pull-based providers, full
-    available history for providers that support async export such as
-    Garmin).
+    OAuth callback (up to 90 days for pull-based providers; up to 30
+    days for Garmin, whose webhook-based backfill is capped at 30 days
+    from the user's consent date).
 
     Once your integration calls this endpoint explicitly, set
     ``HISTORICAL_SYNC_ON_CONNECT=false``. The flag will default to

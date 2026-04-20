@@ -10,11 +10,12 @@ import contextlib
 from logging import getLogger
 from typing import Any, cast
 
+from celery import Task, shared_task
+
 from app.database import SessionLocal
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.garmin.webhook_handler import GarminWebhookHandler
 from app.utils.structured_logging import log_structured
-from celery import Task, shared_task
 
 logger = getLogger(__name__)
 

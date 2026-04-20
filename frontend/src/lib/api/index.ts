@@ -7,3 +7,4 @@ export * from './types';
 export { authService } from './services/auth.service';
 export { usersService } from './services/users.service';
 export { dashboardService } from './services/dashboard.service';
+export { webhooksService } from './services/webhooks.service';

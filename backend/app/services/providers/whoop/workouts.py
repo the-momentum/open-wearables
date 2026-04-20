@@ -82,6 +82,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     f"Error fetching Whoop workout data: {e}",
                     provider="whoop",
                     task="get_workouts",
+                    user_id=str(user_id),
                 )
                 # If we got some data, return what we have; otherwise re-raise
                 if all_workouts:
@@ -91,6 +92,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                         f"Returning partial workout data due to error: {e}",
                         provider="whoop",
                         task="get_workouts",
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -349,7 +351,12 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
 
             except Exception as e:
                 log_structured(
-                    self.logger, "error", f"Error fetching Whoop workout data: {e}", provider="whoop", task="load_data"
+                    self.logger,
+                    "error",
+                    f"Error fetching Whoop workout data: {e}",
+                    provider="whoop",
+                    task="load_data",
+                    user_id=str(user_id),
                 )
                 # If we got some data, continue processing; otherwise re-raise
                 if all_workouts:
@@ -359,6 +366,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                         f"Processing partial workout data due to error: {e}",
                         provider="whoop",
                         task="load_data",
+                        user_id=str(user_id),
                     )
                     break
                 raise

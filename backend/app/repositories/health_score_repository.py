@@ -51,11 +51,7 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
 
         values = [c.model_dump() for c in creators]
 
-        stmt = (
-            insert(HealthScore)
-            .values(values)
-            .on_conflict_do_nothing(index_elements=["user_id", "provider", "category", "recorded_at"])
-        )
+        stmt = insert(HealthScore).values(values).on_conflict_do_nothing()
         db_session.execute(stmt)
         # Caller is responsible for commit — allows batching with other operations
 

@@ -92,6 +92,7 @@ class GarminWorkouts(BaseWorkoutsTemplate):
                     f"Error fetching activities chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="get_workouts_historical",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end

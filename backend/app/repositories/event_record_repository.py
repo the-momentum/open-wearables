@@ -422,9 +422,11 @@ class EventRecordRepository(
         # is_nap can be True, False, or NULL - we treat NULL as "not a nap"
         is_main_sleep = func.coalesce(SleepDetails.is_nap, False) == False  # noqa: E712
 
-        # Local calendar date the session started — mirrors score date logic in fill_missing_sleep_scores_task.
+        # Local calendar date the session ended (wake-up date) — mirrors score
+        # date logic in fill_missing_sleep_scores_task so chart, score, and
+        # session list all key on the same date.
         local_sleep_date = cast(
-            EventRecord.start_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
             Date,
         )
 
@@ -494,7 +496,7 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
-                EventRecord.end_datetime >= start_date,
+                EventRecord.end_datetime >= start_date - timedelta(days=1),
                 local_sleep_date >= cast(start_date, Date),
                 local_sleep_date < cast(end_date, Date),
             )

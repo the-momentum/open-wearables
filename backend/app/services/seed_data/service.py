@@ -1,9 +1,9 @@
-"""SeedDataService — orchestrates seed data generation across all entity types."""
+"""SeedDataService - orchestrates seed data generation across all entity types."""
 
 import logging
 import os
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from faker import Faker
 from sqlalchemy.orm import Session
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import EventRecordDetail, PersonalRecord, UserConnection
 from app.repositories import CrudRepository
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
-from app.schemas.enums import ProviderName
+from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 from app.schemas.model_crud.user_management import UserConnectionUpdate, UserCreate
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.event_record_service import event_record_service
@@ -19,11 +19,65 @@ from app.services.health_score_service import health_score_service
 from app.services.timeseries_service import timeseries_service
 from app.services.user_service import user_service
 
+from .constants import PAIRED_SERIES_SPECS, PROVIDER_CONFIGS, SERIES_TYPE_SPECS, Cadence
 from .event_generators import _generate_personal_record, _generate_sleep, _generate_workout
 from .health_score_generators import _generate_health_scores
 from .support_generators import _generate_time_series_samples, _generate_user_connections
+from .time_series_generators import ProviderDescriptor, _generate_continuous_time_series
 
 logger = logging.getLogger(__name__)
+
+
+def _build_provider_map(
+    providers: list[ProviderName],
+    fake: Faker,
+) -> dict[SeriesType, ProviderDescriptor]:
+    """Assign one provider descriptor per series type, reused for all samples.
+
+    Ensures that e.g. every heart_rate sample for a user comes from the same
+    provider + device + software version. Covers non-workout-bound types plus
+    paired members (blood pressure).
+    """
+    provider_map: dict[SeriesType, ProviderDescriptor] = {}
+    if not providers:
+        return provider_map
+
+    all_series = [st for st, spec in SERIES_TYPE_SPECS.items() if spec.cadence is not Cadence.WORKOUT_BOUND]
+    for paired in PAIRED_SERIES_SPECS:
+        all_series.extend(paired.members.keys())
+
+    for series_type in all_series:
+        prov = fake.random.choice(providers)
+        prov_config = PROVIDER_CONFIGS[prov]
+        is_sdk = prov == ProviderName.APPLE
+        # Oura exposes no device info; Apple is SDK-style (source name only)
+        device_model = None if prov == ProviderName.OURA else fake.random.choice(prov_config["devices"])
+        software_version = (
+            None if prov == ProviderName.OURA or is_sdk else fake.random.choice(prov_config["os_versions"])
+        )
+        provider_map[series_type] = ProviderDescriptor(
+            provider=prov,
+            source=prov_config["source_name"],
+            device_model=device_model,
+            software_version=software_version,
+        )
+
+    return provider_map
+
+
+def _resolve_time_series_window(
+    config_date_from: date | None,
+    config_date_to: date | None,
+    date_range_months: int,
+    last_synced_at: datetime,
+) -> tuple[datetime, datetime]:
+    if config_date_from and config_date_to:
+        start = datetime(config_date_from.year, config_date_from.month, config_date_from.day, tzinfo=timezone.utc)
+        end = datetime(config_date_to.year, config_date_to.month, config_date_to.day, 23, 59, 59, tzinfo=timezone.utc)
+    else:
+        start = last_synced_at - timedelta(days=date_range_months * 30)
+        end = last_synced_at
+    return start, end
 
 
 class SeedDataService:
@@ -61,6 +115,8 @@ class SeedDataService:
             "health_scores": 0,
         }
 
+        enabled_types: set[SeriesType] = set(profile.time_series_config.enabled_types)
+
         for user_num in range(1, request.num_users + 1):
             user = user_service.create(
                 db,
@@ -91,7 +147,11 @@ class SeedDataService:
                     connection_repo.update(db, created, UserConnectionUpdate(last_synced_at=provider_sync_times[prov]))
                     summary["connections"] += 1
 
-            # Workouts
+            # Stable per-user mapping: each series type gets one provider, used
+            # for every sample of that type across the whole generation run.
+            provider_map = _build_provider_map(list(provider_sync_times.keys()), fake)
+
+            # Workouts (+ workout-bound time series)
             if profile.generate_workouts:
                 for _ in range(profile.workout_config.count):
                     prov = fake.random.choice(list(provider_sync_times.keys()))
@@ -102,13 +162,12 @@ class SeedDataService:
                     event_record_service.create_detail(db, detail)
                     summary["workouts"] += 1
 
-                    # Time series
-                    if profile.generate_time_series and fake.boolean(
-                        chance_of_getting_true=profile.workout_config.time_series_chance_pct
-                    ):
+                    if profile.generate_time_series and record.type is not None and enabled_types:
                         samples = _generate_time_series_samples(
                             record.start_datetime,
                             record.end_datetime,
+                            WorkoutType(record.type),
+                            enabled_types,
                             fake,
                             user_id=user.id,
                             source=record.source or "unknown",
@@ -131,7 +190,29 @@ class SeedDataService:
                     event_detail_repo.create(db, detail, detail_type="sleep")
                     summary["sleeps"] += 1
 
-            # Health scores — one batch per provider covering the full seeded date range
+            # Continuous time series (independent of workouts)
+            if profile.generate_time_series and provider_sync_times:
+                last_synced_at = max(provider_sync_times.values())
+                ts_start, ts_end = _resolve_time_series_window(
+                    profile.time_series_config.date_from,
+                    profile.time_series_config.date_to,
+                    profile.time_series_config.date_range_months,
+                    last_synced_at,
+                )
+                continuous_samples = _generate_continuous_time_series(
+                    user_id=user.id,
+                    start=ts_start,
+                    end=ts_end,
+                    enabled_types=enabled_types,
+                    include_blood_pressure=profile.time_series_config.include_blood_pressure,
+                    provider_map=provider_map,
+                    fake=fake,
+                )
+                if continuous_samples:
+                    timeseries_service.bulk_create_samples(db, continuous_samples)
+                    summary["time_series_samples"] += len(continuous_samples)
+
+            # Health scores - one batch per provider covering the full seeded date range
             if profile.generate_workouts or profile.generate_sleep:
                 date_range_months = (
                     max(

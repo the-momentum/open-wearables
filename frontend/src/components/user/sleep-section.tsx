@@ -242,14 +242,27 @@ function SleepSessionRow({
               </div>
             </div>
 
-            {/* Duration */}
+            {/* Duration (actual sleep, awake time excluded) */}
             <div className="flex items-center gap-2">
               <Moon className="h-4 w-4 text-indigo-400" />
               <div>
                 <p className="text-sm font-medium text-white">
-                  {formatDuration(session.duration_seconds)}
+                  {session.sleep_duration_seconds !== null
+                    ? formatDuration(session.sleep_duration_seconds)
+                    : '-'}
                 </p>
                 <p className="text-xs text-zinc-500">Duration</p>
+              </div>
+            </div>
+
+            {/* Time in Bed (end - start) */}
+            <div className="flex items-center gap-2">
+              <BedDouble className="h-4 w-4 text-purple-400" />
+              <div>
+                <p className="text-sm font-medium text-white">
+                  {formatDuration(session.duration_seconds)}
+                </p>
+                <p className="text-xs text-zinc-500">Time in Bed</p>
               </div>
             </div>
 

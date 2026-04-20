@@ -134,6 +134,7 @@ class Garmin247Data(Base247DataTemplate):
                     f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="fetch_in_chunks",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -309,6 +310,7 @@ class Garmin247Data(Base247DataTemplate):
                 f"Missing start/end time for sleep {sleep_id}",
                 provider="garmin",
                 task="build_sleep_record",
+                user_id=str(user_id),
             )
             return None
 
@@ -370,6 +372,7 @@ class Garmin247Data(Base247DataTemplate):
                 f"Error saving sleep record {normalized_sleep['id']}: {e}",
                 provider="garmin",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
 
     # -------------------------------------------------------------------------
@@ -826,6 +829,7 @@ class Garmin247Data(Base247DataTemplate):
                 "HRV data missing startTimeInSeconds",
                 provider="garmin",
                 task="build_hrv_samples",
+                user_id=str(user_id),
             )
             return samples
 
@@ -1739,6 +1743,7 @@ class Garmin247Data(Base247DataTemplate):
                     f"Error building batch item for {summary_type}: {e}",
                     provider="garmin",
                     task="process_items_batch",
+                    user_id=str(user_id),
                 )
 
         count = 0

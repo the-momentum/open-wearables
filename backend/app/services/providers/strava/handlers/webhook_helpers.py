@@ -138,6 +138,7 @@ def handle_webhook_event(payload: dict[str, Any], db: DbSession) -> dict:
                 "Strava workouts service not available",
                 provider="strava",
                 action="webhook_service_unavailable",
+                user_id=str(internal_user_id),
             )
             return {"status": "error", "message": "Service unavailable"}
 

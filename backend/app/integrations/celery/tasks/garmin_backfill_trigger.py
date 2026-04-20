@@ -9,6 +9,7 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
+from celery import shared_task
 from fastapi import HTTPException
 
 from app.database import SessionLocal
@@ -39,7 +40,6 @@ from app.services.providers.garmin.handlers.backfill import GarminBackfillServic
 from app.services.providers.garmin.oauth import GarminOAuth
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 

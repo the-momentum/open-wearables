@@ -8,6 +8,12 @@
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
+  "redirects": [
+    {
+      "source": "/dev-guides/backend-e2e-integration",
+      "destination": "/dev-guides/integration-guide"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -27,6 +33,14 @@
               "architecture/system-overview",
               "architecture/unified-data-model",
               "architecture/data-types"
+            ]
+          },
+          {
+            "group": "Health Scores",
+            "pages": [
+              "scores/health-scores",
+              "scores/sleep-score",
+              "scores/resilience-score"
             ]
           },
           {
@@ -95,10 +109,18 @@
           {
             "group": "Developer Guides",
             "pages": [
-              "dev-guides/backend-e2e-integration",
+              "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
               "dev-guides/ngrok-setup",
               "dev-guides/seed-data-generator"
+            ]
+          },
+          {
+            "group": "Data Migrations",
+            "pages": [
+              "data-migrations/index",
+              "data-migrations/backfill-garmin-sleep-end-datetime",
+              "data-migrations/backfill-sleep-scores"
             ]
           },
           {
@@ -190,7 +212,8 @@
               "GET /api/v1/users/{user_id}/summaries/activity",
               "GET /api/v1/users/{user_id}/summaries/sleep",
               "GET /api/v1/users/{user_id}/summaries/body",
-              "GET /api/v1/users/{user_id}/summaries/recovery"
+              "GET /api/v1/users/{user_id}/summaries/recovery",
+              "GET /api/v1/users/{user_id}/summaries/data"
             ]
           },
           {
