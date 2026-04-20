@@ -104,7 +104,7 @@ services:
     env_file:
       - /app/ow.env
     environment:
-      SVIX_DB_DSN: postgresql://${OW_DB_USER:-open-wearables}:${OW_DB_PASSWORD}@db:5432/svix
+      SVIX_DB_DSN: postgresql://${OW_DB_USER:-open-wearables}:${OW_DB_PASSWORD_ENCODED:-${OW_DB_PASSWORD}}@db:5432/svix
       SVIX_QUEUE_TYPE: redis
       SVIX_REDIS_DSN: redis://redis:6379/1
       SVIX_CACHE_TYPE: redis

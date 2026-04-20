@@ -155,6 +155,12 @@ jobs:
           BACKEND_IMAGE: ${{ needs.build.outputs.backend_image }}
           FRONTEND_IMAGE: ${{ needs.build.outputs.frontend_image }}
         run: |
+          # URL-encode the password for the svix DSN (svix parses a full
+          # postgres:// URL, so any /, +, @, = in a base64-style secret
+          # would break InvalidPort/InvalidHost parsing). Backend
+          # connects via discrete DB_PASSWORD env and doesn't need this.
+          OW_DB_PASSWORD_ENCODED=$(python3 -c 'import os,urllib.parse;print(urllib.parse.quote(os.environ["OW_DB_PASSWORD"],safe=""))')
+
           cat > .env.deploy <<EOF
           ENVIRONMENT=staging
           OW_PUBLIC_HOST=${OW_PUBLIC_HOST}
@@ -163,6 +169,7 @@ jobs:
           OW_DB_NAME=open-wearables
           OW_DB_USER=open-wearables
           OW_DB_PASSWORD=${OW_DB_PASSWORD}
+          OW_DB_PASSWORD_ENCODED=${OW_DB_PASSWORD_ENCODED}
           OW_IMAGE_BACKEND=${BACKEND_IMAGE}
           OW_IMAGE_FRONTEND=${FRONTEND_IMAGE}
           EOF
