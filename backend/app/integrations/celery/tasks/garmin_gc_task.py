@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any
 
+from celery import shared_task
+
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     BACKFILL_DATA_TYPES,
@@ -35,7 +37,6 @@ from app.services.providers.garmin.backfill_state import (
     record_timed_out_entry,
 )
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 

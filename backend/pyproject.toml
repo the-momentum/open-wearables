@@ -81,6 +81,9 @@ ignore = [
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
 
+[tool.ruff.lint.isort]
+known-third-party = ["celery"]
+
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]
 

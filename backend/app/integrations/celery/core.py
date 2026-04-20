@@ -2,11 +2,12 @@ import logging
 import sys
 from logging import Formatter, LogRecord, StreamHandler, getLogger
 
-from app.config import settings
-from app.services import raw_payload_storage
 from celery import Celery, signals
 from celery import current_app as current_celery_app
 from celery.schedules import crontab
+
+from app.config import settings
+from app.services import raw_payload_storage
 
 _WEBHOOK_TASK = "emit_webhook_event_task.emit_webhook_event"
 

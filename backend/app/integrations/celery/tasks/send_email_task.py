@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from billiard.einfo import ExceptionInfo
+from celery import Task, shared_task
 
 from app.config import settings
 from app.database import SessionLocal
@@ -11,7 +12,6 @@ from app.schemas.model_crud.user_management import InvitationStatus
 from app.utils.email_client import send_invitation_email
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import Task, shared_task
 
 logger = getLogger(__name__)
 

@@ -4,13 +4,15 @@ from logging import getLogger
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from celery import shared_task
+
 from app.database import SessionLocal
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
+from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 
@@ -42,6 +44,7 @@ def sync_vendor_data(
     factory = ProviderFactory()
     user_connection_repo = UserConnectionRepository()
     trace_id = str(uuid4())[:8]
+    trace_id_var.set(trace_id)
 
     try:
         user_uuid = UUID(user_id)
@@ -52,7 +55,6 @@ def sync_vendor_data(
             f"Invalid user_id format: {user_id}",
             task="sync_vendor_data",
             user_id=user_id,
-            trace_id=trace_id,
         )
         log_and_capture_error(
             e,
@@ -92,7 +94,6 @@ def sync_vendor_data(
                     f"No active connections found for user {user_id}",
                     task="sync_vendor_data",
                     user_id=user_id,
-                    trace_id=trace_id,
                 )
                 result.message = "No active provider connections found"
                 return result.model_dump()
@@ -103,7 +104,6 @@ def sync_vendor_data(
                 f"Found {len(connections)} active connections for user {user_id}",
                 task="sync_vendor_data",
                 user_id=user_id,
-                trace_id=trace_id,
             )
 
             for connection in connections:
@@ -115,7 +115,6 @@ def sync_vendor_data(
                     provider=provider_name,
                     task="sync_vendor_data",
                     user_id=user_id,
-                    trace_id=trace_id,
                 )
 
                 try:
@@ -149,7 +148,6 @@ def sync_vendor_data(
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
-                                trace_id=trace_id,
                             )
                             log_and_capture_error(
                                 e,
@@ -204,7 +202,6 @@ def sync_vendor_data(
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
-                                trace_id=trace_id,
                             )
                         except Exception as e:
                             log_structured(
@@ -214,7 +211,6 @@ def sync_vendor_data(
                                 provider=provider_name,
                                 task="sync_vendor_data",
                                 user_id=user_id,
-                                trace_id=trace_id,
                             )
                             log_and_capture_error(
                                 e,
@@ -240,7 +236,6 @@ def sync_vendor_data(
                         provider=provider_name,
                         task="sync_vendor_data",
                         user_id=user_id,
-                        trace_id=trace_id,
                     )
 
                 except Exception as e:

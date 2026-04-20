@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from logging import getLogger
 from uuid import UUID, uuid4
 
+from celery import shared_task
 from sqlalchemy import text
 
 from app.config import settings
@@ -13,7 +14,6 @@ from app.services.health_score_service import health_score_service
 from app.services.scores.sleep_service import sleep_score_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 
