@@ -50,7 +50,6 @@ def sync_vendor_data(
             logger,
             "error",
             f"Invalid user_id format: {user_id}",
-            provider="sync_vendor_data",
             task="sync_vendor_data",
             user_id=user_id,
             trace_id=trace_id,
@@ -59,12 +58,7 @@ def sync_vendor_data(
             e,
             logger,
             f"Invalid user_id format: {user_id}",
-            extra={
-                "user_id": user_id,
-                "task": "sync_vendor_data",
-                "provider": "sync_vendor_data",
-                "trace_id": trace_id,
-            },
+            extra={"user_id": user_id, "task": "sync_vendor_data", "trace_id": trace_id},
         )
         return SyncVendorDataResult(
             user_id=user_id,
@@ -96,7 +90,6 @@ def sync_vendor_data(
                     logger,
                     "info",
                     f"No active connections found for user {user_id}",
-                    provider="sync_vendor_data",
                     task="sync_vendor_data",
                     user_id=user_id,
                     trace_id=trace_id,
@@ -108,7 +101,6 @@ def sync_vendor_data(
                 logger,
                 "info",
                 f"Found {len(connections)} active connections for user {user_id}",
-                provider="sync_vendor_data",
                 task="sync_vendor_data",
                 user_id=user_id,
                 trace_id=trace_id,
