@@ -29,7 +29,9 @@ def upgrade() -> None:
     )
     op.create_foreign_key(None, "health_score", "event_record", ["sleep_record_id"], ["id"], ondelete="CASCADE")
     # ### end Alembic commands ###
-    op.execute("DELETE FROM health_score WHERE provider = 'internal' AND category = 'sleep' AND sleep_record_id IS NULL")
+    op.execute(
+        "DELETE FROM health_score WHERE provider = 'internal' AND category = 'sleep' AND sleep_record_id IS NULL"
+    )
 
 
 def downgrade() -> None:
