@@ -6,4 +6,4 @@ every log_structured call in the same execution context inherits it automaticall
 
 from contextvars import ContextVar
 
-trace_id_var: ContextVar[str] = ContextVar("trace_id", default="")
+trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
