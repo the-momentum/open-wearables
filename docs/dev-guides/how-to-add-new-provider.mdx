@@ -31,7 +31,7 @@ Each provider declares its data delivery modes via `ProviderCapabilities`:
 
 | Capability | Description | Example providers |
 |---|---|---|
-| `rest_pull` | Periodic REST API polling (OAuth) | Garmin, Oura, Whoop, Strava, Suunto |
+| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto |
 | `client_sdk` | Data delivered via mobile SDK client | Apple, Samsung, Google |
 | `file_import` | File-based data import | Apple Health |
 | `webhook_callback` | Provider-initiates async export delivered to our webhook | Garmin backfill |
@@ -651,7 +651,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         For webhook_stream (full-payload): save records directly or enqueue a Celery task.
         For webhook_ping (notify-only): fetch actual data via REST then save.
         """
-        event_type = payload.get("workoutKey") and "WORKOUT_CREATED" or payload.get("event_type")
+        event_type = payload.get("type", "unknown")
         
         # Enqueue async processing so we respond within the provider's timeout window
         # process_push.delay(payload, request_trace_id=...)

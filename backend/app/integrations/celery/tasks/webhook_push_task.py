@@ -36,12 +36,23 @@ def process_webhook_push(
     unexpected infrastructure errors.
     """
     try:
+        factory = ProviderFactory()
+        strategy = factory.get_provider(provider_name)
+        if strategy.webhooks is None:
+            raise ValueError(f"Provider '{provider_name}' has no webhook handler")
         with SessionLocal() as db:
-            factory = ProviderFactory()
-            strategy = factory.get_provider(provider_name)
-            if strategy.webhooks is None:
-                raise ValueError(f"Provider '{provider_name}' has no webhook handler")
             return strategy.webhooks.process_payload(db, payload, request_trace_id)
+    except ValueError as exc:
+        # Configuration error (unknown provider, missing handler) — retrying won't help.
+        log_structured(
+            logger,
+            "error",
+            "Webhook push task aborted — configuration error",
+            provider=provider_name,
+            trace_id=request_trace_id,
+            error=str(exc),
+        )
+        raise
     except Exception as exc:
         log_structured(
             logger,

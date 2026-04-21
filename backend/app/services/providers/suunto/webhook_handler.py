@@ -14,7 +14,6 @@ The endpoint must respond within 2 seconds; ``dispatch()`` stores the raw
 payload and enqueues a Celery task, returning 200 immediately.
 """
 
-import contextlib
 import json
 import logging
 from typing import Any
@@ -65,14 +64,16 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
     def verify_signature(self, request: Request, body: bytes) -> bool:
         secret = settings.suunto_webhook_secret
         if not secret:
+            # suunto_webhook_secret is always derived from secret_key at startup,
+            # so this branch is only reachable in misconfigured test environments.
             log_structured(
                 logger,
                 "warning",
-                "SUUNTO_WEBHOOK_SECRET not configured — skipping signature verification",
+                "SUUNTO_WEBHOOK_SECRET not configured — rejecting webhook",
                 provider="suunto",
-                action="webhook_signature_skip",
+                action="webhook_signature_missing_secret",
             )
-            return True
+            return False
 
         provided = request.headers.get("X-HMAC-SHA256-Signature", "")
         if not provided:
@@ -193,10 +194,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
             )
             result["status"] = "unknown_event_type"
 
+        self.connection_repo.update_last_synced_at(db, connection)
         db.commit()
-
-        with contextlib.suppress(Exception):
-            self.connection_repo.update_last_synced_at(db, connection)
 
         return result
 
@@ -238,11 +237,11 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
                 "Failed to fetch/save Suunto workout",
                 provider="suunto",
                 trace_id=trace_id,
-                workout_key=workout_key,
+                workout_key=str(workout_key),
                 user_id=str(user_id),
                 error=str(exc),
             )
-            return {"status": "error", "workout_key": str(workout_key), "error": str(exc)}
+            raise
 
     def _process_sleep(self, db: DbSession, user_id: Any, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
         """Save inline sleep samples from a SUUNTO_247_SLEEP_CREATED event."""
@@ -282,7 +281,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
                 user_id=str(user_id),
                 error=str(exc),
             )
-            return {"status": "error", "error": str(exc), "total_samples": len(samples)}
+            raise
 
     def _process_recovery(self, db: DbSession, user_id: Any, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
         """Save inline recovery samples from a SUUNTO_247_RECOVERY_CREATED event."""

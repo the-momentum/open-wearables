@@ -51,7 +51,6 @@ class ProviderCapabilities:
     webhook_stream [push full-payload]:
         Provider pushes the complete data payload to our webhook inline.
         Live sync runs exclusively from webhooks;
-        periodic pull is reserved for historical backfill. Garmin, Suunto.
     webhook_ping [notify & pull]:
         Provider sends a lightweight ping to our webhook.
         Actual data must be fetched via REST (``rest_pull`` must be
