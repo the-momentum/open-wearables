@@ -44,4 +44,4 @@ class StravaStrategy(BaseProviderStrategy):
         # Strava REST API is used for historical activity backfills.
         # Strava webhook events contain only the object_id and aspect_type;
         # the full activity must still be fetched via GET /activities/{id}.
-        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+        return ProviderCapabilities(rest_pull=True, webhook_ping=True)

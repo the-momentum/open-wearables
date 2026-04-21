@@ -92,14 +92,14 @@ def create_celery() -> Celery:
             "default": {},
             "sdk_sync": {},
             "garmin_sync": {},
+            "webhook_sync": {},
         },
         task_routes={
             "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
-            "app.integrations.celery.tasks.garmin_webhook_task.process_push": {"queue": "garmin_sync"},
         },
     )
 
-    celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])
+    celery_app.autodiscover_tasks(["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"])
 
     celery_app.conf.beat_schedule = {
         "sync-all-users-periodic": {
@@ -115,7 +115,7 @@ def create_celery() -> Celery:
             "kwargs": {},
         },
         "gc-stuck-garmin-backfills": {
-            "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
+            "task": "app.integrations.celery.tasks.garmin.gc_task.gc_stuck_backfills",
             "schedule": 180.0,  # Every 3 minutes
             "args": (),
             "kwargs": {},

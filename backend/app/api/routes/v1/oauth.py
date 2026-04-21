@@ -100,12 +100,12 @@ def oauth_callback(
     # Controlled by HISTORICAL_SYNC_ON_CONNECT (default: true).
     if settings.historical_sync_on_connect:
         caps = strategy.capabilities
-        if caps.supports_async_export:
+        if caps.webhook_callback:
             # this code is going to be removed later, so leave inner imports heres
             from app.integrations.celery.tasks import start_garmin_full_backfill
 
             start_garmin_full_backfill.delay(str(oauth_state.user_id))
-        elif caps.supports_pull:
+        elif caps.rest_pull:
             from app.integrations.celery.tasks import sync_vendor_data
 
             now = datetime.now(timezone.utc)

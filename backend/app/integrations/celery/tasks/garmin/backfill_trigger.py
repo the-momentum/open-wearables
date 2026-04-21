@@ -47,8 +47,8 @@ logger = getLogger(__name__)
 @shared_task
 def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     """Trigger backfill for a specific data type."""
-    from app.integrations.celery.tasks.garmin_backfill_task import trigger_next_pending_type
-    from app.integrations.celery.tasks.garmin_backfill_timeout import (
+    from app.integrations.celery.tasks.garmin.backfill_task import trigger_next_pending_type
+    from app.integrations.celery.tasks.garmin.backfill_timeout import (
         _classify_chain_stop_error,
         _finalize_chain_stop,
         check_triggered_timeout,

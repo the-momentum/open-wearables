@@ -49,4 +49,4 @@ class OuraStrategy(BaseProviderStrategy):
         # Oura REST API supports historical and recent data polling.
         # Oura webhooks send a lightweight notification (event_type + user_id)
         # when new data is ready; actual data must still be fetched via REST.
-        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+        return ProviderCapabilities(rest_pull=True, webhook_ping=True)

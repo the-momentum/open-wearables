@@ -17,6 +17,15 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
+def _include_in_periodic_pull(caps: Any, is_historical: bool) -> bool:
+    """True if the provider should be included in this REST pull run.
+
+    webhook_stream providers skip periodic pull (live data via webhooks);
+    historical backfill still runs over REST for all rest_pull providers.
+    """
+    return caps.rest_pull and (is_historical or not caps.webhook_stream)
+
+
 @shared_task
 def sync_vendor_data(
     user_id: str,
@@ -85,7 +94,14 @@ def sync_vendor_data(
             # Only sync providers that support REST polling (pull-based).
             # Push-only providers (Garmin webhooks, Apple/Google/Samsung SDK) deliver
             # data via process_payload and should not be polled here.
-            connections = [c for c in connections if factory.get_provider(c.provider).capabilities.supports_pull]
+            #
+            # webhook_stream providers (Garmin, Suunto) skip periodic pull for live
+            # sync; historical backfill (is_historical=True) still uses REST.
+            connections = [
+                c
+                for c in connections
+                if _include_in_periodic_pull(factory.get_provider(c.provider).capabilities, is_historical)
+            ]
 
             if not connections:
                 log_structured(

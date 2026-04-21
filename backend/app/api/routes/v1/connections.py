@@ -18,7 +18,10 @@ def _with_capabilities(conn: object) -> UserConnectionWithCapabilities:
     with contextlib.suppress(ValueError):
         caps = factory.get_provider(enriched.provider).capabilities
         enriched.max_historical_days = caps.max_historical_days
-        enriched.supports_pull = caps.supports_pull
+        enriched.rest_pull = caps.rest_pull
+        enriched.webhook_stream = caps.webhook_stream
+        enriched.webhook_ping = caps.webhook_ping
+        enriched.webhook_callback = caps.webhook_callback
     return enriched
 
 

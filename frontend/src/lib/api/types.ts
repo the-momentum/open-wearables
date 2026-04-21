@@ -232,7 +232,10 @@ export interface UserConnection {
   created_at: string;
   updated_at: string;
   max_historical_days?: number | null;
-  supports_pull?: boolean;
+  rest_pull?: boolean;
+  webhook_stream?: boolean;
+  webhook_ping?: boolean;
+  webhook_callback?: boolean;
 }
 
 // ============================================================================

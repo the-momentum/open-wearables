@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from app.integrations.celery.tasks.garmin_backfill_trigger import trigger_backfill_for_type
+from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.services.providers.garmin.backfill_config import (
     ALL_DATA_TYPES,
     BACKFILL_CHUNK_DAYS,
@@ -296,9 +296,9 @@ class TestBackfillTaskStopChain:
     and the backfill service to verify the chain stops on 401/403/412.
     """
 
-    TASK_MODULE = "app.integrations.celery.tasks.garmin_backfill_trigger"
-    ORCHESTRATOR_MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
-    TIMEOUT_MODULE = "app.integrations.celery.tasks.garmin_backfill_timeout"
+    TASK_MODULE = "app.integrations.celery.tasks.garmin.backfill_trigger"
+    ORCHESTRATOR_MODULE = "app.integrations.celery.tasks.garmin.backfill_task"
+    TIMEOUT_MODULE = "app.integrations.celery.tasks.garmin.backfill_timeout"
     BACKFILL_STATE_MODULE = "app.services.providers.garmin.backfill_state"
     USER_ID = "c079cf7e-70b3-4529-a325-401a658f5cba"
 

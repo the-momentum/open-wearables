@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     suunto_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     suunto_subscription_key: SecretStr | None = None
     suunto_default_scope: str = ""
+    suunto_webhook_secret: SecretStr | None = None
+    # Derived from secret_key if not set — configure the same value in Suunto developer portal.
 
     # GARMIN OAUTH SETTINGS
     garmin_client_id: str | None = None
@@ -189,6 +191,12 @@ class Settings(BaseSettings):
     def derive_svix_jwt_secret(self) -> "Settings":
         if self.svix_jwt_secret is None or self.svix_jwt_secret.get_secret_value() == "":
             self.svix_jwt_secret = SecretStr(self.secret_key)
+        return self
+
+    @model_validator(mode="after")
+    def derive_suunto_webhook_secret(self) -> "Settings":
+        if self.suunto_webhook_secret is None or self.suunto_webhook_secret.get_secret_value() == "":
+            self.suunto_webhook_secret = SecretStr(self.secret_key)
         return self
 
     @field_validator("cors_origins", mode="after")

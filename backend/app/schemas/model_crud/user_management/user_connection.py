@@ -65,4 +65,7 @@ class UserConnectionWithCapabilities(UserConnectionRead):
     """
 
     max_historical_days: int | None = None
-    supports_pull: bool = False
+    rest_pull: bool = False
+    webhook_stream: bool = False
+    webhook_ping: bool = False
+    webhook_callback: bool = False

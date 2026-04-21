@@ -10,6 +10,7 @@ from typing import Any
 
 from celery import shared_task
 
+from app.integrations.celery.tasks.garmin.backfill_task import trigger_next_pending_type
 from app.integrations.redis_client import get_redis_client
 from app.services.providers.garmin.backfill_config import (
     DELAY_BETWEEN_TYPES,
@@ -151,8 +152,6 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
             update_window_cell(user_id_str, int(retry_window_str), data_type, "failed")
     else:
         record_timed_out_entry(user_id_str, data_type, get_current_window(user_id_str))
-
-    from app.integrations.celery.tasks.garmin_backfill_task import trigger_next_pending_type
 
     trigger_next_pending_type.apply_async(args=[user_id_str], countdown=DELAY_BETWEEN_TYPES)
 

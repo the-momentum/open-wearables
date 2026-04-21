@@ -28,4 +28,4 @@ class GoogleStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         # Google Health Connect data arrives exclusively via the mobile SDK (no cloud API).
-        return ProviderCapabilities(supports_sdk=True)
+        return ProviderCapabilities(client_sdk=True)

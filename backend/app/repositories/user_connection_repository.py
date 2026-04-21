@@ -102,6 +102,29 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .one_or_none()
         )
 
+    def get_by_provider_username(
+        self,
+        db_session: DbSession,
+        provider: str,
+        provider_username: str,
+    ) -> UserConnection | None:
+        """Get connection by provider and provider's display username.
+
+        Used by Suunto webhooks — the ``username`` field in the payload matches
+        the ``user`` JWT claim stored as ``provider_username``.
+        """
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.provider_username == provider_username,
+                    self.model.status == ConnectionStatus.ACTIVE,
+                ),
+            )
+            .one_or_none()
+        )
+
     def get_by_user_id(
         self,
         db_session: DbSession,

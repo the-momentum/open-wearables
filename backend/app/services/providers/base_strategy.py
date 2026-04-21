@@ -33,43 +33,37 @@ class HistoricalSyncResult:
 class ProviderCapabilities:
     """Fine-grained capability flags for a provider's data delivery model.
 
-    Providers may support multiple modes simultaneously (e.g. Oura supports
-    both REST polling and webhook notifications).
-
     Attributes
     ----------
-    supports_pull:
+    rest_pull:
         Provider exposes a REST API that can be polled for historical or
         recent data (``load_data()`` / ``get_workouts()``).
-    supports_push:
-        Provider can send incoming webhook events to our endpoint. Covers
-        both full-payload webhooks (Garmin) and notification-only webhooks
-        (Oura, Strava, Fitbit, Polar, Suunto).
-    supports_async_export:
-        Provider supports an async export flow: we send a REST request to
-        initiate a data export, and the provider delivers the result to our
-        webhook asynchronously. Currently only Garmin uses this pattern.
-    supports_sdk:
-        Data arrives through our mobile SDK endpoint pushed by the client app
-        (Samsung Health, Google Health Connect).
-    supports_xml_import:
-        Data arrives as an XML file export from the user's device
-        (Apple Health XML). May coexist with ``supports_sdk`` for Apple.
-    webhook_notify_only:
-        When ``True`` the webhook payload contains only a lightweight
-        notification (user_id + event_type) and the actual data must still
-        be fetched via REST (``supports_pull`` should also be ``True``).
-        Oura, Strava, Fitbit, Suunto and Polar follow this pattern.
-        When ``False`` (Garmin) the webhook delivers the full data payload
-        inline.
+    client_sdk:
+        Data arrives via our mobile SDK endpoint (Samsung Health, Google
+        Health Connect, Apple HealthKit).
+    file_import:
+        Data arrives as a file export from the user's device (Apple Health
+        XML). May coexist with ``client_sdk`` for Apple.
+    webhook_callback: [request & push]
+        We initiate a REST request to start a data export; the provider
+        delivers the result to our webhook asynchronously.
+        Used for historical backfill. Currently only Garmin.
+    webhook_stream [push full-payload]:
+        Provider pushes the complete data payload to our webhook inline.
+        Live sync runs exclusively from webhooks;
+        periodic pull is reserved for historical backfill. Garmin, Suunto.
+    webhook_ping [notify & pull]:
+        Provider sends a lightweight ping to our webhook.
+        Actual data must be fetched via REST (``rest_pull`` must be
+        ``True``). Oura, Strava, Fitbit, Polar.
     """
 
-    supports_pull: bool = False
-    supports_push: bool = False
-    supports_async_export: bool = False
-    supports_sdk: bool = False
-    supports_xml_import: bool = False
-    webhook_notify_only: bool = False
+    rest_pull: bool = False
+    client_sdk: bool = False
+    file_import: bool = False
+    webhook_callback: bool = False
+    webhook_stream: bool = False
+    webhook_ping: bool = False
     max_historical_days: int | None = None
     """Hard limit on how many days of history the provider allows. None = no known limit."""
 
@@ -113,9 +107,8 @@ class BaseProviderStrategy(ABC):
             @property
             def capabilities(self) -> ProviderCapabilities:
                 return ProviderCapabilities(
-                    supports_pull=True,
-                    supports_push=True,
-                    webhook_notify_only=True,
+                    rest_pull=True,
+                    webhook_ping=True,
                 )
         """
 
@@ -127,7 +120,7 @@ class BaseProviderStrategy(ABC):
 
         Raises UnsupportedProviderError for providers that don't support historical sync.
         """
-        if not self.capabilities.supports_pull:
+        if not self.capabilities.rest_pull:
             raise UnsupportedProviderError(self.name, "historical sync")
 
         end_date = datetime.now(timezone.utc)

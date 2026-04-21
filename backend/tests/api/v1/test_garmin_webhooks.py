@@ -14,7 +14,7 @@ PUSH_ENDPOINT = "/api/v1/providers/garmin/webhooks"
 LEGACY_PUSH_ENDPOINT = "/api/v1/garmin/webhooks/push"
 LEGACY_PING_ENDPOINT = "/api/v1/garmin/webhooks/ping"
 WEBHOOK_HANDLER = "app.services.providers.garmin.webhook_handler"
-PROCESS_PUSH_TASK = "app.integrations.celery.tasks.garmin_webhook_task.process_push"
+PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 
 class TestGarminWebhookAuth:
@@ -93,9 +93,10 @@ class TestGarminWebhookTaskEnqueue:
             mock_celery.send_task.return_value = MagicMock(id="task-xyz")
             client.post(PUSH_ENDPOINT, headers=headers, json=payload)
 
-        # send_task(_PROCESS_PUSH_TASK, args=[payload, trace_id])
+        # send_task(_PROCESS_PUSH_TASK, args=["garmin", payload, trace_id])
         sent_args = mock_celery.send_task.call_args[1]["args"]
-        assert sent_args[0] == payload
+        assert sent_args[0] == "garmin"
+        assert sent_args[1] == payload
 
 
 class TestGarminWebhookRouting:

@@ -22,20 +22,19 @@ from .emit_webhook_event_task import emit_webhook_event
 from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
 from .finalize_stale_sleep_task import finalize_stale_sleeps
-from .garmin_backfill_task import (
+from .garmin.backfill_task import (
     start_full_backfill as start_garmin_full_backfill,
 )
-from .garmin_backfill_task import (
+from .garmin.backfill_task import (
     trigger_next_pending_type as trigger_garmin_next_pending_type,
 )
-from .garmin_backfill_timeout import (
+from .garmin.backfill_timeout import (
     check_triggered_timeout as check_garmin_triggered_timeout,
 )
-from .garmin_backfill_trigger import (
+from .garmin.backfill_trigger import (
     trigger_backfill_for_type as trigger_garmin_backfill_for_type,
 )
-from .garmin_gc_task import gc_stuck_backfills
-from .garmin_webhook_task import process_push as process_garmin_push
+from .garmin.gc_task import gc_stuck_backfills
 from .periodic_sync_task import sync_all_users
 from .process_aws_upload_task import process_aws_upload
 from .process_sdk_upload_task import process_sdk_upload
@@ -43,6 +42,7 @@ from .process_xml_upload_task import process_xml_upload
 from .seed_data_task import generate_seed_data
 from .send_email_task import send_invitation_email_task
 from .sync_vendor_data_task import sync_vendor_data
+from .webhook_push_task import process_webhook_push
 
 __all__ = [
     # Garmin backfill (30-day webhook-based sync)
@@ -72,7 +72,7 @@ __all__ = [
     "sync_all_users",
     "generate_seed_data",
     "send_invitation_email_task",
-    "process_garmin_push",
+    "process_webhook_push",
     # Outgoing webhooks
     "emit_webhook_event",
 ]

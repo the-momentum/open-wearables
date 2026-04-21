@@ -109,7 +109,7 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
         detail_type: str = "workout",
     ) -> EventRecordDetail:
-        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
+        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
         record = db_session.get(EventRecord, detail.record_id)
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
