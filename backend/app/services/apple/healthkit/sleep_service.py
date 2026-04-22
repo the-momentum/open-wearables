@@ -486,7 +486,7 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     total_sleep_seconds = (
         metrics["sleeping_seconds"] + metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
     )
-    time_in_bed_seconds = metrics["in_bed_seconds"]
+    time_in_bed_seconds = max(metrics["in_bed_seconds"], total_sleep_seconds + metrics["awake_seconds"])
     sleep_efficiency = (
         Decimal(str(total_sleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
     )
