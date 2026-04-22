@@ -343,7 +343,7 @@ User: "Is my sleep trending better this month?"
 
 `detect_seasonality` interprets the autocorrelation coefficient as follows:
 
-| |autocorrelation| | Strength |
+| \|autocorrelation\| | Strength |
 |---|---|
 | ≥ 0.7 | Strong pattern — cycle is clearly present |
 | 0.4 – 0.7 | Moderate pattern |
@@ -566,7 +566,7 @@ Run `uv run pytest tests/agent/ -v` first — it covers all tools, routing logic
   <Accordion title="Callback is never called">
     The Celery worker is probably not running or can't reach the broker. Check:
     ```bash
-    uv run celery -A app.main.celery_app inspect ping
+    uv run celery -A app.main:celery_app inspect ping
     ```
     Also verify `CELERY_BROKER_URL` is reachable from the worker container.
   </Accordion>
@@ -578,7 +578,7 @@ Run `uv run pytest tests/agent/ -v` first — it covers all tools, routing logic
   <Accordion title="Tool calls return 'Error fetching ...'">
     The OW backend is unreachable or the API key is wrong. Verify:
     ```bash
-    curl http://$OW_API_URL/api/v1/users/$SOME_USER_ID \
+    curl $OW_API_URL/api/v1/users/$SOME_USER_ID \
       -H "X-Open-Wearables-API-Key: $OW_API_KEY"
     ```
     `OW_API_URL` inside Docker Compose should be `http://app:8000`, not `http://localhost:8000`.

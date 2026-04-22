@@ -57,6 +57,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - ENVIRONMENT=production
     depends_on:
       redis:
         condition: service_started
@@ -76,6 +77,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - ENVIRONMENT=production
     depends_on:
       redis:
         condition: service_started
@@ -95,6 +97,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - ENVIRONMENT=production
     ports:
       - 5555:5555
     depends_on:

@@ -86,7 +86,7 @@ This starts:
 
 ```bash
 curl http://localhost:8001/health/db
-# → {"status":"ok"}
+# → {"status":"healthy","pool":{"max_pool_size":"5","connections_ready_for_reuse":"1","active_connections":"0","overflow":"0"}}
 ```
 
 API docs: http://localhost:8001/docs
