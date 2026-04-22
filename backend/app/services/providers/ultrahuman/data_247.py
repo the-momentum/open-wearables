@@ -434,7 +434,6 @@ class Ultrahuman247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-        is_first_sync: bool = False,
     ) -> dict[str, Any]:
         """Load and save all 247 data types by fetching daily metrics.
 

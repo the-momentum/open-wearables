@@ -164,11 +164,10 @@ def sync_vendor_data(
 
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
-                        # Determine if this is first sync (for API compatibility with providers)
-                        is_first_sync = connection.last_synced_at is None
-
-                        # effective_start is always set above; parse into datetime objects
+                        # On first sync pass None so providers use their own default lookback.
+                        # On subsequent syncs use last_synced_at (or explicit start_date arg).
                         start_dt = datetime.fromisoformat(effective_start.replace("Z", "+00:00"))
+
                         end_dt = datetime.now(timezone.utc)
                         if end_date:
                             with suppress(ValueError):
@@ -184,7 +183,6 @@ def sync_vendor_data(
                                     user_uuid,
                                     start_time=start_dt,
                                     end_time=end_dt,
-                                    is_first_sync=is_first_sync,
                                 )
                                 provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
                             else:

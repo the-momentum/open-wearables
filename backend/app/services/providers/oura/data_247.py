@@ -1108,7 +1108,6 @@ class Oura247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-        is_first_sync: bool = False,
     ) -> dict[str, int]:
         """Load and save all 247 data types.
 
@@ -1117,7 +1116,6 @@ class Oura247Data(Base247DataTemplate):
             user_id: User UUID
             start_time: Start of date range (defaults to 30 days ago)
             end_time: End of date range (defaults to now)
-            is_first_sync: Whether this is the first sync (unused, for API compatibility)
         """
         if isinstance(start_time, str):
             start_time = datetime.fromisoformat(start_time.replace("Z", "+00:00"))

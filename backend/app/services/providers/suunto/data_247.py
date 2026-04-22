@@ -671,7 +671,6 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-        is_first_sync: bool = False,
     ) -> dict[str, int]:
         """Load all 247 data types and save to database."""
         now = datetime.now(timezone.utc)

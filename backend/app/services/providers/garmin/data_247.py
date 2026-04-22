@@ -1851,7 +1851,6 @@ class Garmin247Data(Base247DataTemplate):
         user_id: UUID,
         start_time: datetime | str | None = None,
         end_time: datetime | str | None = None,
-        is_first_sync: bool = False,
     ) -> dict[str, Any]:
         """No-op: Garmin 247 data arrives via webhooks.
 
@@ -1863,7 +1862,6 @@ class Garmin247Data(Base247DataTemplate):
             user_id: User ID
             start_time: Unused (kept for interface compatibility)
             end_time: Unused (kept for interface compatibility)
-            is_first_sync: Unused (kept for interface compatibility)
 
         Returns:
             Dict indicating data arrives via webhooks
