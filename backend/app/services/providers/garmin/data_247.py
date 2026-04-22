@@ -331,12 +331,13 @@ class Garmin247Data(Base247DataTemplate):
 
         stages = normalized_sleep.get("stages", {})
         asleep_seconds = stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+        time_in_bed_seconds = normalized_sleep.get("duration_seconds") or 0
+        efficiency_score = Decimal(str(asleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
             sleep_total_duration_minutes=asleep_seconds // 60,
-            sleep_efficiency_score=Decimal(str(normalized_sleep.get("sleep_score", 0)))
-            if normalized_sleep.get("sleep_score")
-            else None,
+            sleep_efficiency_score=efficiency_score,
             sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
