@@ -337,6 +337,7 @@ class Garmin247Data(Base247DataTemplate):
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
             sleep_total_duration_minutes=asleep_seconds // 60,
+            sleep_time_in_bed_minutes=time_in_bed_seconds // 60,
             sleep_efficiency_score=efficiency_score,
             sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
