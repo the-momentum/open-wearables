@@ -7,7 +7,9 @@ from uuid import UUID, uuid4
 from celery import shared_task
 
 from app.database import SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.services.providers.factory import ProviderFactory
 from app.utils.context import trace_id_var
@@ -17,13 +19,17 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
-def _include_in_periodic_pull(caps: Any, is_historical: bool) -> bool:
+def _include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
     """True if the provider should be included in this REST pull run.
 
-    webhook_stream providers skip periodic pull (live data via webhooks);
-    historical backfill still runs over REST for all rest_pull providers.
+    Historical backfill always uses REST for all rest_pull providers.
+    For live sync, only providers explicitly in pull mode are polled periodically.
     """
-    return caps.rest_pull and (is_historical or not caps.webhook_stream)
+    if not caps.rest_pull:
+        return False
+    if is_historical:
+        return True
+    return live_sync_mode == LiveSyncMode.PULL
 
 
 @shared_task
@@ -52,6 +58,7 @@ def sync_vendor_data(
     """
     factory = ProviderFactory()
     user_connection_repo = UserConnectionRepository()
+    provider_settings_repo = ProviderSettingsRepository()
     trace_id = str(uuid4())[:8]
     trace_id_var.set(trace_id)
 
@@ -91,16 +98,22 @@ def sync_vendor_data(
             if providers:
                 connections = [c for c in connections if c.provider in providers]
 
-            # Only sync providers that support REST polling (pull-based).
-            # Push-only providers (Garmin webhooks, Apple/Google/Samsung SDK) deliver
-            # data via process_payload and should not be polled here.
-            #
-            # webhook_stream providers (Garmin, Suunto) skip periodic pull for live
-            # sync; historical backfill (is_historical=True) still uses REST.
+            # Load provider settings once (live_sync_mode per provider).
+            provider_settings = provider_settings_repo.get_all(db)
+
+            # Only sync providers in pull mode. Push-only providers (Garmin, Apple SDK)
+            # deliver data via webhooks/SDK and must not be polled here.
+            # Historical backfill always uses REST regardless of live_sync_mode.
             connections = [
                 c
                 for c in connections
-                if _include_in_periodic_pull(factory.get_provider(c.provider).capabilities, is_historical)
+                if _include_in_periodic_pull(
+                    factory.get_provider(c.provider).capabilities,
+                    provider_settings[c.provider].live_sync_mode
+                    if c.provider in provider_settings
+                    else LiveSyncMode.PULL,
+                    is_historical,
+                )
             ]
 
             if not connections:

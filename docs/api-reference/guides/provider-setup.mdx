@@ -231,7 +231,9 @@ curl -X GET "http://localhost:8000/api/v1/oauth/providers?enabled_only=true" \
     "name": "Garmin",
     "has_cloud_api": true,
     "is_enabled": true,
-    "icon_url": "/static/provider-icons/garmin.svg"
+    "icon_url": "/static/provider-icons/garmin.svg",
+    "live_sync_mode": "webhook",
+    "live_sync_configurable": false
   }
 ]
 ```

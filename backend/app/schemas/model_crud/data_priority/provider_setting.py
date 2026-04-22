@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.schemas.auth import LiveSyncMode
+
 
 class ProviderSettingRead(BaseModel):
     """Provider setting with metadata."""
@@ -15,16 +17,25 @@ class ProviderSettingRead(BaseModel):
             " Resolve against the API base URL."
         ),
     )
+    live_sync_mode: LiveSyncMode | None = Field(
+        None,
+        description="Current live sync mode ('pull' or 'webhook'). Null for SDK-only providers.",
+    )
+    live_sync_configurable: bool = Field(
+        False,
+        description="Whether the admin can switch live_sync_mode for this provider.",
+    )
 
 
 class ProviderSettingUpdate(BaseModel):
-    """Schema for updating provider setting."""
+    """Schema for updating a single provider setting."""
 
-    is_enabled: bool
+    is_enabled: bool | None = None
+    live_sync_mode: LiveSyncMode | None = None
 
 
 class BulkProviderSettingsUpdate(BaseModel):
-    """Schema for bulk updating provider settings."""
+    """Schema for bulk updating provider enabled/disabled state."""
 
     providers: dict[str, bool] = Field(
         ...,

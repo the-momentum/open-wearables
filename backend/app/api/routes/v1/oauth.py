@@ -175,19 +175,17 @@ def get_providers(
 
 
 @router.put("/providers/{provider}", response_model=ProviderSettingRead, tags=["Internal: Providers"])
-def update_provider_status(
+def update_provider_setting(
     provider: str,
     update: ProviderSettingUpdate,
     db: DbSession,
     _developer: DeveloperDep,
 ):
-    """
-    Update single provider enabled status.
-    """
+    """Update is_enabled and/or live_sync_mode for a single provider."""
     try:
-        return settings_service.update_provider_status(db, provider, update)
+        return settings_service.update_provider_setting(db, provider, update)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.put("/providers", response_model=list[ProviderSettingRead], tags=["Internal: Providers"])

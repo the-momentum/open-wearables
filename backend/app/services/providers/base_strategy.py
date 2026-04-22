@@ -156,6 +156,16 @@ class BaseProviderStrategy(ABC):
         return self.oauth is not None
 
     @property
+    def live_sync_configurable(self) -> bool:
+        """True when the admin can choose between pull and webhook live sync.
+
+        Requires rest_pull (periodic fallback exists) plus at least one
+        webhook delivery mode (webhook_stream or webhook_ping).
+        """
+        caps = self.capabilities
+        return caps.rest_pull and (caps.webhook_stream or caps.webhook_ping)
+
+    @property
     def icon_url(self) -> str:
         """Returns the URL path to the provider's icon."""
         return f"/static/provider-icons/{self.name}.svg"

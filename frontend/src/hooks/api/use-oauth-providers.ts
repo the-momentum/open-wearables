@@ -16,7 +16,7 @@ export function useOAuthProviders(
   });
 }
 
-// Update OAuth providers
+// Update OAuth providers (bulk is_enabled)
 export function useUpdateOAuthProviders() {
   const queryClient = useQueryClient();
 
@@ -31,6 +31,24 @@ export function useUpdateOAuthProviders() {
     },
     onError: (error) => {
       toast.error(`Failed to update providers: ${getErrorMessage(error)}`);
+    },
+  });
+}
+
+// Update live_sync_mode for a single provider (immediate, no save button)
+export function useUpdateProviderLiveSyncMode(provider: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (live_sync_mode: 'pull' | 'webhook') =>
+      oauthService.updateProviderSetting(provider, { live_sync_mode }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.oauthProviders.all,
+      });
+    },
+    onError: (error) => {
+      toast.error(`Failed to update sync mode: ${getErrorMessage(error)}`);
     },
   });
 }

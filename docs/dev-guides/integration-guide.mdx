@@ -352,14 +352,18 @@ async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> l
     "name": "Garmin",
     "has_cloud_api": true,
     "is_enabled": true,
-    "icon_url": "/static/provider-icons/garmin.svg"
+    "icon_url": "/static/provider-icons/garmin.svg",
+    "live_sync_mode": "webhook",
+    "live_sync_configurable": false
   },
   {
     "provider": "polar",
     "name": "Polar",
     "has_cloud_api": true,
     "is_enabled": true,
-    "icon_url": "/static/provider-icons/polar.svg"
+    "icon_url": "/static/provider-icons/polar.svg",
+    "live_sync_mode": "pull",
+    "live_sync_configurable": false
   }
 ]
 ```

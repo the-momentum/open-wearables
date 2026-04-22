@@ -4,6 +4,9 @@ from .authentication_method import (
 from .connection_status import (
     ConnectionStatus,
 )
+from .live_sync_mode import (
+    LiveSyncMode,
+)
 from .sdk_auth import (
     SDKAuthContext,
     SDKTokenRequest,
@@ -24,6 +27,8 @@ __all__ = [
     "TokenType",
     # Connection status
     "ConnectionStatus",
+    # Live sync mode
+    "LiveSyncMode",
     # Authentication method
     "AuthenticationMethod",
 ]
