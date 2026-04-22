@@ -1,6 +1,7 @@
 import contextlib
 import json
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from logging import getLogger
 from uuid import UUID, uuid4
 
@@ -486,7 +487,9 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         metrics["sleeping_seconds"] + metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
     )
     time_in_bed_seconds = metrics["in_bed_seconds"]
-    sleep_efficiency = (total_sleep_seconds / time_in_bed_seconds) * 100 if time_in_bed_seconds > 0 else None
+    sleep_efficiency = (
+        Decimal(str(total_sleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+    )
 
     sleep_record = EventRecordCreate(
         id=uuid4(),
