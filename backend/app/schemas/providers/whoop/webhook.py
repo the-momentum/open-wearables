@@ -4,6 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
+
 class WhoopWebhookNotificationType(StrEnum):
     WORKOUT_UPDATED = "workout.updated"
     WORKOUT_DELETED = "workout.deleted"
@@ -19,6 +20,7 @@ class WhoopWebhookNotificationType(StrEnum):
     @property
     def is_update_type(self) -> bool:
         return self.value.endswith(".updated")
+
 
 class WhoopWebhookNotification(BaseModel):
     """Webhook notification payload from Whoop.

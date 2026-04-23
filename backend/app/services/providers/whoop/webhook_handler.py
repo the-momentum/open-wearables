@@ -10,6 +10,10 @@ Signature scheme
   Encoding : base64
   Headers  : X-WHOOP-Signature, X-WHOOP-Signature-Timestamp
 
+The endpoint must respond quickly; ``dispatch()`` stores the raw payload and
+enqueues a Celery task, returning 200 immediately. ``process_payload()`` does
+the actual API fetch and DB write, called by the task.
+
 Supported event types
 ---------------------
   workout.updated / workout.deleted
@@ -23,9 +27,11 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from celery import current_app as celery_app
 from fastapi import HTTPException, Request
 
 from app.config import settings
@@ -35,7 +41,12 @@ from app.schemas.providers.whoop import WhoopWebhookNotification, WhoopWebhookNo
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.workouts import WhoopWorkouts
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
+
+logger = logging.getLogger(__name__)
+
+_PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 
 class WhoopWebhookHandler(BaseWebhookHandler):
@@ -56,7 +67,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         secret_setting = settings.whoop_webhook_client_secret
         if not secret_setting:
             log_structured(
-                self.logger,
+                logger,
                 "warning",
                 "whoop_webhook_client_secret not configured; skipping signature verification",
                 provider="whoop",
@@ -69,7 +80,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
 
         if not signature or not timestamp:
             log_structured(
-                self.logger,
+                logger,
                 "warning",
                 "Missing Whoop webhook signature headers",
                 provider="whoop",
@@ -84,58 +95,105 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         expected = base64.b64encode(mac.digest()).decode()
         return hmac.compare_digest(expected, signature)
 
-    def parse_payload(self, body: bytes) -> WhoopWebhookNotification:
+    def parse_payload(self, body: bytes) -> dict[str, Any]:
         try:
-            data = json.loads(body)
-            return WhoopWebhookNotification(**data)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid Whoop webhook payload: {exc}") from exc
+            return json.loads(body)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    def dispatch(self, db: DbSession, payload: WhoopWebhookNotification) -> dict[str, Any]:
-        connection = self.connection_repo.get_by_provider_user_id(db, "whoop", str(payload.user_id))
-        if not connection:
-            log_structured(
-                self.logger,
-                "warning",
-                "No connection found for Whoop user",
-                action="whoop_webhook_user_not_found",
-                whoop_user_id=payload.user_id,
-                event_type=payload.type,
-            )
-            return {"status": "ignored", "reason": "user_not_connected"}
-
-        internal_user_id: UUID = connection.user_id
-        resource_id = str(payload.id)
+    def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
+        """Store the raw payload and enqueue async processing. Returns immediately."""
+        request_trace_id = str(uuid4())[:8]
+        event_type = payload.get("type", "unknown")
+        whoop_user_id = payload.get("user_id", "unknown")
 
         log_structured(
-            self.logger,
+            logger,
             "info",
-            "Processing Whoop webhook notification",
-            action="whoop_webhook_processing",
-            user_id=str(internal_user_id),
-            whoop_user_id=payload.user_id,
-            event_type=payload.type,
-            resource_id=resource_id,
-            trace_id=payload.trace_id,
+            "Received Whoop webhook",
+            provider="whoop",
+            trace_id=request_trace_id,
+            event_type=event_type,
+            whoop_user_id=whoop_user_id,
         )
 
-        if payload.type.is_delete_type:
-            return self._handle_deleted(db, payload.type, internal_user_id, resource_id)
-        elif payload.type.is_update_type:
-            return self._handle_updated(db, payload.type, internal_user_id, resource_id)
-        else:
-            log_structured(
-                self.logger,
-                "info",
-                "Unhandled Whoop webhook event type",
-                action="whoop_webhook_unhandled",
-                event_type=payload.type,
-                user_id=str(internal_user_id),
-            )
-            return {"status": "ignored", "reason": f"unhandled_event_type: {payload.type}"}
+        store_raw_payload(source="webhook", provider="whoop", payload=payload, trace_id=request_trace_id)
+
+        task = celery_app.send_task(_PROCESS_PUSH_TASK, args=["whoop", payload, request_trace_id], queue="webhook_sync")
+        log_structured(
+            logger,
+            "info",
+            "Enqueued Whoop webhook processing task",
+            provider="whoop",
+            trace_id=request_trace_id,
+            task_id=getattr(task, "id", None),
+        )
+
+        return {"status": "accepted"}
+
+    def supported_event_types(self) -> list[str]:
+        return list(WhoopWebhookNotificationType)
 
     # ------------------------------------------------------------------
-    # Private dispatch helpers
+    # Async processing (called by Celery task)
+    # ------------------------------------------------------------------
+
+    def process_payload(self, db: DbSession, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
+        """Process a Whoop notify-only payload synchronously.
+
+        Called by the ``process_webhook_push`` Celery task with its own DB session.
+        """
+        try:
+            notification = WhoopWebhookNotification(**payload)
+        except Exception as exc:
+            return {"status": "error", "error": f"Invalid payload: {exc}"}
+
+        connection = self.connection_repo.get_by_provider_user_id(db, "whoop", str(notification.user_id))
+        if not connection:
+            log_structured(
+                logger,
+                "warning",
+                "No connection found for Whoop user",
+                provider="whoop",
+                trace_id=trace_id,
+                whoop_user_id=notification.user_id,
+                event_type=notification.type,
+            )
+            return {"status": "user_not_found", "whoop_user_id": notification.user_id, "event_type": notification.type}
+
+        user_id: UUID = connection.user_id
+        resource_id = str(notification.id)
+
+        log_structured(
+            logger,
+            "info",
+            "Processing Whoop webhook notification",
+            provider="whoop",
+            trace_id=trace_id,
+            user_id=str(user_id),
+            whoop_user_id=notification.user_id,
+            event_type=notification.type,
+            resource_id=resource_id,
+        )
+
+        if notification.type.is_delete_type:
+            return self._handle_deleted(db, notification.type, user_id, resource_id)
+        if notification.type.is_update_type:
+            return self._handle_updated(db, notification.type, user_id, resource_id)
+
+        log_structured(
+            logger,
+            "info",
+            "Unhandled Whoop webhook event type",
+            provider="whoop",
+            trace_id=trace_id,
+            event_type=notification.type,
+            user_id=str(user_id),
+        )
+        return {"status": "ignored", "reason": f"unhandled_event_type: {notification.type}"}
+
+    # ------------------------------------------------------------------
+    # Per-event-type handlers
     # ------------------------------------------------------------------
 
     def _handle_updated(
@@ -154,20 +212,13 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             case WhoopWebhookNotificationType.RECOVERY_UPDATED:
                 count = self.data_247.load_single_recovery(db, user_id, resource_id)
             case _:
-                log_structured(
-                    self.logger,
-                    "info",
-                    "Unhandled Whoop event type",
-                    action="whoop_webhook_unhandled",
-                    event_type=event_type,
-                    user_id=str(user_id),
-                )
                 return {"status": "ignored", "reason": f"unhandled_event_type: {event_type}"}
 
         log_structured(
-            self.logger,
+            logger,
             "info",
             "Whoop webhook notification processed",
+            provider="whoop",
             action="whoop_webhook_complete",
             user_id=str(user_id),
             event_type=event_type,
@@ -182,30 +233,30 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         user_id: UUID,
         resource_id: str,
     ) -> dict[str, Any]:
-        """Find the EventRecord by external_id and delete it.
+        """Delete the EventRecord matching external_id.
 
-        Recovery records are stored as DataPointSeries (no external_id index),
-        so recovery.deleted is logged but not actioned.
+        Recovery is stored as DataPointSeries (no external_id index), so
+        recovery.deleted is logged but not actioned.
         """
         if event_type == WhoopWebhookNotificationType.RECOVERY_DELETED:
             log_structured(
-                self.logger,
+                logger,
                 "info",
                 "Ignoring recovery.deleted (recovery stored as time-series, no external_id index)",
+                provider="whoop",
                 action="whoop_webhook_recovery_delete_skipped",
                 user_id=str(user_id),
                 resource_id=resource_id,
             )
             return {"status": "ignored", "reason": "recovery_delete_not_supported"}
 
-        deleted = self.data_247.event_record_repo.delete_by_external_id(
-            db, user_id, resource_id, source="whoop"
-        )
+        deleted = self.data_247.event_record_repo.delete_by_external_id(db, user_id, resource_id, source="whoop")
         if not deleted:
             log_structured(
-                self.logger,
+                logger,
                 "info",
                 "No EventRecord found for deleted Whoop resource",
+                provider="whoop",
                 action="whoop_webhook_delete_not_found",
                 event_type=event_type,
                 user_id=str(user_id),
@@ -214,9 +265,10 @@ class WhoopWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "record_not_found"}
 
         log_structured(
-            self.logger,
+            logger,
             "info",
             "Deleted EventRecord for Whoop resource",
+            provider="whoop",
             action="whoop_webhook_deleted",
             event_type=event_type,
             user_id=str(user_id),
