@@ -65,14 +65,14 @@ class WhoopWebhookHandler(BaseWebhookHandler):
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Verify X-WHOOP-Signature using HMAC-SHA256 + base64."""
-        secret_setting = settings.whoop_webhook_client_secret
+        secret_setting = settings.whoop_client_secret
         if not secret_setting:
             log_structured(
                 logger,
                 "error",
-                "whoop_webhook_client_secret not configured; rejecting webhook",
+                "WHOOP_CLIENT_SECRET not configured; rejecting webhook",
                 provider="whoop",
-                action="webhook_signature_skipped",
+                action="webhook_signature_missing_secret",
             )
             return False
 

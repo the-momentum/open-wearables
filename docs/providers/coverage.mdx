@@ -328,9 +328,9 @@ Key differences and limitations to be aware of when working with each provider:
 </Accordion>
 
 <Accordion title="Whoop">
-  **Integration Method:** OAuth 2.0 (pull-based polling)
+  **Integration Method:** OAuth 2.0 (pull + webhook)
 
-  - Data synced via periodic polling (default: every hour); Whoop supports webhooks but handler not yet implemented
+  - Data synced via periodic polling (default: every hour) and real-time webhook notifications for `workout`, `sleep`, and `recovery` events
   - Full workout support with 145+ workout type mappings to unified taxonomy
   - Workout metrics include: avg/max heart rate, calories, distance, elevation gain, moving time
   - Continuous heart rate data is **not available** via API (only during workouts)

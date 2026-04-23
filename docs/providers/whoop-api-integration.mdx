@@ -1,6 +1,6 @@
 ---
 title: "Whoop API Integration"
-description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements. Requires an active Whoop membership."
+description: "Connect Whoop via OAuth 2.0. Syncs workouts, sleep with stages, recovery scores, HRV, SpO2, and body measurements in real time via webhooks. Requires an active Whoop membership."
 keywords: ["whoop api", "whoop data integration", "whoop health data", "whoop api open source"]
 "og:title": "Whoop API Integration | Open Wearables"
 "og:description": "Connect Whoop via OAuth 2.0. Syncs workouts, sleep, recovery scores, HRV, and SpO2. Requires Whoop membership."
@@ -34,16 +34,14 @@ Whoop provides access to workout, sleep, recovery, and body measurement data thr
 | Method | Description |
 |--------|-------------|
 | **Polling (pull)** | Open Wearables periodically fetches workout, sleep, recovery, and body measurement data via the Whoop API (default: every hour via Celery Beat) |
-
-<Info>
-**Webhooks:** Whoop supports webhooks for `workout`, `sleep`, and `recovery` events (created, updated, deleted). Open Wearables does not yet implement a Whoop webhook handler — data is currently synced via periodic polling only. Webhook support is planned for a future release.
-</Info>
+| **Webhooks (push)** | Whoop notifies Open Wearables in real time when workout, sleep, or recovery data is created, updated, or deleted. The handler fetches the specific resource by ID and saves it immediately. |
 
 ## What you need by the end
 
 - **App credentials**: Client ID + Client Secret
 - **OAuth scopes** configured
 - **Redirect URI** registered in the Whoop Developer Dashboard
+- **Webhook URL** registered in the Whoop Developer Dashboard (optional, for real-time updates)
 
 ## Prerequisites
 
@@ -142,6 +140,45 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout
     </Note>
   </Step>
 
+  <Step title="Set up webhooks (optional)">
+    Webhooks give you real-time updates instead of waiting for the next polling cycle. When Whoop records a new workout, sleep session, or recovery, it immediately notifies Open Wearables, which fetches and saves the record.
+
+    **1. Register the webhook URL in the Whoop Developer Dashboard:**
+
+    Go to your app in the [Whoop Developer Dashboard](https://dash.whoop.com/), navigate to **Webhooks**, and add your callback URL:
+
+    ```
+    https://your-domain/api/v1/providers/whoop/webhooks
+    ```
+
+    For local development, use a tunnel such as [ngrok](/dev-guides/ngrok-setup):
+
+    ```
+    https://your-ngrok-subdomain.ngrok.io/api/v1/providers/whoop/webhooks
+    ```
+
+    Select **payload version v2** (uses UUID resource IDs).
+
+    **2. Set the webhook secret:**
+
+    Whoop uses your app's **Client Secret** (`WHOOP_CLIENT_SECRET`) to sign webhook requests — no additional secret is needed. Ensure it is set in your `.env`.
+
+    **Supported events:**
+
+    | Event | Action |
+    |-------|--------|
+    | `workout.updated` | Fetches the workout by ID and saves it |
+    | `workout.deleted` | Deletes the workout record by external ID |
+    | `sleep.updated` | Fetches the sleep session by ID and saves it |
+    | `sleep.deleted` | Deletes the sleep record by external ID |
+    | `recovery.updated` | Fetches the recovery record by cycle ID and saves it |
+    | `recovery.deleted` | Logged but not actioned (recovery stored as time-series, no external ID index) |
+
+    <Note>
+    Webhook registration is manual — there is no API to register subscriptions programmatically. All configuration is done through the Developer Dashboard.
+    </Note>
+  </Step>
+
   <Step title="Sync data">
     An initial sync is triggered automatically after a successful OAuth connection. To manually sync or fetch historical data:
 
@@ -206,7 +243,7 @@ Whoop applies two rate limits by default:
 If you need to support more users right now, you can request increased rate limits from Whoop via the [Developer Dashboard](https://dash.whoop.com/).
 
 <Info>
-We're working on optimizing the sync strategy (webhook-based updates instead of periodic polling, smarter pagination) to significantly increase the number of supported users without requiring a rate limit increase from Whoop.
+With webhooks enabled, most data arrives in real time and the polling cycle only acts as a fallback.
 </Info>
 
 ## OAuth Scopes Reference
