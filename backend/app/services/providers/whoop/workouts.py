@@ -129,6 +129,29 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Whoop API."""
         return self._make_api_request(db, user_id, f"/v2/activity/workout/{workout_id}")
 
+    def load_single_workout(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
+        """Fetch a single workout by ID, normalize, and save to database. Returns 1 on success."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        store_raw_payload(
+            source="api_response",
+            provider="whoop",
+            payload=raw,
+            user_id=str(user_id),
+            trace_id=f"/v2/activity/workout/{workout_id}",
+        )
+        if not isinstance(raw, dict) or not raw:
+            return 0
+        workout = WhoopWorkoutJSON(**raw)
+        if workout.score_state != "SCORED" and workout.score is None:
+            return 0
+        record, detail, health_score = self._normalize_workout(workout, user_id)
+        created = event_record_service.create(db, record)
+        detail_for_record = detail.model_copy(update={"record_id": created.id})
+        event_record_service.create_detail(db, detail_for_record)
+        if health_score:
+            health_score_service.create(db, health_score)
+        return 1
+
     def _extract_dates(self, start_timestamp: str, end_timestamp: str) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO 8601 strings."""
         # Parse ISO 8601 strings, handling timezone info

@@ -77,6 +77,55 @@ class EventRecordRepository(
             .one_or_none()
         )
 
+    def get_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> EventRecord | None:
+        """Find a single EventRecord by its provider-assigned external_id."""
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id == external_id)
+        )
+        if source is not None:
+            query = query.filter(DataSource.source == source)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return query.one_or_none()
+
+    def delete_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> int:
+        """Delete EventRecord(s) matching external_id for a user in a single query.
+
+        Returns the number of rows deleted.
+        """
+        source_ids_query = db_session.query(DataSource.id).filter(DataSource.user_id == user_id)
+        if source is not None:
+            source_ids_query = source_ids_query.filter(DataSource.source == source)
+        if provider is not None:
+            source_ids_query = source_ids_query.filter(DataSource.provider == provider)
+
+        deleted = (
+            db_session.query(self.model)
+            .filter(
+                self.model.external_id == external_id,
+                self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
+            )
+            .delete(synchronize_session=False)
+        )
+        db_session.commit()
+        return deleted
+
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         data_source_id, creation = self._build_creation(db_session, creator)
