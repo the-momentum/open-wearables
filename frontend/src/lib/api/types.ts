@@ -238,6 +238,7 @@ export interface UserConnection {
   webhook_stream?: boolean;
   webhook_ping?: boolean;
   webhook_callback?: boolean;
+  live_sync_mode?: 'pull' | 'webhook' | null;
 }
 
 // ============================================================================

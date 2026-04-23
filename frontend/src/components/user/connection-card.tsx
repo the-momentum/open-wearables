@@ -471,7 +471,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  {!connection.webhook_stream && (
+                  {connection.live_sync_mode !== 'webhook' && (
                     <Button
                       variant="outline"
                       size="sm"
