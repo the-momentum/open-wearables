@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import LiveSyncMode
 from tests.factories import ProviderSettingFactory
 
 
@@ -177,3 +178,26 @@ class TestProviderSettingsRepository:
         assert all_settings["garmin"].is_enabled is False
         assert all_settings["strava"].is_enabled is True
         assert all_settings["fitbit"].is_enabled is False
+
+    def test_upsert_persists_live_sync_mode(self, db: Session, provider_repo: ProviderSettingsRepository) -> None:
+        """Test upsert stores live_sync_mode and it survives a cache expiry."""
+        result = provider_repo.upsert(db, provider="strava", is_enabled=True, live_sync_mode=LiveSyncMode.PULL)
+
+        assert result.live_sync_mode == LiveSyncMode.PULL
+
+        db.expire_all()
+        assert provider_repo.get_all(db)["strava"].live_sync_mode == LiveSyncMode.PULL
+
+    def test_ensure_all_providers_exist_backfills_live_sync_mode(
+        self,
+        db: Session,
+        provider_repo: ProviderSettingsRepository,
+    ) -> None:
+        """Test ensure_all_providers_exist backfills NULL live_sync_mode with the provided default."""
+        # Insert a row with NULL live_sync_mode
+        ProviderSettingFactory(provider="strava", is_enabled=True, live_sync_mode=None)
+
+        provider_repo.ensure_all_providers_exist(db, ["strava"], {"strava": LiveSyncMode.PULL})
+
+        db.expire_all()
+        assert provider_repo.get_all(db)["strava"].live_sync_mode == LiveSyncMode.PULL

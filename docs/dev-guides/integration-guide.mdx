@@ -368,6 +368,13 @@ async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> l
 ]
 ```
 
+**Response fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `live_sync_mode` | `"pull"` \| `"webhook"` \| `null` | How the provider delivers live data. `"pull"` = periodic REST polling; `"webhook"` = real-time push. `null` for SDK-only providers (e.g. Apple Health) that have no server-side sync. |
+| `live_sync_configurable` | `boolean` | When `true`, the instance admin can switch `live_sync_mode` between `"pull"` and `"webhook"` via `PUT /api/v1/oauth/providers/{provider}`. This is only possible for providers that support both REST polling **and** a webhook delivery mode (e.g. Suunto). |
+
 <Warning>
 `icon_url` is a **relative path**. To render the provider icon, prepend your API base URL: `{OPEN_WEARABLES_API_URL}{icon_url}`.
 </Warning>

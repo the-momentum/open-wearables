@@ -54,7 +54,11 @@ class ProviderSettingsService:
             update.is_enabled if update.is_enabled is not None else (current.is_enabled if current else True)
         )
 
-        setting = self.repo.upsert(db, provider, new_is_enabled, update.live_sync_mode)
+        effective_live_sync_mode = update.live_sync_mode
+        if effective_live_sync_mode is None and current is None:
+            effective_live_sync_mode = strategy.default_live_sync_mode
+
+        setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode)
         return ProviderSettingRead(
             provider=provider,
             name=strategy.display_name,

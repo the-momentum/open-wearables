@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.auth import LiveSyncMode
 
@@ -32,6 +32,13 @@ class ProviderSettingUpdate(BaseModel):
 
     is_enabled: bool | None = None
     live_sync_mode: LiveSyncMode | None = None
+
+    @field_validator("live_sync_mode", mode="before")
+    @classmethod
+    def reject_null_live_sync_mode(cls, v: object) -> object:
+        if v is None:
+            raise ValueError("live_sync_mode cannot be set to null; omit the field to leave it unchanged")
+        return v
 
 
 class BulkProviderSettingsUpdate(BaseModel):

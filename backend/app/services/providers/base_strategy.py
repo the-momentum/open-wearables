@@ -10,6 +10,7 @@ from app.models import EventRecord, User
 from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.auth import LiveSyncMode
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
@@ -65,6 +66,12 @@ class ProviderCapabilities:
     webhook_ping: bool = False
     max_historical_days: int | None = None
     """Hard limit on how many days of history the provider allows. None = no known limit."""
+
+    def __post_init__(self) -> None:
+        if self.webhook_stream and self.webhook_ping:
+            raise ValueError("webhook_stream and webhook_ping are mutually exclusive")
+        if self.webhook_ping and not self.rest_pull:
+            raise ValueError("webhook_ping requires rest_pull=True (data must be fetched via REST after the ping)")
 
 
 class BaseProviderStrategy(ABC):
@@ -164,6 +171,24 @@ class BaseProviderStrategy(ABC):
         """
         caps = self.capabilities
         return caps.rest_pull and (caps.webhook_stream or caps.webhook_ping)
+
+    @property
+    def default_live_sync_mode(self) -> LiveSyncMode | None:
+        """Derive the default live_sync_mode from this provider's capabilities.
+
+        Rules (in priority order):
+        - rest_pull → PULL (REST polling is the safe default even if webhooks exist)
+        - client_sdk only → None (no server-side sync)
+        - webhook_* only, no rest_pull → WEBHOOK
+        """
+        caps = self.capabilities
+        if caps.rest_pull:
+            return LiveSyncMode.PULL
+        if caps.client_sdk:
+            return None
+        if caps.webhook_callback or caps.webhook_ping or caps.webhook_stream:
+            return LiveSyncMode.WEBHOOK
+        return None
 
     @property
     def icon_url(self) -> str:

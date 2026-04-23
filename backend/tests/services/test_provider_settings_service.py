@@ -11,6 +11,7 @@ Tests cover:
 import pytest
 from sqlalchemy.orm import Session
 
+from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
@@ -315,3 +316,33 @@ class TestProviderSettingsServiceProviderFactory:
         # Act & Assert
         with pytest.raises(ValueError, match="Unknown provider"):
             service.update_provider_setting(db, "nonexistent", update)
+
+
+class TestProviderSettingsServiceLiveSyncMode:
+    """Test live_sync_mode update logic."""
+
+    def test_update_live_sync_mode_configurable_provider(self, db: Session) -> None:
+        """Should update live_sync_mode for a provider where live_sync_configurable is True."""
+        # Suunto: rest_pull=True, webhook_stream=True → live_sync_configurable=True
+        service = ProviderSettingsService()
+
+        update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        result = service.update_provider_setting(db, "suunto", update)
+
+        assert result.live_sync_mode == LiveSyncMode.WEBHOOK
+
+        # Verify persistence
+        providers = service.get_all_providers(db)
+        suunto = next(p for p in providers if p.provider == "suunto")
+        assert suunto.live_sync_mode == LiveSyncMode.WEBHOOK
+
+    def test_update_live_sync_mode_non_configurable_provider_raises(self, db: Session) -> None:
+        """Should raise ValueError when trying to set live_sync_mode on a non-configurable provider."""
+        # Garmin: webhook_stream=True, webhook_callback=True, rest_pull=False → live_sync_configurable=False
+        service = ProviderSettingsService()
+
+        update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        with pytest.raises(ValueError, match="does not support live sync mode configuration"):
+            service.update_provider_setting(db, "garmin", update)

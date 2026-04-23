@@ -66,11 +66,18 @@ export function ProviderItem({
             {provider.live_sync_configurable && (
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-xs text-zinc-500">Live sync</span>
-                <div className="flex items-center rounded-md bg-zinc-800 p-0.5">
+                <div
+                  role="group"
+                  aria-label="Live sync mode"
+                  className="flex items-center rounded-md bg-zinc-800 p-0.5"
+                >
                   {(['pull', 'webhook'] as const).map((mode) => (
                     <button
                       key={mode}
                       type="button"
+                      aria-pressed={
+                        (provider.live_sync_mode ?? 'pull') === mode
+                      }
                       onClick={() => updateLiveSyncMode(mode)}
                       className={cn(
                         'px-2 py-0.5 text-xs rounded transition-colors',

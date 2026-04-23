@@ -42,13 +42,37 @@ export function useUpdateProviderLiveSyncMode(provider: string) {
   return useMutation({
     mutationFn: (live_sync_mode: 'pull' | 'webhook') =>
       oauthService.updateProviderSetting(provider, { live_sync_mode }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
+    onMutate: async (live_sync_mode) => {
+      await queryClient.cancelQueries({
         queryKey: queryKeys.oauthProviders.all,
       });
+      const previousData = queryClient.getQueriesData<
+        import('@/lib/api/types').Provider[]
+      >({
+        queryKey: queryKeys.oauthProviders.all,
+      });
+      queryClient.setQueriesData<import('@/lib/api/types').Provider[]>(
+        { queryKey: queryKeys.oauthProviders.all },
+        (old) =>
+          old?.map((p) =>
+            p.provider === provider ? { ...p, live_sync_mode } : p
+          ) ?? old
+      );
+      return { previousData };
     },
-    onError: (error) => {
+    onError: (error, _vars, context) => {
+      if (context?.previousData) {
+        for (const [queryKey, data] of context.previousData) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
       toast.error(`Failed to update sync mode: ${getErrorMessage(error)}`);
+    },
+    onSuccess: () => {
+      toast.success('Sync mode updated');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.oauthProviders.all });
     },
   });
 }
