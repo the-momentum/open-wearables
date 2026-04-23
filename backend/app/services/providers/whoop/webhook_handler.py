@@ -28,6 +28,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -68,12 +69,12 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         if not secret_setting:
             log_structured(
                 logger,
-                "warning",
-                "whoop_webhook_client_secret not configured; skipping signature verification",
+                "error",
+                "whoop_webhook_client_secret not configured; rejecting webhook",
                 provider="whoop",
                 action="webhook_signature_skipped",
             )
-            return True
+            return False
 
         signature = request.headers.get("X-WHOOP-Signature")
         timestamp = request.headers.get("X-WHOOP-Signature-Timestamp")
@@ -87,6 +88,30 @@ class WhoopWebhookHandler(BaseWebhookHandler):
                 action="webhook_signature_missing",
                 has_signature=bool(signature),
                 has_timestamp=bool(timestamp),
+            )
+            return False
+
+        try:
+            ts_seconds = int(timestamp) / 1000
+        except ValueError:
+            log_structured(
+                logger,
+                "warning",
+                "Unparsable X-WHOOP-Signature-Timestamp",
+                provider="whoop",
+                action="webhook_signature_stale",
+                timestamp=timestamp,
+            )
+            return False
+
+        if abs(time.time() - ts_seconds) > 300:
+            log_structured(
+                logger,
+                "warning",
+                "Stale Whoop webhook timestamp",
+                provider="whoop",
+                action="webhook_signature_stale",
+                timestamp=timestamp,
             )
             return False
 
