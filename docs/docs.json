@@ -226,7 +226,9 @@
             "group": "Events",
             "pages": [
               "GET /api/v1/users/{user_id}/events/workouts",
-              "GET /api/v1/users/{user_id}/events/sleep"
+              "DELETE /api/v1/users/{user_id}/events/workouts/{workout_id}",
+              "GET /api/v1/users/{user_id}/events/sleep",
+              "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}"
             ]
           },
           {
