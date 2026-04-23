@@ -157,7 +157,8 @@ export function BodySection({ userId }: BodySectionProps) {
   const latestData = bodySummary?.latest;
   const bmiCategory = getBmiCategory(slowChangingData?.bmi);
 
-  const hrvValue = averagedData?.avg_hrv_sdnn_ms ?? averagedData?.avg_hrv_rmssd_ms ?? null;
+  const hrvValue =
+    averagedData?.avg_hrv_sdnn_ms ?? averagedData?.avg_hrv_rmssd_ms ?? null;
   const hrvLabel =
     averagedData?.avg_hrv_sdnn_ms != null
       ? 'HRV SDNN (ms)'

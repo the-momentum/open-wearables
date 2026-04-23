@@ -720,8 +720,10 @@ class SummariesService:
 
         resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_sdnn_avg = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
-        hrv_rmssd_avg = hrv_rmssd_data.get("avg") if hrv_rmssd_data  else None
+        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
+        hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
+        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
+        hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
 
         body_averaged = BodyAveraged(
             period_days=average_period_days,
