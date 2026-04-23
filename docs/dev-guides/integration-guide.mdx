@@ -363,7 +363,7 @@ async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> l
     "is_enabled": true,
     "icon_url": "/static/provider-icons/polar.svg",
     "live_sync_mode": "pull",
-    "live_sync_configurable": false
+    "live_sync_configurable": true
   }
 ]
 ```
@@ -378,6 +378,62 @@ async def get_providers(enabled_only: bool = True, cloud_only: bool = True) -> l
 <Warning>
 `icon_url` is a **relative path**. To render the provider icon, prepend your API base URL: `{OPEN_WEARABLES_API_URL}{icon_url}`.
 </Warning>
+
+### Update Provider Setting
+
+For providers where `live_sync_configurable` is `true`, the instance admin can switch the live sync mode between periodic REST polling and real-time webhook delivery.
+
+```
+PUT /api/v1/oauth/providers/{provider}
+```
+
+**Request body** (all fields optional — omit any field to leave it unchanged):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_enabled` | `boolean` | Enable or disable the provider instance-wide. |
+| `live_sync_mode` | `"pull"` \| `"webhook"` | Switch live sync delivery mode. **Do not pass `null`** — omit the field entirely to preserve the current value. |
+
+```bash
+curl -X PUT "http://localhost:8000/api/v1/oauth/providers/suunto" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"live_sync_mode": "webhook"}'
+```
+
+**200 — Success:**
+
+```json
+{
+  "provider": "suunto",
+  "name": "Suunto",
+  "has_cloud_api": true,
+  "is_enabled": true,
+  "icon_url": "/static/provider-icons/suunto.svg",
+  "live_sync_mode": "webhook",
+  "live_sync_configurable": true
+}
+```
+
+**400 — Provider does not support live sync mode configuration:**
+
+Returned when `live_sync_mode` is included in the request body for a provider where `live_sync_configurable` is `false` (e.g. Garmin, which is webhook-only).
+
+```json
+{"detail": "Provider 'garmin' does not support live sync mode configuration"}
+```
+
+**400 — Invalid `live_sync_mode` value:**
+
+Returned when an invalid mode string or an explicit `null` is sent for `live_sync_mode`.
+
+```json
+{"detail": [{"loc": ["body", "live_sync_mode"], "msg": "Input should be 'pull' or 'webhook'"}]}
+```
+
+<Note>
+  Passing `"live_sync_mode": null` in the JSON body is invalid and returns 400. To leave the current mode unchanged, omit the field entirely from the request body.
+</Note>
 
 ### Get Authorization URL
 

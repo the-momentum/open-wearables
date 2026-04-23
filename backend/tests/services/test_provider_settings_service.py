@@ -346,3 +346,13 @@ class TestProviderSettingsServiceLiveSyncMode:
 
         with pytest.raises(ValueError, match="does not support live sync mode configuration"):
             service.update_provider_setting(db, "garmin", update)
+
+    def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:
+        """Should raise ValidationError when live_sync_mode is explicitly set to null.
+
+        Omitting the field is valid (leaves the value unchanged); passing null is not.
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="live_sync_mode cannot be set to null"):
+            ProviderSettingUpdate(live_sync_mode=None)

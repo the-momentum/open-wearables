@@ -186,7 +186,7 @@ class BaseProviderStrategy(ABC):
             return LiveSyncMode.PULL
         if caps.client_sdk:
             return None
-        if caps.webhook_callback or caps.webhook_ping or caps.webhook_stream:
+        if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
 

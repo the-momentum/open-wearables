@@ -24,7 +24,11 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled if setting else True,
             icon_url=strategy.icon_url,
-            live_sync_mode=setting.live_sync_mode if setting else None,
+            live_sync_mode=(
+                setting.live_sync_mode
+                if (setting and setting.live_sync_mode is not None)
+                else strategy.default_live_sync_mode
+            ),
             live_sync_configurable=strategy.live_sync_configurable,
         )
 
@@ -65,7 +69,9 @@ class ProviderSettingsService:
             has_cloud_api=strategy.has_cloud_api,
             is_enabled=setting.is_enabled,
             icon_url=strategy.icon_url,
-            live_sync_mode=setting.live_sync_mode,
+            live_sync_mode=(
+                setting.live_sync_mode if setting.live_sync_mode is not None else strategy.default_live_sync_mode
+            ),
             live_sync_configurable=strategy.live_sync_configurable,
         )
 
