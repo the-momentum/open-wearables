@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   healthService,
   type WorkoutsParams,
@@ -92,6 +92,60 @@ export function useSleepSummaries(userId: string, params: SummaryParams) {
     queryKey: queryKeys.health.sleepSummaries(userId, params),
     queryFn: () => healthService.getSleepSummaries(userId, params),
     enabled: !!userId && !!params.start_date && !!params.end_date,
+  });
+}
+
+/**
+ * Delete a workout event
+ */
+export function useDeleteWorkout(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (workoutId: string) =>
+      healthService.deleteWorkout(userId, workoutId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'workouts', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      toast.success('Workout deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete workout';
+      toast.error(message);
+    },
+  });
+}
+
+/**
+ * Delete a sleep session event
+ */
+export function useDeleteSleepSession(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) =>
+      healthService.deleteSleepSession(userId, sessionId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'sleepSessions', userId],
+      });
+      qc.invalidateQueries({ queryKey: queryKeys.health.dataSummary(userId) });
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'sleepSummaries', userId],
+      });
+      qc.invalidateQueries({
+        queryKey: [...queryKeys.health.all, 'healthScores', userId],
+      });
+      toast.success('Sleep session deleted');
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Failed to delete sleep session';
+      toast.error(message);
+    },
   });
 }
 

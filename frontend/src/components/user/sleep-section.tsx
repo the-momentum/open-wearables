@@ -16,11 +16,13 @@ import {
   BedDouble,
   ChevronDown,
   ChevronUp,
+  Trash2,
 } from 'lucide-react';
 import {
   useSleepSessions,
   useSleepSummaries,
   useTimeSeries,
+  useDeleteSleepSession,
 } from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDateRange, useAllTimeRange } from '@/hooks/use-date-range';
@@ -61,6 +63,7 @@ import type {
   SleepStagesSummary,
   SleepSummary,
 } from '@/lib/api/types';
+import { EventDeleteDialog } from '@/components/common/event-delete-dialog';
 
 interface SleepSectionProps {
   userId: string;
@@ -170,6 +173,8 @@ function SleepSessionRow({
   userId: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const deleteSleep = useDeleteSleepSession(userId);
 
   // Fetch heart rate time series data when expanded
   const { data: hrData, isLoading: hrLoading } = useTimeSeries(userId, {
@@ -407,8 +412,32 @@ function SleepSessionRow({
               </div>
             </div>
           )}
+
+          {/* Delete button */}
+          <div className="flex justify-end pt-2 border-t border-zinc-800/50">
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete sleep session
+            </button>
+          </div>
         </div>
       )}
+
+      <EventDeleteDialog
+        open={showDelete}
+        title="Delete sleep session?"
+        description="This sleep session and all associated data (stages, scores) will be permanently removed. This cannot be undone."
+        isPending={deleteSleep.isPending}
+        onClose={() => setShowDelete(false)}
+        onConfirm={() =>
+          deleteSleep.mutate(session.id, {
+            onSuccess: () => setShowDelete(false),
+          })
+        }
+      />
     </div>
   );
 }

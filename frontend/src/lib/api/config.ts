@@ -23,6 +23,8 @@ export const API_ENDPOINTS = {
     `/api/v1/users/${userId}/connections/${provider}`,
   providerSetting: (provider: string) => `/api/v1/oauth/providers/${provider}`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
+  userWorkoutDetail: (userId: string, workoutId: string) =>
+    `/api/v1/users/${userId}/events/workouts/${workoutId}`,
   userAppleXmlImport: (userId: string) =>
     `/api/v1/users/${userId}/import/apple/xml/direct`,
   userAppleXmlPresignedUrl: (userId: string) =>
@@ -87,6 +89,8 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+  userSleepSessionDetail: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/events/sleep/${sessionId}`,
 
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,

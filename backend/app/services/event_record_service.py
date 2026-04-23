@@ -779,5 +779,22 @@ class EventRecordService(
             ),
         )
 
+    def delete_event_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record_id: UUID,
+        category: str,
+    ) -> bool:
+        """Delete an event record by id and category. Returns False if not found or not owned by user."""
+        record = self.crud.get_record_with_details(db_session, record_id, category)
+        if not record:
+            return False
+        data_source = self.data_source_repo.get(db_session, record.data_source_id)
+        if not data_source or data_source.user_id != user_id:
+            return False
+        self.crud.delete(db_session, record)
+        return True
+
 
 event_record_service = EventRecordService(log=getLogger(__name__))

@@ -268,4 +268,22 @@ export const healthService = {
       API_ENDPOINTS.userDataSummary(userId)
     );
   },
+
+  /**
+   * Delete a workout event
+   */
+  async deleteWorkout(userId: string, workoutId: string): Promise<void> {
+    return apiClient.delete<void>(
+      API_ENDPOINTS.userWorkoutDetail(userId, workoutId)
+    );
+  },
+
+  /**
+   * Delete a sleep session event
+   */
+  async deleteSleepSession(userId: string, sessionId: string): Promise<void> {
+    return apiClient.delete<void>(
+      API_ENDPOINTS.userSleepSessionDetail(userId, sessionId)
+    );
+  },
 };
