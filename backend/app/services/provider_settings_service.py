@@ -59,7 +59,7 @@ class ProviderSettingsService:
         )
 
         effective_live_sync_mode = update.live_sync_mode
-        if effective_live_sync_mode is None and current is None:
+        if effective_live_sync_mode is None and (current is None or current.live_sync_mode is None):
             effective_live_sync_mode = strategy.default_live_sync_mode
 
         setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode)
