@@ -1,7 +1,7 @@
 """health_score value precision increase to NUMERIC(6,3)
 
 Revision ID: e4f7a2c8b390
-Revises: cdac07b15b04
+Revises: 1f0831f5831e
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "e4f7a2c8b390"
-down_revision: Union[str, None] = "cdac07b15b04"
+down_revision: Union[str, None] = "1f0831f5831e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
