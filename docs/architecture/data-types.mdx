@@ -158,6 +158,27 @@ The `types` parameter in the timeseries endpoint accepts the following values:
 | `garmin_fitness_age` | years | Fitness age estimate |
 | `garmin_body_battery` | % | Body battery (0-100) |
 
+### Nutrition
+
+Dietary samples aggregated per day (SUM). Currently populated from Apple HealthKit
+(`HKQuantityTypeIdentifierDietary*`). Android Health Connect support is deferred
+until the SDK surfaces per-nutrient identifiers.
+
+| Type | Unit | Description |
+|------|------|-------------|
+| `dietary_energy` | kcal | Calories consumed |
+| `dietary_protein` | g | Protein consumed |
+| `dietary_carbohydrates` | g | Total carbohydrates consumed |
+| `dietary_fat_total` | g | Total fat consumed |
+| `dietary_fat_saturated` | g | Saturated fat consumed |
+| `dietary_fat_monounsaturated` | g | Monounsaturated fat consumed |
+| `dietary_fat_polyunsaturated` | g | Polyunsaturated fat consumed |
+| `dietary_fiber` | g | Dietary fiber consumed |
+| `dietary_sugar` | g | Sugar consumed |
+| `dietary_sodium` | mg | Sodium consumed |
+| `dietary_cholesterol` | mg | Cholesterol consumed |
+| `dietary_caffeine` | mg | Caffeine consumed |
+
 ### Other
 
 | Type | Unit | Description |
