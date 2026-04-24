@@ -46,12 +46,22 @@ TABLES_WITHOUT_CREATED_AT = [
     "workout_details",
 ]
 
+EPOCH_SENTINEL = sa.text("'1970-01-01 00:00:00+00'")
+
 
 def upgrade() -> None:
     for table in TABLES_WITHOUT_CREATED_AT:
+        # Backfill existing rows with epoch sentinel, then switch default to now() for new rows.
         op.add_column(
             table,
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=EPOCH_SENTINEL, nullable=False),
+        )
+        op.alter_column(
+            table,
+            "created_at",
+            existing_type=sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            existing_nullable=False,
         )
 
     for table in TABLES_WITH_CREATED_AT:
