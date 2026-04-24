@@ -1,22 +1,13 @@
-"""Resilience score service: HRV-CV calculation, scoring, and overnight HRV helpers.
+"""Resilience score service: HRV-CV calculation and overnight HRV helpers.
 
-Exposes three categories of functionality:
+Exposes two categories of functionality:
 
 - ResilienceScoreService.get_hrv_cv_score – DB-backed; computes a multi-day
-  HRV coefficient of variation using only samples recorded during sleep, and
-  maps that CV to a 0–100 resilience score via a linear scale.
+  HRV coefficient of variation using only samples recorded during sleep.
 - ResilienceScoreService.calculate_rmssd_ow (RMSSD_OW) – overnight RMSSD from
   raw HR data filtered to sleep windows; intended for scheduled tasks.
 - ResilienceScoreService.calculate_sdnn_ow  (SDNN_OW) – same as RMSSD_OW but
   for SDNN.
-
-Scoring:
-    The raw HRV-CV (stored as a 3-decimal-place fraction, e.g. 0.123 = 12.3%)
-    is mapped to a 0–100 score using ``_hrv_cv_to_resilience_score``.
-    CV ≤ ``cv_ceiling`` (default 7 %) → 100.
-    CV ≥ ``cv_floor``   (default 40 %) → 0.
-    Between ceiling and floor the score drops linearly.
-    Tuning parameters live in ``ResilienceScoreConfig``.
 """
 
 import math
@@ -177,31 +168,6 @@ class ResilienceScoreService:
         ]
 
     # ------------------------------------------------------------------
-    # Scoring
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _hrv_cv_to_resilience_score(hrv_cv: float) -> int:
-        """Map HRV-CV (0.0–1.0+) to a 0–100 resilience score.
-
-        CV ≤ cv_ceiling (default 7 %)  → 100.
-        CV ≥ cv_floor   (default 40 %) → 0.
-        Between ceiling and floor the score drops linearly.
-        Result is clamped to [0, 100].
-        """
-        cv_pct = hrv_cv * 100.0
-
-        if cv_pct <= resilience_config.cv_ceiling:
-            return 100
-        if cv_pct >= resilience_config.cv_floor:
-            return 0
-
-        score = (
-            100.0 * (resilience_config.cv_floor - cv_pct) / (resilience_config.cv_floor - resilience_config.cv_ceiling)
-        )
-        return max(0, min(100, round(score)))
-
-    # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
@@ -255,7 +221,6 @@ class ResilienceScoreService:
         if not filtered_hrv:
             return HrvCvScoreResult(
                 hrv_cv=None,
-                resilience_score=None,
                 metric_type=None,
                 days_counted=0,
                 lookback_days=resilience_config.lookback_days,
@@ -275,28 +240,24 @@ class ResilienceScoreService:
         # 4. Compute HRV-CV if enough days have data
         days_counted = sum(1 for ds in daily_scores if ds.has_data)
         hrv_cv: float | None = None
-        resilience_score: int | None = None
 
         if days_counted >= resilience_config.min_days_required:
             valid_avgs = [ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None]
             raw_cv = calculate_hrv_cv(valid_avgs)
             if not math.isnan(raw_cv):
                 hrv_cv = raw_cv
-                resilience_score = self._hrv_cv_to_resilience_score(raw_cv)
 
         self.logger.debug(
-            "get_hrv_cv_score user=%s reference=%s metric=%s days=%d hrv_cv=%s score=%s",
+            "get_hrv_cv_score user=%s reference=%s metric=%s days=%d hrv_cv=%s",
             user_id,
             reference_date,
             metric_type,
             days_counted,
             hrv_cv,
-            resilience_score,
         )
 
         return HrvCvScoreResult(
             hrv_cv=hrv_cv,
-            resilience_score=resilience_score,
             metric_type=metric_type,
             days_counted=days_counted,
             lookback_days=resilience_config.lookback_days,
@@ -453,18 +414,15 @@ class ResilienceScoreService:
 
             days_counted = sum(1 for ds in daily_scores if ds.has_data)
             hrv_cv: float | None = None
-            resilience_score: int | None = None
 
             if days_counted >= resilience_config.min_days_required:
                 valid_avgs = [ds.hrv_value_ms for ds in daily_scores if ds.hrv_value_ms is not None]
                 raw_cv = calculate_hrv_cv(valid_avgs)
                 if not math.isnan(raw_cv):
                     hrv_cv = raw_cv
-                    resilience_score = self._hrv_cv_to_resilience_score(raw_cv)
 
             results[ref_date] = HrvCvScoreResult(
                 hrv_cv=hrv_cv,
-                resilience_score=resilience_score,
                 metric_type=metric_type if filtered_hrv else None,
                 days_counted=days_counted,
                 lookback_days=resilience_config.lookback_days,

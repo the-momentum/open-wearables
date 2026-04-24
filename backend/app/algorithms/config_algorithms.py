@@ -64,13 +64,6 @@ class ResilienceScoreConfig(BaseModel):
     min_days_required: int = Field(default=5, ge=2)
     min_rr_samples: int = Field(default=20, ge=2)
 
-    # 0-100 SCORING — linear mapping of HRV-CV (expressed as %)
-    # cv_ceiling: upper bound for a perfect 100; anything at or below scores 100
-    # cv_floor:   lower bound for a zero score; anything at or above scores 0
-    # Between ceiling and floor the score drops linearly.
-    cv_ceiling: float = Field(default=7.0)
-    cv_floor: float = Field(default=40.0)
-
     @model_validator(mode="after")
     def validate_ranges(self) -> Self:
         if self.min_days_required > self.lookback_days:

@@ -52,7 +52,7 @@ _MISSING_RESILIENCE_SCORES_QUERY = text("""
 
 
 @shared_task
-def fill_missing_resilience_scores() -> dict[str, int]:
+def fill_missing_resilience_scores() -> dict:
     """Find (user, date) pairs without an OW resilience score and calculate them.
 
     Runs frequently so scores appear shortly after any sync path that delivers
@@ -117,7 +117,6 @@ def fill_missing_resilience_scores() -> dict[str, int]:
                     components={
                         "days_counted": ScoreComponent(value=result.days_counted),
                         "metric_type": ScoreComponent(qualifier=result.metric_type),
-                        "resilience_score": ScoreComponent(value=result.resilience_score),
                     },
                 )
                 for ref_date, result in scores_by_date.items()
