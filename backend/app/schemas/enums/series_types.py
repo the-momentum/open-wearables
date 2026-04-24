@@ -313,9 +313,9 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (246, SeriesType.dietary_fat_polyunsaturated, "g"),
     (247, SeriesType.dietary_fiber, "g"),
     (248, SeriesType.dietary_sugar, "g"),
-    (249, SeriesType.dietary_sodium, "mg"),
-    (250, SeriesType.dietary_cholesterol, "mg"),
-    (251, SeriesType.dietary_caffeine, "mg"),
+    (249, SeriesType.dietary_sodium, "g"),
+    (250, SeriesType.dietary_cholesterol, "g"),
+    (251, SeriesType.dietary_caffeine, "g"),
     # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------
