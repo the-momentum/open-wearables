@@ -11,6 +11,7 @@ Tests cover:
 import pytest
 from sqlalchemy.orm import Session
 
+from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import ProviderSettingUpdate
 from app.services.provider_settings_service import ProviderSettingsService
@@ -91,7 +92,7 @@ class TestProviderSettingsServiceGetAllProviders:
 
         # Disable one provider
         update = ProviderSettingUpdate(is_enabled=False)
-        service.update_provider_status(db, "apple", update)
+        service.update_provider_setting(db, "apple", update)
 
         # Act
         providers = service.get_all_providers(db)
@@ -109,14 +110,14 @@ class TestProviderSettingsServiceGetAllProviders:
 class TestProviderSettingsServiceUpdateProviderStatus:
     """Test updating individual provider status."""
 
-    def test_update_provider_status_enable_to_disable(self, db: Session) -> None:
+    def test_update_provider_setting_enable_to_disable(self, db: Session) -> None:
         """Should update provider from enabled to disabled."""
         # Arrange
         service = ProviderSettingsService()
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act
-        result = service.update_provider_status(db, "garmin", update)
+        result = service.update_provider_setting(db, "garmin", update)
 
         # Assert
         assert result.provider == "garmin"
@@ -127,36 +128,36 @@ class TestProviderSettingsServiceUpdateProviderStatus:
         garmin = next(p for p in providers if p.provider == "garmin")
         assert garmin.is_enabled is False
 
-    def test_update_provider_status_disable_to_enable(self, db: Session) -> None:
+    def test_update_provider_setting_disable_to_enable(self, db: Session) -> None:
         """Should update provider from disabled to enabled."""
         # Arrange
         service = ProviderSettingsService()
 
         # First disable
-        service.update_provider_status(db, "polar", ProviderSettingUpdate(is_enabled=False))
+        service.update_provider_setting(db, "polar", ProviderSettingUpdate(is_enabled=False))
 
         # Act - re-enable
-        result = service.update_provider_status(db, "polar", ProviderSettingUpdate(is_enabled=True))
+        result = service.update_provider_setting(db, "polar", ProviderSettingUpdate(is_enabled=True))
 
         # Assert
         assert result.provider == "polar"
         assert result.is_enabled is True
 
-    def test_update_provider_status_includes_metadata(self, db: Session) -> None:
+    def test_update_provider_setting_includes_metadata(self, db: Session) -> None:
         """Should return provider metadata along with status."""
         # Arrange
         service = ProviderSettingsService()
         update = ProviderSettingUpdate(is_enabled=False)
 
         # Act
-        result = service.update_provider_status(db, "apple", update)
+        result = service.update_provider_setting(db, "apple", update)
 
         # Assert
         assert result.provider == "apple"
         assert result.name is not None
         assert isinstance(result.has_cloud_api, bool)
 
-    def test_update_provider_status_invalid_provider_raises_error(self, db: Session) -> None:
+    def test_update_provider_setting_invalid_provider_raises_error(self, db: Session) -> None:
         """Should raise ValueError for invalid provider name."""
         # Arrange
         service = ProviderSettingsService()
@@ -164,9 +165,9 @@ class TestProviderSettingsServiceUpdateProviderStatus:
 
         # Act & Assert
         with pytest.raises(ValueError, match="Unknown provider"):
-            service.update_provider_status(db, "invalid_provider", update)
+            service.update_provider_setting(db, "invalid_provider", update)
 
-    def test_update_provider_status_case_sensitive(self, db: Session) -> None:
+    def test_update_provider_setting_case_sensitive(self, db: Session) -> None:
         """Should handle provider names case-sensitively."""
         # Arrange
         service = ProviderSettingsService()
@@ -174,7 +175,7 @@ class TestProviderSettingsServiceUpdateProviderStatus:
 
         # Act & Assert - uppercase should fail
         with pytest.raises(ValueError, match="Unknown provider"):
-            service.update_provider_status(db, "APPLE", update)
+            service.update_provider_setting(db, "APPLE", update)
 
 
 class TestProviderSettingsServiceBulkUpdateProviders:
@@ -270,7 +271,7 @@ class TestProviderSettingsServiceBulkUpdateProviders:
         service = ProviderSettingsService()
 
         # First, set apple to disabled
-        service.update_provider_status(db, "apple", ProviderSettingUpdate(is_enabled=False))
+        service.update_provider_setting(db, "apple", ProviderSettingUpdate(is_enabled=False))
 
         # Try bulk update with invalid provider
         updates = {
@@ -314,4 +315,44 @@ class TestProviderSettingsServiceProviderFactory:
 
         # Act & Assert
         with pytest.raises(ValueError, match="Unknown provider"):
-            service.update_provider_status(db, "nonexistent", update)
+            service.update_provider_setting(db, "nonexistent", update)
+
+
+class TestProviderSettingsServiceLiveSyncMode:
+    """Test live_sync_mode update logic."""
+
+    def test_update_live_sync_mode_configurable_provider(self, db: Session) -> None:
+        """Should update live_sync_mode for a provider where live_sync_configurable is True."""
+        # Suunto: rest_pull=True, webhook_stream=True → live_sync_configurable=True
+        service = ProviderSettingsService()
+
+        update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        result = service.update_provider_setting(db, "suunto", update)
+
+        assert result.live_sync_mode == LiveSyncMode.WEBHOOK
+
+        # Verify persistence
+        providers = service.get_all_providers(db)
+        suunto = next(p for p in providers if p.provider == "suunto")
+        assert suunto.live_sync_mode == LiveSyncMode.WEBHOOK
+
+    def test_update_live_sync_mode_non_configurable_provider_raises(self, db: Session) -> None:
+        """Should raise ValueError when trying to set live_sync_mode on a non-configurable provider."""
+        # Garmin: webhook_stream=True, webhook_callback=True, rest_pull=False → live_sync_configurable=False
+        service = ProviderSettingsService()
+
+        update = ProviderSettingUpdate(live_sync_mode=LiveSyncMode.WEBHOOK)
+
+        with pytest.raises(ValueError, match="does not support live sync mode configuration"):
+            service.update_provider_setting(db, "garmin", update)
+
+    def test_update_live_sync_mode_explicit_null_raises(self, db: Session) -> None:
+        """Should raise ValidationError when live_sync_mode is explicitly set to null.
+
+        Omitting the field is valid (leaves the value unchanged); passing null is not.
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="live_sync_mode cannot be set to null"):
+            ProviderSettingUpdate(live_sync_mode=None)

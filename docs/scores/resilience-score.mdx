@@ -1,0 +1,93 @@
+---
+title: Resilience Score
+description: A HRV-CV computed by Open Wearables that measures the stability of the body's autonomic nervous system.
+---
+
+## Overview
+
+The Resilience Score is an **Open Wearables native score** that measures how stable a user's heart rate variability (HRV) is. It is computed from raw overnight biometric data - not sourced from or influenced by any manufacturer's proprietary score.
+
+HRV-CV during sleep is an established marker of autonomic nervous system resilience: the more stable the overnight HRV, the better the body is recovering and adapting to physiological stress.
+
+| Property   | Value                                                     |
+|------------|-----------------------------------------------------------|
+| Range      | 0-100                                                     |
+| Frequency  | Weekly rolling window, updated daily                      |
+| Daily view | Per-night HRV value shown alongside the weekly score      |
+| Component  | Heart Rate Variability (overnight, sleep-filtered)        |
+| Source     | Computed by Open Wearables - not a provider-sourced score |
+
+---
+
+## Requirements
+
+### Data syncing
+
+- The user must have at least one connected provider that syncs **heart rate data** and **sleep data**.
+- The device must be **worn during sleep** - overnight HR samples outside of detected sleep windows are excluded from the calculation.
+
+### Minimum data threshold
+
+A Resilience Score is only computed when there is sufficient data to produce a statistically meaningful result:
+
+| Requirement                  | Value    |
+|------------------------------|----------|
+| Lookback window              | 7 nights |
+| Minimum nights with HRV data | 5 nights |
+| Minimum HR samples per night | 20 samples |
+
+If fewer than 5 of the 7 nights have valid overnight HRV recordings, the score is returned as `null`. The daily breakdown is still returned so you can show users how many nights have been counted and encourage consistent device wear.
+
+---
+
+## How It Works
+
+### HRV metric selection
+
+The score prefers **RMSSD** (Root Mean Square of Successive Differences) as the HRV metric, since it is the most widely available measure of short-term HRV and is reported by most consumer wearables. If no RMSSD data survives the sleep-window filter, the algorithm automatically falls back to **SDNN** (Standard Deviation of Normal-to-Normal intervals).
+
+The metric type used (RMSSD or SDNN) is returned in the score response so it can be surfaced in the UI where appropriate.
+
+### Sleep-window filtering
+
+Only HR samples recorded during confirmed sleep are used. The algorithm:
+
+1. Fetches all sleep sessions in the lookback window.
+2. Extracts stage-level windows where the user was in any asleep stage (Light, Deep, REM, or generic Sleeping).
+3. Filters HR data points to those timestamps - excluding awake periods and sleep latency.
+
+If a sleep session has no stage-level data, the full session window is used as a conservative fallback.
+
+### Coefficient of variation (HRV-CV)
+
+The weekly score is the **coefficient of variation** of nightly average HRV values across the lookback window:
+
+```
+HRV-CV = standard deviation of nightly HRV averages / mean of nightly HRV averages
+```
+
+A **lower HRV-CV means more consistent overnight HRV** - the body is recovering steadily night to night. A higher HRV-CV indicates more variability, which can reflect stress, illness, overtraining, or lifestyle disruption.
+
+### Daily view
+
+Each score response includes a day-by-day breakdown of overnight HRV values for the lookback window:
+
+```json
+{
+  "hrv_cv": 0.087,
+  "metric_type": "RMSSD",
+  "days_counted": 6,
+  "lookback_days": 7,
+  "daily_scores": [
+    { "date": "2025-04-09", "hrv_value_ms": 42.1, "has_data": true },
+    { "date": "2025-04-10", "hrv_value_ms": null, "has_data": false },
+    { "date": "2025-04-11", "hrv_value_ms": 39.8, "has_data": true },
+    { "date": "2025-04-12", "hrv_value_ms": 44.3, "has_data": true },
+    { "date": "2025-04-13", "hrv_value_ms": 40.5, "has_data": true },
+    { "date": "2025-04-14", "hrv_value_ms": 38.9, "has_data": true },
+    { "date": "2025-04-15", "hrv_value_ms": 43.7, "has_data": true }
+  ]
+}
+```
+
+Days where the device was not worn during sleep or where insufficient samples were recorded will have `has_data: false`.

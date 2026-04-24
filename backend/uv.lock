@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [options]
-exclude-newer = "2026-04-13T00:34:08.779168094Z"
+exclude-newer = "2026-04-17T13:38:27.492227Z"
 exclude-newer-span = "P3D"
 
 [[package]]
@@ -566,14 +566,14 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "40.5.1"
+version = "40.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/2a/96fff3edcb10f6505143448a4b91535f77b74865cec45be52690ee280443/faker-40.5.1.tar.gz", hash = "sha256:70222361cd82aa10cb86066d1a4e8f47f2bcdc919615c412045a69c4e6da0cd3", size = 1952684, upload-time = "2026-02-23T21:34:38.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/89/95/4822ffe94723553789aef783104f4f18fc20d7c4c68e1bbd633e11d09758/faker-40.13.0.tar.gz", hash = "sha256:a0751c84c3abac17327d7bb4c98e8afe70ebf7821e01dd7d0b15cd8856415525", size = 1962043, upload-time = "2026-04-06T16:44:55.68Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4d/a9/1eed4db92d0aec2f9bfdf1faae0ab0418b5e121dda5701f118a7a4f0cd6a/faker-40.5.1-py3-none-any.whl", hash = "sha256:c69640c1e13bad49b4bcebcbf1b52f9f1a872b6ea186c248ada34d798f1661bf", size = 1987053, upload-time = "2026-02-23T21:34:36.418Z" },
+    { url = "https://files.pythonhosted.org/packages/da/8a/708103325edff16a0b0e004de0d37db8ba216a32713948c64d71f6d4a4c2/faker-40.13.0-py3-none-any.whl", hash = "sha256:c1298fd0d819b3688fb5fd358c4ba8f56c7c8c740b411fd3dbd8e30bf2c05019", size = 1994597, upload-time = "2026-04-06T16:44:53.698Z" },
 ]
 
 [[package]]
@@ -951,6 +951,7 @@ dependencies = [
     { name = "celery" },
     { name = "cryptography" },
     { name = "email-validator" },
+    { name = "faker" },
     { name = "fastapi" },
     { name = "fastapi-cli" },
     { name = "flower" },
@@ -978,7 +979,6 @@ code-quality = [
 ]
 dev = [
     { name = "factory-boy" },
-    { name = "faker" },
     { name = "freezegun" },
     { name = "psycopg-binary" },
     { name = "pytest" },
@@ -996,6 +996,7 @@ requires-dist = [
     { name = "celery", specifier = ">=5.5.3" },
     { name = "cryptography", specifier = ">=45.0.4" },
     { name = "email-validator", specifier = ">=2.2.0" },
+    { name = "faker", specifier = ">=40.13.0" },
     { name = "fastapi", specifier = ">=0.120.4" },
     { name = "fastapi-cli", specifier = ">=0.0.8" },
     { name = "flower", specifier = ">=2.0.1" },
@@ -1023,7 +1024,6 @@ code-quality = [
 ]
 dev = [
     { name = "factory-boy", specifier = ">=3.3.0" },
-    { name = "faker", specifier = ">=33.1.0" },
     { name = "freezegun", specifier = ">=1.5.0" },
     { name = "psycopg-binary", specifier = ">=3.3.2" },
     { name = "pytest", specifier = ">=8.4.1" },

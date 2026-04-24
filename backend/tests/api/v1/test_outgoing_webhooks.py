@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 from app.schemas.webhooks.event_types import EVENT_TYPE_DESCRIPTIONS, WebhookEventType
 from app.services.outgoing_webhooks.events import (
+    SVIX_MAX_SAMPLES_PER_EVENT,
     _dispatch,
     on_connection_created,
     on_sleep_created,
@@ -105,17 +106,110 @@ class TestWebhookEmit:
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_timeseries_batch_saved_dispatches(self, mock_task: MagicMock) -> None:
         uid = uuid4()
+        samples = [
+            {
+                "timestamp": "2026-04-16T06:00:00+00:00",
+                "zone_offset": "+00:00",
+                "type": "heart_rate",
+                "value": 62.0,
+                "unit": "bpm",
+                "source": {"provider": "garmin", "device": "Forerunner 255"},
+            },
+            {
+                "timestamp": "2026-04-16T06:05:00+00:00",
+                "zone_offset": "+00:00",
+                "type": "heart_rate",
+                "value": 65.0,
+                "unit": "bpm",
+                "source": {"provider": "garmin", "device": "Forerunner 255"},
+            },
+        ]
+        on_timeseries_batch_saved(
+            user_id=uid,
+            provider="garmin",
+            series_type="heart_rate",
+            sample_count=2,
+            start_time="2026-04-16T06:00:00+00:00",
+            end_time="2026-04-16T06:05:00+00:00",
+            samples=samples,
+        )
+        mock_task.delay.assert_called()
+        assert mock_task.delay.call_count == 2
+        calls = {c[0][0] for c in mock_task.delay.call_args_list}
+        assert "heart_rate.created" in calls
+        assert "series.heart_rate.created" in calls
+        # validate payload on the group event
+        group_call = next(c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created")
+        args = group_call
+        data = args[0][1]["data"]
+        assert data["start_time"] == "2026-04-16T06:00:00+00:00"
+        assert data["end_time"] == "2026-04-16T06:05:00+00:00"
+        assert len(data["samples"]) == 2
+        assert data["samples"][0]["value"] == 62.0
+        assert data["samples"][1]["value"] == 65.0
+        assert "chunk_index" not in data
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_on_timeseries_batch_saved_without_samples(self, mock_task: MagicMock) -> None:
+        """Backward-compatible call without samples still dispatches correctly."""
+        uid = uuid4()
         on_timeseries_batch_saved(
             user_id=uid,
             provider="garmin",
             series_type="heart_rate",
             sample_count=100,
         )
-        mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "heart_rate.created"
+        assert mock_task.delay.call_count == 2
+        calls = {c[0][0] for c in mock_task.delay.call_args_list}
+        assert "heart_rate.created" in calls
+        assert "series.heart_rate.created" in calls
+        group_call = next(c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created")
+        data = group_call[0][1]["data"]
+        assert data["samples"] == []
+        assert data["sample_count"] == 100
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
-    def test_on_timeseries_fallback_event_type(self, mock_task: MagicMock) -> None:
+    def test_on_timeseries_batch_saved_chunks_large_payload(self, mock_task: MagicMock) -> None:
+        """Batches exceeding SVIX_MAX_SAMPLES_PER_EVENT are split into chunk events."""
+        uid = uuid4()
+        large_samples = [
+            {
+                "timestamp": f"2026-04-16T{i // 3600:02d}:{(i % 3600) // 60:02d}:{i % 60:02d}+00:00",
+                "zone_offset": "+00:00",
+                "type": "heart_rate",
+                "value": float(60 + i % 40),
+                "unit": "bpm",
+                "source": {"provider": "garmin", "device": None},
+            }
+            for i in range(SVIX_MAX_SAMPLES_PER_EVENT + 10)
+        ]
+        on_timeseries_batch_saved(
+            user_id=uid,
+            provider="garmin",
+            series_type="heart_rate",
+            sample_count=len(large_samples),
+            start_time=large_samples[0]["timestamp"],
+            end_time=large_samples[-1]["timestamp"],
+            samples=large_samples,
+        )
+        # 2 chunks × 2 event types (group + granular) = 4 calls
+        assert mock_task.delay.call_count == 4
+        group_calls = [c for c in mock_task.delay.call_args_list if c[0][0] == "heart_rate.created"]
+        assert len(group_calls) == 2
+        first_data = group_calls[0][0][1]["data"]
+        second_data = group_calls[1][0][1]["data"]
+        assert first_data["chunk_index"] == 0
+        assert first_data["total_chunks"] == 2
+        assert second_data["chunk_index"] == 1
+        assert second_data["total_chunks"] == 2
+        assert len(first_data["samples"]) == SVIX_MAX_SAMPLES_PER_EVENT
+        assert len(second_data["samples"]) == 10
+        # sample_count reflects the full batch in every chunk
+        assert first_data["sample_count"] == len(large_samples)
+        assert second_data["sample_count"] == len(large_samples)
+
+    @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
+    def test_on_timeseries_skips_unmapped_series_type(self, mock_task: MagicMock) -> None:
         uid = uuid4()
         on_timeseries_batch_saved(
             user_id=uid,
@@ -123,8 +217,7 @@ class TestWebhookEmit:
             series_type="unknown_type_xyz",
             sample_count=5,
         )
-        mock_task.delay.assert_called_once()
-        assert mock_task.delay.call_args[0][0] == "timeseries.created"
+        mock_task.delay.assert_not_called()
 
     @patch("app.integrations.celery.tasks.emit_webhook_event_task.emit_webhook_event")
     def test_on_connection_created_dispatches(self, mock_task: MagicMock) -> None:

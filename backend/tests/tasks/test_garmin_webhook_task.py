@@ -15,11 +15,11 @@ import pytest
 from celery.exceptions import Retry
 from sqlalchemy.orm import Session
 
-from app.integrations.celery.tasks.garmin_webhook_task import process_push
+from app.integrations.celery.tasks.webhook_push_task import process_webhook_push
 from app.schemas.auth import ConnectionStatus
 from tests.factories import UserConnectionFactory, UserFactory
 
-MODULE = "app.integrations.celery.tasks.garmin_webhook_task"
+MODULE = "app.integrations.celery.tasks.webhook_push_task"
 HANDLER_MODULE = "app.services.providers.garmin.webhook_handler"
 
 
@@ -32,8 +32,12 @@ def task_db(db: Session) -> Session:
     """
     with (
         patch(f"{MODULE}.SessionLocal", return_value=db),
+        patch(f"{MODULE}.ProviderFactory") as mock_factory_cls,
         patch.object(db, "close", MagicMock()),
     ):
+        from app.services.providers.garmin.strategy import GarminStrategy
+
+        mock_factory_cls.return_value.get_provider.return_value = GarminStrategy()
         yield db
 
 
@@ -72,7 +76,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-001")
+        result = process_webhook_push.run("garmin", payload, "trace-001")
 
         # Assert
         assert result["processed"] == 1
@@ -102,7 +106,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-002")
+        result = process_webhook_push.run("garmin", payload, "trace-002")
 
         # Assert
         assert result["processed"] == 0
@@ -151,7 +155,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-003")
+        result = process_webhook_push.run("garmin", payload, "trace-003")
 
         # Assert
         assert result["processed"] == 2
@@ -187,7 +191,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-004")
+        result = process_webhook_push.run("garmin", payload, "trace-004")
 
         # Assert
         assert result["processed"] == len(activity_types)
@@ -203,7 +207,7 @@ class TestGarminPushWebhook:
         payload = {"activities": []}
 
         # Act
-        result = process_push.run(payload, "trace-005")
+        result = process_webhook_push.run("garmin", payload, "trace-005")
 
         # Assert
         assert result["processed"] == 0
@@ -237,7 +241,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-006")
+        result = process_webhook_push.run("garmin", payload, "trace-006")
 
         # Assert — validation_error is surfaced in activities detail, not the top-level errors list
         assert result["activities"][0]["status"] == "validation_error"
@@ -273,7 +277,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-010")
+        result = process_webhook_push.run("garmin", payload, "trace-010")
 
         # Assert
         assert "wellness" in result
@@ -315,7 +319,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-011")
+        result = process_webhook_push.run("garmin", payload, "trace-011")
 
         # Assert
         assert "wellness" in result
@@ -362,7 +366,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-012")
+        result = process_webhook_push.run("garmin", payload, "trace-012")
 
         # Assert
         assert "wellness" in result
@@ -397,7 +401,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-013")
+        result = process_webhook_push.run("garmin", payload, "trace-013")
 
         # Assert
         assert "wellness" in result
@@ -431,7 +435,7 @@ class TestGarminPushWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-014")
+        result = process_webhook_push.run("garmin", payload, "trace-014")
 
         # Assert — unknown user: connection not found, nothing processed or saved
         assert "wellness" in result
@@ -480,7 +484,7 @@ class TestGarminPushWebhook:
             patch(f"{HANDLER_MODULE}.celery_app") as mock_celery,
         ):
             mock_celery.send_task.return_value = MagicMock(id="backfill-task")
-            result = process_push.run(payload, "trace-015")
+            result = process_webhook_push.run("garmin", payload, "trace-015")
 
         # Assert — backfill chaining was triggered
         assert len(result["backfill_chained"]) == 1
@@ -514,7 +518,7 @@ class TestGarminUserPermissionsWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-020")
+        result = process_webhook_push.run("garmin", payload, "trace-020")
 
         # Assert
         assert "userPermissionsChange" in result
@@ -549,7 +553,7 @@ class TestGarminUserPermissionsWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-021")
+        result = process_webhook_push.run("garmin", payload, "trace-021")
 
         # Assert
         assert "userPermissionsChange" in result
@@ -584,7 +588,7 @@ class TestGarminUserPermissionsWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-022")
+        result = process_webhook_push.run("garmin", payload, "trace-022")
 
         # Assert
         assert "userPermissionsChange" in result
@@ -611,7 +615,7 @@ class TestGarminUserPermissionsWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-023")
+        result = process_webhook_push.run("garmin", payload, "trace-023")
 
         # Assert — unknown user silently skipped, no error produced
         assert "userPermissionsChange" in result
@@ -632,7 +636,7 @@ class TestGarminUserPermissionsWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-025")
+        result = process_webhook_push.run("garmin", payload, "trace-025")
 
         # Assert — invalid entries produce errors, no update
         assert "userPermissionsChange" in result
@@ -645,7 +649,7 @@ class TestGarminUserPermissionsWebhook:
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
         """Non-list userPermissionsChange payload is rejected with a format error."""
-        result = process_push.run({"userPermissionsChange": "not_a_list"}, "trace-026b")
+        result = process_webhook_push.run("garmin", {"userPermissionsChange": "not_a_list"}, "trace-026b")
 
         assert result["userPermissionsChange"]["updated"] == 0
         assert result["userPermissionsChange"]["errors"] == ["Invalid userPermissions payload format"]
@@ -676,7 +680,7 @@ class TestGarminDeregistrationWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-030")
+        result = process_webhook_push.run("garmin", payload, "trace-030")
 
         # Assert
         assert "deregistrations" in result
@@ -701,7 +705,7 @@ class TestGarminDeregistrationWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-031")
+        result = process_webhook_push.run("garmin", payload, "trace-031")
 
         # Assert — unknown user silently skipped, no error produced (idempotent)
         assert "deregistrations" in result
@@ -722,7 +726,7 @@ class TestGarminDeregistrationWebhook:
         }
 
         # Act
-        result = process_push.run(payload, "trace-032")
+        result = process_webhook_push.run("garmin", payload, "trace-032")
 
         # Assert
         assert "deregistrations" in result
@@ -735,7 +739,7 @@ class TestGarminDeregistrationWebhook:
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
         """Non-list deregistrations payload is rejected with a format error."""
-        result = process_push.run({"deregistrations": "not_a_list"}, "trace-035b")
+        result = process_webhook_push.run("garmin", {"deregistrations": "not_a_list"}, "trace-035b")
 
         assert result["deregistrations"]["revoked"] == 0
         assert result["deregistrations"]["errors"] == ["Invalid deregistrations payload format"]
@@ -752,10 +756,10 @@ class TestGarminTaskRetry:
         """Unhandled exception in process_push triggers self.retry, raising Retry."""
         retry_exc = Retry("will retry", RuntimeError("critical failure"))
         with (
-            patch.object(process_push, "retry", return_value=retry_exc) as mock_retry,
-            patch(f"{MODULE}.GarminStrategy") as mock_strategy_cls,
+            patch.object(process_webhook_push, "retry", return_value=retry_exc) as mock_retry,
+            patch(f"{MODULE}.ProviderFactory") as mock_factory_cls,
         ):
-            mock_strategy_cls.side_effect = RuntimeError("critical failure")
+            mock_factory_cls.return_value.get_provider.side_effect = RuntimeError("critical failure")
             with pytest.raises(Retry):
-                process_push.run({}, "trace-retry-push")
+                process_webhook_push.run("garmin", {}, "trace-retry-push")
         mock_retry.assert_called_once()

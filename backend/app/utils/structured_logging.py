@@ -6,6 +6,8 @@ from logging import Logger
 from typing import Any
 from uuid import UUID
 
+from app.utils.context import trace_id_var
+
 
 def json_serial(obj: Any) -> str:
     """JSON serializer for objects not serializable by default json code"""
@@ -59,6 +61,11 @@ def log_structured(
         Vercel: Filter by JSON attributes in dashboard
         GCP: Use Cloud Logging filters with jsonPayload.batch_id="abc-123"
     """
+    if "trace_id" not in attributes:
+        tid = trace_id_var.get()
+        if tid:
+            attributes["trace_id"] = tid
+
     log_entry = {
         "level": level.lower(),
         "message": message,

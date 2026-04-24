@@ -27,6 +27,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "svix>=1.90.0",
     "numpy>=2.4.4",
+    "faker>=40.13.0",
 ]
 
 [dependency-groups]
@@ -41,7 +42,6 @@ dev = [
     "pytest-cov>=6.2.1",
     "freezegun>=1.5.0",
     "factory-boy>=3.3.0",
-    "faker>=33.1.0",
     "psycopg-binary>=3.3.2",
     "ruff>=0.14.7",
     "testcontainers[postgres,redis]>=4.14.2",
@@ -80,6 +80,9 @@ ignore = [
 "app/api/routes/v*/*.py" = ["ANN201"] # missing-type-annotation
 "app/schemas/providers/garmin/*.py" = ["N815"]  # mixedCase from external API
 "app/schemas/providers/suunto/*.py" = ["N815"]  # mixedCase from external API
+
+[tool.ruff.lint.isort]
+known-third-party = ["celery"]
 
 [tool.ty.src]
 exclude = ["migrations/", "app/models/", "tests/", "README.md", ".python-version", "LICENSE"]

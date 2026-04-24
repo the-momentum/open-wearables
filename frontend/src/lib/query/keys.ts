@@ -162,4 +162,18 @@ export const queryKeys = {
     presets: () => [...queryKeys.seedData.all, 'presets'] as const,
     sleepProfiles: () => [...queryKeys.seedData.all, 'sleepProfiles'] as const,
   },
+
+  webhooks: {
+    all: ['webhooks'] as const,
+    eventTypes: () => [...queryKeys.webhooks.all, 'eventTypes'] as const,
+    lists: () => [...queryKeys.webhooks.all, 'list'] as const,
+    list: () => [...queryKeys.webhooks.lists()] as const,
+    details: () => [...queryKeys.webhooks.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.webhooks.details(), id] as const,
+    secret: (id: string) =>
+      [...queryKeys.webhooks.detail(id), 'secret'] as const,
+    messages: () => [...queryKeys.webhooks.all, 'messages'] as const,
+    attempts: (id: string) =>
+      [...queryKeys.webhooks.detail(id), 'attempts'] as const,
+  },
 } as const;

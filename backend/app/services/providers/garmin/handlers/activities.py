@@ -85,6 +85,7 @@ def process_activity_notification(
             provider="garmin",
             trace_id=trace_id,
             activity_id=activity_id,
+            user_id=str(internal_user_id),
             error=str(e),
         )
         return {**base_result, "status": "validation_error", "error": f"Invalid activity data: {e}"}
@@ -104,6 +105,7 @@ def process_activity_notification(
             provider="garmin",
             trace_id=trace_id,
             activity_id=activity_id,
+            user_id=str(internal_user_id),
         )
         return {**base_result, "internal_user_id": str(internal_user_id), "status": "duplicate"}
 
@@ -114,6 +116,7 @@ def process_activity_notification(
         provider="garmin",
         trace_id=trace_id,
         activity_id=activity_id,
+        user_id=str(internal_user_id),
         record_ids=[str(rid) for rid in created_ids],
     )
     return {

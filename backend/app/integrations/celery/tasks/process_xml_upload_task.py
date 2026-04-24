@@ -4,6 +4,7 @@ from logging import getLogger
 from pathlib import Path
 from typing import Any
 
+from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
@@ -14,7 +15,6 @@ from app.services.apple.healthkit.sleep_service import handle_sleep_data
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 log = getLogger(__name__)
 

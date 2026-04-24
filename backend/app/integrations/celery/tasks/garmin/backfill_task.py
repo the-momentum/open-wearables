@@ -3,8 +3,8 @@
 Contains the entry-point task (``start_full_backfill``) and the chaining task
 (``trigger_next_pending_type``) that advances through data types and windows.
 
-Per-type trigger logic lives in ``garmin_backfill_trigger``.
-Timeout detection lives in ``garmin_backfill_timeout``.
+Per-type trigger logic lives in ``backfill_trigger``.
+Timeout detection lives in ``backfill_timeout``.
 Redis state management lives in ``app.services.providers.garmin.backfill_state``.
 """
 
@@ -12,8 +12,10 @@ from logging import getLogger
 from typing import Any
 from uuid import UUID
 
+from celery import shared_task
+
 from app.database import SessionLocal
-from app.integrations.celery.tasks.garmin_backfill_trigger import trigger_backfill_for_type
+from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.backfill_config import (
@@ -48,7 +50,6 @@ from app.services.providers.garmin.backfill_state import (
     update_window_cell,
 )
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 

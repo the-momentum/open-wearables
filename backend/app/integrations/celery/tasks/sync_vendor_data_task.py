@@ -2,17 +2,34 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from logging import getLogger
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from app.database import SessionLocal
-from app.repositories.user_connection_repository import UserConnectionRepository
-from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
-from app.services.providers.factory import ProviderFactory
-from app.utils.sentry_helpers import log_and_capture_error
-from app.utils.structured_logging import log_structured
 from celery import shared_task
 
+from app.database import SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.auth import LiveSyncMode
+from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
+from app.services.providers.factory import ProviderFactory
+from app.utils.context import trace_id_var
+from app.utils.sentry_helpers import log_and_capture_error
+from app.utils.structured_logging import log_structured
+
 logger = getLogger(__name__)
+
+
+def _include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
+    """True if the provider should be included in this REST pull run.
+
+    Historical backfill always uses REST for all rest_pull providers.
+    For live sync, only providers explicitly in pull mode are polled periodically.
+    """
+    if not caps.rest_pull:
+        return False
+    if is_historical:
+        return True
+    return live_sync_mode == LiveSyncMode.PULL
 
 
 @shared_task
@@ -41,18 +58,25 @@ def sync_vendor_data(
     """
     factory = ProviderFactory()
     user_connection_repo = UserConnectionRepository()
+    provider_settings_repo = ProviderSettingsRepository()
+    trace_id = str(uuid4())[:8]
+    trace_id_var.set(trace_id)
 
     try:
         user_uuid = UUID(user_id)
     except ValueError as e:
         log_structured(
-            logger, "error", f"Invalid user_id format: {user_id}", provider="sync_vendor_data", task="sync_vendor_data"
+            logger,
+            "error",
+            f"Invalid user_id format: {user_id}",
+            task="sync_vendor_data",
+            user_id=user_id,
         )
         log_and_capture_error(
             e,
             logger,
             f"Invalid user_id format: {user_id}",
-            extra={"user_id": user_id, "task": "sync_vendor_data", "provider": "sync_vendor_data"},
+            extra={"user_id": user_id, "task": "sync_vendor_data", "trace_id": trace_id},
         )
         return SyncVendorDataResult(
             user_id=user_id,
@@ -74,18 +98,31 @@ def sync_vendor_data(
             if providers:
                 connections = [c for c in connections if c.provider in providers]
 
-            # Only sync providers that support REST polling (pull-based).
-            # Push-only providers (Garmin webhooks, Apple/Google/Samsung SDK) deliver
-            # data via process_payload and should not be polled here.
-            connections = [c for c in connections if factory.get_provider(c.provider).capabilities.supports_pull]
+            # Load provider settings once (live_sync_mode per provider).
+            provider_settings = provider_settings_repo.get_all(db)
+
+            # Only sync providers in pull mode. Push-only providers (Garmin, Apple SDK)
+            # deliver data via webhooks/SDK and must not be polled here.
+            # Historical backfill always uses REST regardless of live_sync_mode.
+            connections = [
+                c
+                for c in connections
+                if _include_in_periodic_pull(
+                    factory.get_provider(c.provider).capabilities,
+                    provider_settings[c.provider].live_sync_mode
+                    if c.provider in provider_settings
+                    else LiveSyncMode.PULL,
+                    is_historical,
+                )
+            ]
 
             if not connections:
                 log_structured(
                     logger,
                     "info",
                     f"No active connections found for user {user_id}",
-                    provider="sync_vendor_data",
                     task="sync_vendor_data",
+                    user_id=user_id,
                 )
                 result.message = "No active provider connections found"
                 return result.model_dump()
@@ -94,8 +131,8 @@ def sync_vendor_data(
                 logger,
                 "info",
                 f"Found {len(connections)} active connections for user {user_id}",
-                provider="sync_vendor_data",
                 task="sync_vendor_data",
+                user_id=user_id,
             )
 
             for connection in connections:
@@ -104,8 +141,9 @@ def sync_vendor_data(
                     logger,
                     "info",
                     f"Syncing data from {provider_name} for user {user_id}",
-                    provider="sync_vendor_data",
+                    provider=provider_name,
                     task="sync_vendor_data",
+                    user_id=user_id,
                 )
 
                 try:
@@ -136,14 +174,20 @@ def sync_vendor_data(
                                 logger,
                                 "warning",
                                 f"Workouts sync failed for {provider_name}: {e}",
-                                provider="sync_vendor_data",
+                                provider=provider_name,
                                 task="sync_vendor_data",
+                                user_id=user_id,
                             )
                             log_and_capture_error(
                                 e,
                                 logger,
                                 f"Workouts sync failed for {provider_name}: {e}",
-                                extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
+                                extra={
+                                    "user_id": user_id,
+                                    "provider": provider_name,
+                                    "task": "sync_vendor_data",
+                                    "trace_id": trace_id,
+                                },
                             )
                             provider_result.params["workouts"] = {"success": False, "error": str(e)}
 
@@ -184,22 +228,29 @@ def sync_vendor_data(
                                 logger,
                                 "info",
                                 f"247 data synced for {provider_name}: {results_247}",
-                                provider="sync_vendor_data",
+                                provider=provider_name,
                                 task="sync_vendor_data",
+                                user_id=user_id,
                             )
                         except Exception as e:
                             log_structured(
                                 logger,
                                 "warning",
                                 f"247 data sync failed for {provider_name}: {e}",
-                                provider="sync_vendor_data",
+                                provider=provider_name,
                                 task="sync_vendor_data",
+                                user_id=user_id,
                             )
                             log_and_capture_error(
                                 e,
                                 logger,
                                 f"247 data sync failed for {provider_name}: {e}",
-                                extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
+                                extra={
+                                    "user_id": user_id,
+                                    "provider": provider_name,
+                                    "task": "sync_vendor_data",
+                                    "trace_id": trace_id,
+                                },
                             )
                             provider_result.params["data_247"] = {"success": False, "error": str(e)}
 
@@ -211,8 +262,9 @@ def sync_vendor_data(
                         logger,
                         "info",
                         f"Successfully synced {provider_name} for user {user_id}",
-                        provider="sync_vendor_data",
+                        provider=provider_name,
                         task="sync_vendor_data",
+                        user_id=user_id,
                     )
 
                 except Exception as e:
@@ -220,7 +272,12 @@ def sync_vendor_data(
                         e,
                         logger,
                         f"Error syncing {provider_name} for user {user_id}: {str(e)}",
-                        extra={"user_id": user_id, "provider": provider_name, "task": "sync_vendor_data"},
+                        extra={
+                            "user_id": user_id,
+                            "provider": provider_name,
+                            "task": "sync_vendor_data",
+                            "trace_id": trace_id,
+                        },
                     )
                     result.errors[provider_name] = str(e)
                     continue
@@ -232,7 +289,7 @@ def sync_vendor_data(
                 e,
                 logger,
                 f"Error processing user {user_id}: {str(e)}",
-                extra={"user_id": user_id, "task": "sync_vendor_data"},
+                extra={"user_id": user_id, "task": "sync_vendor_data", "trace_id": trace_id},
             )
             result.errors["general"] = str(e)
             return result.model_dump()

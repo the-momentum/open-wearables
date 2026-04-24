@@ -25,4 +25,4 @@ class AppleStrategy(BaseProviderStrategy):
     def capabilities(self) -> ProviderCapabilities:
         # Apple Health data arrives exclusively via XML export or HealthKit SDK.
         # No cloud OAuth, no REST polling, no server-side webhooks.
-        return ProviderCapabilities(supports_sdk=True, supports_xml_import=True)
+        return ProviderCapabilities(client_sdk=True, file_import=True)

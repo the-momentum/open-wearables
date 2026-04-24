@@ -46,6 +46,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.return_value = True
 
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -88,6 +90,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.return_value = True
 
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -127,6 +131,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.return_value = True
 
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -162,6 +168,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.return_value = True
 
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -224,7 +232,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.side_effect = Exception("Provider API unavailable")
 
         mock_strategy = MagicMock()
-        mock_strategy.capabilities.supports_pull = True
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -258,6 +267,8 @@ class TestSyncVendorDataTask:
         mock_workouts.load_data.return_value = False
 
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = mock_workouts
         mock_get_provider.return_value = mock_strategy
 
@@ -288,6 +299,8 @@ class TestSyncVendorDataTask:
 
         # Mock provider without workout support
         mock_strategy = MagicMock()
+        mock_strategy.capabilities.rest_pull = True
+        mock_strategy.capabilities.webhook_stream = False
         mock_strategy.workouts = None
         # Also ensure data_247 is not set so the strategy is still processed
         del mock_strategy.data_247
@@ -319,7 +332,7 @@ class TestSyncVendorDataTask:
         mock_session_local.return_value.__exit__.return_value = None
 
         mock_strategy = MagicMock()
-        mock_strategy.capabilities.supports_pull = False
+        mock_strategy.capabilities.rest_pull = False
         mock_get_provider.return_value = mock_strategy
 
         # Act

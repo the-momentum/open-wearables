@@ -47,4 +47,4 @@ class WhoopStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         # Whoop Developer API is REST-only; no public webhook offering as of 2025.
-        return ProviderCapabilities(supports_pull=True)
+        return ProviderCapabilities(rest_pull=True)

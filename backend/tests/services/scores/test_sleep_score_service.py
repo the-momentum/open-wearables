@@ -669,3 +669,182 @@ class TestGetSleepScoreEdgeCases:
             sleep_stages=None,
         )
         assert result_high_awake.breakdown.interruptions.score < result_low_awake.breakdown.interruptions.score
+
+
+# ---------------------------------------------------------------------------
+# DB-backed tests for get_sleep_scores_for_records
+# ---------------------------------------------------------------------------
+
+
+class TestGetSleepScoresForRecords:
+    """E2E tests for SleepScoreService.get_sleep_scores_for_records.
+
+    Verifies that scores are keyed by record_id (not date) so that:
+    - overnight sessions that cross midnight land on their wake date
+    - two sessions whose local wake dates collide still produce two distinct scores
+    """
+
+    def _make_sleep_record(
+        self,
+        db: Session,
+        data_source: DataSource,
+        start: datetime,
+        end: datetime,
+        duration_minutes: int = 480,
+        deep_minutes: int = 120,
+        rem_minutes: int = 90,
+        awake_minutes: int = 20,
+        zone_offset: str | None = None,
+        is_nap: bool = False,
+    ) -> EventRecord:
+        record = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=start,
+            end_datetime=end,
+            duration_seconds=(duration_minutes + awake_minutes) * 60,
+            data_source=data_source,
+            zone_offset=zone_offset,
+        )
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_total_duration_minutes=duration_minutes,
+            sleep_deep_minutes=deep_minutes,
+            sleep_rem_minutes=rem_minutes,
+            sleep_awake_minutes=awake_minutes,
+            sleep_light_minutes=max(0, duration_minutes - deep_minutes - rem_minutes),
+            is_nap=is_nap,
+        )
+        db.flush()
+        return record
+
+    def test_empty_input_returns_empty(self, db: Session) -> None:
+        user = UserFactory()
+        db.flush()
+        result = service.get_sleep_scores_for_records(db, user.id, [])
+        assert result == {}
+
+    def test_overnight_session_keyed_by_record_id(self, db: Session) -> None:
+        """An overnight session (Mon 23:00 → Tue 07:00 UTC) is keyed by record_id."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+
+        start = datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 3, 11, 7, 0, tzinfo=timezone.utc)
+        record = self._make_sleep_record(db, ds, start, end)
+
+        # wake_date is the local end date (UTC here, so Tue 2026-03-11)
+        wake_date = date(2026, 3, 11)
+        results = service.get_sleep_scores_for_records(db, user.id, [(record.id, wake_date)])
+
+        assert len(results) == 1
+        key = (record.id, wake_date)
+        assert key in results
+        assert 0 <= results[key].overall_score <= 100
+
+    def test_two_sessions_same_wake_date_both_scored(self, db: Session) -> None:
+        """Two sessions with the same local end_date produce two distinct scores.
+
+        This is the core timezone-collision case the record-id approach solves.
+        """
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+
+        # Session A: finishes early Tue morning (shorter)
+        record_a = self._make_sleep_record(
+            db,
+            ds,
+            start=datetime(2026, 3, 10, 1, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 10, 5, 0, tzinfo=timezone.utc),
+            duration_minutes=220,
+            deep_minutes=40,
+            rem_minutes=40,
+            awake_minutes=20,
+        )
+        # Session B: also ends on 2026-03-10 — same local wake date as A.
+        # This is the core collision case: a date-keyed implementation would
+        # silently drop one score, but record-id keying returns both.
+        record_b = self._make_sleep_record(
+            db,
+            ds,
+            start=datetime(2026, 3, 9, 23, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 10, 7, 0, tzinfo=timezone.utc),
+            duration_minutes=460,
+            deep_minutes=100,
+            rem_minutes=90,
+            awake_minutes=20,
+        )
+
+        wake = date(2026, 3, 10)  # both sessions share the same local wake date
+        results = service.get_sleep_scores_for_records(db, user.id, [(record_a.id, wake), (record_b.id, wake)])
+
+        assert len(results) == 2
+        assert (record_a.id, wake) in results
+        assert (record_b.id, wake) in results
+        # Longer session should score better on duration
+        assert (
+            results[(record_b.id, wake)].breakdown.duration.score
+            > results[(record_a.id, wake)].breakdown.duration.score
+        )
+
+    def test_history_contributes_to_consistency_score(self, db: Session) -> None:
+        """Prior sessions are still used for consistency scoring."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+
+        # 7 prior nights of consistent 23:00 bedtime
+        base = date(2026, 3, 10)
+        for delta in range(7, 0, -1):
+            prior = base - timedelta(days=delta)
+            self._make_sleep_record(
+                db,
+                ds,
+                start=datetime(prior.year, prior.month, prior.day, 23, 0, tzinfo=timezone.utc),
+                end=datetime(prior.year, prior.month, prior.day + 1, 7, 0, tzinfo=timezone.utc),
+            )
+
+        # Target night, same bedtime
+        record = self._make_sleep_record(
+            db,
+            ds,
+            start=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 11, 7, 0, tzinfo=timezone.utc),
+        )
+        db.flush()
+
+        wake_date = date(2026, 3, 11)
+        results = service.get_sleep_scores_for_records(db, user.id, [(record.id, wake_date)])
+
+        assert (record.id, wake_date) in results
+        assert results[(record.id, wake_date)].breakdown.consistency.score > 0
+
+    def test_invalid_session_zero_duration_is_skipped(self, db: Session) -> None:
+        """A record with zero sleep duration is silently skipped (no key in result)."""
+        user = UserFactory()
+        ds = DataSourceFactory(user=user)
+        db.flush()
+
+        record = EventRecordFactory(
+            category="sleep",
+            type_="sleep",
+            start_datetime=datetime(2026, 3, 10, 23, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2026, 3, 11, 7, 0, tzinfo=timezone.utc),
+            data_source=ds,
+        )
+        SleepDetailsFactory(
+            event_record=record,
+            sleep_total_duration_minutes=0,
+            sleep_deep_minutes=0,
+            sleep_rem_minutes=0,
+            sleep_awake_minutes=0,
+            is_nap=False,
+        )
+        db.flush()
+
+        wake_date = date(2026, 3, 11)
+        results = service.get_sleep_scores_for_records(db, user.id, [(record.id, wake_date)])
+
+        assert (record.id, wake_date) not in results

@@ -22,30 +22,27 @@ Each wearable provider has different requirements and parameters for syncing dat
 
 ## Garmin
 
-Garmin uses a backfill API that accepts time range parameters to specify what data to sync.
+Garmin uses a **webhook-only** delivery model — there is no REST polling path. It implements two capability flags:
 
-### Sync Parameters
+- **`webhook_stream`** — Garmin pushes the complete data payload to your webhook endpoint in real time as the user syncs their device.
+- **`webhook_callback`** — For historical backfill, a backfill task is dispatched asynchronously; Garmin delivers the results to your webhook callback URL.
 
-| Parameter | Required | Format | Description |
-|-----------|----------|--------|-------------|
-| `summary_start_time` | Recommended | ISO 8601 or Unix timestamp | Start of sync range |
-| `summary_end_time` | Recommended | ISO 8601 or Unix timestamp | End of sync range |
+Because Garmin has no `rest_pull` capability, `live_sync_configurable` is `false` and `live_sync_mode` is fixed at `"webhook"`.
 
-<Note>
-  While time parameters are optional, providing them ensures you get data for a specific date range. Without them, the sync behavior depends on Garmin's default response.
-</Note>
+### Historical backfill
 
-### Example
+To trigger a historical backfill (up to 30 days), call the dedicated endpoint:
 
 ```bash
-# Using ISO 8601 dates
-curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/{user_id}/sync?data_type=all&summary_start_time=2025-01-01T00:00:00Z&summary_end_time=2025-01-31T00:00:00Z" \
-  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
-
-# Using Unix timestamps
-curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/{user_id}/sync?data_type=all&summary_start_time=1735689600&summary_end_time=1738368000" \
+curl -X POST "http://localhost:8000/api/v1/providers/garmin/users/{user_id}/sync/historical" \
   -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
+
+The server enqueues the backfill task and Garmin delivers the data asynchronously to your registered webhook endpoint — no time-range parameters are accepted or required.
+
+<Warning>
+  Do **not** use the generic `/sync` REST endpoint for Garmin — Garmin has no server-side REST pull path. All data arrives via webhook push.
+</Warning>
 
 ---
 
@@ -231,7 +228,9 @@ curl -X GET "http://localhost:8000/api/v1/oauth/providers?enabled_only=true" \
     "name": "Garmin",
     "has_cloud_api": true,
     "is_enabled": true,
-    "icon_url": "/static/provider-icons/garmin.svg"
+    "icon_url": "/static/provider-icons/garmin.svg",
+    "live_sync_mode": "webhook",
+    "live_sync_configurable": false
   }
 ]
 ```

@@ -3,6 +3,8 @@ from decimal import Decimal
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
+from sqlalchemy import event as sa_event
+
 from app.database import DbSession
 from app.models import (
     DataPointSeries,
@@ -36,7 +38,8 @@ from app.schemas.utils import (
 from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
-from app.services.outgoing_webhooks.events import on_activity_created, on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks import svix as svix_service
+from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_created
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
@@ -106,12 +109,17 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
         detail_type: str = "workout",
     ) -> EventRecordDetail:
-        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)  # type: ignore[return-value]
+        result = self.event_record_detail_repo.create(db_session, detail, detail_type=detail_type)
         record = db_session.get(EventRecord, detail.record_id)
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                self._emit_event_record_webhook(record, data_source, detail)
+                _record, _data_source, _detail = record, data_source, detail
+
+                @sa_event.listens_for(db_session, "after_commit", once=True)
+                def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
+                    self._emit_event_record_webhook(_record, _data_source, _detail)
+
         return result  # type: ignore[return-value]
 
     def find_adjacent_sleep_record(
@@ -392,6 +400,8 @@ class EventRecordService(
         detail: EventRecordDetailCreate,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
+        if not svix_service.is_enabled():
+            return
         category = (record.category or "").lower()
         provider = str(data_source.provider)
         device = data_source.device_model
@@ -449,18 +459,6 @@ class EventRecordService(
                 else None,
                 avg_pace_sec_per_km=avg_pace,
             )
-        else:
-            on_activity_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                activity_type=record.type,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
-            )
 
     def bulk_create(
         self,
@@ -468,8 +466,8 @@ class EventRecordService(
         records: list[EventRecordCreate],
     ) -> list[UUID]:
         """Bulk create event records with batch data source resolution."""
-        # Webhooks are not emitted for bulk-created records; they fire via
-        # create_detail() when individual details are added.
+        # Webhooks are not emitted for bulk-created records; they fire from
+        # bulk_create_details() when the matching details are inserted.
         return self.crud.bulk_create(db_session, records)
 
     def bulk_create_details(
@@ -478,8 +476,42 @@ class EventRecordService(
         details: list[EventRecordDetailCreate],
         detail_type: str = "workout",
     ) -> None:
-        """Bulk create event record details."""
+        """Bulk create event record details and fire one webhook per detail on commit."""
         self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # type: ignore[arg-type]
+
+        if not details or not svix_service.is_enabled():
+            return
+
+        record_ids = [d.record_id for d in details if d.record_id is not None]
+        if not record_ids:
+            return
+
+        records = db_session.query(EventRecord).filter(EventRecord.id.in_(record_ids)).all()
+        records_by_id = {r.id: r for r in records}
+
+        data_source_ids = {r.data_source_id for r in records if r.data_source_id is not None}
+        data_sources = (
+            db_session.query(DataSource).filter(DataSource.id.in_(data_source_ids)).all() if data_source_ids else []
+        )
+        data_sources_by_id = {ds.id: ds for ds in data_sources}
+
+        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
+        for detail in details:
+            record = records_by_id.get(detail.record_id)
+            if record is None or record.data_source_id is None:
+                continue
+            data_source = data_sources_by_id.get(record.data_source_id)
+            if data_source is None:
+                continue
+            dispatches.append((record, data_source, detail))
+
+        if not dispatches:
+            return
+
+        @sa_event.listens_for(db_session, "after_commit", once=True)
+        def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
+            for record, data_source, detail in dispatches:
+                self._emit_event_record_webhook(record, data_source, detail)
 
     @handle_exceptions
     def _get_records_with_filters(
@@ -703,6 +735,11 @@ class EventRecordService(
         for record, data_source in records:
             details: SleepDetails | None = record.detail if isinstance(record.detail, SleepDetails) else None
 
+            sleep_duration_seconds = (
+                details.sleep_total_duration_minutes * 60
+                if details and details.sleep_total_duration_minutes is not None
+                else None
+            )
             session = SleepSession(
                 id=record.id,
                 start_time=record.start_datetime,
@@ -710,6 +747,7 @@ class EventRecordService(
                 zone_offset=record.zone_offset,
                 source=self._map_source(data_source),
                 duration_seconds=record.duration_seconds or 0,
+                sleep_duration_seconds=sleep_duration_seconds,
                 efficiency_percent=float(details.sleep_efficiency_score)
                 if details and details.sleep_efficiency_score
                 else None,
@@ -740,6 +778,23 @@ class EventRecordService(
                 end_time=params.end_datetime,
             ),
         )
+
+    def delete_event_record(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        record_id: UUID,
+        category: str,
+    ) -> bool:
+        """Delete an event record by id and category. Returns False if not found or not owned by user."""
+        record = self.crud.get_record_with_details(db_session, record_id, category)
+        if not record:
+            return False
+        data_source = self.data_source_repo.get(db_session, record.data_source_id)
+        if not data_source or data_source.user_id != user_id:
+            return False
+        self.crud.delete(db_session, record)
+        return True
 
 
 event_record_service = EventRecordService(log=getLogger(__name__))

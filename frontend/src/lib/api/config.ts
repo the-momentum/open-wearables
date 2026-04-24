@@ -21,7 +21,10 @@ export const API_ENDPOINTS = {
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userConnectionDisconnect: (userId: string, provider: string) =>
     `/api/v1/users/${userId}/connections/${provider}`,
+  providerSetting: (provider: string) => `/api/v1/oauth/providers/${provider}`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
+  userWorkoutDetail: (userId: string, workoutId: string) =>
+    `/api/v1/users/${userId}/events/workouts/${workoutId}`,
   userAppleXmlImport: (userId: string) =>
     `/api/v1/users/${userId}/import/apple/xml/direct`,
   userAppleXmlPresignedUrl: (userId: string) =>
@@ -86,6 +89,8 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+  userSleepSessionDetail: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/events/sleep/${sessionId}`,
 
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
@@ -94,4 +99,15 @@ export const API_ENDPOINTS = {
   seedGenerate: '/api/v1/settings/seed',
   seedPresets: '/api/v1/settings/seed/presets',
   seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
+
+  // Webhooks endpoints
+  webhookEventTypes: '/api/v1/webhooks/event-types',
+  webhookEndpoints: '/api/v1/webhooks/endpoints',
+  webhookEndpointDetail: (id: string) => `/api/v1/webhooks/endpoints/${id}`,
+  webhookEndpointSecret: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/secret`,
+  webhookEndpointTest: (id: string) => `/api/v1/webhooks/endpoints/${id}/test`,
+  webhookEndpointAttempts: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/attempts`,
+  webhookMessages: '/api/v1/webhooks/messages',
 } as const;

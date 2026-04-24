@@ -205,6 +205,14 @@ def flush_redis(_redis_url: str) -> Generator[None, None, None]:
 # ============================================================================
 
 
+@pytest.fixture(scope="session", autouse=True)
+def mock_svix_lifespan() -> Generator[MagicMock, None, None]:
+    """Prevent register_event_types() from making ~170 HTTP calls to Svix on
+    every TestClient lifespan startup during tests."""
+    with patch("app.services.outgoing_webhooks.svix.register_event_types") as mock:
+        yield mock
+
+
 @pytest.fixture(autouse=True)
 def mock_webhook_dispatch() -> Generator[MagicMock, None, None]:
     """Prevent outgoing webhook tasks from attempting real Redis/Celery connections.

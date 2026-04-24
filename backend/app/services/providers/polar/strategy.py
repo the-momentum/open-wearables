@@ -35,4 +35,4 @@ class PolarStrategy(BaseProviderStrategy):
         # Polar AccessLink 3.0 uses a transaction-based REST API for data pull
         # and supports a webhook feature that sends a notification when new data
         # is available.  Actual data is fetched via the transaction endpoints.
-        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+        return ProviderCapabilities(rest_pull=True, webhook_ping=True)

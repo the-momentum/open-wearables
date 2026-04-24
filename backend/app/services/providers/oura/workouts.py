@@ -72,6 +72,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                     "Error fetching Oura workout data",
                     action="oura_workout_fetch_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
                 if all_workouts:
                     log_structured(
@@ -80,6 +81,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
                         "Returning partial workout data due to error",
                         action="oura_workout_partial_data",
                         error=str(e),
+                        user_id=str(user_id),
                     )
                     break
                 raise

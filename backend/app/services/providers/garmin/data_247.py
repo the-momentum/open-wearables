@@ -134,6 +134,7 @@ class Garmin247Data(Base247DataTemplate):
                     f"Error fetching {endpoint} chunk ({current_start.isoformat()} to {current_end.isoformat()}): {e}",
                     provider="garmin",
                     task="fetch_in_chunks",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -309,6 +310,7 @@ class Garmin247Data(Base247DataTemplate):
                 f"Missing start/end time for sleep {sleep_id}",
                 provider="garmin",
                 task="build_sleep_record",
+                user_id=str(user_id),
             )
             return None
 
@@ -329,12 +331,14 @@ class Garmin247Data(Base247DataTemplate):
 
         stages = normalized_sleep.get("stages", {})
         asleep_seconds = stages.get("deep_seconds", 0) + stages.get("light_seconds", 0) + stages.get("rem_seconds", 0)
+        time_in_bed_seconds = normalized_sleep.get("duration_seconds") or 0
+        efficiency_score = Decimal(str(asleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+
         detail = EventRecordDetailCreate(
             record_id=sleep_id,
             sleep_total_duration_minutes=asleep_seconds // 60,
-            sleep_efficiency_score=Decimal(str(normalized_sleep.get("sleep_score", 0)))
-            if normalized_sleep.get("sleep_score")
-            else None,
+            sleep_time_in_bed_minutes=time_in_bed_seconds // 60,
+            sleep_efficiency_score=efficiency_score,
             sleep_deep_minutes=stages.get("deep_seconds", 0) // 60,
             sleep_light_minutes=stages.get("light_seconds", 0) // 60,
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
@@ -370,6 +374,7 @@ class Garmin247Data(Base247DataTemplate):
                 f"Error saving sleep record {normalized_sleep['id']}: {e}",
                 provider="garmin",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
 
     # -------------------------------------------------------------------------
@@ -826,6 +831,7 @@ class Garmin247Data(Base247DataTemplate):
                 "HRV data missing startTimeInSeconds",
                 provider="garmin",
                 task="build_hrv_samples",
+                user_id=str(user_id),
             )
             return samples
 
@@ -1739,6 +1745,7 @@ class Garmin247Data(Base247DataTemplate):
                     f"Error building batch item for {summary_type}: {e}",
                     provider="garmin",
                     task="process_items_batch",
+                    user_id=str(user_id),
                 )
 
         count = 0

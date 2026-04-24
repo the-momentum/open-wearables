@@ -23,7 +23,6 @@ from .sdk_token import router as sdk_token_router
 from .seed_data import router as seed_data_router
 from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
-from .suunto_debug import router as suunto_debug_router
 from .sync_data import router as sync_data_router
 from .timeseries import router as timeseries_router
 from .token import router as token_router
@@ -64,13 +63,12 @@ v1_router.include_router(archival_router, tags=["Internal: Data Lifecycle"])
 v1_router.include_router(seed_data_router, tags=["Internal: Seed Data"])
 v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
-# --- System: provider webhooks and debug ---
+# --- System: provider webhooks ---
 v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["System: Oura Webhooks"])
 v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["System: Strava Webhooks"])
 v1_router.include_router(
     providers_webhooks_router, prefix="/providers/{provider}/webhooks", tags=["System: Provider Webhooks"]
 )
 v1_router.include_router(deprecated_webhooks_router, tags=["System: Provider Webhooks (Deprecated)"], deprecated=True)
-v1_router.include_router(suunto_debug_router, prefix="/debug", tags=["System: Debug"])
 
 __all__ = ["v1_router"]

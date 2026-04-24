@@ -10,10 +10,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.integrations.celery.tasks.garmin_backfill_task import start_full_backfill
+from app.integrations.celery.tasks.garmin.backfill_task import start_full_backfill
 
-MODULE = "app.integrations.celery.tasks.garmin_backfill_task"
-TRIGGER_MODULE = "app.integrations.celery.tasks.garmin_backfill_trigger"
+MODULE = "app.integrations.celery.tasks.garmin.backfill_task"
+TRIGGER_MODULE = "app.integrations.celery.tasks.garmin.backfill_trigger"
 
 
 def _make_connection(scope: str | None) -> MagicMock:

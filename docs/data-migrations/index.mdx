@@ -1,0 +1,48 @@
+---
+title: "Data Migrations"
+sidebarTitle: "Overview"
+description: "One-off scripts for backfilling or correcting data in the database. Run manually against a live instance."
+keywords: ["data migration", "backfill", "database", "open wearables"]
+"og:title": "Data Migrations | Open Wearables"
+"og:description": "One-off scripts for backfilling or correcting data in the database."
+"og:url": "https://docs.openwearables.io/data-migrations"
+"og:type": "article"
+---
+
+Data migration scripts live in `backend/scripts/data_migrations/`. They are run manually — not applied automatically on deploy — and are intended for one-off corrections, backfills, or clean-ups that cannot be expressed as a zero-downtime Alembic migration.
+
+## Prerequisites
+
+The scripts import from the `app` package and connect to the database via the environment variables in `backend/config/.env`. You need:
+
+- Docker Compose services running (`docker compose up -d`)
+- The `app` container healthy (check with `docker compose ps`)
+- A database with the latest Alembic migrations applied (`docker compose exec app uv run alembic upgrade head`)
+
+## Running a script
+
+All scripts are run inside the `app` container using `uv run`:
+
+```bash
+docker compose exec app uv run python scripts/data_migrations/<script_name>.py [options]
+```
+
+### Dry run first
+
+Every script supports a `--dry-run` flag. Always run it first — it prints the rows that would be affected without making any changes:
+
+```bash
+docker compose exec app uv run python scripts/data_migrations/<script_name>.py --dry-run
+```
+
+### Apply changes
+
+Once satisfied with the dry-run output, run without the flag:
+
+```bash
+docker compose exec app uv run python scripts/data_migrations/<script_name>.py
+```
+
+<Warning>
+Scripts write directly to the database. There is no automatic rollback. Take a database snapshot before running against production.
+</Warning>

@@ -204,7 +204,7 @@ Fired once when a complete session is saved or merged.
 
 ### Timeseries Events
 
-Fired per ingestion batch — one event per distinct `(user, provider, series_type)` combination in a sync run. These events signal that raw samples are available to query via `GET /api/v1/users/{user_id}/timeseries`.
+Fired per ingestion batch — one event per distinct `(user, provider, series_type)` combination in a sync run. Each event carries the full `samples` array, so consumers can store data directly from the webhook without issuing follow-up API calls.
 
 | Event | Series types included |
 |-------|-----------------------|
@@ -328,6 +328,8 @@ Every payload envelope has `type` (the event name as a string) and `data`.
 
 ### Timeseries events (all share the same shape)
 
+Each timeseries event carries the full sample array so your backend can act on the data immediately — no follow-up API call needed.
+
 ```json
 {
   "type": "heart_rate.created",
@@ -335,14 +337,46 @@ Every payload envelope has `type` (the event name as a string) and `data`.
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "provider": "garmin",
     "series_type": "heart_rate",
-    "sample_count": 240,
+    "sample_count": 3,
     "start_time": "2025-12-19T07:30:00+01:00",
-    "end_time": "2025-12-19T08:30:00+01:00"
+    "end_time": "2025-12-19T07:40:00+01:00",
+    "samples": [
+      {
+        "timestamp": "2025-12-19T07:30:00+01:00",
+        "zone_offset": "+01:00",
+        "type": "heart_rate",
+        "value": 62,
+        "unit": "bpm",
+        "source": { "provider": "garmin", "device": "Forerunner 255" }
+      },
+      {
+        "timestamp": "2025-12-19T07:35:00+01:00",
+        "zone_offset": "+01:00",
+        "type": "heart_rate",
+        "value": 65,
+        "unit": "bpm",
+        "source": { "provider": "garmin", "device": "Forerunner 255" }
+      },
+      {
+        "timestamp": "2025-12-19T07:40:00+01:00",
+        "zone_offset": "+01:00",
+        "type": "heart_rate",
+        "value": 70,
+        "unit": "bpm",
+        "source": { "provider": "garmin", "device": "Forerunner 255" }
+      }
+    ]
   }
 }
 ```
 
-`start_time` / `end_time` are `null` when the ingestion run did not record time bounds (e.g. Apple Health XML imports). Fetch the actual samples via [`GET /api/v1/users/{user_id}/timeseries`](/api-reference/guides/quick-integration#step-4-fetch-health-data).
+Each entry in `samples` matches the schema returned by `GET /api/v1/users/{user_id}/timeseries`, so consumers work with a single schema regardless of whether data comes from a webhook or the pull API.
+
+<Note>
+  **Large batches** (exceeding 2 500 samples) are automatically split into consecutive chunk events to stay within Svix's 1 MB payload limit.  Each chunk event includes `chunk_index` (0-based) and `total_chunks` so you can detect and reassemble split deliveries.  The `sample_count` field always reflects the total number of samples across all chunks.
+</Note>
+
+The pull API (`GET /api/v1/users/{user_id}/timeseries`) remains available for backfill, reconciliation, or recovery after missed deliveries.
 
 ---
 

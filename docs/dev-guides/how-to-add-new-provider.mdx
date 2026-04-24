@@ -31,15 +31,15 @@ Each provider declares its data delivery modes via `ProviderCapabilities`:
 
 | Capability | Description | Example providers |
 |---|---|---|
-| `supports_pull` | REST API polling (OAuth) | Garmin, Oura, Whoop, Strava |
-| `supports_push` | Incoming webhooks | Garmin, Oura, Strava, Suunto, Polar |
-| `supports_async_export` | Provider initiates async export delivered via webhook | Garmin |
-| `supports_sdk` | Data from mobile SDK client | Apple, Samsung, Google |
-| `supports_xml_import` | File-based data import | Apple Health |
-| `webhook_notify_only` | Webhook is a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit |
+| `rest_pull` | Usually historical REST API | Oura, Whoop, Strava, Suunto |
+| `client_sdk` | Data delivered via mobile SDK client | Apple, Samsung, Google |
+| `file_import` | File-based data import | Apple Health |
+| `webhook_callback` | Provider-initiates async export delivered to our webhook | Garmin backfill |
+| `webhook_stream` | Provider pushes full data payload in every webhook | Garmin, Suunto |
+| `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar |
 
 <Note>
-For reference: Garmin sends the **full data payload** inside every webhook (`webhook_notify_only=False`). Oura and Strava send only a notification and you must fetch actual data via REST (`webhook_notify_only=True`).
+`webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar).
 </Note>
 
 <img src="/images/providers/custom-providers-architecture.png" alt="Custom providers architecture showing Strategy, OAuth, Workouts, 247 Data, and Webhook Handler components" />
@@ -93,7 +93,7 @@ backend/app/services/providers/suunto/
 ├── oauth.py           # OAuth handler (skip if PUSH-only with no REST API)
 ├── workouts.py        # Workout/activity data handler
 ├── data_247.py        # 24/7 continuous health data (optional)
-└── webhook_handler.py # Incoming webhook handler (optional, if supports_push)
+└── webhook_handler.py # Incoming webhook handler (optional, if webhook_stream or webhook_ping)
 ```
 
 <Tip>
@@ -137,7 +137,7 @@ class SuuntoStrategy(BaseProviderStrategy):
             oauth=self.oauth,
         )
 
-        # Webhook handler — only set if supports_push=True (see below)
+        # Webhook handler — only set if webhook_stream or webhook_ping (see below)
         # self.webhooks = SuuntoWebhookHandler(...)
 
     @property
@@ -154,9 +154,8 @@ class SuuntoStrategy(BaseProviderStrategy):
     def capabilities(self) -> ProviderCapabilities:
         """Declare what data delivery modes this provider supports."""
         return ProviderCapabilities(
-            supports_pull=True,
-            supports_push=True,
-            webhook_notify_only=True,  # Suunto sends notifications, not full payloads
+            rest_pull=True,
+            webhook_stream=True,  # Suunto delivers full payload in every webhook
         )
 ```
 
@@ -596,11 +595,14 @@ First decide how your provider delivers webhook data:
 Reflect this in `capabilities` inside your strategy:
 
 ```python
-# Full-payload push (Garmin-style)
-return ProviderCapabilities(supports_push=True, webhook_notify_only=False)
+# Full-payload stream (Garmin/Suunto-style) — historical pull + live webhook stream
+return ProviderCapabilities(rest_pull=True, webhook_stream=True)
 
-# Notify-only (Oura/Strava-style)
-return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+# Notify-only ping (Oura/Strava-style) — REST pull + webhook triggers refetch
+return ProviderCapabilities(rest_pull=True, webhook_ping=True)
+
+# REST-only — no webhooks
+return ProviderCapabilities(rest_pull=True)
 ```
 
 ### Create the webhook handler
@@ -624,15 +626,16 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         super().__init__("suunto")
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Verify the incoming request is authentically from Suunto.
+        """Verify the incoming request is authentically from the provider.
         
         Use the appropriate scheme for your provider:
         - HMAC-SHA256: use self._verify_hmac_sha256(secret, body, provided_sig)
         - Plain token: use self._verify_token(expected, provided)
         - Header check: inspect request.headers directly
         """
-        token = request.headers.get("x-suunto-token", "")
-        return self._verify_token(settings.suunto_webhook_secret or "", token)
+        sig = request.headers.get("x-hmac-sha256-signature", "")
+        secret = settings.suunto_webhook_secret.get_secret_value() if settings.suunto_webhook_secret else ""
+        return self._verify_hmac_sha256(secret, body, sig)
 
     def parse_payload(self, body: bytes) -> dict[str, Any]:
         """Parse the raw webhook body into a Python dict / Pydantic model."""
@@ -645,20 +648,18 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
     def dispatch(self, db: DbSession, payload: dict[str, Any]) -> dict[str, Any]:
         """Route the payload to the appropriate service method.
         
-        For notify-only webhooks: schedule a Celery task or call the REST API here.
-        For full-payload webhooks: save data directly.
+        For webhook_stream (full-payload): save records directly or enqueue a Celery task.
+        For webhook_ping (notify-only): fetch actual data via REST then save.
         """
-        # Example for notify-only:
-        user_id = payload.get("user_id")
-        event_type = payload.get("event_type")
+        event_type = payload.get("type", "unknown")
         
-        # Trigger async fetch of actual data
-        # celery_app.send_task("app.tasks.suunto.fetch_data", args=[user_id, event_type])
+        # Enqueue async processing so we respond within the provider's timeout window
+        # process_push.delay(payload, request_trace_id=...)
         
-        return {"received": True, "event_type": event_type}
+        return {"status": "accepted", "event_type": event_type}
 
     def supported_event_types(self) -> list[str]:
-        return ["workout_create", "workout_update"]
+        return ["WORKOUT_CREATED"]
 
     def handle_challenge(self, request: Request) -> dict[str, Any]:
         """Handle GET-based subscription verification (if your provider requires it).
@@ -667,10 +668,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
         (like Strava hub.challenge or Oura verification_token).
         Default raises 501.
         """
-        token = request.query_params.get("verification_token", "")
-        if token != settings.suunto_webhook_verify_token:
-            raise HTTPException(status_code=403, detail="Invalid verification token")
-        return {"verification_token": token}
+        token = request.query_params.get("hub.challenge", "")
+        return {"hub.challenge": token}
 ```
 
 <Info>
@@ -694,9 +693,8 @@ class SuuntoStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_pull=True,
-            supports_push=True,
-            webhook_notify_only=True,
+            rest_pull=True,
+            webhook_stream=True,
         )
 ```
 
@@ -736,7 +734,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Implemented `ProviderStrategy` with required properties and **`capabilities`** declaration
 - [ ] Implemented `ProviderOAuth` with endpoints, credentials, and user info fetch
 - [ ] Implemented `ProviderWorkouts` with normalization logic
-- [ ] Implemented `ProviderWebhookHandler` extending `BaseWebhookHandler` (if `supports_push=True`)
+- [ ] Implemented `ProviderWebhookHandler` extending `BaseWebhookHandler` (if `webhook_stream` or `webhook_ping`)
 - [ ] Wired `self.webhooks` in strategy (or left as `None` if no webhooks)
 - [ ] Created workout type mapping file
 - [ ] Registered provider in `ProviderFactory`

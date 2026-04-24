@@ -427,7 +427,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
             {/* Unconstrained providers: Sync History dropdown + Force Live Sync */}
             {(connection.max_historical_days === null ||
               connection.max_historical_days === undefined) &&
-              connection.supports_pull &&
+              connection.rest_pull &&
               !isPermanentlyFailed && (
                 <>
                   <DropdownMenu>
@@ -471,25 +471,27 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => synchronizeDataFromProvider()}
-                    disabled={isSynchronizing}
-                  >
-                    {isSynchronizing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4" />
-                        Force Live Sync
-                      </>
-                    )}
-                  </Button>
+                  {connection.live_sync_mode !== 'webhook' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => synchronizeDataFromProvider()}
+                      disabled={isSynchronizing}
+                    >
+                      {isSynchronizing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Force Live Sync
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </>
               )}
           </div>

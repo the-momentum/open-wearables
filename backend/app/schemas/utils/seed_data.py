@@ -4,7 +4,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.schemas.enums import ProviderName, WorkoutType
+from app.schemas.enums import ProviderName, SeriesType, WorkoutType
 
 
 class WorkoutConfig(BaseModel):
@@ -19,7 +19,6 @@ class WorkoutConfig(BaseModel):
     hr_min_range: tuple[int, int] = (90, 120)
     hr_max_range: tuple[int, int] = (140, 180)
     steps_range: tuple[int, int] = (500, 20_000)
-    time_series_chance_pct: int = Field(30, ge=0, le=100)
     date_range_months: int = Field(6, ge=1, le=24)
     date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
     date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
@@ -145,6 +144,39 @@ class SleepConfig(BaseModel):
         return self
 
 
+class TimeSeriesConfig(BaseModel):
+    """Parameters controlling continuous time-series generation.
+
+    Continuous time-series are emitted across the full date range independently
+    from workouts (e.g. heart rate every 5 min, weight weekly). Workout-bound
+    series (running_power, cadence, ...) are still emitted inside workout
+    windows and are not controlled by this config.
+    """
+
+    enabled_types: list[SeriesType] = Field(
+        default_factory=list,
+        description=(
+            "Specific series types to emit. Empty list = no continuous series "
+            "emitted. Workout-bound types are never affected by this list - "
+            "they follow the workout generator."
+        ),
+    )
+    include_blood_pressure: bool = Field(
+        False,
+        description="Emit paired blood_pressure_systolic + blood_pressure_diastolic.",
+    )
+    date_range_months: int = Field(6, ge=1, le=24)
+    date_from: date | None = Field(None, description="Explicit start date. Overrides date_range_months.")
+    date_to: date | None = Field(None, description="Explicit end date. Overrides date_range_months.")
+
+    @model_validator(mode="after")
+    def _validate_ranges(self) -> "TimeSeriesConfig":
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            msg = f"date_from ({self.date_from}) must be <= date_to ({self.date_to})"
+            raise ValueError(msg)
+        return self
+
+
 class SeedProfileConfig(BaseModel):
     """Complete seed data generation configuration."""
 
@@ -156,6 +188,7 @@ class SeedProfileConfig(BaseModel):
     num_connections: int = Field(2, ge=1, le=5)
     workout_config: WorkoutConfig = WorkoutConfig()
     sleep_config: SleepConfig = SleepConfig()
+    time_series_config: TimeSeriesConfig = TimeSeriesConfig()
 
 
 class SeedDataRequest(BaseModel):
@@ -190,6 +223,55 @@ class SeedPresetInfo(BaseModel):
 # Preset definitions
 # ---------------------------------------------------------------------------
 
+_ACTIVITY_CORE_TYPES = [
+    SeriesType.heart_rate,
+    SeriesType.steps,
+    SeriesType.energy,
+    SeriesType.basal_energy,
+    SeriesType.distance_walking_running,
+    SeriesType.flights_climbed,
+]
+
+_SLEEP_RECOVERY_TYPES = [
+    SeriesType.resting_heart_rate,
+    SeriesType.heart_rate_variability_sdnn,
+    SeriesType.oxygen_saturation,
+    SeriesType.skin_temperature,
+    SeriesType.respiratory_rate,
+]
+
+_BODY_COMPOSITION_TYPES = [
+    SeriesType.weight,
+    SeriesType.body_fat_percentage,
+    SeriesType.vo2_max,
+]
+
+_WORKOUT_BOUND_TYPES = [
+    SeriesType.running_power,
+    SeriesType.running_speed,
+    SeriesType.cadence,
+    SeriesType.power,
+    SeriesType.swimming_stroke_count,
+]
+
+_ALL_CONTINUOUS_TYPES = list(
+    dict.fromkeys(
+        _ACTIVITY_CORE_TYPES
+        + _SLEEP_RECOVERY_TYPES
+        + _BODY_COMPOSITION_TYPES
+        + [
+            SeriesType.body_temperature,
+            SeriesType.blood_glucose,
+            SeriesType.stand_time,
+            SeriesType.exercise_time,
+            SeriesType.time_in_daylight,
+            SeriesType.environmental_audio_exposure,
+            SeriesType.headphone_audio_exposure,
+        ]
+    )
+)
+
+
 SEED_PRESETS: dict[str, dict] = {
     "active_athlete": {
         "label": "Active Athlete",
@@ -212,9 +294,16 @@ SEED_PRESETS: dict[str, dict] = {
                 hr_min_range=(80, 110),
                 hr_max_range=(160, 195),
                 steps_range=(2000, 25_000),
-                time_series_chance_pct=50,
             ),
             sleep_config=SleepConfig(count=30, stage_profile="athlete_recovery"),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_SLEEP_RECOVERY_TYPES,
+                    *_BODY_COMPOSITION_TYPES,
+                    *_WORKOUT_BOUND_TYPES,
+                ],
+            ),
         ),
     },
     "boxer_footballer": {
@@ -237,7 +326,14 @@ SEED_PRESETS: dict[str, dict] = {
                 duration_max_minutes=120,
                 hr_min_range=(85, 115),
                 hr_max_range=(155, 190),
-                time_series_chance_pct=40,
+            ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    SeriesType.running_power,
+                    SeriesType.running_speed,
+                    SeriesType.cadence,
+                ],
             ),
         ),
     },
@@ -249,13 +345,22 @@ SEED_PRESETS: dict[str, dict] = {
             generate_workouts=True,
             generate_sleep=True,
             generate_time_series=True,
-            workout_config=WorkoutConfig(count=10, time_series_chance_pct=20),
+            workout_config=WorkoutConfig(count=10),
             sleep_config=SleepConfig(
                 count=60,
                 duration_min_minutes=240,
                 duration_max_minutes=360,
                 nap_chance_pct=5,
                 stage_profile="deep_deficit",
+            ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    SeriesType.heart_rate,
+                    SeriesType.steps,
+                    SeriesType.energy,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
+                include_blood_pressure=True,  # elevated BP correlates with poor sleep
             ),
         ),
     },
@@ -267,12 +372,18 @@ SEED_PRESETS: dict[str, dict] = {
             generate_workouts=True,
             generate_sleep=True,
             generate_time_series=True,
-            workout_config=WorkoutConfig(count=10, time_series_chance_pct=15),
+            workout_config=WorkoutConfig(count=10),
             sleep_config=SleepConfig(
                 count=60,
                 duration_min_minutes=240,
                 duration_max_minutes=360,
                 weekend_catchup=True,
+            ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
             ),
         ),
     },
@@ -284,13 +395,19 @@ SEED_PRESETS: dict[str, dict] = {
             generate_workouts=True,
             generate_sleep=True,
             generate_time_series=True,
-            workout_config=WorkoutConfig(count=5, time_series_chance_pct=15),
+            workout_config=WorkoutConfig(count=5),
             sleep_config=SleepConfig(
                 count=90,
                 duration_min_minutes=180,
                 duration_max_minutes=660,
                 nap_chance_pct=20,
                 stage_profile="restless",
+            ),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    SeriesType.heart_rate,
+                    *_SLEEP_RECOVERY_TYPES,
+                ],
             ),
         ),
     },
@@ -303,6 +420,12 @@ SEED_PRESETS: dict[str, dict] = {
             generate_sleep=False,
             generate_time_series=True,
             workout_config=WorkoutConfig(count=80),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[
+                    *_ACTIVITY_CORE_TYPES,
+                    *_WORKOUT_BOUND_TYPES,
+                ],
+            ),
         ),
     },
     "sleep_only": {
@@ -330,7 +453,7 @@ SEED_PRESETS: dict[str, dict] = {
     },
     "comprehensive": {
         "label": "Comprehensive",
-        "description": "Large, rich dataset - 150 workouts, 60 sleeps, 5 providers, 80% time series.",
+        "description": "Large, rich dataset - 150 workouts, 60 sleeps, 5 providers, full time series.",
         "profile": SeedProfileConfig(
             preset="comprehensive",
             generate_workouts=True,
@@ -339,11 +462,14 @@ SEED_PRESETS: dict[str, dict] = {
             num_connections=5,
             workout_config=WorkoutConfig(
                 count=150,
-                time_series_chance_pct=80,
                 duration_min_minutes=10,
                 duration_max_minutes=240,
             ),
             sleep_config=SleepConfig(count=60),
+            time_series_config=TimeSeriesConfig(
+                enabled_types=[*_ALL_CONTINUOUS_TYPES, *_WORKOUT_BOUND_TYPES],
+                include_blood_pressure=True,
+            ),
         ),
     },
 }

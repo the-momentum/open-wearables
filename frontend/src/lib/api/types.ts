@@ -209,6 +209,8 @@ export interface Provider {
   has_cloud_api: boolean;
   is_enabled: boolean;
   icon_url: string;
+  live_sync_mode: 'pull' | 'webhook' | null;
+  live_sync_configurable: boolean;
 }
 
 export type WearableProvider =
@@ -232,7 +234,11 @@ export interface UserConnection {
   created_at: string;
   updated_at: string;
   max_historical_days?: number | null;
-  supports_pull?: boolean;
+  rest_pull?: boolean;
+  webhook_stream?: boolean;
+  webhook_ping?: boolean;
+  webhook_callback?: boolean;
+  live_sync_mode?: 'pull' | 'webhook' | null;
 }
 
 // ============================================================================
@@ -259,6 +265,7 @@ export interface SleepSession {
   end_time: string;
   source: SourceMetadata;
   duration_seconds: number;
+  sleep_duration_seconds: number | null;
   efficiency_percent: number | null;
   stages: SleepStagesSummary | null;
   sleep_stage_intervals: SleepStage[] | null;
@@ -670,4 +677,82 @@ export interface GarminBackfillStatus {
   attempt_count: number;
   max_attempts: number;
   permanently_failed: boolean;
+}
+
+export interface WebhookEventType {
+  name: string;
+  description: string;
+  child_events?: string[] | null;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  description: string | null;
+  filter_types: string[] | null;
+  user_id: string | null;
+}
+
+export interface WebhookEndpointCreate {
+  url: string;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointUpdate {
+  url?: string | null;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointSecret {
+  key: string;
+}
+
+export interface WebhookTestEventResponse {
+  message: string;
+  message_id: string;
+}
+
+export interface WebhookMessage {
+  id: string;
+  eventType: string;
+  eventId: string | null;
+  timestamp: string;
+  channels: string[] | null;
+  tags: string[] | null;
+  payload: Record<string, unknown>;
+}
+
+export interface WebhookMessageAttempt {
+  id: string;
+  endpointId: string;
+  msgId: string;
+  url: string;
+  response: string;
+  responseStatusCode: number;
+  responseDurationMs: number;
+  status: number | string;
+  statusText?: string;
+  triggerType: number | string;
+  timestamp: string;
+  msg?: WebhookMessage | null;
+}
+
+export interface WebhookListResponse<T> {
+  data: T[];
+  done: boolean;
+  iterator: string | null;
+  prevIterator: string | null;
+}
+
+export interface WebhookAttemptsParams {
+  limit?: number;
+  iterator?: string | null;
+  before?: string | null;
+  after?: string | null;
+  status?: number | null;
+  event_types?: string[];
 }

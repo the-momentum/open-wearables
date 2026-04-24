@@ -12,7 +12,14 @@ export interface WorkoutConfig {
   hr_min_range: [number, number];
   hr_max_range: [number, number];
   steps_range: [number, number];
-  time_series_chance_pct: number;
+  date_range_months: number;
+  date_from: string | null;
+  date_to: string | null;
+}
+
+export interface TimeSeriesConfig {
+  enabled_types: string[];
+  include_blood_pressure: boolean;
   date_range_months: number;
   date_from: string | null;
   date_to: string | null;
@@ -53,6 +60,7 @@ export interface SeedProfileConfig {
   num_connections: number;
   workout_config: WorkoutConfig;
   sleep_config: SleepConfig;
+  time_series_config: TimeSeriesConfig;
 }
 
 export interface SeedDataRequest {

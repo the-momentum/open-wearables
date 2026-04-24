@@ -8,13 +8,30 @@ happens in the worker process.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 from uuid import UUID
 
-from app.constants.webhooks.events import SERIES_TYPE_TO_WEBHOOK_EVENT
+from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of samples included in a single Svix message.
+# At ~200 bytes per serialised sample, 2 500 samples ≈ 500 KB — well within
+# Svix's 1 MB payload limit.  Batches larger than this are split into
+# consecutive chunk events, each carrying a ``chunk_index`` / ``total_chunks``
+# envelope so consumers can reassemble if needed.
+SVIX_MAX_SAMPLES_PER_EVENT = 2500
+
+# Svix eventId must match [a-zA-Z0-9\-_.] — colons, plus-signs, and other
+# characters in ISO 8601 timestamps are not allowed.
+_SVIX_ID_SAFE = re.compile(r"[^a-zA-Z0-9\-_.]")
+
+
+def _safe_key(raw: str) -> str:
+    """Replace characters forbidden in a Svix eventId with underscores."""
+    return _SVIX_ID_SAFE.sub("_", raw)
 
 
 def _dispatch(
@@ -118,38 +135,6 @@ def on_sleep_created(
     )
 
 
-def on_activity_created(
-    *,
-    record_id: UUID,
-    user_id: UUID,
-    provider: str,
-    device: str | None,
-    activity_type: str | None,
-    start_time: str,
-    end_time: str,
-    zone_offset: str | None,
-    duration_seconds: float | None,
-) -> None:
-    _dispatch(
-        WebhookEventType.ACTIVITY_CREATED,
-        {
-            "type": WebhookEventType.ACTIVITY_CREATED,
-            "data": {
-                "id": str(record_id),
-                "user_id": str(user_id),
-                "type": activity_type,
-                "start_time": start_time,
-                "end_time": end_time,
-                "zone_offset": zone_offset,
-                "duration_seconds": duration_seconds,
-                "source": {"provider": provider, "device": device},
-            },
-        },
-        idempotency_key=f"activity.created.{record_id}",
-        channels=[f"user.{user_id}"],
-    )
-
-
 def on_timeseries_batch_saved(
     *,
     user_id: UUID,
@@ -158,26 +143,79 @@ def on_timeseries_batch_saved(
     sample_count: int,
     start_time: str | None = None,
     end_time: str | None = None,
+    samples: list[dict[str, Any]] | None = None,
 ) -> None:
-    """Emit one webhook event per data-type per ingestion batch."""
-    event_type = SERIES_TYPE_TO_WEBHOOK_EVENT.get(series_type, WebhookEventType.TIMESERIES_CREATED)
-    idempotency_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
-    _dispatch(
-        event_type,
-        {
-            "type": event_type,
-            "data": {
+    """Emit one webhook event per data-type per ingestion batch.
+
+    Each event carries the full ``samples`` array so consumers can operate in
+    a webhook-first architecture without issuing follow-up API calls.
+
+    When ``samples`` exceeds ``SVIX_MAX_SAMPLES_PER_EVENT`` the batch is split
+    into multiple consecutive chunk events.  Every chunk includes
+    ``chunk_index`` (0-based) and ``total_chunks`` so consumers can detect and
+    reassemble split deliveries.  Single-chunk payloads omit these fields to
+    keep the common case clean.
+
+    Two events are emitted per batch:
+    - a *group* event (e.g. ``heart_rate.created``) for broad subscriptions
+    - a *granular* event (e.g. ``series.resting_heart_rate.created``) for
+      narrow subscriptions to a specific metric
+    """
+    group_event = SERIES_TYPE_TO_GROUP_EVENT.get(series_type)
+    if group_event is None:
+        return
+    granular_event = SERIES_TYPE_TO_GRANULAR_EVENT.get(series_type)
+    if granular_event and granular_event != group_event:
+        event_types_to_emit = [group_event, granular_event]
+    else:
+        event_types_to_emit = [group_event]
+    samples = samples or []
+
+    def _emit(event_type: str, payload_data: dict[str, Any], ikey: str) -> None:
+        _dispatch(
+            event_type,
+            {"type": event_type, "data": payload_data},
+            idempotency_key=_safe_key(f"{ikey}.{event_type}"),
+            channels=[f"user.{user_id}"],
+        )
+
+    if len(samples) <= SVIX_MAX_SAMPLES_PER_EVENT:
+        base_key = f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}"
+        data: dict[str, Any] = {
+            "user_id": str(user_id),
+            "provider": provider,
+            "series_type": series_type,
+            "sample_count": sample_count,
+            "start_time": start_time,
+            "end_time": end_time,
+            "samples": samples,
+        }
+        for event_type in event_types_to_emit:
+            _emit(event_type, data, base_key)
+    else:
+        chunks = [
+            samples[i : i + SVIX_MAX_SAMPLES_PER_EVENT] for i in range(0, len(samples), SVIX_MAX_SAMPLES_PER_EVENT)
+        ]
+        total_chunks = len(chunks)
+        for chunk_index, chunk in enumerate(chunks):
+            chunk_start = chunk[0]["timestamp"] if chunk else start_time
+            chunk_end = chunk[-1]["timestamp"] if chunk else end_time
+            base_key = (
+                f"timeseries.{user_id}.{provider}.{series_type}.{start_time or ''}.{end_time or ''}.chunk{chunk_index}"
+            )
+            data = {
                 "user_id": str(user_id),
                 "provider": provider,
                 "series_type": series_type,
                 "sample_count": sample_count,
-                "start_time": start_time,
-                "end_time": end_time,
-            },
-        },
-        idempotency_key=idempotency_key,
-        channels=[f"user.{user_id}"],
-    )
+                "start_time": chunk_start,
+                "end_time": chunk_end,
+                "samples": chunk,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+            }
+            for event_type in event_types_to_emit:
+                _emit(event_type, data, base_key)
 
 
 def on_connection_created(

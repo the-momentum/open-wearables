@@ -157,7 +157,7 @@ All 16 data types are handled by the webhook regardless of whether they're inclu
 ### State Machine
 
 <Info>
-**File:** `backend/app/integrations/celery/tasks/garmin_backfill_task.py`
+**File:** `backend/app/integrations/celery/tasks/garmin/backfill_task.py`
 </Info>
 
 The backfill operates as a Celery task chain with three phases:
@@ -265,7 +265,7 @@ After the window completes, the system checks for timed-out entries:
 ### Garbage Collection
 
 <Info>
-**File:** `backend/app/integrations/celery/tasks/garmin_gc_task.py`
+**File:** `backend/app/integrations/celery/tasks/garmin/gc_task.py`
 </Info>
 
 A Celery beat task runs every 3 minutes to detect and clear stuck backfills:
@@ -545,8 +545,8 @@ All data types are processed by `Garmin247Data` which handles:
 | `backend/app/services/providers/garmin/workouts.py` | `GarminWorkouts` -- activity/workout data handling |
 | `backend/app/services/providers/garmin/handlers/backfill.py` | `GarminBackfillService` -- triggers backfill requests to Garmin API |
 | `backend/app/services/providers/garmin/backfill_config.py` | All configuration constants (types, timeouts, windows, rate limits) |
-| `backend/app/integrations/celery/tasks/garmin_backfill_task.py` | Backfill state machine -- lock, trigger, timeout, window, retry, status |
-| `backend/app/integrations/celery/tasks/garmin_gc_task.py` | Garbage collector -- stuck detection and cleanup |
+| `backend/app/integrations/celery/tasks/garmin/backfill_task.py` | Backfill state machine -- lock, trigger, timeout, window, retry, status |
+| `backend/app/integrations/celery/tasks/garmin/gc_task.py` | Garbage collector -- stuck detection and cleanup |
 | `backend/app/integrations/celery/core.py` | Celery app config and beat schedule |
 | `backend/app/integrations/celery/tasks/__init__.py` | Re-exports for all task functions |
 | `backend/app/api/routes/v1/garmin_webhooks.py` | PING/PUSH webhook handlers |

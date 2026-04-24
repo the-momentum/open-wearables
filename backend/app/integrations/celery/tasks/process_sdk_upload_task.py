@@ -2,6 +2,8 @@ import uuid
 from logging import getLogger
 from uuid import UUID
 
+from celery import shared_task
+
 from app.database import SessionLocal
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -13,7 +15,6 @@ from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
 from app.utils.structured_logging import log_structured
-from celery import shared_task
 
 logger = getLogger(__name__)
 

@@ -60,7 +60,6 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
     hr_min_range: [90, 120],
     hr_max_range: [140, 180],
     steps_range: [500, 20000],
-    time_series_chance_pct: 30,
     date_range_months: 6,
     date_from: DEFAULT_DATE_FROM,
     date_to: DEFAULT_DATE_TO,
@@ -81,7 +80,78 @@ const DEFAULT_PROFILE: SeedProfileConfig = {
       awake_pct_range: [2, 8],
     },
   },
+  time_series_config: {
+    enabled_types: [],
+    include_blood_pressure: false,
+    date_range_months: 6,
+    date_from: DEFAULT_DATE_FROM,
+    date_to: DEFAULT_DATE_TO,
+  },
 };
+
+// Curated list of the 20-30 most common continuous series types, grouped
+// semantically. Paired blood_pressure is rendered as a single toggle below.
+const CONTINUOUS_SERIES_GROUPS: {
+  label: string;
+  types: { id: string; label: string }[];
+}[] = [
+  {
+    label: 'Heart & cardiovascular',
+    types: [
+      { id: 'heart_rate', label: 'Heart rate' },
+      { id: 'resting_heart_rate', label: 'Resting heart rate' },
+      { id: 'heart_rate_variability_sdnn', label: 'HRV (SDNN)' },
+    ],
+  },
+  {
+    label: 'Blood & respiratory',
+    types: [
+      { id: 'respiratory_rate', label: 'Respiratory rate' },
+      { id: 'oxygen_saturation', label: 'Oxygen saturation' },
+      { id: 'blood_glucose', label: 'Blood glucose' },
+    ],
+  },
+  {
+    label: 'Body',
+    types: [
+      { id: 'weight', label: 'Weight' },
+      { id: 'body_fat_percentage', label: 'Body fat %' },
+      { id: 'body_temperature', label: 'Body temperature' },
+      { id: 'skin_temperature', label: 'Skin temperature' },
+      { id: 'vo2_max', label: 'VO₂ max' },
+    ],
+  },
+  {
+    label: 'Activity',
+    types: [
+      { id: 'steps', label: 'Steps' },
+      { id: 'energy', label: 'Energy burned' },
+      { id: 'basal_energy', label: 'Basal energy' },
+      { id: 'distance_walking_running', label: 'Distance (walk/run)' },
+      { id: 'flights_climbed', label: 'Flights climbed' },
+      { id: 'stand_time', label: 'Stand time' },
+      { id: 'exercise_time', label: 'Exercise time' },
+    ],
+  },
+  {
+    label: 'Environmental',
+    types: [
+      { id: 'time_in_daylight', label: 'Time in daylight' },
+      { id: 'environmental_audio_exposure', label: 'Environmental audio' },
+      { id: 'headphone_audio_exposure', label: 'Headphone audio' },
+    ],
+  },
+  {
+    label: 'During workouts only',
+    types: [
+      { id: 'running_power', label: 'Running power' },
+      { id: 'running_speed', label: 'Running speed' },
+      { id: 'cadence', label: 'Cadence' },
+      { id: 'power', label: 'Power' },
+      { id: 'swimming_stroke_count', label: 'Swim stroke count' },
+    ],
+  },
+];
 
 const DEFAULT_STAGE_DISTRIBUTION: SleepStageDistribution = {
   deep_pct_range: [15, 25],
@@ -96,19 +166,124 @@ const STAGE_COLORS = {
   light: 'bg-zinc-600',
 } as const;
 
-// Common workout types displayed as checkboxes
-const COMMON_WORKOUT_TYPES = [
-  'running',
-  'cycling',
-  'swimming',
-  'strength_training',
-  'boxing',
-  'soccer',
-  'walking',
-  'hiking',
-  'yoga',
-  'rowing',
-] as const;
+// Workout types grouped for the seed form. Mirrors the categories in
+// backend/app/schemas/enums/workout_types.py (some niche types omitted).
+const WORKOUT_TYPE_GROUPS: { label: string; types: string[] }[] = [
+  {
+    label: 'Running & walking',
+    types: [
+      'running',
+      'trail_running',
+      'treadmill',
+      'walking',
+      'walking_fitness',
+      'hiking',
+      'trail_hiking',
+      'mountaineering',
+    ],
+  },
+  {
+    label: 'Cycling',
+    types: [
+      'cycling',
+      'indoor_cycling',
+      'mountain_biking',
+      'cyclocross',
+      'e_biking',
+    ],
+  },
+  {
+    label: 'Swimming & water',
+    types: [
+      'swimming',
+      'pool_swimming',
+      'open_water_swimming',
+      'rowing',
+      'kayaking',
+      'canoeing',
+      'paddling',
+      'stand_up_paddleboarding',
+      'surfing',
+    ],
+  },
+  {
+    label: 'Gym & fitness',
+    types: [
+      'strength_training',
+      'cardio_training',
+      'fitness_equipment',
+      'elliptical',
+      'rowing_machine',
+      'stair_climbing',
+    ],
+  },
+  {
+    label: 'Mind & body',
+    types: ['yoga', 'pilates', 'stretching', 'meditation'],
+  },
+  {
+    label: 'Winter',
+    types: [
+      'cross_country_skiing',
+      'alpine_skiing',
+      'backcountry_skiing',
+      'downhill_skiing',
+      'snowboarding',
+      'snowshoeing',
+      'ice_skating',
+    ],
+  },
+  {
+    label: 'Team sports',
+    types: [
+      'soccer',
+      'basketball',
+      'football',
+      'american_football',
+      'baseball',
+      'volleyball',
+      'handball',
+      'rugby',
+      'hockey',
+    ],
+  },
+  {
+    label: 'Racket sports',
+    types: [
+      'tennis',
+      'badminton',
+      'squash',
+      'table_tennis',
+      'padel',
+      'pickleball',
+    ],
+  },
+  {
+    label: 'Combat & climbing',
+    types: [
+      'boxing',
+      'martial_arts',
+      'wrestling',
+      'rock_climbing',
+      'indoor_climbing',
+      'bouldering',
+    ],
+  },
+  {
+    label: 'Multisport & other',
+    types: [
+      'triathlon',
+      'multisport',
+      'dance',
+      'aerobics',
+      'skating',
+      'inline_skating',
+      'skateboarding',
+      'horseback_riding',
+      'golf',
+    ],
+  },
+];
 
 const PROVIDERS = [
   { id: 'apple', label: 'Apple Health' },
@@ -153,6 +328,13 @@ export function SeedDataTab() {
         stage_distribution:
           preset.profile.sleep_config.stage_distribution ??
           DEFAULT_STAGE_DISTRIBUTION,
+      },
+      time_series_config: {
+        ...(preset.profile.time_series_config ??
+          DEFAULT_PROFILE.time_series_config),
+        date_from:
+          preset.profile.time_series_config?.date_from ?? DEFAULT_DATE_FROM,
+        date_to: preset.profile.time_series_config?.date_to ?? DEFAULT_DATE_TO,
       },
     });
   };
@@ -523,28 +705,35 @@ export function SeedDataTab() {
               </div>
             </div>
 
-            <div>
-              <Label className="text-xs text-zinc-500 mb-2 block">
+            <div className="space-y-3">
+              <Label className="text-xs text-zinc-500 block">
                 Workout types{' '}
                 <span className="text-zinc-600">
                   (none selected = all types)
                 </span>
               </Label>
-              <div className="flex flex-wrap gap-2">
-                {COMMON_WORKOUT_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => toggleWorkoutType(type)}
-                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                      selectedWorkoutTypes?.includes(type)
-                        ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                    }`}
-                  >
-                    {type.replace(/_/g, ' ')}
-                  </button>
-                ))}
-              </div>
+              {WORKOUT_TYPE_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                    {group.label}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.types.map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => toggleWorkoutType(type)}
+                        className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                          selectedWorkoutTypes?.includes(type)
+                            ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                            : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                        }`}
+                      >
+                        {type.replace(/_/g, ' ')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -873,7 +1062,7 @@ export function SeedDataTab() {
 
       {/* Time Series */}
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <Activity className="h-4 w-4 text-zinc-400" />
             <h3 className="text-sm font-medium text-white">Time Series</h3>
@@ -886,34 +1075,159 @@ export function SeedDataTab() {
             }}
           />
         </div>
-        {profile.generate_time_series && profile.generate_workouts && (
-          <div className="mt-4">
-            <Label className="text-xs text-zinc-500">
-              Chance per workout (%)
-            </Label>
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={profile.workout_config.time_series_chance_pct}
-              onChange={(e) => {
-                setProfile({
-                  ...profile,
-                  workout_config: {
-                    ...profile.workout_config,
-                    time_series_chance_pct: parseInt(e.target.value) || 0,
-                  },
-                });
-                clearPreset();
-              }}
-              className="mt-1 w-24"
-            />
+
+        {profile.generate_time_series && (
+          <div className="space-y-5">
+            <p className="text-xs text-zinc-500">
+              Continuous samples are emitted across the date range below,
+              independently of workouts. Workout-specific metrics (running
+              power, cadence, ...) still come from the workout generator.
+            </p>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
+                <Label className="text-xs text-zinc-500">Date range</Label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Input
+                    type="date"
+                    value={profile.time_series_config.date_from ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        time_series_config: {
+                          ...profile.time_series_config,
+                          date_from: e.target.value || null,
+                        },
+                      });
+                      clearPreset();
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Input
+                    type="date"
+                    value={profile.time_series_config.date_to ?? ''}
+                    onChange={(e) => {
+                      setProfile({
+                        ...profile,
+                        time_series_config: {
+                          ...profile.time_series_config,
+                          date_to: e.target.value || null,
+                        },
+                      });
+                      clearPreset();
+                    }}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {(() => {
+                const allTypeIds = CONTINUOUS_SERIES_GROUPS.flatMap((g) =>
+                  g.types.map((t) => t.id)
+                );
+                const enabled = profile.time_series_config.enabled_types;
+                const allEnabled =
+                  allTypeIds.every((id) => enabled.includes(id)) &&
+                  profile.time_series_config.include_blood_pressure;
+                return (
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs text-zinc-500">
+                      Series types
+                    </Label>
+                    <button
+                      onClick={() => {
+                        setProfile({
+                          ...profile,
+                          time_series_config: {
+                            ...profile.time_series_config,
+                            enabled_types: allEnabled ? [] : allTypeIds,
+                            include_blood_pressure: !allEnabled,
+                          },
+                        });
+                        clearPreset();
+                      }}
+                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                    >
+                      {allEnabled ? 'Clear all' : 'Select all'}
+                    </button>
+                  </div>
+                );
+              })()}
+              {CONTINUOUS_SERIES_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                    {group.label}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.types.map((type) => {
+                      const enabled = profile.time_series_config.enabled_types;
+                      const selected = enabled.includes(type.id);
+                      return (
+                        <button
+                          key={type.id}
+                          onClick={() => {
+                            const updated = selected
+                              ? enabled.filter((t) => t !== type.id)
+                              : [...enabled, type.id];
+                            setProfile({
+                              ...profile,
+                              time_series_config: {
+                                ...profile.time_series_config,
+                                enabled_types: updated,
+                              },
+                            });
+                            clearPreset();
+                          }}
+                          className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                            selected
+                              ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                              : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                          }`}
+                        >
+                          {type.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <div>
+                <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                  Paired
+                </div>
+                <button
+                  onClick={() => {
+                    setProfile({
+                      ...profile,
+                      time_series_config: {
+                        ...profile.time_series_config,
+                        include_blood_pressure:
+                          !profile.time_series_config.include_blood_pressure,
+                      },
+                    });
+                    clearPreset();
+                  }}
+                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                    profile.time_series_config.include_blood_pressure
+                      ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                      : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                  }`}
+                >
+                  Blood pressure (systolic + diastolic)
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-        {profile.generate_time_series && !profile.generate_workouts && (
-          <p className="text-xs text-zinc-600 mt-3">
-            Time series data requires workouts to be enabled.
-          </p>
         )}
       </div>
 
