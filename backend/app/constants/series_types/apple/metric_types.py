@@ -172,6 +172,24 @@ class SDKMetricType(StrEnum):
     # Nike Fuel (deprecated but included for backwards compatibility)
     NIKE_FUEL = "HKQuantityTypeIdentifierNikeFuel"
 
+    # Nutrition (HKQuantityTypeIdentifierDietary...). Apple HealthKit emits one
+    # sample per nutrient for every logged food entry. Android Health Connect
+    # aggregates nutrients under a single NutritionRecord; Android support for
+    # these metrics is intentionally deferred until the SDK surfaces a 1:1
+    # identifier mapping.
+    APPLE_DIETARY_ENERGY = "HKQuantityTypeIdentifierDietaryEnergyConsumed"
+    APPLE_DIETARY_PROTEIN = "HKQuantityTypeIdentifierDietaryProtein"
+    APPLE_DIETARY_CARBOHYDRATES = "HKQuantityTypeIdentifierDietaryCarbohydrates"
+    APPLE_DIETARY_FAT_TOTAL = "HKQuantityTypeIdentifierDietaryFatTotal"
+    APPLE_DIETARY_FAT_SATURATED = "HKQuantityTypeIdentifierDietaryFatSaturated"
+    APPLE_DIETARY_FAT_MONOUNSATURATED = "HKQuantityTypeIdentifierDietaryFatMonounsaturated"
+    APPLE_DIETARY_FAT_POLYUNSATURATED = "HKQuantityTypeIdentifierDietaryFatPolyunsaturated"
+    APPLE_DIETARY_FIBER = "HKQuantityTypeIdentifierDietaryFiber"
+    APPLE_DIETARY_SUGAR = "HKQuantityTypeIdentifierDietarySugar"
+    APPLE_DIETARY_SODIUM = "HKQuantityTypeIdentifierDietarySodium"
+    APPLE_DIETARY_CHOLESTEROL = "HKQuantityTypeIdentifierDietaryCholesterol"
+    APPLE_DIETARY_CAFFEINE = "HKQuantityTypeIdentifierDietaryCaffeine"
+
 
 METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     # Heart & Cardiovascular
@@ -309,6 +327,19 @@ METRIC_TYPE_TO_SERIES_TYPE: dict[SDKMetricType, SeriesType] = {
     SDKMetricType.INSULIN_DELIVERY: SeriesType.insulin_delivery,
     # Nike Fuel
     SDKMetricType.NIKE_FUEL: SeriesType.distance_other,
+    # Nutrition
+    SDKMetricType.APPLE_DIETARY_ENERGY: SeriesType.dietary_energy,
+    SDKMetricType.APPLE_DIETARY_PROTEIN: SeriesType.dietary_protein,
+    SDKMetricType.APPLE_DIETARY_CARBOHYDRATES: SeriesType.dietary_carbohydrates,
+    SDKMetricType.APPLE_DIETARY_FAT_TOTAL: SeriesType.dietary_fat_total,
+    SDKMetricType.APPLE_DIETARY_FAT_SATURATED: SeriesType.dietary_fat_saturated,
+    SDKMetricType.APPLE_DIETARY_FAT_MONOUNSATURATED: SeriesType.dietary_fat_monounsaturated,
+    SDKMetricType.APPLE_DIETARY_FAT_POLYUNSATURATED: SeriesType.dietary_fat_polyunsaturated,
+    SDKMetricType.APPLE_DIETARY_FIBER: SeriesType.dietary_fiber,
+    SDKMetricType.APPLE_DIETARY_SUGAR: SeriesType.dietary_sugar,
+    SDKMetricType.APPLE_DIETARY_SODIUM: SeriesType.dietary_sodium,
+    SDKMetricType.APPLE_DIETARY_CHOLESTEROL: SeriesType.dietary_cholesterol,
+    SDKMetricType.APPLE_DIETARY_CAFFEINE: SeriesType.dietary_caffeine,
 }
 
 
