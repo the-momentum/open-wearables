@@ -7,7 +7,6 @@ from celery import shared_task
 from app.database import SessionLocal
 from app.schemas.utils.seed_data import SeedDataRequest
 from app.services.seed_data import seed_data_service
-from celery import shared_task
 
 logger = getLogger(__name__)
 
