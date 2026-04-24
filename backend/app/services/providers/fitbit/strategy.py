@@ -38,4 +38,5 @@ class FitbitStrategy(BaseProviderStrategy):
         # Fitbit Web API supports REST polling and a subscription-based webhook
         # system.  The webhook notification contains the user_id and collection
         # type; actual data must be fetched via the REST API.
-        return ProviderCapabilities(rest_pull=True, webhook_ping=True)
+        return ProviderCapabilities(rest_pull=True)  # use the line below wafter implementing webhooks
+        # return ProviderCapabilities(rest_pull=True, webhook_ping=True)
