@@ -279,9 +279,12 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         next_token = None
         max_limit = 25  # Whoop API limit
 
-        # Get start/end dates from kwargs (support both 'start'/'end' and 'start_date'/'end_date')
-        start = kwargs.get("start") or kwargs.get("start_date")
-        end = kwargs.get("end") or kwargs.get("end_date")
+        # Get start/end dates from kwargs.
+        # Sync route passes "summary_start_time"/"summary_end_time" (sync mode),
+        # Celery task passes "start_date"/"end_date" (async mode),
+        # and some callers use "start"/"end" directly.
+        start = kwargs.get("start") or kwargs.get("start_date") or kwargs.get("summary_start_time")
+        end = kwargs.get("end") or kwargs.get("end_date") or kwargs.get("summary_end_time")
 
         # Default to last 30 days if no dates provided
         if not start:

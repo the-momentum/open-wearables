@@ -245,9 +245,12 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         Fetches all activities in a date range using page-based pagination.
         """
-        # Get start/end dates from kwargs
-        start = kwargs.get("start") or kwargs.get("start_date")
-        end = kwargs.get("end") or kwargs.get("end_date")
+        # Get start/end dates from kwargs.
+        # The sync route passes "summary_start_time"/"summary_end_time" in
+        # synchronous mode, while the Celery task passes "start_date"/"end_date"
+        # in async mode.  Accept all variants so both paths work.
+        start = kwargs.get("start") or kwargs.get("start_date") or kwargs.get("summary_start_time")
+        end = kwargs.get("end") or kwargs.get("end_date") or kwargs.get("summary_end_time")
 
         # Default to last 30 days if no dates provided
         if not start:
