@@ -30,7 +30,9 @@ TABLES_WITH_CREATED_AT = [
     "user_invitation_code",
 ]
 
-# Tables that need the column added
+# Tables that need the column added.
+# sleep_details and workout_details are polymorphic joined-table children of
+# event_record_detail; created_at lives on the parent table, not on the children.
 TABLES_WITHOUT_CREATED_AT = [
     "archival_settings",
     "data_point_series",
@@ -42,8 +44,6 @@ TABLES_WITHOUT_CREATED_AT = [
     "personal_record",
     "provider_settings",
     "series_type_definition",
-    "sleep_details",
-    "workout_details",
 ]
 
 EPOCH_SENTINEL = sa.text("'1970-01-01 00:00:00+00'")
