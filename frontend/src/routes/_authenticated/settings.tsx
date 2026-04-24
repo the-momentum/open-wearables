@@ -1,13 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { CredentialsTab } from './settings/credentials-tab';
-import { ProvidersTab } from './settings/providers-tab';
-import { PrioritiesTab } from './settings/priorities-tab';
-import { TeamTab } from './settings/team-tab';
-import { DataLifecycleTab } from './settings/data-lifecycle-tab';
-import { SecurityTab } from './settings/security-tab';
-import { SeedDataTab } from './settings/seed-data-tab';
+import { CredentialsTab } from './settings/-credentials-tab';
+import { ProvidersTab } from './settings/-providers-tab';
+import { PrioritiesTab } from './settings/-priorities-tab';
+import { TeamTab } from './settings/-team-tab';
+import { DataLifecycleTab } from './settings/-data-lifecycle-tab';
+import { SecurityTab } from './settings/-security-tab';
+import { SeedDataTab } from './settings/-seed-data-tab';
 
 export const Route = createFileRoute('/_authenticated/settings')({
   component: SettingsPage,
