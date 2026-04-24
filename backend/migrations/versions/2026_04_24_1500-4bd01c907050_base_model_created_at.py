@@ -1,7 +1,7 @@
 """base model created_at
 
 Revision ID: 4bd01c907050
-Revises: cdac07b15b04
+Revises: e4f7a2c8b390
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "4bd01c907050"
-down_revision: Union[str, None] = "cdac07b15b04"
+down_revision: Union[str, None] = "e4f7a2c8b390"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
