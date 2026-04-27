@@ -52,7 +52,14 @@ class Whoop247Data(Base247DataTemplate):
         headers: dict[str, str] | None = None,
     ) -> Any:
         """Make authenticated request to Whoop API."""
-        print(f"Making API request to {endpoint} with params: {params}")
+        log_structured(
+            self.logger,
+            "debug",
+            f"Making API request to {endpoint}",
+            provider="whoop",
+            endpoint=endpoint,
+            params=params,
+        )
         return make_authenticated_request(
             db=db,
             user_id=user_id,
