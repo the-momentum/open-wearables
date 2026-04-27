@@ -90,7 +90,7 @@ Whoop provides access to workout, sleep, recovery, and body measurement data thr
 WHOOP_CLIENT_ID=your-whoop-client-id
 WHOOP_CLIENT_SECRET=your-whoop-client-secret
 WHOOP_REDIRECT_URI=http://localhost:8000/api/v1/oauth/whoop/callback
-WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout
+WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout read:body_measurement read:profile
 ```
 
     **Configuration details:**
@@ -258,7 +258,7 @@ With webhooks enabled, most data arrives in real time and the polling cycle only
 | `read:body_measurement` | Read body measurements (height, weight) |
 | `read:profile` | Read user profile information |
 
-The default scope `offline read:cycles read:sleep read:recovery read:workout` covers all data types currently processed by Open Wearables.
+The default scope `offline read:cycles read:sleep read:recovery read:workout read:body_measurement read:profile` covers all data types currently processed by Open Wearables.
 
 ## Next Steps
 
