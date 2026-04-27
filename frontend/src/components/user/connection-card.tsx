@@ -8,10 +8,12 @@ import {
   Loader2,
   RefreshCw,
   RotateCcw,
+  Timer,
   TriangleAlert,
   Unlink,
   Watch,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
@@ -179,6 +181,21 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                     })
                   : 'Never'}
               </p>
+              {connection.live_sync_mode && (
+                <div className="mt-1.5">
+                  {connection.live_sync_mode === 'webhook' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      <Zap className="h-3 w-3" />
+                      Webhook
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                      <Timer className="h-3 w-3" />
+                      Periodic pull
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
