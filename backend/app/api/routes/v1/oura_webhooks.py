@@ -25,17 +25,18 @@ def oura_webhook_health() -> dict:
 
 
 @router.post("/subscriptions")
-async def create_webhook_subscriptions(
+async def upsert_webhook_subscriptions(
     current_developer: Annotated[Developer, Depends(get_current_developer)],
     callback_url: str | None = None,
 ) -> dict:
-    """Create Oura webhook subscriptions for all data types.
+    """Upsert Oura webhook subscriptions for all supported data types.
 
-    Requires Oura client_id and client_secret to be configured.
-    Subscriptions are app-level (cover all authorized users).
+    Checks existing subscriptions first — updates ones that exist, creates
+    missing ones. Safe to call multiple times. Subscriptions are app-level
+    (cover all authorized users).
     """
     try:
-        results = await oura_webhook_service.create_subscriptions(callback_url)
+        results = await oura_webhook_service.upsert_subscriptions(callback_url)
         return {"subscriptions": results}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
