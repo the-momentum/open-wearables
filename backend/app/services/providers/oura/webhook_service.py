@@ -27,6 +27,19 @@ OURA_WEBHOOK_DATA_TYPES = [
     "daily_readiness",
     "daily_activity",
     "daily_spo2",
+    # types below for debug
+    "sleep_time",
+    "daily_stress",
+    "daily_cycle_phases",
+    "activation_status",
+    "daily_cardiovascular_age",
+    "daily_resilience",
+    "vo2_max",
+    "period_start",
+    "pregnancy",
+    "fertile_window",
+    "ovulation_confirmed",
+    "blood_glucose",
 ]
 
 OURA_WEBHOOK_EVENT_TYPES = ["create", "update"]
