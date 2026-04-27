@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     strava_client_secret: SecretStr | None = None
     strava_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     strava_default_scope: str = "activity:read_all,profile:read_all"
-    strava_webhook_verify_token: str = "open-wearables-strava-verify"
+    strava_webhook_verify_token: SecretStr | None = None
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
