@@ -31,9 +31,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-const editApiKeyButtonClassName =
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 cursor-pointer border border-border/50 bg-background hover:bg-card hover:border-primary/50 hover:shadow-[0_0_10px_hsla(185,100%,50%,0.2)] h-10 w-10';
-
 export function CredentialsTab() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
@@ -242,14 +239,14 @@ export function CredentialsTab() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end items-center gap-2">
-                        <button
-                          type="button"
-                          className={editApiKeyButtonClassName}
+                        <Button
+                          variant="outline"
+                          size="icon"
                           aria-label="Rename API key"
                           onClick={() => openRenameDialog(key)}
                         >
                           <Pencil className="h-4 w-4" aria-hidden />
-                        </button>
+                        </Button>
                         <Button
                           variant="destructive-outline"
                           size="icon"
