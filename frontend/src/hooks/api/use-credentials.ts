@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { credentialsService } from '@/lib/api/services/credentials.service';
-import type { ApiKeyCreate } from '@/lib/api/types';
+import type { ApiKeyCreate, ApiKeyUpdate } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/errors/handler';
@@ -19,6 +19,23 @@ export function useApiKey(id: string) {
     queryKey: queryKeys.credentials.detail(id),
     queryFn: () => credentialsService.getApiKey(id),
     enabled: !!id,
+  });
+}
+
+// Update API key (e.g. rename)
+export function useUpdateApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ApiKeyUpdate }) =>
+      credentialsService.updateApiKey(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.credentials.list() });
+      toast.success('API key updated successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to update API key: ${getErrorMessage(error)}`);
+    },
   });
 }
 

@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Plus, Eye, EyeOff, Copy, Trash2, Key, Globe } from 'lucide-react';
+import { Plus, Eye, EyeOff, Copy, Trash2, Key, Globe, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useApiKeys,
   useCreateApiKey,
   useDeleteApiKey,
+  useUpdateApiKey,
 } from '@/hooks/api/use-credentials';
+import type { ApiKey } from '@/lib/api/types';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { API_CONFIG } from '@/lib/api/config';
 import { Button } from '@/components/ui/button';
@@ -20,14 +22,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+const editApiKeyButtonClassName =
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 cursor-pointer border border-border/50 bg-background hover:bg-card hover:border-primary/50 hover:shadow-[0_0_10px_hsla(185,100%,50%,0.2)] h-10 w-10';
+
 export function CredentialsTab() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [keyName, setKeyName] = useState('');
+  const [editingKey, setEditingKey] = useState<ApiKey | null>(null);
+  const [renameKeyName, setRenameKeyName] = useState('');
 
   const { data: apiKeys, isLoading, error, refetch } = useApiKeys();
   const createMutation = useCreateApiKey();
   const deleteMutation = useDeleteApiKey();
+  const updateMutation = useUpdateApiKey();
 
   const handleCreate = async () => {
     if (!keyName.trim()) {
@@ -50,6 +58,26 @@ export function CredentialsTab() {
     ) {
       await deleteMutation.mutateAsync(id);
     }
+  };
+
+  const openRenameDialog = (key: ApiKey) => {
+    setEditingKey(key);
+    setRenameKeyName(key.name);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!editingKey) return;
+    if (!renameKeyName.trim()) {
+      toast.error('Please enter a key name');
+      return;
+    }
+
+    await updateMutation.mutateAsync({
+      id: editingKey.id,
+      data: { name: renameKeyName.trim() },
+    });
+    setEditingKey(null);
+    setRenameKeyName('');
   };
 
   const toggleKeyVisibility = (id: string) => {
@@ -204,12 +232,21 @@ export function CredentialsTab() {
                       {formatDate(key.created_at)}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end items-center gap-2">
+                        <button
+                          type="button"
+                          className={editApiKeyButtonClassName}
+                          aria-label="Rename API key"
+                          onClick={() => openRenameDialog(key)}
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden />
+                        </button>
                         <Button
                           variant="destructive-outline"
-                          size="icon-sm"
+                          size="icon"
                           onClick={() => handleDelete(key.id)}
                           disabled={deleteMutation.isPending}
+                          aria-label="Delete API key"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -237,6 +274,60 @@ export function CredentialsTab() {
           </div>
         )}
       </div>
+
+      {/* Rename API key */}
+      <Dialog
+        open={editingKey !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingKey(null);
+            setRenameKeyName('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename API Key</DialogTitle>
+            <DialogDescription>
+              Update the display name for this API key
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="rename_key_name" className="text-zinc-300">
+              Key Name
+            </Label>
+            <Input
+              id="rename_key_name"
+              type="text"
+              placeholder="e.g., Production API Key"
+              value={renameKeyName}
+              onChange={(e) => setRenameKeyName(e.target.value)}
+              className="bg-zinc-800 border-zinc-700"
+            />
+            <p className="text-[10px] text-zinc-600">
+              A descriptive name to identify this key
+            </p>
+          </div>
+          <DialogFooter className="gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditingKey(null);
+                setRenameKeyName('');
+              }}
+              disabled={updateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameSubmit}
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>

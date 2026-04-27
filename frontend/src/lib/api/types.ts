@@ -424,6 +424,10 @@ export interface ApiKeyCreate {
   name: string;
 }
 
+export interface ApiKeyUpdate {
+  name?: string | null;
+}
+
 export interface Automation {
   id: string;
   name: string;
