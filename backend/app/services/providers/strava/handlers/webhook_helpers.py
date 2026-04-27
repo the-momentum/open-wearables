@@ -27,9 +27,7 @@ def handle_webhook_verification(
         raise HTTPException(status_code=400, detail="Invalid hub.mode")
 
     expected_token = (
-        settings.strava_webhook_verify_token.get_secret_value()
-        if settings.strava_webhook_verify_token
-        else None
+        settings.strava_webhook_verify_token.get_secret_value() if settings.strava_webhook_verify_token else None
     )
     if not expected_token or not hub_verify_token or not hmac.compare_digest(hub_verify_token, expected_token):
         log_structured(
