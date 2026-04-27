@@ -1,4 +1,10 @@
-"""Oura Ring webhook endpoints for receiving data notifications."""
+"""Oura webhook subscription management endpoints.
+
+Inbound webhook events (POST/GET) are now handled by the unified webhook
+router at ``/providers/oura/webhooks`` via OuraWebhookHandler.
+
+These endpoints handle app-level subscription management (admin-only).
+"""
 
 from logging import getLogger
 from typing import Annotated
