@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { Plus, Eye, EyeOff, Copy, Trash2, Key, Globe, Pencil } from 'lucide-react';
+import {
+  Plus,
+  Eye,
+  EyeOff,
+  Copy,
+  Trash2,
+  Key,
+  Globe,
+  Pencil,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useApiKeys,
