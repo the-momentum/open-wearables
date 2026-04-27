@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { Trash2, Settings as SettingsIcon } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -97,25 +97,15 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                   className="text-right"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={goToDetail}
-                      title="Manage"
-                    >
-                      <SettingsIcon className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDelete(endpoint.id)}
-                      title="Delete"
-                      className="text-zinc-400 hover:text-red-400"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onDelete(endpoint.id)}
+                    title="Delete"
+                    className="text-zinc-400 hover:text-red-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </TableCell>
               </TableRow>
             );
