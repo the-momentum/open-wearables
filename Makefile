@@ -11,7 +11,7 @@ help:	## Show this help.
 build:	## Builds docker image
 	$(DOCKER_COMMAND) build --no-cache
 
-run:	## Runs the envionment in detached mode
+run:	## Runs the environment in detached mode
 	$(DOCKER_COMMAND) up -d --force-recreate
 	$(DOCKER_COMMAND) rm -f db-svix-init
 
