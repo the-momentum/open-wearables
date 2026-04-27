@@ -1,3 +1,4 @@
+import hmac
 from logging import getLogger
 from typing import Any
 from uuid import UUID
@@ -25,14 +26,16 @@ def handle_webhook_verification(
     if hub_mode != "subscribe":
         raise HTTPException(status_code=400, detail="Invalid hub.mode")
 
-    if hub_verify_token != settings.strava_webhook_verify_token:
+    expected_token = (
+        settings.strava_webhook_verify_token.get_secret_value() if settings.strava_webhook_verify_token else None
+    )
+    if not expected_token or not hub_verify_token or not hmac.compare_digest(hub_verify_token, expected_token):
         log_structured(
             logger,
             "warning",
             "Invalid verify token received",
             provider="strava",
             action="webhook_verification_failed",
-            verify_token=hub_verify_token,
         )
         raise HTTPException(status_code=403, detail="Invalid verify token")
 
@@ -138,6 +141,7 @@ def handle_webhook_event(payload: dict[str, Any], db: DbSession) -> dict:
                 "Strava workouts service not available",
                 provider="strava",
                 action="webhook_service_unavailable",
+                user_id=str(internal_user_id),
             )
             return {"status": "error", "message": "Service unavailable"}
 

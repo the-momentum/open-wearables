@@ -2,6 +2,8 @@ import contextlib
 from datetime import datetime, timedelta, timezone
 from logging import getLogger
 
+from celery import shared_task
+
 from app.config import settings
 from app.database import SessionLocal
 from app.integrations.redis_client import get_redis_client
@@ -11,7 +13,6 @@ from app.services.apple.healthkit.sleep_service import (
     load_sleep_state,
 )
 from app.utils.sentry_helpers import log_and_capture_error
-from celery import shared_task
 
 logger = getLogger(__name__)
 

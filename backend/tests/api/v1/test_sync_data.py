@@ -1,8 +1,9 @@
 """
-Tests for sync data endpoint.
+Tests for sync data endpoints.
 
-Tests the following endpoint:
+Tests the following endpoints:
 - POST /api/v1/providers/{provider}/users/{user_id}/sync
+- POST /api/v1/providers/{provider}/users/{user_id}/sync/historical
 """
 
 from collections.abc import Generator
@@ -13,6 +14,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.schemas.auth import ConnectionStatus
+from app.services.providers.base_strategy import HistoricalSyncResult
+from app.utils.exceptions import UnsupportedProviderError
 from tests.factories import ApiKeyFactory, UserConnectionFactory, UserFactory
 
 
@@ -209,3 +212,96 @@ class TestSyncDataEndpoint:
         # Assert
         assert response.status_code == 501
         assert "does not support workouts" in response.json()["detail"]
+
+
+class TestSyncHistoricalEndpoint:
+    """Test suite for POST /api/v1/providers/{provider}/users/{user_id}/sync/historical."""
+
+    @pytest.fixture
+    def mock_provider_factory(self) -> Generator[MagicMock, None, None]:
+        """Mock the ProviderFactory used by the sync_data router."""
+        with patch("app.api.routes.v1.sync_data.factory") as mock_factory:
+            yield mock_factory
+
+    def test_historical_sync_delegates_to_strategy(
+        self, client: TestClient, db: Session, mock_provider_factory: MagicMock
+    ) -> None:
+        """Endpoint should delegate to strategy.start_historical_sync()."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+
+        mock_strategy = MagicMock()
+        mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
+            task_id="task-abc",
+            method="pull_api",
+            message="Historical sync queued for 90 days of oura data.",
+            days=90,
+            start_date="2026-01-09T00:00:00+00:00",
+            end_date="2026-04-09T00:00:00+00:00",
+        )
+        mock_provider_factory.get_provider.return_value = mock_strategy
+
+        response = client.post(
+            f"/api/v1/providers/oura/users/{user.id}/sync/historical",
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["provider"] == "oura"
+        assert data["task_id"] == "task-abc"
+        assert data["method"] == "pull_api"
+        mock_strategy.start_historical_sync.assert_called_once_with(user.id, 90)
+
+    def test_historical_sync_passes_days_param(
+        self, client: TestClient, db: Session, mock_provider_factory: MagicMock
+    ) -> None:
+        """Custom days parameter should be forwarded to strategy."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+
+        mock_strategy = MagicMock()
+        mock_strategy.start_historical_sync.return_value = HistoricalSyncResult(
+            task_id="task-xyz",
+            method="pull_api",
+            message="Queued",
+            days=30,
+        )
+        mock_provider_factory.get_provider.return_value = mock_strategy
+
+        response = client.post(
+            f"/api/v1/providers/oura/users/{user.id}/sync/historical",
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+            params={"days": 30},
+        )
+
+        assert response.status_code == 200
+        mock_strategy.start_historical_sync.assert_called_once_with(user.id, 30)
+
+    def test_historical_sync_not_implemented_returns_400(
+        self, client: TestClient, db: Session, mock_provider_factory: MagicMock
+    ) -> None:
+        """Provider that doesn't support historical sync should return 400."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+
+        mock_strategy = MagicMock()
+        mock_strategy.start_historical_sync.side_effect = UnsupportedProviderError("apple", "historical sync")
+        mock_provider_factory.get_provider.return_value = mock_strategy
+
+        response = client.post(
+            f"/api/v1/providers/apple/users/{user.id}/sync/historical",
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+        )
+
+        assert response.status_code == 400
+        assert "does not support" in response.json()["detail"]
+
+    def test_historical_sync_unauthorized(self, client: TestClient, db: Session) -> None:
+        """Missing API key should return 401."""
+        user = UserFactory()
+
+        response = client.post(f"/api/v1/providers/oura/users/{user.id}/sync/historical")
+
+        assert response.status_code == 401

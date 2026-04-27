@@ -179,7 +179,7 @@ class TestGarmin247Data:
     def test_normalize_sleep(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
         """Test normalizing sleep data."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_sleep(sample_sleep, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
 
         assert normalized["user_id"] == user_id
         assert normalized["provider"] == "garmin"
@@ -238,7 +238,7 @@ class TestGarmin247Data:
             },
         }
 
-        normalized = garmin_247.normalize_sleep(sleep_data, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
 
         actual_end = datetime.fromisoformat(normalized["end_time"])
         expected_end = datetime.fromtimestamp(awake_end_ts, tz=timezone.utc)
@@ -254,7 +254,7 @@ class TestGarmin247Data:
             "durationInSeconds": 28800,
         }
 
-        normalized = garmin_247.normalize_sleep(sleep_data, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sleep_data, user_id)
 
         # Should handle missing stage data gracefully
         stages = normalized["stages"]
@@ -270,7 +270,7 @@ class TestGarmin247Data:
     def test_normalize_dailies(self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]) -> None:
         """Test normalizing daily summary data."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_dailies(sample_daily, user_id)
+        normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
 
         assert normalized["user_id"] == user_id
         assert normalized["calendar_date"] == "2024-01-15"
@@ -295,7 +295,7 @@ class TestGarmin247Data:
             "durationInSeconds": 86400,
         }
 
-        normalized = garmin_247.normalize_dailies(daily_data, user_id)
+        normalized, _ = garmin_247.normalize_dailies(daily_data, user_id)
 
         assert normalized["steps"] is None
         assert normalized["active_calories"] is None
@@ -508,7 +508,7 @@ class TestGarmin247Data:
     def test_build_dailies_samples(self, garmin_247: Garmin247Data, sample_daily: dict[str, Any]) -> None:
         """Test _build_dailies_samples returns samples without DB call."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_dailies(sample_daily, user_id)
+        normalized, _ = garmin_247.normalize_dailies(sample_daily, user_id)
         samples = garmin_247._build_dailies_samples(user_id, normalized)
 
         # 5 metrics (steps, calories, resting_hr, floors, distance) + 3 HR samples
@@ -560,8 +560,8 @@ class TestGarmin247Data:
         user_id = uuid4()
         stress_data = {
             "startTimeInSeconds": 1705276800,
-            "stressLevelValues": {"0": 25, "300": 30, "600": -1},  # -1 is skipped
-            "bodyBatteryValues": {"0": 80, "300": 78},
+            "timeOffsetStressLevelValues": {"0": 25, "300": 30, "600": -1},  # -1 is skipped
+            "timeOffsetBodyBatteryValues": {"0": 80, "300": 78},
         }
         samples = garmin_247._build_stress_samples(user_id, stress_data)
         assert len(samples) == 4  # 2 stress + 2 battery
@@ -569,7 +569,7 @@ class TestGarmin247Data:
     def test_build_sleep_record(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
         """Test _build_sleep_record returns record + detail without DB call."""
         user_id = uuid4()
-        normalized = garmin_247.normalize_sleep(sample_sleep, user_id)
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
         result = garmin_247._build_sleep_record(user_id, normalized)
 
         assert result is not None
@@ -655,8 +655,8 @@ class TestGarmin247Data:
         """Test batch processing multiple stress items."""
         user = UserFactory()
         items = [
-            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 25, "300": 30}},
-            {"startTimeInSeconds": 1705363200, "stressLevelValues": {"0": 40}},
+            {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 25, "300": 30}},
+            {"startTimeInSeconds": 1705363200, "timeOffsetStressLevelValues": {"0": 40}},
         ]
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)
@@ -705,7 +705,7 @@ class TestGarmin247Data:
         user = UserFactory()
         items = [
             {"startTimeInSeconds": 0},  # Missing timestamp -> skipped
-            {"startTimeInSeconds": 1705276800, "stressLevelValues": {"0": 50}},  # Valid
+            {"startTimeInSeconds": 1705276800, "timeOffsetStressLevelValues": {"0": 50}},  # Valid
         ]
 
         count = garmin_247.process_items_batch(db, user.id, "stressDetails", items)

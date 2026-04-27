@@ -2,6 +2,9 @@ import { Provider } from '@/lib/api/types';
 import { API_CONFIG } from '@/lib/api/config';
 import { Switch } from '@/components/ui/switch';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import { useUpdateProviderLiveSyncMode } from '@/hooks/api/use-oauth-providers';
+import { Timer, Zap } from 'lucide-react';
 
 interface ProviderItemProps {
   provider: Provider;
@@ -19,6 +22,11 @@ export function ProviderItem({
   const iconUrl = provider.icon_url
     ? new URL(provider.icon_url, API_CONFIG.baseUrl).toString()
     : null;
+
+  const { mutate: updateLiveSyncMode, isPending } =
+    useUpdateProviderLiveSyncMode(provider.provider);
+
+  const currentMode = provider.live_sync_mode ?? 'pull';
 
   return (
     <div className="px-6 py-4 hover:bg-zinc-800/30 transition-colors">
@@ -42,7 +50,7 @@ export function ProviderItem({
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h4 className="text-sm font-medium text-white">
                 {provider.name}
               </h4>
@@ -54,6 +62,53 @@ export function ProviderItem({
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-400">
                   Disabled
                 </span>
+              )}
+            </div>
+
+            <div className="mt-2">
+              {provider.live_sync_configurable ? (
+                /* Segmented control for configurable providers */
+                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+                  {(
+                    [
+                      { mode: 'pull', label: 'Periodic pull', Icon: Timer },
+                      { mode: 'webhook', label: 'Webhook', Icon: Zap },
+                    ] as const
+                  ).map(({ mode, label, Icon }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => updateLiveSyncMode(mode)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150',
+                        currentMode === mode && mode === 'webhook'
+                          ? 'bg-indigo-500/20 text-indigo-300 shadow-sm border border-indigo-500/30'
+                          : currentMode === mode && mode === 'pull'
+                            ? 'bg-zinc-700 text-zinc-100 shadow-sm border border-zinc-600'
+                            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
+                      )}
+                    >
+                      <Icon className="h-3 w-3" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                /* Static badge for non-configurable providers */
+                <div className="inline-flex items-center gap-1.5">
+                  {currentMode === 'webhook' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      <Zap className="h-3 w-3" />
+                      Webhook only
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                      <Timer className="h-3 w-3" />
+                      Periodic pull only
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

@@ -135,6 +135,42 @@ services:
     volumes:
       - redis_data:/var/lib/redis/data
 
+  svix-server:
+    container_name: svix-server__open-wearables
+    image: svix/svix-server:v1
+    entrypoint:
+      - sh
+      - -c
+      - |
+        : "$${SVIX_JWT_SECRET:=$$SECRET_KEY}"
+        export SVIX_JWT_SECRET
+        exec svix-server "$$@"
+      - --
+    command: ["--run-migrations"]
+    env_file:
+      - ./backend/config/.env
+    environment:
+      SVIX_DB_DSN: "postgresql://${DB_USER:-open-wearables}:${DB_PASSWORD:-open-wearables}@${DB_HOST:-db}:${DB_PORT:-5432}/svix"
+      SVIX_QUEUE_TYPE: "redis"
+      SVIX_REDIS_DSN: "redis://redis:6379/1"
+      SVIX_CACHE_TYPE: "redis"
+    ports:
+      - "8071:8071"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "svix-server", "healthcheck", "http://localhost:8071"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: on-failure
+
   frontend:
     build:
       context: ./frontend

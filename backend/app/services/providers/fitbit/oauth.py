@@ -1,5 +1,6 @@
 from app.config import settings
 from app.schemas.auth import AuthenticationMethod
+from app.schemas.enums import ProviderName
 from app.schemas.model_crud.credentials import (
     OAuthTokenResponse,
     ProviderCredentials,
@@ -28,7 +29,7 @@ class FitbitOAuth(BaseOAuthTemplate):
         return ProviderCredentials(
             client_id=settings.fitbit_client_id or "",
             client_secret=(settings.fitbit_client_secret.get_secret_value() if settings.fitbit_client_secret else ""),
-            redirect_uri=settings.fitbit_redirect_uri,
+            redirect_uri=settings.oauth_redirect_uri(ProviderName.FITBIT),
             default_scope=settings.fitbit_default_scope,
         )
 

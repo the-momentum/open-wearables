@@ -1,0 +1,125 @@
+---
+title: "Seed Data Generator"
+sidebarTitle: "Seed Data Generator"
+description: "Generate synthetic users, workouts, sleep, and time series from the dashboard. Reproducible via a random seed embedded in the user name."
+keywords: ["seed data", "synthetic health data", "test data generator", "open wearables dashboard"]
+"og:title": "Seed Data Generator | Open Wearables"
+"og:description": "Generate synthetic users with workouts, sleep, and time series from the dashboard. Reproducible via random seed."
+"og:url": "https://docs.openwearables.io/dev-guides/seed-data-generator"
+"og:type": "article"
+"twitter:title": "Seed Data Generator | Open Wearables"
+"twitter:description": "Generate synthetic users with workouts, sleep, and time series from the dashboard. Reproducible via random seed."
+"twitter:card": "summary_large_image"
+---
+
+The Seed Data Generator creates synthetic users with configurable workouts, sleep records, and time series. Use it to populate a fresh instance for demos, exercise dashboards and API integrations, or reproduce a specific dataset that a teammate shared.
+
+Open the dashboard and go to **Settings → Seed Data**. Generation runs in the background via Celery; the dispatch call returns immediately with the seed that was used.
+
+## When to use it
+
+- Populating a fresh dev/staging instance with realistic data.
+- Testing charts, filters, and aggregations across many users and date ranges.
+- Reproducing a bug report - the reporter shares their seed and preset, you regenerate the same dataset locally.
+
+## Walkthrough
+
+<iframe
+  width="100%"
+  height="400"
+  src="https://www.youtube.com/embed/VEb3ZUOFm0U"
+  title="Seed Data Generator walkthrough"
+  frameBorder="0"
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+  allowFullScreen
+/>
+
+### Users
+
+- **Number of users** - 1 to 10. Each gets a personal record, provider connections, and the data blocks below.
+- **Override random seed** - leave empty to get a new seed per run, or paste a seed to reproduce a dataset. After a run you can click **Reuse last: N** to repeat it.
+
+### Profile presets
+
+One click fills the whole form with a tuned configuration. Any manual edit clears the preset label (but keeps the values).
+
+| Preset | What it generates |
+|---|---|
+| **Active Athlete** | 120 workouts (run/cycle/swim/strength), athlete-recovery sleep stages, 50% time series coverage. |
+| **Boxer + Footballer** | 100 workouts (boxing/soccer/run/strength). No sleep. |
+| **Short Sleeper** | 60 short sleeps (4-6h) with deep-sleep deficit, few workouts. |
+| **Weekend Catch-Up** | Short weekday sleep, long weekend sleep (8-10h). |
+| **Irregular Sleeper** | 90 highly variable sleeps, restless stage profile. |
+| **Activity Only** | 80 workouts, no sleep. |
+| **Sleep Only** | 40 optimal sleeps, no workouts. |
+| **Minimal (Quick)** | 5 workouts + 5 sleeps, no time series. Fast smoke test. |
+| **Comprehensive** | 150 workouts, 60 sleeps, 5 providers, 80% time series. Large dataset. |
+
+### Workouts
+
+Toggle to enable. Configure:
+- **Count** (1-500), **Duration min/max** (minutes), **Date range** (from/to).
+- **Workout types** - pick specific types (running, cycling, …) or leave empty for random across all supported types.
+
+### Sleep records
+
+Toggle to enable. Configure:
+- **Count** (1-365), **Duration min/max**, **Date range**. Count cannot exceed days in the range - only one sleep per day.
+- **Nap chance (%)** - probability a given record is flagged as a nap.
+- **Weekend catch-up** - shorter weekday sleep, longer weekend sleep.
+- **Stage distribution** - pick a named profile (Optimal, Deep Deficit, REM Deprived, Restless, Athlete Recovery) or set custom min/max % for Deep, REM, and Awake. Light sleep fills the remainder (sum of max % must stay ≤95%).
+
+### Time series
+
+Toggle to enable. Samples are emitted during workouts (heart rate, steps, etc. from the configured series types). **Chance per workout (%)** controls what fraction of workouts get samples.
+
+Disabling workouts also disables time series.
+
+### Providers
+
+- **Provider pills** - pick specific providers (Apple, Garmin, Oura, Polar, Suunto, WHOOP). Leave empty for a random sample.
+- **Connections per user** (1-5) - how many providers to wire up per user. Apple is created as an SDK-style connection (no OAuth tokens); others get mock OAuth tokens.
+
+## Reproducibility
+
+The **seed** fully determines the output for a given configuration. User names, emails, and IDs are intentionally randomized each run (so you don't hit unique constraints), but workouts, sleep, time series, and provider selections are deterministic for the seed.
+
+### How the seed is surfaced
+
+Every generated user's first name is prefixed with the seed and preset:
+
+```
+[SEED:1838273645|active_athlete] Morgan
+[SEED:1838273645|custom]         Alex
+```
+
+- `1838273645` - the seed used
+- `active_athlete` - the preset id, or `custom` if the form was edited
+
+<Warning>
+**You need both the seed and the preset to reproduce a dataset.** The seed determines the random rolls; the preset tells the generator which configuration to apply on top. That's why both values are baked into every generated user name - so anyone looking at the dashboard can rebuild the exact same dataset without guessing which preset was used.
+</Warning>
+
+### Reproducing someone else's data
+
+1. Ask them for a user name (or grab it from a screenshot / bug report).
+2. Copy the seed (`1838273645`) and preset (`active_athlete`) from the `[SEED:...]` prefix.
+3. In **Settings → Seed Data**, click the matching preset, paste the seed into **Override random seed**, and generate.
+
+If the preset is `custom`, you also need the other form values - seed alone isn't enough to reproduce a hand-tuned configuration.
+
+<Note>
+Data is anchored to a fixed reference date (2025-01-01) inside the service, so the same seed produces the same dates regardless of when you run the generator. Explicit **Date range** inputs override this anchor.
+</Note>
+
+## API
+
+The dashboard calls these developer-scoped endpoints. You can hit them directly if you want to script seeding.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/settings/seed` | Dispatch a generation task. Returns `task_id`, `status`, `seed_used`. |
+| `GET` | `/api/v1/settings/seed/presets` | List presets with their full profile config. |
+| `GET` | `/api/v1/settings/seed/sleep-profiles` | List named sleep stage profiles. |
+
+All three require developer JWT auth (same as the rest of the dashboard).

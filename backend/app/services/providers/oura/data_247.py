@@ -14,20 +14,24 @@ from app.constants.sleep import SleepStageType
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas.enums import SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    HealthScoreCreate,
+    ScoreComponent,
     SleepStage,
     TimeSeriesSampleCreate,
 )
 from app.schemas.providers.oura import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
+    OuraDailySleepJSON,
     OuraSleepJSON,
 )
-from app.schemas.providers.oura.imports import OuraPersonalInfoJSON
+from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
 from app.services.event_record_service import event_record_service
+from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -112,6 +116,7 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_api_fetch_error",
                     endpoint=endpoint,
                     error=str(e),
+                    user_id=str(user_id),
                 )
                 if all_data:
                     log_structured(
@@ -121,6 +126,7 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_api_partial_data",
                         endpoint=endpoint,
                         error=str(e),
+                        user_id=str(user_id),
                     )
                     break
                 raise
@@ -145,20 +151,61 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_activity", params)
 
+    def _normalize_activity_scores(
+        self,
+        activity_items: list[OuraDailyActivityJSON],
+        user_id: UUID,
+    ) -> list[HealthScoreCreate]:
+        """Normalize Oura daily activity scores to HealthScoreCreate."""
+        result = []
+        for activity in activity_items:
+            if activity.score is None:
+                continue
+
+            timestamp_str = activity.timestamp or (f"{activity.day}T00:00:00+00:00" if activity.day else None)
+            if not timestamp_str:
+                continue
+
+            try:
+                recorded_at = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+
+            components = None
+            if activity.contributors and isinstance(activity.contributors, dict):
+                components = {
+                    k: ScoreComponent(value=int(v)) for k, v in activity.contributors.items() if v is not None
+                }
+
+            result.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    category=HealthScoreCategory.ACTIVITY,
+                    value=activity.score,
+                    provider=ProviderName.OURA,
+                    recorded_at=recorded_at,
+                    components=components or None,
+                )
+            )
+        return result
+
     def normalize_activity_samples(
         self,
         raw_samples: list[dict[str, Any]],
         user_id: UUID,
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Normalize daily activity data into categorized samples."""
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]]:  # type: ignore[override]
+        """Normalize daily activity data into categorized samples and health scores."""
+        activity_items = [OuraDailyActivityJSON(**item) for item in raw_samples]
+        activity_scores = self._normalize_activity_scores(activity_items, user_id)
+
         result: dict[str, list[dict[str, Any]]] = {
             "steps": [],
             "energy": [],
             "distance": [],
         }
 
-        for item in raw_samples:
-            activity = OuraDailyActivityJSON(**item)
+        for activity in activity_items:
             timestamp_str = activity.timestamp or (f"{activity.day}T00:00:00+00:00" if activity.day else None)
             if not timestamp_str:
                 continue
@@ -175,15 +222,16 @@ class Oura247Data(Base247DataTemplate):
             if activity.equivalent_walking_distance is not None:
                 result["distance"].append({"recorded_at": recorded_at, "value": activity.equivalent_walking_distance})
 
-        return result
+        return result, activity_scores
 
     def save_activity_data(
         self,
         db: DbSession,
         user_id: UUID,
-        normalized: dict[str, list[dict[str, Any]]],
+        normalized: tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]],
     ) -> int:
-        """Save daily activity data as DataPointSeries."""
+        """Save daily activity data as DataPointSeries and health scores."""
+        activity_samples, health_scores = normalized
         type_map = {
             "steps": SeriesType.steps,
             "energy": SeriesType.energy,
@@ -192,7 +240,7 @@ class Oura247Data(Base247DataTemplate):
 
         samples: list[TimeSeriesSampleCreate] = []
         for key, series_type in type_map.items():
-            for item in normalized.get(key, []):
+            for item in activity_samples.get(key, []):
                 try:
                     samples.append(
                         TimeSeriesSampleCreate(
@@ -212,10 +260,14 @@ class Oura247Data(Base247DataTemplate):
                         action="oura_activity_save_error",
                         metric=key,
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+        if health_scores:
+            health_score_service.bulk_create(db, health_scores)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -287,6 +339,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save cardiovascular age data",
                     action="oura_cardiovascular_age_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
@@ -311,16 +364,57 @@ class Oura247Data(Base247DataTemplate):
         }
         return self._paginate(db, user_id, "/v2/usercollection/daily_readiness", params)
 
+    def _normalize_readiness_scores(
+        self,
+        readiness: list[OuraDailyReadinessJSON],
+        user_id: UUID,
+    ) -> list[HealthScoreCreate]:
+        """Normalize Oura readiness data to HealthScoreCreate."""
+        scores = []
+        for item in readiness:
+            if item.score is None:
+                continue
+
+            recorded_at = None
+            if item.timestamp:
+                with suppress(ValueError, AttributeError):
+                    recorded_at = datetime.fromisoformat(item.timestamp.replace("Z", "+00:00"))
+            if recorded_at is None and item.day:
+                with suppress(ValueError, AttributeError):
+                    recorded_at = datetime.strptime(item.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+            if recorded_at is None:
+                continue
+
+            components = None
+            if item.contributors and isinstance(item.contributors, dict):
+                components = {k: ScoreComponent(value=int(v)) for k, v in item.contributors.items() if v is not None}
+
+            scores.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    category=HealthScoreCategory.READINESS,
+                    value=item.score,
+                    provider=ProviderName.OURA,
+                    recorded_at=recorded_at,
+                    components=components or None,
+                )
+            )
+        return scores
+
     def normalize_readiness(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[HealthScoreCreate]]:
         """Normalize Oura readiness data to internal schema."""
-        result = []
-        for raw_readiness in raw_items:
-            readiness = OuraDailyReadinessJSON(**raw_readiness)
+        readiness_items = [OuraDailyReadinessJSON(**item) for item in raw_items]
+        recovery_metrics: list[dict[str, Any]] = []
 
+        readiness_scores = self._normalize_readiness_scores(readiness_items, user_id)
+
+        for readiness in readiness_items:
             timestamp = None
             if readiness.timestamp:
                 try:
@@ -336,7 +430,7 @@ class Oura247Data(Base247DataTemplate):
             if timestamp is None:
                 continue
 
-            result.append(
+            recovery_metrics.append(
                 {
                     "user_id": user_id,
                     "provider": self.provider_name,
@@ -344,18 +438,20 @@ class Oura247Data(Base247DataTemplate):
                     "recovery_score": readiness.score,
                     "temperature_deviation": readiness.temperature_deviation,
                     "temperature_trend_deviation": readiness.temperature_trend_deviation,
-                    "raw": raw_readiness,
                 }
             )
-        return result
+
+        return recovery_metrics, readiness_scores
 
     def save_readiness_data(
         self,
         db: DbSession,
         user_id: UUID,
-        normalized_items: list[dict[str, Any]],
+        normalized: tuple[list[dict[str, Any]], list[HealthScoreCreate]],
     ) -> int:
-        """Save normalized readiness data as DataPointSeries."""
+        """Save normalized readiness data as DataPointSeries and health scores."""
+        recovery_metrics, health_scores = normalized
+
         metrics = [
             ("recovery_score", SeriesType.recovery_score),
             ("temperature_deviation", SeriesType.skin_temperature_deviation),
@@ -363,7 +459,7 @@ class Oura247Data(Base247DataTemplate):
         ]
 
         samples: list[TimeSeriesSampleCreate] = []
-        for normalized_readiness in normalized_items:
+        for normalized_readiness in recovery_metrics:
             timestamp = normalized_readiness.get("timestamp")
             if not timestamp:
                 continue
@@ -389,10 +485,14 @@ class Oura247Data(Base247DataTemplate):
                             action="oura_readiness_save_error",
                             field=field_name,
                             error=str(e),
+                            user_id=str(user_id),
                         )
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+        if health_scores:
+            health_score_service.bulk_create(db, health_scores)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -465,8 +565,6 @@ class Oura247Data(Base247DataTemplate):
             sleep_stages = self._extract_sleep_stages(sleep.sleep_phase_5_min, start_time)
 
             internal_id = uuid4()
-            with suppress(ValueError, TypeError):
-                internal_id = UUID(sleep.id)
 
             result.append(
                 {
@@ -489,6 +587,8 @@ class Oura247Data(Base247DataTemplate):
                     "average_heart_rate": sleep.average_heart_rate,
                     "average_hrv": sleep.average_hrv,
                     "lowest_heart_rate": sleep.lowest_heart_rate,
+                    "heart_rate": sleep.heart_rate,
+                    "hrv": sleep.hrv,
                     "oura_sleep_id": sleep.id,
                     "raw": raw_sleep,
                 }
@@ -529,6 +629,7 @@ class Oura247Data(Base247DataTemplate):
                     "Skipping sleep record: missing start/end time",
                     action="oura_sleep_skip",
                     sleep_id=str(sleep_id),
+                    user_id=str(user_id),
                 )
                 continue
 
@@ -581,8 +682,117 @@ class Oura247Data(Base247DataTemplate):
                     action="oura_sleep_save_error",
                     sleep_id=str(sleep_id),
                     error=str(e),
+                    user_id=str(user_id),
                 )
+
+            hr: OuraIntervalData | None = normalized_sleep.get("heart_rate")
+            hrv: OuraIntervalData | None = normalized_sleep.get("hrv")
+
+            for interval_data, series_type, action in (
+                (hr, SeriesType.heart_rate, "oura_sleep_hr_save_error"),
+                (hrv, SeriesType.heart_rate_variability_sdnn, "oura_hrv_save_error"),
+            ):
+                if not (interval_data and interval_data.timestamp and interval_data.interval and interval_data.items):
+                    continue
+                try:
+                    start = datetime.fromisoformat(interval_data.timestamp.replace("Z", "+00:00"))
+                    samples = [
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=start + timedelta(seconds=interval_data.interval * i),
+                            value=Decimal(str(value)),
+                            series_type=series_type,
+                        )
+                        for i, value in enumerate(interval_data.items)
+                        if value is not None
+                    ]
+                    if samples:
+                        timeseries_service.bulk_create_samples(db, samples)
+                except Exception as e:
+                    log_structured(
+                        self.logger,
+                        "warning",
+                        "Failed to save interval timeseries",
+                        action=action,
+                        sleep_id=str(sleep_id),
+                        error=str(e),
+                        user_id=str(user_id),
+                    )
+
         return count
+
+    # -------------------------------------------------------------------------
+    # Daily Sleep Score - /v2/usercollection/daily_sleep
+    # -------------------------------------------------------------------------
+
+    def get_daily_sleep_score_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily sleep scores from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/daily_sleep", params)
+
+    def normalize_daily_sleep_scores(
+        self,
+        raw_items: list[dict[str, Any]],
+        user_id: UUID,
+    ) -> list[HealthScoreCreate]:
+        """Normalize Oura daily sleep scores to HealthScoreCreate."""
+        result = []
+        for item in raw_items:
+            sleep = OuraDailySleepJSON(**item)
+
+            if sleep.score is None:
+                continue
+
+            recorded_at = None
+            if sleep.timestamp:
+                with suppress(ValueError, AttributeError):
+                    recorded_at = datetime.fromisoformat(sleep.timestamp.replace("Z", "+00:00"))
+            if recorded_at is None and sleep.day:
+                with suppress(ValueError, AttributeError):
+                    recorded_at = datetime.strptime(sleep.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+            if recorded_at is None:
+                continue
+
+            components = None
+            if sleep.contributors and isinstance(sleep.contributors, dict):
+                components = {k: ScoreComponent(value=int(v)) for k, v in sleep.contributors.items() if v is not None}
+
+            result.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    category=HealthScoreCategory.SLEEP,
+                    value=sleep.score,
+                    provider=ProviderName.OURA,
+                    recorded_at=recorded_at,
+                    components=components or None,
+                )
+            )
+        return result
+
+    def save_daily_sleep_scores(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized: list[HealthScoreCreate],
+    ) -> int:
+        """Save daily sleep scores via health_score_service."""
+        if normalized:
+            health_score_service.bulk_create(db, normalized)
+            db.commit()
+        return len(normalized)
 
     # -------------------------------------------------------------------------
     # Daily SpO2 Data
@@ -641,6 +851,7 @@ class Oura247Data(Base247DataTemplate):
                         "Failed to save SpO2 data",
                         action="oura_spo2_save_error",
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
             bdi = item.get("breathing_disturbance_index")
@@ -663,6 +874,7 @@ class Oura247Data(Base247DataTemplate):
                         "Failed to save breathing disturbance index",
                         action="oura_bdi_save_error",
                         error=str(e),
+                        user_id=str(user_id),
                     )
 
         if samples:
@@ -680,12 +892,23 @@ class Oura247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601)."""
-        params = {
-            "start_datetime": start_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "end_datetime": end_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        return self._paginate(db, user_id, "/v2/usercollection/heartrate", params)
+        """Fetch heart rate data from Oura API. Uses start_datetime/end_datetime (ISO 8601).
+
+        Oura limits the timerange to 30 days per request; chunk accordingly.
+        """
+        _CHUNK_DAYS = 30  # noqa: N806
+        results: list[dict[str, Any]] = []
+        chunk_start = start_time.astimezone(timezone.utc)
+        end_utc = end_time.astimezone(timezone.utc)
+        while chunk_start < end_utc:
+            chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end_utc)
+            params = {
+                "start_datetime": chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "end_datetime": chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            results.extend(self._paginate(db, user_id, "/v2/usercollection/heartrate", params))
+            chunk_start = chunk_end
+        return results
 
     def save_heart_rate_data(
         self,
@@ -720,6 +943,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save HR sample",
                     action="oura_hr_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
@@ -757,6 +981,7 @@ class Oura247Data(Base247DataTemplate):
                 "Failed to normalize personal info",
                 action="oura_personal_info_normalization_error",
                 error=str(e),
+                user_id=str(user_id),
             )
             return {}
 
@@ -866,6 +1091,7 @@ class Oura247Data(Base247DataTemplate):
                     "Failed to save Vo2 data",
                     action="oura_vo2_save_error",
                     error=str(e),
+                    user_id=str(user_id),
                 )
 
         if samples:
@@ -923,6 +1149,13 @@ class Oura247Data(Base247DataTemplate):
             ),
             "sleep": lambda: self.save_sleep_data(
                 db, user_id, self.normalize_sleeps(self.get_sleep_data(db, user_id, start_time, end_time), user_id)
+            ),
+            "sleep_score": lambda: self.save_daily_sleep_scores(
+                db,
+                user_id,
+                self.normalize_daily_sleep_scores(
+                    self.get_daily_sleep_score_data(db, user_id, start_time, end_time), user_id
+                ),
             ),
             "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),
             "heart_rate": lambda: self.save_heart_rate_data(

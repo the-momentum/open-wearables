@@ -39,5 +39,4 @@ class UserConnection(BaseDbModel):
     # Metadata
     status: Mapped[ConnectionStatus]
     last_synced_at: Mapped[datetime | None]
-    created_at: Mapped[datetime]
     updated_at: Mapped[datetime]

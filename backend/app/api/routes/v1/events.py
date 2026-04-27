@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import DbSession
 from app.schemas.model_crud.activities import EventRecordQueryParams
@@ -57,3 +57,27 @@ def list_sleep_sessions(
         limit=limit,
     )
     return event_record_service.get_sleep_sessions(db, user_id, params)
+
+
+@router.delete("/users/{user_id}/events/workouts/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_workout(
+    user_id: UUID,
+    workout_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> None:
+    """Delete a workout session."""
+    if not event_record_service.delete_event_record(db, user_id, workout_id, "workout"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workout not found")
+
+
+@router.delete("/users/{user_id}/events/sleep/{sleep_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_sleep_session(
+    user_id: UUID,
+    sleep_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> None:
+    """Delete a sleep session."""
+    if not event_record_service.delete_event_record(db, user_id, sleep_id, "sleep"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sleep session not found")

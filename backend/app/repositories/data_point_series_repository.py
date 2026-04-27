@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError as SQLAIntegrityError
 
 from app.database import DbSession
 from app.models import DataPointSeries, DataSource, DeviceTypePriority, ProviderPriority
+from app.models.series_type_definition import SeriesTypeDefinition
 from app.repositories.data_source_repository import DataSourceRepository
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import (
@@ -328,6 +329,26 @@ class DataPointSeriesRepository(
             return []
 
         return [count for _, count in daily_counts]
+
+    def get_user_counts_by_provider_and_type(self, db_session: DbSession, user_id: UUID) -> list[tuple[str, str, int]]:
+        """Get data point counts for a user grouped by provider and series type.
+
+        Returns list of (provider, series_type_code, count) tuples ordered by provider, then count descending.
+        """
+        results = (
+            db_session.query(
+                DataSource.provider,
+                SeriesTypeDefinition.code,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .join(SeriesTypeDefinition, self.model.series_type_definition_id == SeriesTypeDefinition.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(DataSource.provider, SeriesTypeDefinition.code)
+            .order_by(DataSource.provider, func.count(self.model.id).desc())
+            .all()
+        )
+        return [(provider, code, count) for provider, code, count in results]
 
     def get_count_by_series_type(self, db_session: DbSession) -> list[tuple[int, int]]:
         """Get count of data points grouped by series type ID.
@@ -1037,3 +1058,30 @@ class DataPointSeriesRepository(
 
         value, recorded_at, provider_name, device_id = result
         return (float(value), recorded_at, provider_name, device_id)
+
+    def query_series(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        type_id: int,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[datetime, float]]:
+        """Query raw (recorded_at, value) pairs for a given series type and time window.
+
+        Filters by user (via DataSource), series type, and half-open interval
+        [start_dt, end_dt), ordered by recorded_at ascending.
+        """
+        results = (
+            db_session.query(self.model.recorded_at, self.model.value)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.series_type_definition_id == type_id,
+                self.model.recorded_at >= start_dt,
+                self.model.recorded_at < end_dt,
+            )
+            .order_by(self.model.recorded_at, self.model.id)
+            .all()
+        )
+        return [(row.recorded_at, float(row.value)) for row in results]

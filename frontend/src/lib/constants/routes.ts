@@ -9,6 +9,7 @@ export const ROUTES = {
   // Authenticated routes
   dashboard: '/dashboard',
   users: '/users',
+  webhooks: '/webhooks',
   settings: '/settings',
 
   // Widget routes

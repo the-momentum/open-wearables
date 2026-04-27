@@ -8,6 +8,12 @@
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
+  "redirects": [
+    {
+      "source": "/dev-guides/backend-e2e-integration",
+      "destination": "/dev-guides/integration-guide"
+    }
+  ],
   "navigation": {
     "tabs": [
       {
@@ -27,6 +33,14 @@
               "architecture/system-overview",
               "architecture/unified-data-model",
               "architecture/data-types"
+            ]
+          },
+          {
+            "group": "Health Scores",
+            "pages": [
+              "scores/health-scores",
+              "scores/sleep-score",
+              "scores/resilience-score"
             ]
           },
           {
@@ -95,9 +109,18 @@
           {
             "group": "Developer Guides",
             "pages": [
-              "dev-guides/backend-e2e-integration",
+              "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
-              "dev-guides/ngrok-setup"
+              "dev-guides/ngrok-setup",
+              "dev-guides/seed-data-generator"
+            ]
+          },
+          {
+            "group": "Data Migrations",
+            "pages": [
+              "data-migrations/index",
+              "data-migrations/backfill-garmin-sleep-end-datetime",
+              "data-migrations/backfill-sleep-scores"
             ]
           },
           {
@@ -136,9 +159,119 @@
             "group": "Integration Guides",
             "pages": [
               "api-reference/guides/quick-integration",
+              "api-reference/guides/webhooks",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",
               "api-reference/guides/error-handling"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "POST /api/v1/token/refresh",
+              "POST /api/v1/token/revoke"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "GET /api/v1/users",
+              "POST /api/v1/users",
+              "GET /api/v1/users/{user_id}",
+              "PATCH /api/v1/users/{user_id}",
+              "DELETE /api/v1/users/{user_id}"
+            ]
+          },
+          {
+            "group": "Connections",
+            "pages": [
+              "GET /api/v1/users/{user_id}/connections",
+              "DELETE /api/v1/users/{user_id}/connections/{provider}"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "GET /api/v1/oauth/providers",
+              "GET /api/v1/oauth/{provider}/authorize"
+            ]
+          },
+          {
+            "group": "Data Sync",
+            "pages": [
+              "POST /api/v1/providers/{provider}/users/{user_id}/sync",
+              "GET /api/v1/providers/garmin/users/{user_id}/backfill/status",
+              "POST /api/v1/providers/garmin/users/{user_id}/backfill/cancel",
+              "POST /api/v1/providers/garmin/users/{user_id}/backfill/{type_name}/retry",
+              "POST /api/v1/providers/{provider}/users/{user_id}/sync/historical"
+            ]
+          },
+          {
+            "group": "Summaries",
+            "pages": [
+              "GET /api/v1/users/{user_id}/summaries/activity",
+              "GET /api/v1/users/{user_id}/summaries/sleep",
+              "GET /api/v1/users/{user_id}/summaries/body",
+              "GET /api/v1/users/{user_id}/summaries/recovery",
+              "GET /api/v1/users/{user_id}/summaries/data"
+            ]
+          },
+          {
+            "group": "Timeseries",
+            "pages": [
+              "GET /api/v1/users/{user_id}/timeseries"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "GET /api/v1/users/{user_id}/events/workouts",
+              "DELETE /api/v1/users/{user_id}/events/workouts/{workout_id}",
+              "GET /api/v1/users/{user_id}/events/sleep",
+              "DELETE /api/v1/users/{user_id}/events/sleep/{sleep_id}"
+            ]
+          },
+          {
+            "group": "Health Scores",
+            "pages": [
+              "GET /api/v1/users/{user_id}/health-scores"
+            ]
+          },
+          {
+            "group": "Data Sources",
+            "pages": [
+              "GET /api/v1/users/{user_id}/data-sources"
+            ]
+          },
+          {
+            "group": "Apple Health Import",
+            "pages": [
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3",
+              "POST /api/v1/users/{user_id}/import/apple/xml/direct"
+            ]
+          },
+          {
+            "group": "Mobile SDK",
+            "pages": [
+              "POST /api/v1/sdk/users/{user_id}/sync",
+              "POST /api/v1/users/{user_id}/token",
+              "POST /api/v1/users/{user_id}/invitation-code",
+              "POST /api/v1/invitation-code/redeem"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "GET /api/v1/webhooks/event-types",
+              "POST /api/v1/webhooks/endpoints",
+              "GET /api/v1/webhooks/endpoints",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}",
+              "PATCH /api/v1/webhooks/endpoints/{endpoint_id}",
+              "DELETE /api/v1/webhooks/endpoints/{endpoint_id}",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}/secret",
+              "POST /api/v1/webhooks/endpoints/{endpoint_id}/test",
+              "GET /api/v1/webhooks/messages",
+              "GET /api/v1/webhooks/endpoints/{endpoint_id}/attempts"
             ]
           }
         ]

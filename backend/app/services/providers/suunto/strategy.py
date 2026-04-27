@@ -1,6 +1,7 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.suunto.data_247 import Suunto247Data
 from app.services.providers.suunto.oauth import SuuntoOAuth
+from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
 from app.services.providers.suunto.workouts import SuuntoWorkouts
 
 
@@ -22,11 +23,14 @@ class SuuntoStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
-        # New: 247 data handler for sleep, recovery, activity samples
         self.data_247 = Suunto247Data(
             provider_name=self.name,
             api_base_url=self.api_base_url,
             oauth=self.oauth,
+        )
+        self.webhooks = SuuntoWebhookHandler(
+            suunto_workouts=self.workouts,
+            suunto_247=self.data_247,
         )
 
     @property
@@ -39,8 +43,5 @@ class SuuntoStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Suunto Sports Tracker API supports REST polling via transaction-based
-        # endpoints and a webhook subscription mechanism.  The webhook delivers
-        # a lightweight notification; actual workout data must still be fetched
-        # via the transaction REST API.
-        return ProviderCapabilities(supports_pull=True, supports_push=True, webhook_notify_only=True)
+        # Historical sync uses REST (rest_pull); live data via webhooks (webhook_stream).
+        return ProviderCapabilities(rest_pull=True, webhook_stream=True)

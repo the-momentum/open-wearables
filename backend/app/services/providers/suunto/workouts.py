@@ -43,8 +43,8 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         end_date: datetime,
     ) -> list[Any]:
         """Get workouts from Suunto API."""
-        # Suunto uses 'since' parameter
-        since = int(start_date.timestamp())
+        # Suunto uses 'since' parameter in epoch milliseconds
+        since = int(start_date.timestamp() * 1000)
         params = {
             "since": since,
             "limit": 100,
@@ -221,22 +221,20 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         api_kwargs = kwargs.copy()
 
-        # Convert start_date to 'since' timestamp
+        # Convert start_date to 'since' timestamp (Suunto expects epoch milliseconds)
         if start_date:
             if isinstance(start_date, str):
                 try:
                     start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                    api_kwargs["since"] = int(start_dt.timestamp())
+                    api_kwargs["since"] = int(start_dt.timestamp() * 1000)
                 except (ValueError, AttributeError):
                     pass
             elif isinstance(start_date, datetime):
-                api_kwargs["since"] = int(start_date.timestamp())
+                api_kwargs["since"] = int(start_date.timestamp() * 1000)
 
         # Set Suunto-specific defaults
         if "limit" not in api_kwargs:
             api_kwargs["limit"] = 100
-        if "filter_by_modification_time" not in api_kwargs:
-            api_kwargs["filter_by_modification_time"] = True
 
         response = self.get_workouts_from_api(db, user_id, **api_kwargs)
         workouts_data = response.get("payload", [])

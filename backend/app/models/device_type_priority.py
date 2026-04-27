@@ -22,5 +22,4 @@ class DeviceTypePriority(BaseDbModel):
     id: Mapped[PrimaryKey[UUID]]
     device_type: Mapped[Unique[DeviceType]]  # Uses DeviceType enum
     priority: Mapped[Indexed[int]]  # 1 = highest priority (watch), 99 = lowest (unknown)
-    created_at: Mapped[datetime]
     updated_at: Mapped[datetime]

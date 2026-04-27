@@ -341,19 +341,20 @@ class TestOAuthUpdateProviderEndpoint:
         )
 
         # Assert
-        assert response.status_code == 404
+        assert response.status_code == 400
 
-    def test_update_provider_invalid_payload(
+    def test_update_live_sync_mode_non_configurable_provider(
         self,
         client: TestClient,
         db: Session,
         mock_external_apis: dict[str, MagicMock],
     ) -> None:
-        """Test updating provider with invalid payload."""
+        """Test setting live_sync_mode on a provider that does not support it returns 400."""
         # Arrange
         developer = DeveloperFactory()
         headers = developer_auth_headers(developer.id)
-        update_data = {}  # Missing is_enabled
+        # garmin has no rest_pull so live_sync_configurable=False
+        update_data = {"live_sync_mode": "webhook"}
 
         # Act
         response = client.put(

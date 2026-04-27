@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Annotated, TypeVar
+from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
 from sqlalchemy import ForeignKey, Numeric, String
@@ -23,7 +23,7 @@ type ManyToOne[T] = T
 type OneToOne[T] = T
 
 # Custom types
-json_binary = Annotated[list[dict], mapped_column(JSONB)]
+json_binary = Annotated[list[dict[str, Any]], mapped_column(JSONB)]
 email = Annotated[str, mapped_column(String)]
 str_10 = Annotated[str, mapped_column(String(10))]
 str_32 = Annotated[str, mapped_column(String(32))]
@@ -32,6 +32,7 @@ str_64 = Annotated[str, mapped_column(String(64))]
 str_100 = Annotated[str, mapped_column(String(100))]
 str_255 = Annotated[str, mapped_column(String(255))]
 numeric_5_2 = Annotated[Decimal, mapped_column(Numeric(5, 2))]
+numeric_6_3 = Annotated[Decimal, mapped_column(Numeric(6, 3))]
 numeric_10_3 = Annotated[Decimal, mapped_column(Numeric(10, 3))]
 numeric_10_2 = Annotated[Decimal, mapped_column(Numeric(10, 2))]
 numeric_15_5 = Annotated[Decimal, mapped_column(Numeric(15, 5))]

@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e -x
 
+# Ensure svix database exists (idempotent)
+echo 'Ensuring svix database...'
+uv run python scripts/init/create_svix_db.py
+
 # Init database
 echo 'Applying migrations...'
 uv run alembic upgrade head
@@ -24,6 +28,14 @@ uv run python scripts/init/seed_series_types.py
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
+
+# Register webhook event types with Svix (with retry, non-fatal)
+echo 'Registering webhook event types...'
+for i in 1 2 3; do
+    uv run python scripts/init/seed_webhook_event_types.py && break
+    echo "Svix not ready yet, retrying in 5s... (attempt ${i}/3)"
+    sleep 5
+done || echo "Warning: Could not register webhook event types with Svix. Will retry on next startup."
 
 # Init app
 echo "Starting the FastAPI application..."

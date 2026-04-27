@@ -1,15 +1,13 @@
-"""API endpoints for managing global provider priorities and user data sources."""
+"""API endpoints for managing global provider priorities."""
 
 from logging import getLogger
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Path
 
 from app.database import DbSession
 from app.schemas.enums import DeviceType, ProviderName
 from app.schemas.model_crud.data_priority import (
-    DataSourceListResponse,
     DeviceTypePriorityBulkUpdate,
     DeviceTypePriorityListResponse,
     DeviceTypePriorityResponse,
@@ -19,7 +17,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderPriorityResponse,
     ProviderPriorityUpdate,
 )
-from app.services import ApiKeyDep, DeveloperDep, PriorityService
+from app.services import DeveloperDep, PriorityService
 
 router = APIRouter()
 priority_service = PriorityService(log=getLogger(__name__))
@@ -59,18 +57,6 @@ def bulk_update_provider_priorities(
     update: ProviderPriorityBulkUpdate,
 ) -> ProviderPriorityListResponse:
     return priority_service.bulk_update_priorities(db, update)
-
-
-@router.get(
-    "/users/{user_id}/data-sources",
-    summary="Get user data sources",
-)
-def get_user_data_sources(
-    db: DbSession,
-    _api_key: ApiKeyDep,
-    user_id: Annotated[UUID, Path(description="User ID")],
-) -> DataSourceListResponse:
-    return priority_service.get_user_data_sources(db, user_id)
 
 
 @router.get(

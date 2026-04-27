@@ -9,8 +9,13 @@ import {
   Heart,
   MoveHorizontal,
   Timer,
+  Trash2,
 } from 'lucide-react';
-import { useWorkouts, useTimeSeries } from '@/hooks/api/use-health';
+import {
+  useWorkouts,
+  useTimeSeries,
+  useDeleteWorkout,
+} from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import {
   useDateRangeDates,
@@ -36,6 +41,7 @@ import {
   dateToTimestamp,
 } from '@/lib/utils/workout';
 import type { EventRecordResponse } from '@/lib/api/types';
+import { EventDeleteDialog } from '@/components/common/event-delete-dialog';
 
 interface WorkoutSectionProps {
   userId: string;
@@ -52,6 +58,8 @@ function WorkoutRow({
   userId: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const deleteWorkout = useDeleteWorkout(userId);
   const style = getWorkoutStyle(workout.type || workout.category || '');
   const category = getWorkoutCategory(workout.type || workout.category || '');
 
@@ -263,8 +271,32 @@ function WorkoutRow({
               </div>
             </div>
           )}
+
+          {/* Delete button */}
+          <div className="flex justify-end pt-2 border-t border-zinc-800/50">
+            <button
+              onClick={() => setShowDelete(true)}
+              className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete workout
+            </button>
+          </div>
         </div>
       )}
+
+      <EventDeleteDialog
+        open={showDelete}
+        title="Delete workout?"
+        description="This workout and all associated data will be permanently removed. This cannot be undone."
+        isPending={deleteWorkout.isPending}
+        onClose={() => setShowDelete(false)}
+        onConfirm={() =>
+          deleteWorkout.mutate(workout.id, {
+            onSuccess: () => setShowDelete(false),
+          })
+        }
+      />
     </div>
   );
 }

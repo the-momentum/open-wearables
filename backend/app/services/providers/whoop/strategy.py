@@ -1,6 +1,7 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.whoop.data_247 import Whoop247Data
 from app.services.providers.whoop.oauth import WhoopOAuth
+from app.services.providers.whoop.webhook_handler import WhoopWebhookHandler
 from app.services.providers.whoop.workouts import WhoopWorkouts
 
 
@@ -34,6 +35,11 @@ class WhoopStrategy(BaseProviderStrategy):
             oauth=self.oauth,
         )
 
+        self.webhooks = WhoopWebhookHandler(
+            data_247=self.data_247,
+            workouts=self.workouts,
+        )
+
     @property
     def name(self) -> str:
         """Unique identifier for the provider (lowercase)."""
@@ -46,5 +52,7 @@ class WhoopStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Whoop Developer API is REST-only; no public webhook offering as of 2025.
-        return ProviderCapabilities(supports_pull=True)
+        return ProviderCapabilities(
+            rest_pull=True,
+            webhook_ping=True,
+        )

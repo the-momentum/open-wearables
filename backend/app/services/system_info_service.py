@@ -1,9 +1,12 @@
+from collections import defaultdict
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
+from uuid import UUID
 
 from app.database import DbSession
 from app.schemas.enums import get_series_type_from_id
+from app.schemas.responses.dashboard import ProviderDataCount, UserDataSummaryResponse
 from app.schemas.responses.upload import (
     CountWithGrowth,
     DataPointsInfo,
@@ -121,6 +124,61 @@ class SystemInfoService:
                 top_series_types=top_series_types,
                 top_workout_types=top_workout_types,
             ),
+        )
+
+    def get_user_data_summary(self, db_session: DbSession, user_id: UUID) -> UserDataSummaryResponse:
+        """Get per-user data summary with counts by type and provider."""
+        # Query time-series counts grouped by provider + series type
+        series_rows = self.timeseries_service.crud.get_user_counts_by_provider_and_type(db_session, user_id)
+
+        # Query event counts grouped by provider + category + type
+        event_rows = self.event_record_service.crud.get_user_event_counts_by_provider(db_session, user_id)
+
+        # Aggregate into per-provider and overall totals
+        provider_series: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        provider_workouts: dict[str, int] = defaultdict(int)
+        provider_sleep: dict[str, int] = defaultdict(int)
+        provider_data_points: dict[str, int] = defaultdict(int)
+        series_type_totals: dict[str, int] = defaultdict(int)
+        workout_type_totals: dict[str, int] = defaultdict(int)
+
+        for provider, code, count in series_rows:
+            provider_series[provider][code] += count
+            provider_data_points[provider] += count
+            series_type_totals[code] += count
+
+        for provider, category, event_type, count in event_rows:
+            if category == "workout":
+                provider_workouts[provider] += count
+                workout_type_totals[event_type or "unknown"] += count
+            elif category == "sleep":
+                provider_sleep[provider] += count
+
+        # Build per-provider breakdown
+        all_providers = set(provider_series) | set(provider_workouts) | set(provider_sleep)
+        by_provider = sorted(
+            [
+                ProviderDataCount(
+                    provider=p,
+                    data_points=provider_data_points.get(p, 0),
+                    series_counts=dict(provider_series.get(p, {})),
+                    workout_count=provider_workouts.get(p, 0),
+                    sleep_count=provider_sleep.get(p, 0),
+                )
+                for p in all_providers
+            ],
+            key=lambda x: x.data_points + x.workout_count + x.sleep_count,
+            reverse=True,
+        )
+
+        return UserDataSummaryResponse(
+            user_id=str(user_id),
+            total_data_points=sum(provider_data_points.values()),
+            total_workouts=sum(provider_workouts.values()),
+            total_sleep_events=sum(provider_sleep.values()),
+            series_type_counts=dict(sorted(series_type_totals.items(), key=lambda x: x[1], reverse=True)),
+            workout_type_counts=dict(sorted(workout_type_totals.items(), key=lambda x: x[1], reverse=True)),
+            by_provider=by_provider,
         )
 
 

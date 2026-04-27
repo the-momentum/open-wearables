@@ -11,7 +11,6 @@ class User(BaseDbModel):
     """Data owner model"""
 
     id: Mapped[PrimaryKey[UUID]]
-    created_at: Mapped[datetime]
 
     first_name: Mapped[str_100 | None]
     last_name: Mapped[str_100 | None]

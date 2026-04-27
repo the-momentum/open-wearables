@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import Date, Integer, String, and_, asc, case, cast, desc, func, text, tuple_
+from sqlalchemy import Date, Integer, Interval, String, and_, asc, case, cast, desc, func, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, selectinload
@@ -76,6 +76,55 @@ class EventRecordRepository(
             )
             .one_or_none()
         )
+
+    def get_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> EventRecord | None:
+        """Find a single EventRecord by its provider-assigned external_id."""
+        query = (
+            db_session.query(self.model)
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id, self.model.external_id == external_id)
+        )
+        if source is not None:
+            query = query.filter(DataSource.source == source)
+        if provider is not None:
+            query = query.filter(DataSource.provider == provider)
+        return query.one_or_none()
+
+    def delete_by_external_id(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        external_id: str,
+        source: str | None = None,
+        provider: str | None = None,
+    ) -> int:
+        """Delete EventRecord(s) matching external_id for a user in a single query.
+
+        Returns the number of rows deleted.
+        """
+        source_ids_query = db_session.query(DataSource.id).filter(DataSource.user_id == user_id)
+        if source is not None:
+            source_ids_query = source_ids_query.filter(DataSource.source == source)
+        if provider is not None:
+            source_ids_query = source_ids_query.filter(DataSource.provider == provider)
+
+        deleted = (
+            db_session.query(self.model)
+            .filter(
+                self.model.external_id == external_id,
+                self.model.data_source_id.in_(source_ids_query.scalar_subquery()),
+            )
+            .delete(synchronize_session=False)
+        )
+        db_session.commit()
+        return deleted
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
@@ -306,6 +355,28 @@ class EventRecordRepository(
 
         return query.limit(limit + 1).all(), total_count
 
+    def get_user_event_counts_by_provider(
+        self, db_session: DbSession, user_id: UUID
+    ) -> list[tuple[str, str, str | None, int]]:
+        """Get event record counts for a user grouped by provider, category, and type.
+
+        Returns list of (provider, category, type, count) tuples ordered by provider, then count descending.
+        """
+        results = (
+            db_session.query(
+                DataSource.provider,
+                self.model.category,
+                self.model.type,
+                func.count(self.model.id).label("count"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(DataSource.user_id == user_id)
+            .group_by(DataSource.provider, self.model.category, self.model.type)
+            .order_by(DataSource.provider, func.count(self.model.id).desc())
+            .all()
+        )
+        return [(provider, category, event_type, count) for provider, category, event_type, count in results]
+
     def get_count_by_workout_type(self, db_session: DbSession) -> list[tuple[str | None, int]]:
         """Get count of workouts grouped by workout type.
 
@@ -400,17 +471,40 @@ class EventRecordRepository(
         # is_nap can be True, False, or NULL - we treat NULL as "not a nap"
         is_main_sleep = func.coalesce(SleepDetails.is_nap, False) == False  # noqa: E712
 
+        # Local calendar date the session ended (wake-up date) — mirrors score
+        # date logic in fill_missing_sleep_scores_task so chart, score, and
+        # session list all key on the same date.
+        local_sleep_date = cast(
+            EventRecord.end_datetime + cast(func.coalesce(EventRecord.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+
         # Build base aggregated query as subquery
         # Join with SleepDetails to get sleep stage data
         # Cast UUID to text for min() since PostgreSQL doesn't support min() on UUID directly
         subquery = (
             db_session.query(
-                cast(EventRecord.end_datetime, Date).label("sleep_date"),
+                local_sleep_date.label("sleep_date"),
                 # Main sleep times (exclude naps)
                 func.min(case((is_main_sleep, EventRecord.start_datetime), else_=None)).label("min_start_time"),
                 func.max(case((is_main_sleep, EventRecord.end_datetime), else_=None)).label("max_end_time"),
-                # Main sleep duration (exclude naps)
-                func.sum(case((is_main_sleep, EventRecord.duration_seconds), else_=0)).label("total_duration"),
+                # Main sleep duration (exclude naps) — prefer net sleep time over
+                # wall-clock duration.  Oura (and some other providers) store
+                # time_in_bed in duration_seconds; sleep_total_duration_minutes
+                # holds the actual sleep time and should be used when available.
+                func.sum(
+                    case(
+                        (
+                            is_main_sleep,
+                            func.coalesce(
+                                SleepDetails.sleep_total_duration_minutes * 60,
+                                EventRecord.duration_seconds,
+                                0,
+                            ),
+                        ),
+                        else_=0,
+                    )
+                ).label("total_duration"),
                 DataSource.source,
                 DataSource.device_model,
                 func.min(cast(EventRecord.id, String)).label("record_id_text"),
@@ -451,11 +545,12 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 EventRecord.category == "sleep",
-                EventRecord.end_datetime >= start_date,
-                cast(EventRecord.end_datetime, Date) < cast(end_date, Date),
+                EventRecord.end_datetime >= start_date - timedelta(days=1),
+                local_sleep_date >= cast(start_date, Date),
+                local_sleep_date < cast(end_date, Date),
             )
             .group_by(
-                cast(EventRecord.end_datetime, Date),
+                local_sleep_date,
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -602,6 +697,7 @@ class EventRecordRepository(
         end_time: datetime,
         threshold_minutes: int,
         source: str | None = None,
+        provider: str | None = None,
     ) -> EventRecord | None:
         """Return the most-recent sleep session adjacent to [start_time, end_time].
 
@@ -610,9 +706,10 @@ class EventRecordRepository(
         is eagerly loaded so callers can read ``sleep_stages`` without an extra
         query.
 
-        When *source* is provided the query is restricted to records whose
-        DataSource has the same source string, preventing cross-provider merges
+        When *provider* is provided the query is restricted to records whose
+        DataSource has the same provider, preventing cross-provider merges
         (e.g. Oura sessions being merged with Garmin sessions).
+        When *source* is provided an additional filter on DataSource.source is applied.
         """
         threshold = timedelta(minutes=threshold_minutes)
         filters = [
@@ -622,6 +719,8 @@ class EventRecordRepository(
             self.model.start_datetime <= end_time + threshold,
             self.model.end_datetime >= start_time - threshold,
         ]
+        if provider is not None:
+            filters.append(DataSource.provider == provider)
         if source is not None:
             filters.append(DataSource.source == source)
         return (
@@ -633,3 +732,28 @@ class EventRecordRepository(
             .with_for_update()
             .first()
         )
+
+    def get_sleep_records_with_details(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> list[tuple[EventRecord, SleepDetails | None]]:
+        """Return sleep EventRecords with their SleepDetails that overlap [start_dt, end_dt).
+
+        Uses an outerjoin so sessions with no stage data are still included.
+        """
+        rows = (
+            db_session.query(EventRecord, SleepDetails)
+            .join(DataSource, EventRecord.data_source_id == DataSource.id)
+            .outerjoin(SleepDetails, SleepDetails.record_id == EventRecord.id)
+            .filter(
+                DataSource.user_id == user_id,
+                EventRecord.category == "sleep",
+                EventRecord.end_datetime >= start_dt,
+                EventRecord.start_datetime < end_dt,
+            )
+            .all()
+        )
+        return [(event_record, sleep_details) for event_record, sleep_details in rows]

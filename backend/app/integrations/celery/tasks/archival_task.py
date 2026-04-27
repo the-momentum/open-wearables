@@ -10,9 +10,10 @@ If both are NULL, the task is a no-op.
 
 from logging import getLogger
 
+from celery import shared_task
+
 from app.database import SessionLocal
 from app.services.archival_service import archival_service
-from celery import shared_task
 
 logger = getLogger(__name__)
 

@@ -1,6 +1,7 @@
 import contextlib
 import json
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from logging import getLogger
 from uuid import UUID, uuid4
 
@@ -446,13 +447,15 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         start_time = state.start_time
 
     # --- Merge with an adjacent existing session if one exists ---
+    source_for_lookup = state.source_name if state.source_name != "unknown" else None
     adjacent = event_record_service.find_adjacent_sleep_record(
         db_session,
         UUID(user_id),
         start_time,
         end_time,
         settings.sleep_end_gap_minutes,
-        source=state.provider,
+        source=source_for_lookup,
+        provider=state.provider,
     )
 
     if adjacent is not None:
@@ -483,6 +486,10 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
     total_sleep_seconds = (
         metrics["sleeping_seconds"] + metrics["light_seconds"] + metrics["deep_seconds"] + metrics["rem_seconds"]
     )
+    time_in_bed_seconds = max(metrics["in_bed_seconds"], total_sleep_seconds + metrics["awake_seconds"])
+    sleep_efficiency = (
+        Decimal(str(total_sleep_seconds / time_in_bed_seconds * 100)) if time_in_bed_seconds > 0 else None
+    )
 
     sleep_record = EventRecordCreate(
         id=uuid4(),
@@ -495,19 +502,20 @@ def finish_sleep(db_session: DbSession, user_id: str, state: SleepState) -> None
         category="sleep",
         type="sleep_session",
         source_name=state.source_name or "unknown",
-        source=state.provider or "unknown",
+        source=source_for_lookup,
+        provider=state.provider,
         device_model=state.device_model,
     )
 
     detail = EventRecordDetailCreate(
         record_id=sleep_record.id,
         sleep_total_duration_minutes=int(total_sleep_seconds // 60),
-        sleep_time_in_bed_minutes=int(metrics["in_bed_seconds"] // 60),
+        sleep_time_in_bed_minutes=int(time_in_bed_seconds // 60),
         sleep_deep_minutes=int(metrics["deep_seconds"] // 60),
         sleep_rem_minutes=int(metrics["rem_seconds"] // 60),
         sleep_light_minutes=int(metrics["light_seconds"] // 60),
         sleep_awake_minutes=int(metrics["awake_seconds"] // 60),
-        sleep_efficiency_score=None,  # TODO: Implement efficiency score
+        sleep_efficiency_score=sleep_efficiency,
         is_nap=False,  # TODO: Infer if nap, maybe from sleep length < 1 hour / 2 hours?
         sleep_stages=cleaned_stages or None,
     )

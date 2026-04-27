@@ -2,6 +2,7 @@ from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .data_point_series import DataPointSeries
+from .health_score import HealthScore
 from .data_point_series_archive import DataPointSeriesArchive
 from .data_source import DataSource
 from .developer import Developer
@@ -42,4 +43,5 @@ __all__ = [
     "PersonalRecord",
     "DataPointSeries",
     "SeriesTypeDefinition",
+    "HealthScore",
 ]

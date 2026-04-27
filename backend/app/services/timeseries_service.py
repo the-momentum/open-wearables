@@ -1,6 +1,11 @@
+import threading
+from collections import defaultdict
 from datetime import datetime
 from logging import Logger, getLogger
+from typing import Any
 from uuid import UUID
+
+from sqlalchemy import event as sa_event
 
 from app.database import DbSession
 from app.models import DataPointSeries
@@ -24,13 +29,20 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.outgoing_webhooks import svix as svix_service
+from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
 
 class TimeSeriesService(
-    AppService[DataPointSeriesRepository, DataPointSeries, TimeSeriesSampleCreate, TimeSeriesSampleUpdate],
+    AppService[
+        DataPointSeriesRepository,
+        DataPointSeries,
+        TimeSeriesSampleCreate,
+        TimeSeriesSampleUpdate,
+    ],
 ):
     """Coordinated access to unified device time series samples."""
 
@@ -40,9 +52,59 @@ class TimeSeriesService(
     def bulk_create_samples(
         self,
         db_session: DbSession,
-        samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+        samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
         self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
+        samples_copy = list(samples)
+
+        @sa_event.listens_for(db_session, "after_commit", once=True)
+        def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
+            if not svix_service.is_enabled():
+                return
+            threading.Thread(
+                target=self._emit_timeseries_webhooks,
+                args=(samples_copy,),
+                daemon=True,
+            ).start()
+
+    @staticmethod
+    def _emit_timeseries_webhooks(
+        samples: list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate],
+    ) -> None:
+        """Emit one webhook event per (user, provider, series_type) batch."""
+        if not samples:
+            return
+        try:
+            groups: dict[tuple[UUID, str, str], list[Any]] = defaultdict(list)
+            for s in samples:
+                key = (s.user_id, s.provider or s.source or "unknown", s.series_type.value)
+                groups[key].append(s)
+            for (user_id, provider, series_type_value), group_samples in groups.items():
+                sorted_samples = sorted(group_samples, key=lambda s: s.recorded_at)
+                series_type_enum = SeriesType(series_type_value)
+                unit = get_series_type_unit(series_type_enum)
+                webhook_samples = [
+                    {
+                        "timestamp": s.recorded_at.isoformat(),
+                        "zone_offset": s.zone_offset,
+                        "type": series_type_value,
+                        "value": float(s.value),
+                        "unit": unit,
+                        "source": {"provider": provider, "device": s.device_model},
+                    }
+                    for s in sorted_samples
+                ]
+                on_timeseries_batch_saved(
+                    user_id=user_id,
+                    provider=provider,
+                    series_type=series_type_value,
+                    sample_count=len(sorted_samples),
+                    start_time=sorted_samples[0].recorded_at.isoformat(),
+                    end_time=sorted_samples[-1].recorded_at.isoformat(),
+                    samples=webhook_samples,
+                )
+        except Exception:
+            getLogger(__name__).warning("Failed to emit timeseries webhooks", exc_info=True)
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""
