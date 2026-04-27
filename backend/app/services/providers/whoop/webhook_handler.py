@@ -34,6 +34,7 @@ from uuid import UUID, uuid4
 
 from celery import current_app as celery_app
 from fastapi import HTTPException, Request
+from pydantic import ValidationError
 
 from app.config import settings
 from app.database import DbSession
@@ -99,7 +100,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
                 "warning",
                 "Unparsable X-WHOOP-Signature-Timestamp",
                 provider="whoop",
-                action="webhook_signature_stale",
+                action="webhook_signature_timestamp_unparsable",
                 timestamp=timestamp,
             )
             return False
@@ -170,7 +171,7 @@ class WhoopWebhookHandler(BaseWebhookHandler):
         """
         try:
             notification = WhoopWebhookNotification(**payload)
-        except Exception as exc:
+        except (ValidationError, TypeError) as exc:
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
         connection = self.connection_repo.get_by_provider_user_id(db, "whoop", str(notification.user_id))
