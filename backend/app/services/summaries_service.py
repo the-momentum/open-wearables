@@ -33,6 +33,7 @@ from app.schemas.responses.activity import (
     BodySummary,
     HeartRateStats,
     IntensityMinutes,
+    RecoverySummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -45,6 +46,7 @@ from app.schemas.utils import (
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import (
     decode_activity_cursor,
+    decode_cursor,
     encode_activity_cursor,
     encode_cursor,
 )
@@ -351,6 +353,125 @@ class SummariesService:
                 avg_spo2_percent=None,
             )
             data.append(summary)
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=start_date,
+                end_time=end_date,
+            ),
+        )
+
+    @handle_exceptions
+    def get_recovery_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> PaginatedResponse[RecoverySummary]:
+        """Get daily recovery summaries combining sleep efficiency, resting HR, HRV, and SpO2."""
+        self.logger.debug(f"Fetching recovery summaries for user {user_id} from {start_date} to {end_date}")
+
+        # --- Vitals: resting HR, HRV SDNN, SpO2 (daily averages per source/device) ---
+        vitals_rows = self.data_point_repo.get_daily_vitals_aggregates(db_session, user_id, start_date, end_date)
+
+        # Re-key vitals rows so _filter_by_priority can consume them (expects a "date_key" field)
+        for row in vitals_rows:
+            row["recovery_date"] = row["rec_date"]
+
+        vitals_rows = self._filter_by_priority(db_session, user_id, vitals_rows, date_key="recovery_date")
+        vitals_by_date: dict[date, dict] = {row["recovery_date"]: row for row in vitals_rows}
+
+        # --- Sleep: duration and efficiency per date ---
+        sleep_rows = self.event_record_repo.get_sleep_summaries(db_session, user_id, start_date, end_date, None, None)
+        sleep_rows = self._filter_by_priority(db_session, user_id, sleep_rows, date_key="sleep_date")
+        sleep_by_date: dict[date, dict] = {row["sleep_date"]: row for row in sleep_rows}
+
+        # Merge on date: union of all dates that have at least one metric
+        all_dates = sorted(set(vitals_by_date) | set(sleep_by_date))
+
+        # Cursor-based pagination: skip dates before/at the cursor date
+        prev_page = False
+        if cursor:
+            cursor_dt, _, direction = decode_cursor(cursor)
+            cursor_date = cursor_dt.date()
+            if direction == "prev":
+                all_dates = [d for d in all_dates if d < cursor_date]
+                all_dates = list(reversed(all_dates))
+                prev_page = True
+            else:
+                all_dates = [d for d in all_dates if d > cursor_date]
+
+        has_more = len(all_dates) > limit
+        if has_more:
+            all_dates = all_dates[:limit]
+        if prev_page:
+            all_dates = list(reversed(all_dates))
+
+        next_cursor: str | None = None
+        previous_cursor: str | None = None
+
+        _nil_id = UUID("00000000-0000-0000-0000-000000000000")
+        if all_dates:
+            if prev_page:
+                # Navigated backward: emit next_cursor (there are newer pages) and
+                # previous_cursor only when there are still older pages.
+                last_midnight = datetime.combine(all_dates[-1], datetime.min.time()).replace(tzinfo=timezone.utc)
+                next_cursor = encode_cursor(last_midnight, _nil_id, "next")
+                if has_more:
+                    first_midnight = datetime.combine(all_dates[0], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    previous_cursor = encode_cursor(first_midnight, _nil_id, "prev")
+            else:
+                # Navigated forward (or first page): emit next_cursor when more pages exist
+                # and previous_cursor when we arrived via a cursor (not the first page).
+                if has_more:
+                    last_midnight = datetime.combine(all_dates[-1], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    next_cursor = encode_cursor(last_midnight, _nil_id, "next")
+                if cursor:
+                    first_midnight = datetime.combine(all_dates[0], datetime.min.time()).replace(tzinfo=timezone.utc)
+                    previous_cursor = encode_cursor(first_midnight, _nil_id, "prev")
+
+        data = []
+        for d in all_dates:
+            vitals = vitals_by_date.get(d)
+            sleep = sleep_by_date.get(d)
+
+            # Determine source: prefer vitals source (more signal), fallback to sleep
+            if vitals:
+                source = SourceMetadata(provider=vitals["source"] or "unknown", device=vitals.get("device_model"))
+            elif sleep:
+                source = SourceMetadata(provider=sleep["source"] or "unknown", device=sleep.get("device_model"))
+            else:
+                continue  # no data — skip
+
+            sleep_duration = (
+                int(sleep["total_duration_minutes"] * 60) if sleep and sleep.get("total_duration_minutes") else None
+            )
+            efficiency = sleep.get("efficiency_percent") if sleep else None
+
+            data.append(
+                RecoverySummary(
+                    date=d,
+                    source=source,
+                    sleep_duration_seconds=sleep_duration,
+                    sleep_efficiency_percent=efficiency,
+                    resting_heart_rate_bpm=int(round(vitals["avg_resting_hr"]))
+                    if vitals and vitals["avg_resting_hr"] is not None
+                    else None,
+                    avg_hrv_sdnn_ms=vitals["avg_hrv_sdnn"] if vitals else None,
+                    avg_spo2_percent=vitals["avg_spo2"] if vitals else None,
+                    recovery_score=None,
+                )
+            )
 
         return PaginatedResponse(
             data=data,

@@ -19,6 +19,24 @@ repos:
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
+      - id: agent-ruff-check
+        name: agent ruff check
+        entry: sh -c 'cd agent && uv run ruff check --fix'
+        language: system
+        files: ^agent/.*\.py$
+        pass_filenames: false
+      - id: agent-ruff-format
+        name: agent ruff format
+        entry: sh -c 'cd agent && uv run ruff format'
+        language: system
+        files: ^agent/.*\.py$
+        pass_filenames: false
+      - id: agent-ty
+        name: agent ty check
+        entry: sh -c 'cd agent && uv run ty check .'
+        language: system
+        files: ^agent/.*\.py$
+        pass_filenames: false
 
       - id: prettier-check
         name: prettier check
@@ -31,9 +49,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        files: ^(backend|mcp)/
+        files: ^(backend|agent|mcp)/
       - id: end-of-file-fixer
-        files: ^(backend|mcp)/
+        files: ^(backend|agent|mcp)/
       - id: check-merge-conflict
         args: [--assume-in-merge]
-        files: ^(backend|mcp)/
+        files: ^(backend|agent|mcp)/

@@ -873,6 +873,70 @@ class DataPointSeriesRepository(
 
         return latest_values
 
+    def get_daily_vitals_aggregates(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict]:
+        """Get daily averages of recovery-relevant vitals (resting HR, HRV SDNN, SpO2).
+
+        Groups by calendar date, data source, and device model so that the caller
+        can apply the same priority-filtering used by activity/sleep summaries.
+
+        Returns:
+            List of dicts with keys: rec_date, source, device_model,
+            avg_resting_hr, avg_hrv_sdnn, avg_spo2.
+            Fields are None when the source has no readings of that type for that day.
+        """
+        rhr_id = get_series_type_id(SeriesType.resting_heart_rate)
+        hrv_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
+        spo2_id = get_series_type_id(SeriesType.oxygen_saturation)
+
+        results = (
+            db_session.query(
+                cast(self.model.recorded_at, Date).label("rec_date"),
+                DataSource.source.label("source"),
+                DataSource.device_model.label("device_model"),
+                func.avg(case((self.model.series_type_definition_id == rhr_id, self.model.value), else_=None)).label(
+                    "avg_resting_hr"
+                ),
+                func.avg(case((self.model.series_type_definition_id == hrv_id, self.model.value), else_=None)).label(
+                    "avg_hrv_sdnn"
+                ),
+                func.avg(case((self.model.series_type_definition_id == spo2_id, self.model.value), else_=None)).label(
+                    "avg_spo2"
+                ),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at >= start_date,
+                cast(self.model.recorded_at, Date) < cast(end_date, Date),
+                self.model.series_type_definition_id.in_([rhr_id, hrv_id, spo2_id]),
+            )
+            .group_by(
+                cast(self.model.recorded_at, Date),
+                DataSource.source,
+                DataSource.device_model,
+            )
+            .order_by(asc(cast(self.model.recorded_at, Date)))
+            .all()
+        )
+
+        return [
+            {
+                "rec_date": row.rec_date,
+                "source": row.source,
+                "device_model": row.device_model,
+                "avg_resting_hr": int(round(float(row.avg_resting_hr))) if row.avg_resting_hr is not None else None,
+                "avg_hrv_sdnn": round(float(row.avg_hrv_sdnn), 1) if row.avg_hrv_sdnn is not None else None,
+                "avg_spo2": round(float(row.avg_spo2), 1) if row.avg_spo2 is not None else None,
+            }
+            for row in results
+        ]
+
     def get_aggregates_for_period(
         self,
         db_session: DbSession,

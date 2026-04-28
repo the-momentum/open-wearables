@@ -15,6 +15,7 @@ services:
       retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./agent/scripts/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh
 
   app:
     build:
@@ -36,6 +37,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     develop:
       watch:
         - action: sync
@@ -68,9 +75,12 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     depends_on:
-      - redis
-      - db
-      - app
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
     develop:
       watch:
         - action: sync+restart
@@ -91,9 +101,12 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     depends_on:
-      - redis
-      - db
-      - app
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
     develop:
       watch:
         - action: sync+restart
@@ -116,9 +129,12 @@ services:
     ports:
       - 5555:5555
     depends_on:
-      - redis
-      - db
-      - app
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
     develop:
       watch:
         - action: sync
@@ -133,7 +149,108 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/var/lib/redis/data
+      - redis_data:/data
+
+  agent:
+    profiles: [agent]
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    container_name: agent__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/app.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    ports:
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health/db || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    develop:
+      watch:
+        - action: sync
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync+restart
+          path: ./agent/migrations
+          target: /root_project/migrations
+        - action: sync+restart
+          path: ./agent/config/.env
+          target: /root_project/config/.env
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
+        - action: rebuild
+          path: ./agent/uv.lock
+    restart: on-failure
+
+  agent-celery-worker:
+    profiles: [agent]
+    container_name: agent-celery-worker__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/worker.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
+
+  agent-celery-beat:
+    profiles: [agent]
+    container_name: agent-celery-beat__open-wearables
+    image: open-wearables-agent:latest
+    pull_policy: never
+    command: scripts/start/beat.sh
+    env_file:
+      - ./agent/config/.env
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./agent/app
+          target: /root_project/app
+        - action: sync
+          path: ./agent/scripts
+          target: /root_project/scripts
 
   svix-server:
     container_name: svix-server__open-wearables
