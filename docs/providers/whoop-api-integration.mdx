@@ -57,7 +57,7 @@ Whoop provides access to workout, sleep, recovery, and body measurement data thr
   </Step>
 
   <Step title="Create a Team in the Developer Dashboard">
-    Go to the [Whoop Developer Dashboard](https://dash.whoop.com/) and sign in with your Whoop account credentials.
+    Go to the [Whoop Developer Dashboard](https://developer-dashboard.whoop.com/) and sign in with your Whoop account credentials.
 
     Before creating an app, you'll be prompted to create a **Team**. Choose a name for your team and click **Create Team**.
 
@@ -145,7 +145,7 @@ WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout re
 
     **1. Register the webhook URL in the Whoop Developer Dashboard:**
 
-    Go to your app in the [Whoop Developer Dashboard](https://dash.whoop.com/), navigate to **Webhooks**, and add your callback URL:
+    Go to your app in the [Whoop Developer Dashboard](https://developer-dashboard.whoop.com/), navigate to **Webhooks**, and add your callback URL:
 
     ```
     https://your-domain/api/v1/providers/whoop/webhooks
@@ -240,7 +240,7 @@ Whoop applies two rate limits by default:
 
 **How Open Wearables uses the quota:** Each sync cycle per user makes ~4-7 API requests (workouts, sleep, recovery, and body measurements — each paginated at 25 items per page). With the default polling interval of 1 hour, that's roughly **~120 requests per user per day**. This means the default rate limits comfortably support **~60-80 connected users** per app.
 
-If you need to support more users right now, you can request increased rate limits from Whoop via the [Developer Dashboard](https://dash.whoop.com/).
+If you need to support more users right now, you can request increased rate limits from Whoop via the [Developer Dashboard](https://developer-dashboard.whoop.com/).
 
 <Info>
 With webhooks enabled, most data arrives in real time and the polling cycle only acts as a fallback.
