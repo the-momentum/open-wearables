@@ -5,17 +5,17 @@ description = "MCP server for Open Wearables - query wearable health data via AI
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastmcp>=2.0.0",
+    "fastmcp>=3.2.1",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic-settings>=2.13.1",
 ]
 
 [dependency-groups]
 code-quality = [
     "pre-commit>=4.3.0",
-    "ruff>=0.14.3",
-    "ty>=0.0.1a25",
+    "ruff>=0.15.9",
+    "ty>=0.0.29",
 ]
 
 [project.scripts]
