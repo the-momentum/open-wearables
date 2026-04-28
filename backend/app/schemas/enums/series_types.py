@@ -193,7 +193,7 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (27, SeriesType.peripheral_perfusion_index, "score"),
     (28, SeriesType.forced_vital_capacity, "liters"),
     (29, SeriesType.forced_expiratory_volume_1, "liters"),
-    (30, SeriesType.peak_expiratory_flow_rate, "liters"),
+    (30, SeriesType.peak_expiratory_flow_rate, "L/min"),
     (31, SeriesType.breathing_disturbance_index, "score"),
     # -------------------------------------------------------------------------
     # BIOMETRICS - Body Composition (IDs 40-59)
