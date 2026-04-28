@@ -814,7 +814,6 @@ class Whoop247Data(Base247DataTemplate):
 
         # Map WHOOP fields to SeriesType
         metrics = [
-            ("recovery_score", SeriesType.recovery_score),
             ("resting_heart_rate", SeriesType.resting_heart_rate),
             ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
             ("spo2_percentage", SeriesType.oxygen_saturation),
