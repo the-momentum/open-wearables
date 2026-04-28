@@ -154,6 +154,7 @@ services:
       SVIX_QUEUE_TYPE: "redis"
       SVIX_REDIS_DSN: "redis://redis:6379/1"
       SVIX_CACHE_TYPE: "redis"
+      SVIX_WHITELIST_SUBNETS: '["0.0.0.0/0"]'
     ports:
       - "8071:8071"
     depends_on:
