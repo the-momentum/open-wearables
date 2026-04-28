@@ -24,6 +24,7 @@ from .seed_data import router as seed_data_router
 from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .sync_data import router as sync_data_router
+from .sync_status import router as sync_status_router
 from .timeseries import router as timeseries_router
 from .token import router as token_router
 from .user_invitation_code import router as user_invitation_code_router
@@ -42,6 +43,7 @@ v1_router.include_router(events_router, tags=["External: Events"])
 v1_router.include_router(health_scores_router, tags=["External: Health Scores"])
 v1_router.include_router(oauth_router, prefix="/oauth")
 v1_router.include_router(sync_data_router, prefix="/providers", tags=["External: Data Sync"])
+v1_router.include_router(sync_status_router, tags=["External: Sync Status"])
 v1_router.include_router(vendor_workouts_router, prefix="/providers", tags=["System: Vendor Workouts"])
 v1_router.include_router(import_xml_router, tags=["External: Apple Health Import"])
 v1_router.include_router(sdk_logs_router, tags=["External: Mobile SDK"])

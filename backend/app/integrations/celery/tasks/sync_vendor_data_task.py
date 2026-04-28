@@ -11,7 +11,9 @@ from app.repositories.provider_settings_repository import ProviderSettingsReposi
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
+from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
+from app.services.sync_status_service import completed, failed, new_run_id, progress, started
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -146,6 +148,25 @@ def sync_vendor_data(
                     user_id=user_id,
                 )
 
+                run_id = new_run_id(prefix="pull")
+                started(
+                    user_uuid,
+                    provider_name,
+                    SyncSource.PULL,
+                    run_id=run_id,
+                    message=(
+                        f"Historical sync from {provider_name} started"
+                        if is_historical
+                        else f"Live sync from {provider_name} started"
+                    ),
+                    metadata={
+                        "trace_id": trace_id,
+                        "is_historical": is_historical,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                    },
+                )
+
                 try:
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
@@ -166,6 +187,14 @@ def sync_vendor_data(
                     # Sync workouts
                     if strategy.workouts:
                         params = _build_sync_params(provider_name, effective_start, end_date)
+                        progress(
+                            user_uuid,
+                            provider_name,
+                            SyncSource.PULL,
+                            run_id=run_id,
+                            stage=SyncStage.FETCHING,
+                            message=f"Fetching workouts from {provider_name}",
+                        )
                         try:
                             success = strategy.workouts.load_data(db, user_uuid, **params)
                             provider_result.params["workouts"] = {"success": success, **params}
@@ -202,6 +231,15 @@ def sync_vendor_data(
                         if end_date:
                             with suppress(ValueError):
                                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
+                        progress(
+                            user_uuid,
+                            provider_name,
+                            SyncSource.PULL,
+                            run_id=run_id,
+                            stage=SyncStage.FETCHING,
+                            message=f"Fetching 24/7 data (sleep / recovery / activity) from {provider_name}",
+                        )
 
                         try:
                             # Use load_and_save_all if available (saves data to DB)
@@ -267,7 +305,33 @@ def sync_vendor_data(
                         user_id=user_id,
                     )
 
+                    sub_results = list(provider_result.params.values())
+                    any_failed = any(isinstance(r, dict) and r.get("success") is False for r in sub_results)
+                    final_status = SyncStatus.PARTIAL if any_failed else SyncStatus.SUCCESS
+                    completed(
+                        user_uuid,
+                        provider_name,
+                        SyncSource.PULL,
+                        run_id=run_id,
+                        status=final_status,
+                        message=(
+                            f"Sync from {provider_name} completed"
+                            if not any_failed
+                            else f"Sync from {provider_name} completed with errors"
+                        ),
+                        metadata={"is_historical": is_historical, "params": provider_result.params},
+                    )
+
                 except Exception as e:
+                    failed(
+                        user_uuid,
+                        provider_name,
+                        SyncSource.PULL,
+                        run_id=run_id,
+                        error=str(e),
+                        message=f"Sync from {provider_name} failed",
+                        metadata={"is_historical": is_historical},
+                    )
                     log_and_capture_error(
                         e,
                         logger,

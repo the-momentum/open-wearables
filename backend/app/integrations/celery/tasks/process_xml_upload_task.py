@@ -3,15 +3,18 @@ import tempfile
 from logging import getLogger
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from celery import shared_task
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.schemas.providers.apple.apple_xml import XMLParseStats
+from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services import event_record_service
 from app.services.apple.apple_xml.xml_service import XMLService
 from app.services.apple.healthkit.sleep_service import handle_sleep_data
+from app.services.sync_status_service import completed, failed, new_run_id, started
 from app.services.timeseries_service import timeseries_service
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
@@ -34,6 +37,22 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
     """
     temp_xml_file = None
 
+    try:
+        user_uuid: UUID | None = UUID(user_id)
+    except (ValueError, TypeError):
+        user_uuid = None
+
+    run_id = new_run_id(prefix="xml")
+    if user_uuid is not None:
+        started(
+            user_uuid,
+            "apple",
+            SyncSource.XML_IMPORT,
+            run_id=run_id,
+            message=f"Importing Apple Health XML file {filename}",
+            metadata={"filename": filename},
+        )
+
     with SessionLocal() as db:
         try:
             temp_dir = tempfile.gettempdir()
@@ -43,6 +62,18 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
                 f.write(file_contents)
 
             stats = _import_xml_data(db, temp_xml_file, user_id)
+
+            if user_uuid is not None:
+                completed(
+                    user_uuid,
+                    "apple",
+                    SyncSource.XML_IMPORT,
+                    run_id=run_id,
+                    status=SyncStatus.SUCCESS,
+                    message="Apple Health XML import completed",
+                    items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
+                    metadata={"filename": filename},
+                )
 
             return {
                 "user_id": user_id,
@@ -61,6 +92,16 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
 
         except Exception as e:
             db.rollback()
+            if user_uuid is not None:
+                failed(
+                    user_uuid,
+                    "apple",
+                    SyncSource.XML_IMPORT,
+                    run_id=run_id,
+                    error=str(e),
+                    message=f"Apple Health XML import failed: {filename}",
+                    metadata={"filename": filename},
+                )
             log_structured(
                 log,
                 "error",

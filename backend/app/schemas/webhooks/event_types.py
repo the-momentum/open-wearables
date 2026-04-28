@@ -26,6 +26,14 @@ class WebhookEventType(StrEnum):
     CONNECTION_CREATED = "connection.created"
 
     # -------------------------------------------------------------------------
+    # Sync lifecycle events (terminal transitions only -- per run)
+    # Subscribe to be notified when a sync run starts/finishes for a user.
+    # -------------------------------------------------------------------------
+    SYNC_STARTED = "sync.started"
+    SYNC_COMPLETED = "sync.completed"
+    SYNC_FAILED = "sync.failed"
+
+    # -------------------------------------------------------------------------
     # EventRecord-based (discrete sessions)
     # -------------------------------------------------------------------------
     WORKOUT_CREATED = "workout.created"
@@ -182,6 +190,9 @@ class WebhookEventType(StrEnum):
 EVENT_TYPE_DESCRIPTIONS: dict[WebhookEventType, str] = {
     # Session events
     WebhookEventType.CONNECTION_CREATED: "A user successfully connected a wearable provider.",
+    WebhookEventType.SYNC_STARTED: "A sync run started for a user (live, historical, backfill, SDK or XML).",
+    WebhookEventType.SYNC_COMPLETED: "A sync run completed successfully (terminal state).",
+    WebhookEventType.SYNC_FAILED: "A sync run failed (terminal state, includes error message).",
     WebhookEventType.WORKOUT_CREATED: "A new workout session was saved.",
     WebhookEventType.SLEEP_CREATED: "A new (or merged) sleep session was saved.",
     # Group events

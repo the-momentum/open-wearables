@@ -239,3 +239,90 @@ def on_connection_created(
         idempotency_key=f"connection.created.{user_id}.{provider}",
         channels=[f"user.{user_id}"],
     )
+
+
+def on_sync_started(
+    *,
+    user_id: UUID,
+    provider: str,
+    source: str,
+    run_id: str,
+    message: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    _dispatch(
+        WebhookEventType.SYNC_STARTED,
+        {
+            "type": WebhookEventType.SYNC_STARTED,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "source": source,
+                "run_id": run_id,
+                "message": message,
+                "metadata": metadata or {},
+            },
+        },
+        idempotency_key=f"sync.started.{run_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_sync_completed(
+    *,
+    user_id: UUID,
+    provider: str,
+    source: str,
+    run_id: str,
+    status: str,
+    message: str | None = None,
+    items_processed: int | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    _dispatch(
+        WebhookEventType.SYNC_COMPLETED,
+        {
+            "type": WebhookEventType.SYNC_COMPLETED,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "source": source,
+                "run_id": run_id,
+                "status": status,
+                "message": message,
+                "items_processed": items_processed,
+                "metadata": metadata or {},
+            },
+        },
+        idempotency_key=f"sync.completed.{run_id}",
+        channels=[f"user.{user_id}"],
+    )
+
+
+def on_sync_failed(
+    *,
+    user_id: UUID,
+    provider: str,
+    source: str,
+    run_id: str,
+    error: str,
+    message: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    _dispatch(
+        WebhookEventType.SYNC_FAILED,
+        {
+            "type": WebhookEventType.SYNC_FAILED,
+            "data": {
+                "user_id": str(user_id),
+                "provider": provider,
+                "source": source,
+                "run_id": run_id,
+                "error": error,
+                "message": message,
+                "metadata": metadata or {},
+            },
+        },
+        idempotency_key=f"sync.failed.{run_id}",
+        channels=[f"user.{user_id}"],
+    )

@@ -10,8 +10,10 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.repositories import UserConnectionRepository
+from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_state import get_trace_id
 from app.services.providers.garmin.data_247 import Garmin247Data
+from app.services.sync_status_service import completed, new_run_id
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -94,6 +96,20 @@ def process_wellness_items(
                 summary_type=summary_type,
                 saved=count,
                 user_id=str(uid),
+            )
+            completed(
+                uid,
+                "garmin",
+                SyncSource.WEBHOOK,
+                run_id=new_run_id(prefix=f"garmin_webhook_{summary_type}"),
+                status=SyncStatus.SUCCESS,
+                message=f"Garmin live data received: {summary_type}",
+                items_processed=count,
+                metadata={
+                    "trace_id": trace_id,
+                    "summary_type": summary_type,
+                    "items": len(items),
+                },
             )
         except Exception as e:
             log_structured(

@@ -110,4 +110,12 @@ export const API_ENDPOINTS = {
   webhookEndpointAttempts: (id: string) =>
     `/api/v1/webhooks/endpoints/${id}/attempts`,
   webhookMessages: '/api/v1/webhooks/messages',
+
+  // Sync status / SSE endpoints
+  // ApiKeyDep accepts both API keys and developer JWT tokens, so a single
+  // set of endpoints works for both external integrations and the dashboard.
+  syncStatusStream: (userId: string) => `/api/v1/users/${userId}/sync/stream`,
+  syncStatusRecent: (userId: string) => `/api/v1/users/${userId}/sync/recent`,
+  syncStatusRuns: (userId: string) => `/api/v1/users/${userId}/sync/runs`,
+  syncStatusAllRuns: '/api/v1/sync/runs',
 } as const;

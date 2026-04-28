@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.integrations.celery.tasks.garmin.backfill_trigger import trigger_backfill_for_type
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
+from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services.providers.garmin.backfill_config import (
     BACKFILL_DATA_TYPES,
     BACKFILL_WINDOW_COUNT,
@@ -49,6 +50,7 @@ from app.services.providers.garmin.backfill_state import (
     setup_retry_window,
     update_window_cell,
 )
+from app.services.sync_status_service import cancelled, completed, progress, started
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -148,6 +150,20 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
             pending_types=pending,
         )
 
+        started(
+            UUID(user_id),
+            "garmin",
+            SyncSource.BACKFILL,
+            run_id=f"garmin_backfill_{user_id}",
+            message=f"Resuming Garmin backfill at window {current_window}",
+            metadata={
+                "trace_id": trace_id,
+                "current_window": current_window,
+                "total_windows": get_total_windows(user_id),
+                "pending_types": pending,
+            },
+        )
+
         if pending:
             trigger_backfill_for_type.apply_async(args=[user_id, pending[0]], countdown=1)
         else:
@@ -173,6 +189,20 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         total_types=len(BACKFILL_DATA_TYPES),
         total_windows=BACKFILL_WINDOW_COUNT,
         target_days=MAX_BACKFILL_DAYS,
+    )
+
+    started(
+        UUID(user_id),
+        "garmin",
+        SyncSource.BACKFILL,
+        run_id=f"garmin_backfill_{user_id}",
+        message=f"Starting Garmin {MAX_BACKFILL_DAYS}-day historical backfill",
+        metadata={
+            "trace_id": trace_id,
+            "total_types": len(BACKFILL_DATA_TYPES),
+            "total_windows": BACKFILL_WINDOW_COUNT,
+            "target_days": MAX_BACKFILL_DAYS,
+        },
     )
 
     for data_type in BACKFILL_DATA_TYPES:
@@ -211,6 +241,14 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             provider="garmin",
             trace_id=trace_id,
             user_id=user_id,
+        )
+        cancelled(
+            UUID(user_id),
+            "garmin",
+            SyncSource.BACKFILL,
+            run_id=f"garmin_backfill_{user_id}",
+            message="Garmin backfill cancelled",
+            metadata={"trace_id": trace_id, "current_window": current_window},
         )
         return {"status": "cancelled"}
 
@@ -261,6 +299,15 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 trace_id=trace_id,
                 user_id=user_id,
             )
+            completed(
+                UUID(user_id),
+                "garmin",
+                SyncSource.BACKFILL,
+                run_id=f"garmin_backfill_{user_id}",
+                status=SyncStatus.SUCCESS,
+                message="Garmin backfill complete (retry phase finalized)",
+                metadata={"trace_id": trace_id, "via": "retry_phase"},
+            )
             return {"status": "complete"}
 
         has_more = advance_window(user_id)
@@ -275,6 +322,18 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 user_id=user_id,
                 window=current_window,
                 total_windows=get_total_windows(user_id),
+            )
+            total_windows = get_total_windows(user_id)
+            progress(
+                UUID(user_id),
+                "garmin",
+                SyncSource.BACKFILL,
+                run_id=f"garmin_backfill_{user_id}",
+                message=f"Garmin backfill: window {current_window + 1}/{total_windows}",
+                progress_value=(current_window / total_windows) if total_windows else None,
+                items_processed=current_window,
+                items_total=total_windows,
+                metadata={"trace_id": trace_id, "window": current_window, "total_windows": total_windows},
             )
             first_type = BACKFILL_DATA_TYPES[0]
             trigger_backfill_for_type.apply_async(args=[user_id, first_type], countdown=DELAY_BETWEEN_TYPES)
@@ -319,6 +378,16 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             trace_id=trace_id,
             user_id=user_id,
             completed_windows=completed_windows,
+        )
+        completed(
+            UUID(user_id),
+            "garmin",
+            SyncSource.BACKFILL,
+            run_id=f"garmin_backfill_{user_id}",
+            status=SyncStatus.SUCCESS,
+            message="Garmin backfill complete",
+            items_processed=completed_windows,
+            metadata={"trace_id": trace_id, "completed_windows": completed_windows},
         )
         return {"status": "complete", "completed_windows": completed_windows}
 

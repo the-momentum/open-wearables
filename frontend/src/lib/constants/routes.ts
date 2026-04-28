@@ -10,6 +10,7 @@ export const ROUTES = {
   dashboard: '/dashboard',
   users: '/users',
   webhooks: '/webhooks',
+  syncs: '/syncs',
   settings: '/settings',
 
   // Widget routes
