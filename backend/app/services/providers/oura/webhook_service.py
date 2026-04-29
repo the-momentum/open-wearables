@@ -29,7 +29,9 @@ OURA_WEBHOOK_DATA_TYPES = [
     "daily_spo2",
     "daily_cardiovascular_age",
     "vo2_max",
-    """ not supported yet """
+    #
+    # ----- not supported yet -----
+    #
     # "sleep_time",
     # "rest_mode_period",
     # "ring_configuration",
@@ -40,7 +42,9 @@ OURA_WEBHOOK_DATA_TYPES = [
     # "tag",
     # "enhanced_tag",
     # "session",
-    """ possibly not accessible via api - up to verification """,
+    #
+    # ----- possibly not accessible via api - up to verification -----
+    #
     # "blood_glucose",
     # "period_start",
     # "pregnancy",
