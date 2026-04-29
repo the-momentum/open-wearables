@@ -9,6 +9,7 @@ from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.services.providers.oura.webhook_service import oura_webhook_service
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -24,8 +25,6 @@ logger = getLogger(__name__)
 def renew_oura_webhooks(self: Task) -> dict:
     """Renew all active Oura webhook subscriptions."""
     try:
-        from app.services.providers.oura.webhook_service import oura_webhook_service
-
         results = asyncio.run(oura_webhook_service.renew_subscriptions())
         renewed = sum(1 for r in results if r.get("status") == "renewed")
         errors = sum(1 for r in results if r.get("status") == "error")

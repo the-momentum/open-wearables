@@ -9,6 +9,7 @@ from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.services.providers.factory import ProviderFactory
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -28,8 +29,6 @@ def register_provider_webhooks(self: Task, provider: str, callback_url: str) -> 
     New subscriptions are created; existing ones are skipped.
     """
     try:
-        from app.services.providers.factory import ProviderFactory
-
         strategy = ProviderFactory().get_provider(provider)
         results = asyncio.run(strategy.register_webhooks(callback_url))
         created = sum(1 for r in results if r.get("status") == "created")
@@ -47,6 +46,16 @@ def register_provider_webhooks(self: Task, provider: str, callback_url: str) -> 
         )
         return {"provider": provider, "created": created, "skipped": skipped, "errors": errors}
 
+    except (ValueError, NotImplementedError) as exc:
+        log_structured(
+            logger,
+            "error",
+            "Provider does not support webhook registration API",
+            provider=provider,
+            action="register_provider_webhooks_unsupported",
+            error=str(exc),
+        )
+        return {"provider": provider, "created": 0, "skipped": 0, "errors": 1}
     except Exception as exc:
         log_structured(
             logger,

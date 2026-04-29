@@ -89,6 +89,8 @@ class OuraWebhookService:
         headers = self._get_client_headers()
         headers["Content-Type"] = "application/json"
 
+        if not settings.oura_webhook_verification_token:
+            raise ValueError("Oura webhook verification token is not configured")
         verification_token = settings.oura_webhook_verification_token.get_secret_value()
 
         results: list[dict[str, Any]] = []
