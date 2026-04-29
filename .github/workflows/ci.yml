@@ -168,6 +168,27 @@ jobs:
         working-directory: mcp
         run: uv run ty check
 
+  mcp-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.mcp == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: mcp
+        run: uv sync --group dev
+      - name: Run tests
+        working-directory: mcp
+        run: uv run pytest -v
+
   frontend-setup:
     needs: changes
     if: ${{ needs.changes.outputs.frontend == 'true' }}
