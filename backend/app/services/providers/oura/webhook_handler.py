@@ -52,8 +52,14 @@ logger = logging.getLogger(__name__)
 _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 
 SUPPORTED_DATA_TYPES = [
-    "workout", "sleep", "daily_sleep", "daily_readiness",
-    "daily_activity", "daily_spo2", "daily_cardiovascular_age", "vo2_max",
+    "workout",
+    "sleep",
+    "daily_sleep",
+    "daily_readiness",
+    "daily_activity",
+    "daily_spo2",
+    "daily_cardiovascular_age",
+    "vo2_max",
 ]
 
 # Oura webhook data_type → REST collection name (only entries that differ)
