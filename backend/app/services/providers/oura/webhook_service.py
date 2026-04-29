@@ -152,7 +152,9 @@ class OuraWebhookService:
                             error=str(e),
                             status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
                         )
-                        results.append({"data_type": data_type, "event_type": event_type, "status": "error", "error": str(e)})
+                        results.append(
+                            {"data_type": data_type, "event_type": event_type, "status": "error", "error": str(e)}
+                        )
                     continue
 
                 try:
