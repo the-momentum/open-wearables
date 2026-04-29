@@ -96,15 +96,15 @@ class OuraWebhookService:
         results: list[dict[str, Any]] = []
 
         async with httpx.AsyncClient() as client:
-            # Build index of existing subscriptions keyed by (data_type, event_type)
-            existing: dict[tuple[str, str], str] = {}
+            # Build index of existing subscriptions keyed by (data_type, event_type) → (id, callback_url)
+            existing: dict[tuple[str, str], tuple[str, str]] = {}
             try:
                 list_resp = await client.get(OURA_WEBHOOK_API_URL, headers=headers, timeout=30.0)
                 list_resp.raise_for_status()
                 for sub in list_resp.json() or []:
                     key = (sub.get("data_type", ""), sub.get("event_type", ""))
                     if key[0] and key[1]:
-                        existing[key] = sub["id"]
+                        existing[key] = (sub["id"], sub.get("callback_url", ""))
             except httpx.HTTPError as e:
                 log_structured(
                     logger,
@@ -117,16 +117,43 @@ class OuraWebhookService:
                 raise
 
             for data_type, event_type in itertools.product(OURA_WEBHOOK_DATA_TYPES, OURA_WEBHOOK_EVENT_TYPES):
-                if (data_type, event_type) in existing:
-                    results.append({"data_type": data_type, "event_type": event_type, "status": "skipped"})
-                    continue
-
                 body = {
                     "callback_url": callback_url,
                     "verification_token": verification_token,
                     "event_type": event_type,
                     "data_type": data_type,
                 }
+
+                if (data_type, event_type) in existing:
+                    sub_id, existing_url = existing[(data_type, event_type)]
+                    if existing_url == callback_url:
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "skipped"})
+                        continue
+                    # callback_url changed — update the subscription
+                    try:
+                        response = await client.put(
+                            f"{OURA_WEBHOOK_API_URL}/{sub_id}",
+                            headers=headers,
+                            json=body,
+                            timeout=30.0,
+                        )
+                        response.raise_for_status()
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "updated"})
+                    except httpx.HTTPError as e:
+                        log_structured(
+                            logger,
+                            "error",
+                            "Failed to update Oura webhook subscription",
+                            provider="oura",
+                            action="oura_webhook_subscription_update_error",
+                            data_type=data_type,
+                            event_type=event_type,
+                            subscription_id=sub_id,
+                            error=str(e),
+                            status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+                        )
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "error", "error": str(e)})
+                    continue
 
                 try:
                     response = await client.post(
