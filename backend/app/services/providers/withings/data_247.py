@@ -444,12 +444,16 @@ class Withings247Data(Base247DataTemplate):
         if not samples:
             return 0
 
+        # bulk_create_samples queues INSERT statements on the session but does
+        # NOT commit (per the repo-layer comment "Caller should commit").
+        # Without an explicit commit here, the celery task's `with SessionLocal()`
+        # context closes uncommitted and rolls back the whole batch.
         try:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
             return len(samples)
         except Exception as e:
-            # Likely a unique-constraint violation from re-syncing overlapping
-            # ranges. Fall back to per-sample inserts so the good ones land.
+            db.rollback()
             log_structured(
                 self.logger, "warning",
                 f"bulk_create_samples failed for Withings body comp ({e}); "
@@ -462,9 +466,10 @@ class Withings247Data(Base247DataTemplate):
             for s in samples:
                 try:
                     timeseries_service.bulk_create_samples(db, [s])
+                    db.commit()
                     inserted += 1
                 except Exception:
-                    pass
+                    db.rollback()
             return inserted
 
     # ------------------------------------------------------------------
