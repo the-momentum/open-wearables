@@ -15,6 +15,8 @@ data_247.py to keep import graph small):
   - 5   fat_free_mass / lean    (kg)         → SeriesType.lean_body_mass
   - 6   fat_ratio               (% × 1000)   → SeriesType.body_fat_percentage
   - 8   fat_mass_weight         (kg)         → SeriesType.body_fat_mass
+  - 9   diastolic_bp            (mmHg)       → SeriesType.blood_pressure_diastolic
+  - 10  systolic_bp             (mmHg)       → SeriesType.blood_pressure_systolic
   - 11  heart_pulse             (bpm)        → SeriesType.resting_heart_rate
   - 76  muscle_mass             (kg)         → SeriesType.skeletal_muscle_mass
   - 77  hydration               (kg)         → SeriesType.hydration

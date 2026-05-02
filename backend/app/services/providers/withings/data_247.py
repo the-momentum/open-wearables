@@ -1,7 +1,9 @@
-"""Withings 24/7 data sync — sleep summaries + body composition.
+"""Withings 24/7 data sync — sleep summaries + body composition + blood pressure.
 
 **Phase B scope:** sleep nightly summaries (one EventRecord per night) and
-body composition / weight samples (one DataPointSeries per measurement).
+body composition / weight / blood-pressure samples (one DataPointSeries per
+measurement). Blood pressure (Withings types 9 diastolic, 10 systolic) is
+ingested from the same ``/measure action=getmeas`` endpoint as body comp.
 
 **Phase C deferred:** recovery score (Withings has no direct analog —
 sleep_score may proxy later), per-minute heart-rate stream
@@ -55,14 +57,16 @@ from app.utils.structured_logging import log_structured
 #
 # Type 88 (bone mass) is intentionally absent — no SeriesType match yet.
 WITHINGS_MEASURE_TYPE_MAP: dict[int, tuple[SeriesType, Decimal]] = {
-    1: (SeriesType.weight, Decimal("1")),                 # kg → kg
-    4: (SeriesType.height, Decimal("100")),               # m → cm
-    5: (SeriesType.lean_body_mass, Decimal("1")),         # kg → kg
-    6: (SeriesType.body_fat_percentage, Decimal("1")),    # already %
-    8: (SeriesType.body_fat_mass, Decimal("1")),          # kg → kg
-    11: (SeriesType.resting_heart_rate, Decimal("1")),    # bpm → bpm
-    76: (SeriesType.skeletal_muscle_mass, Decimal("1")),  # kg → kg
-    77: (SeriesType.hydration, Decimal("1")),             # kg → kg
+    1: (SeriesType.weight, Decimal("1")),                       # kg → kg
+    4: (SeriesType.height, Decimal("100")),                     # m → cm
+    5: (SeriesType.lean_body_mass, Decimal("1")),               # kg → kg
+    6: (SeriesType.body_fat_percentage, Decimal("1")),          # already %
+    8: (SeriesType.body_fat_mass, Decimal("1")),                # kg → kg
+    9: (SeriesType.blood_pressure_diastolic, Decimal("1")),     # mmHg → mmHg
+    10: (SeriesType.blood_pressure_systolic, Decimal("1")),     # mmHg → mmHg
+    11: (SeriesType.resting_heart_rate, Decimal("1")),          # bpm → bpm
+    76: (SeriesType.skeletal_muscle_mass, Decimal("1")),        # kg → kg
+    77: (SeriesType.hydration, Decimal("1")),                   # kg → kg
 }
 
 
