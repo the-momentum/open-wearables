@@ -31,8 +31,11 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-    ports:
-      - "8000:8000"
+    # patch Bazard : `expose` au lieu de `ports` pour ne pas binder l'host
+    # (8000 est déjà pris par api.bazard.run sur le même Coolify).
+    # Coolify route wearables.bazard.run → ce container via son proxy interne.
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
@@ -142,8 +145,11 @@ services:
     container_name: frontend__open-wearables
     image: open-wearables-frontend:latest
     pull_policy: never
-    ports:
-      - "3000:3000"
+    # patch Bazard : `expose` au lieu de `ports` pour éviter tout conflit avec
+    # un autre service Coolify qui utiliserait le port 3000 sur l'host.
+    # Le frontend OW n'est pas exposé publiquement (pas de domaine Coolify dessus).
+    expose:
+      - "3000"
     depends_on:
       - app
     restart: unless-stopped
