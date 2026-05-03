@@ -3,12 +3,14 @@ services:
     image: postgres:18
     container_name: postgres__open-wearables
     environment:
-      POSTGRES_DB: open-wearables
-      POSTGRES_USER: open-wearables
-      POSTGRES_PASSWORD: open-wearables
+      # Patch Bazard : credentials pilotés par les env vars Coolify (DB_NAME / DB_USER / DB_PASSWORD)
+      # pour pouvoir mettre un mot de passe fort sans patcher le compose à chaque rotation.
+      POSTGRES_DB: ${DB_NAME:-open-wearables}
+      POSTGRES_USER: ${DB_USER:-open-wearables}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in environment}
     # ports retirés (patch Bazard) — DB accessible uniquement via le réseau Docker interne
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-open-wearables} -d ${DB_NAME:-open-wearables}"]
       interval: 5s
       timeout: 5s
       retries: 5

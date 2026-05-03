@@ -50,6 +50,7 @@ Voir : `app.bazard.run/CLAUDE.md` et `api.bazard.run/CLAUDE.md` pour la perspect
 | Fichier | Modif | Pourquoi |
 |---|---|---|
 | `docker-compose.prod.yml` | Retiré `ports:` sur `db`, `redis`, `flower` | Sur Coolify avec IP publique, exposer Postgres/Redis/Flower = trou de sécurité critique. Communication via le réseau Docker interne uniquement. |
+| `docker-compose.prod.yml` | Service `db` : `POSTGRES_*` lus depuis `${DB_NAME}` / `${DB_USER}` / `${DB_PASSWORD}` (au lieu de littéraux `open-wearables`) | Permet de mettre un mot de passe fort via les env vars Coolify. `DB_PASSWORD` est désormais **requis** (le compose plante si non défini) — ce qui force la bonne pratique. |
 
 Tout autre fichier reste **identique à l'upstream**. Si un patch est ajouté ici, **inscrire la ligne dans ce tableau** pour que la sync upstream reste prévisible.
 
