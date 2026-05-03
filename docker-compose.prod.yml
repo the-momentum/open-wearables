@@ -6,8 +6,7 @@ services:
       POSTGRES_DB: open-wearables
       POSTGRES_USER: open-wearables
       POSTGRES_PASSWORD: open-wearables
-    ports:
-      - "5432:5432"
+    # ports retirés (patch Bazard) — DB accessible uniquement via le réseau Docker interne
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
       interval: 5s
@@ -81,8 +80,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-    ports:
-      - 5555:5555
+    # ports retirés (patch Bazard) — Flower (monitoring Celery) jamais exposé publiquement
     depends_on:
       - redis
       - db
@@ -92,8 +90,7 @@ services:
   redis:
     container_name: redis__open-wearables
     image: redis:8
-    ports:
-      - "6379:6379"
+    # ports retirés (patch Bazard) — Redis accessible uniquement via le réseau Docker interne
     volumes:
       - redis_data:/var/lib/redis/data
     restart: unless-stopped
