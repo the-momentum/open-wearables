@@ -1,3 +1,5 @@
+from contextlib import suppress
+
 import httpx
 
 from app.config import settings
@@ -37,6 +39,16 @@ class StravaOAuth(BaseOAuthTemplate):
     # OAuth configuration
     use_pkce: bool = False  # Strava doesn't require PKCE
     auth_method: AuthenticationMethod = AuthenticationMethod.BODY  # Strava expects credentials in body
+
+    def deregister_user(self, access_token: str) -> None:
+        """Revoke access and remove the app from the athlete's connected apps."""
+        with suppress(Exception): # best-effort; connection is deleted locally regardless
+            response = httpx.post(
+                "https://www.strava.com/oauth/deauthorize",
+                params={"access_token": access_token},
+                timeout=30.0,
+            )
+            response.raise_for_status()
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fetches Strava athlete ID and username via API."""
