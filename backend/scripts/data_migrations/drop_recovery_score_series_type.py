@@ -21,15 +21,26 @@ SERIES_TYPE_ID = 6
 SERIES_TYPE_CODE = "recovery_score"
 
 
+_GUARD = "SELECT id FROM series_type_definition WHERE id = :id AND code = :code"
+
+
 def main(dry_run: bool) -> None:
     with SessionLocal() as db:
+        matched_id = db.execute(text(_GUARD), {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE}).scalar()
+        if matched_id is None:
+            print(
+                f"Abort: series_type_definition row with id={SERIES_TYPE_ID} and "
+                f"code='{SERIES_TYPE_CODE}' not found — id may have drifted or row already deleted."
+            )
+            sys.exit(1)
+
         row_count = db.execute(
-            text("SELECT COUNT(*) FROM data_point_series WHERE series_type_definition_id = :id"),
-            {"id": SERIES_TYPE_ID},
+            text(f"SELECT COUNT(*) FROM data_point_series WHERE series_type_definition_id IN ({_GUARD})"),
+            {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         ).scalar()
         archive_count = db.execute(
-            text("SELECT COUNT(*) FROM data_point_series_archive WHERE series_type_definition_id = :id"),
-            {"id": SERIES_TYPE_ID},
+            text(f"SELECT COUNT(*) FROM data_point_series_archive WHERE series_type_definition_id IN ({_GUARD})"),
+            {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         ).scalar()
 
         print(f"data_point_series rows to delete:         {row_count}")
@@ -40,12 +51,12 @@ def main(dry_run: bool) -> None:
             return
 
         db.execute(
-            text("DELETE FROM data_point_series WHERE series_type_definition_id = :id"),
-            {"id": SERIES_TYPE_ID},
+            text(f"DELETE FROM data_point_series WHERE series_type_definition_id IN ({_GUARD})"),
+            {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         )
         db.execute(
-            text("DELETE FROM data_point_series_archive WHERE series_type_definition_id = :id"),
-            {"id": SERIES_TYPE_ID},
+            text(f"DELETE FROM data_point_series_archive WHERE series_type_definition_id IN ({_GUARD})"),
+            {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE},
         )
         db.execute(
             text("DELETE FROM series_type_definition WHERE id = :id AND code = :code"),

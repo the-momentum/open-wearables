@@ -47,9 +47,8 @@ _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
     "hrv": SeriesType.heart_rate_variability_rmssd,
 }
 
-# StressState integer → text qualifier
+# StressState integer → text qualifier (0=Invalid is treated as missing)
 _STRESS_STATE_QUALIFIER: dict[int, str] = {
-    0: "Invalid",
     1: "Relaxing",
     2: "Active",
     3: "Passive",
@@ -366,7 +365,7 @@ class Suunto247Data(Base247DataTemplate):
         stress_qualifier = _STRESS_STATE_QUALIFIER.get(stress_state) if stress_state is not None else None
 
         components = None
-        if stress_state is not None:
+        if stress_qualifier is not None:
             components = {
                 "stress_state": ScoreComponent(value=stress_state, qualifier=stress_qualifier),
             }
