@@ -14,6 +14,7 @@ from .health_scores import router as health_scores_router
 from .import_xml import router as import_xml_router
 from .invitations import router as invitations_router
 from .oauth import router as oauth_router
+from .oura_webhooks import router as oura_webhooks_router
 from .outgoing_webhooks import router as outgoing_webhooks_router
 from .priorities import router as priorities_router
 from .sdk_logs import router as sdk_logs_router
@@ -63,6 +64,7 @@ v1_router.include_router(seed_data_router, tags=["Internal: Seed Data"])
 v1_router.include_router(priorities_router, tags=["Internal: Priorities"])
 
 # --- System: provider webhooks ---
+v1_router.include_router(oura_webhooks_router, prefix="/oura/webhooks", tags=["System: Oura Webhooks"])
 v1_router.include_router(strava_webhooks_router, prefix="/strava/webhooks", tags=["System: Strava Webhooks"])
 v1_router.include_router(
     providers_webhooks_router, prefix="/providers/{provider}/webhooks", tags=["System: Provider Webhooks"]

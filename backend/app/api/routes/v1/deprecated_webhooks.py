@@ -21,6 +21,7 @@ from app.database import DbSession
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 
+from .oura_webhooks import router as oura_webhooks_router
 from .strava_webhooks import router as strava_webhooks_router
 
 router = APIRouter()
@@ -73,5 +74,7 @@ def garmin_webhook_push_compat(
     return handler.handle(request, body, db)
 
 
-# Strava — was not in production; old path kept for completeness only.
+# Oura and Strava — re-registered at old paths for completeness.
+# These were never in production at these paths.
+router.include_router(oura_webhooks_router, prefix="/oura/webhooks")
 router.include_router(strava_webhooks_router, prefix="/strava/webhook")
