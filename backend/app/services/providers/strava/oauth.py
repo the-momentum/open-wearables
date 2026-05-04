@@ -42,7 +42,7 @@ class StravaOAuth(BaseOAuthTemplate):
 
     def deregister_user(self, access_token: str) -> None:
         """Revoke access and remove the app from the athlete's connected apps."""
-        with suppress(Exception): # best-effort; connection is deleted locally regardless
+        with suppress(Exception):  # best-effort; connection is deleted locally regardless
             response = httpx.post(
                 "https://www.strava.com/oauth/deauthorize",
                 params={"access_token": access_token},
