@@ -8,11 +8,14 @@ import logging
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models import EventRecord, WorkoutDetails
+from app.schemas.enums import SeriesType
+from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
 from app.services.apple.healthkit.import_service import ImportService
 from tests.factories import UserFactory
 
@@ -539,3 +542,121 @@ class TestAppleSDKImportEdgeCases:
         assert details.heart_rate_avg is None
         assert details.distance is None
         assert details.energy_burned is None
+
+
+class TestSDKImportUnitConversion:
+    """Unit conversions applied in `_build_statistic_bundles`.
+
+    Apple HealthKit reports `body_fat_percentage` via `HKUnit.percent()` as a 0..1 ratio,
+    while Android Health Connect's `BodyFatRecord.percentage` is already in percent.
+    Height in meters is consistent across both platforms and must always be converted to cm.
+    """
+
+    @pytest.fixture
+    def import_service(self) -> ImportService:
+        return ImportService(log=logging.getLogger("test"))
+
+    @staticmethod
+    def _record(metric_type: str, value: float) -> dict[str, Any]:
+        return {
+            "id": f"test-{metric_type}",
+            "type": metric_type,
+            "unit": "",
+            "value": value,
+            "startDate": "2025-04-10T12:00:00Z",
+            "endDate": "2025-04-10T12:00:00Z",
+            "source": {
+                "name": "Test Device",
+                "bundleIdentifier": "test",
+            },
+        }
+
+    def _build_request(self, provider: str, records: list[dict[str, Any]]) -> SDKSyncRequest:
+        return SDKSyncRequest(
+            **{
+                "provider": provider,
+                "sdkVersion": "1.0.0",
+                "syncTimestamp": "2025-04-10T12:00:00Z",
+                "data": {"records": records},
+            }
+        )
+
+    def test_apple_body_fat_percentage_scaled_by_100(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Apple sends ratio 0.304 — must be stored as 30.4 (%)."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._record("HKQuantityTypeIdentifierBodyFatPercentage", 0.304)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.body_fat_percentage
+        assert samples[0].value == Decimal("30.400")
+
+    def test_google_body_fat_percentage_not_scaled(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Google/Health Connect sends already-percent 30.4 — must be stored as 30.4 (no x100)."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "google",
+            [self._record("BODY_FAT", 30.4)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.body_fat_percentage
+        assert samples[0].value == Decimal("30.4")
+
+    def test_samsung_body_fat_percentage_not_scaled(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Samsung uses Health Connect semantics — already percent, must not be scaled."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "samsung",
+            [self._record("BODY_FAT", 18.5)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.body_fat_percentage
+        assert samples[0].value == Decimal("18.5")
+
+    def test_apple_height_converted_meters_to_centimeters(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Height in meters 1.7526 — must be stored as 175.26 cm regardless of provider."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "apple",
+            [self._record("HKQuantityTypeIdentifierHeight", 1.7526)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.height
+        assert samples[0].value == Decimal("175.2600")
+
+    def test_google_height_converted_meters_to_centimeters(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Health Connect also sends height in meters — the x100 conversion still applies."""
+        user_id = str(uuid4())
+        request = self._build_request(
+            "google",
+            [self._record("HEIGHT", 1.7526)],
+        )
+        samples = import_service._build_statistic_bundles(request, user_id)
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.height
+        assert samples[0].value == Decimal("175.2600")
