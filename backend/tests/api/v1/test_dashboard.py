@@ -193,6 +193,47 @@ class TestGetDashboardStats:
             assert "count" in top_workouts[0]
             assert isinstance(top_workouts[0]["count"], int)
 
+    def test_get_dashboard_stats_top_limit_parameter(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Test that top_limit query parameter controls the number of returned items."""
+        # Arrange
+        developer = DeveloperFactory(email="test@example.com", password="test123")
+        headers = developer_auth_headers(developer.id)
+
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+
+        # Create multiple series types and workout types
+        for i in range(10):
+            series_type = SeriesTypeDefinitionFactory()
+            for _ in range(i + 1):
+                DataPointSeriesFactory(mapping=mapping, series_type=series_type)
+            for _ in range(i + 1):
+                EventRecordFactory(mapping=mapping, category="workout", type_=f"workout_{i}")
+
+        # Act - test with top_limit=3
+        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=3", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data_points"]["top_series_types"]) <= 3
+        assert len(data["data_points"]["top_workout_types"]) <= 3
+
+        # Act - test with top_limit=8
+        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=8", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data_points"]["top_series_types"]) <= 8
+        assert len(data["data_points"]["top_workout_types"]) <= 8
+
+        # Act - test with invalid top_limit (should fail validation)
+        response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=0", headers=headers)
+
+        # Assert - app maps RequestValidationError to 400
+        assert response.status_code == 400
+
     def test_get_dashboard_stats_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting dashboard stats fails without authentication."""
         # Act
