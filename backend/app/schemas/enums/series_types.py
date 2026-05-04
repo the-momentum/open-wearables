@@ -150,6 +150,13 @@ class SeriesType(str, Enum):
     garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
 
     # =========================================================================
+    # POLAR-SPECIFIC METRICS (IDs 240-259)
+    # =========================================================================
+    polar_nightly_recharge_status = "polar_nightly_recharge_status"  # 1-5 ordinal
+    polar_ans_charge = "polar_ans_charge"                             # -10 to +10 signed
+    polar_ans_charge_status = "polar_ans_charge_status"               # 1-5 ordinal
+
+    # =========================================================================
     # OTHER (IDs 500-)
     # =========================================================================
 
@@ -285,6 +292,12 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (221, SeriesType.garmin_skin_temperature, "celsius"),  # kept for backwards compatibility
     (222, SeriesType.garmin_fitness_age, "years"),
     (223, SeriesType.garmin_body_battery, "percent"),
+    # -------------------------------------------------------------------------
+    # POLAR-SPECIFIC METRICS (IDs 240-259)
+    # -------------------------------------------------------------------------
+    (240, SeriesType.polar_nightly_recharge_status, "score"),
+    (241, SeriesType.polar_ans_charge, "score"),
+    (242, SeriesType.polar_ans_charge_status, "score"),
     # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------

@@ -24,13 +24,13 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Exercises | Yes (with optional HR samples, zones, route) |
-| Sleep (with stages) | Available via API - not yet implemented |
-| Daily activity | Available via API - not yet implemented |
-| Continuous heart rate (5-min intervals) | Available via API - not yet implemented |
-| Nightly Recharge / Recovery | Available via API - not yet implemented |
+| Daily activity | Yes (steps, calories, distance, active/inactive durations) |
+| Sleep (with Sleep Plus Stages) | Yes (stage summary + per-interval hypnogram) |
+| Continuous heart rate (5-min intervals) | Yes (persisted as time-series samples) |
+| Nightly Recharge / Recovery | Yes (per-night ANS/recharge scores + intra-night HRV & breathing samples) |
 
 <Info>
-Open Wearables currently syncs **exercise/workout data** from Polar. The AccessLink API also exposes sleep, daily activity, continuous HR, and Nightly Recharge data - support for these types is planned for a future release.
+Open Wearables syncs **workouts, daily activity, sleep, continuous heart rate, and Nightly Recharge** from Polar. Nightly Recharge per-night scores (`nightly_recharge_status`, `ans_charge`, `ans_charge_status`) and the intra-night HRV (`hrv_samples`) and breathing-rate (`breathing_samples`) streams are all persisted as DataPointSeries samples.
 </Info>
 
 ### Data delivery

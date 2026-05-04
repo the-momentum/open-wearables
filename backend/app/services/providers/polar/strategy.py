@@ -1,4 +1,5 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
+from app.services.providers.polar.data_247 import PolarData247Template
 from app.services.providers.polar.oauth import PolarOAuth
 from app.services.providers.polar.workouts import PolarWorkouts
 
@@ -17,6 +18,11 @@ class PolarStrategy(BaseProviderStrategy):
         self.workouts = PolarWorkouts(
             workout_repo=self.workout_repo,
             connection_repo=self.connection_repo,
+            provider_name=self.name,
+            api_base_url=self.api_base_url,
+            oauth=self.oauth,
+        )
+        self.data_247 = PolarData247Template(
             provider_name=self.name,
             api_base_url=self.api_base_url,
             oauth=self.oauth,
