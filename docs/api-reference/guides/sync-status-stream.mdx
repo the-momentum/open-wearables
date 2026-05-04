@@ -1,0 +1,137 @@
+---
+title: "Live Sync Status (SSE) | Open Wearables"
+sidebarTitle: "Live Sync Status"
+description: "Stream real-time sync lifecycle events for a user via Server-Sent Events. Track when pulls, webhooks, SDK uploads, Apple Health imports, and Garmin backfills start, progress, and complete."
+keywords: ["sync status", "server-sent events", "SSE", "real-time sync", "sync progress", "open wearables"]
+"og:title": "Live Sync Status (SSE) | Open Wearables"
+"og:description": "Subscribe to real-time sync lifecycle events for any user via SSE."
+"og:url": "https://docs.openwearables.io/api-reference/guides/sync-status-stream"
+"og:type": "article"
+"twitter:title": "Live Sync Status (SSE) | Open Wearables"
+"twitter:description": "Subscribe to real-time sync lifecycle events via Server-Sent Events."
+"twitter:card": "summary_large_image"
+---
+
+## Overview
+
+The sync status API lets you observe the entire lifecycle of every sync that runs for a user — across pulls, webhooks, SDK uploads, Apple Health XML imports, and historical Garmin backfills — in real time.
+
+Three endpoints are exposed:
+
+- **`GET /api/v1/users/{user_id}/sync/stream`** — long-lived [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) connection that streams every event as it happens.
+- **`GET /api/v1/users/{user_id}/sync/recent`** — the last N events buffered in Redis (default 50, max 200, retained for 24 hours).
+- **`GET /api/v1/users/{user_id}/sync/runs`** — the latest event per run (one row per `run_id`), so you can quickly inspect which syncs are in progress and how recent ones ended.
+
+All three accept the same `ApiKeyDep` authentication as the rest of the public API: pass your API key via the `X-API-Key` header.
+
+<Note>
+The SSE endpoint also supports webhooks — if you have outgoing webhook endpoints registered, terminal sync events (`sync.started`, `sync.completed`, `sync.failed`) are also dispatched as Svix webhooks. See the [Webhooks guide](/api-reference/guides/webhooks).
+</Note>
+
+---
+
+## Event Schema
+
+Every event is a JSON object emitted as the `data` field of an SSE message with `event: sync_status`:
+
+```json
+{
+  "event_id": "evt_01HZ...",
+  "run_id": "pull_garmin_user42_1730000000",
+  "user_id": "user42",
+  "provider": "garmin",
+  "source": "pull",
+  "stage": "fetching",
+  "status": "in_progress",
+  "message": "Fetching workouts",
+  "progress": 0.42,
+  "items_processed": 21,
+  "items_total": 50,
+  "error": null,
+  "metadata": {},
+  "started_at": "2024-10-27T10:15:00Z",
+  "ended_at": null,
+  "timestamp": "2024-10-27T10:15:32Z"
+}
+```
+
+### Fields
+
+| Field             | Type                  | Description                                                                                                          |
+| ----------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `run_id`          | `string`              | Unique identifier per sync run. Multiple events share a `run_id` as a sync progresses.                               |
+| `provider`        | `string`              | Lower-case provider slug (e.g. `garmin`, `oura`, `apple`).                                                           |
+| `source`          | `SyncSource`          | One of `pull`, `webhook`, `sdk`, `backfill`, `xml_import`.                                                           |
+| `stage`           | `SyncStage`           | One of `queued`, `started`, `fetching`, `processing`, `saving`, `completed`, `failed`, `cancelled`.                  |
+| `status`          | `SyncStatus`          | One of `in_progress`, `success`, `partial`, `failed`, `cancelled`. Terminal statuses end a run.                      |
+| `progress`        | `number \| null`      | Optional 0..1 fraction. Not all syncs report this.                                                                   |
+| `items_processed` | `number \| null`      | Optional count of items processed so far.                                                                            |
+| `items_total`     | `number \| null`      | Optional total when known.                                                                                           |
+| `started_at`      | `string \| null`      | ISO-8601 timestamp when the run started.                                                                             |
+| `ended_at`        | `string \| null`      | ISO-8601 timestamp when the run reached a terminal status.                                                           |
+| `timestamp`       | `string`              | ISO-8601 timestamp of this individual event.                                                                         |
+
+---
+
+## Streaming endpoint
+
+```bash
+curl -N "https://api.openwearables.io/api/v1/users/USER_ID/sync/stream?replay=20" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+The `replay` query parameter (1..200, default `20`) causes the most recent events from the last 24 hours to be replayed before the live stream begins, so a freshly connected client can see in-progress syncs immediately.
+
+The stream emits:
+
+- A connect comment (`: connected`) when the connection is established.
+- One SSE message per event (`event: sync.status`, `data: <json>`).
+- A `: heartbeat` comment every 15 seconds to keep the connection alive.
+
+Browsers can consume the stream using `EventSource` (without auth headers) or `fetch` + `ReadableStream` (with a `Bearer` JWT token in the `Authorization` header). Both authentication methods are accepted by the same endpoint — no separate dashboard variant is needed.
+
+### Example: Node.js
+
+```javascript
+import { EventSource } from 'eventsource';
+
+const url =
+  'https://api.openwearables.io/api/v1/users/USER_ID/sync/stream?replay=20';
+const es = new EventSource(url, {
+  fetch: (input, init) =>
+    fetch(input, { ...init, headers: { ...init.headers, 'X-API-Key': KEY } }),
+});
+
+es.addEventListener('sync.status', (msg) => {
+  const event = JSON.parse(msg.data);
+  console.log(`[${event.provider}] ${event.stage} - ${event.status}`);
+});
+```
+
+---
+
+## Recent events
+
+```bash
+curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/recent?limit=50" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+Returns up to `limit` events (default 50, max 200) ordered newest first. Useful when reconnecting or rendering a "history" tab.
+
+---
+
+## Sync run summaries
+
+```bash
+curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/runs?limit=20" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+Returns the **latest** event for each unique `run_id` from the past 24 hours, ordered newest first. This is the most concise way to render a "recent syncs" panel.
+
+---
+
+## Retention
+
+All sync status data is held in Redis with a 24-hour TTL. For long-term audit, subscribe to the corresponding [`sync.started` / `sync.completed` / `sync.failed`](/api-reference/guides/webhooks) outgoing webhooks, which are persisted by Svix.

@@ -8,12 +8,14 @@ from app.database import SessionLocal
 from app.models import User
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
+from app.schemas.sync_status import SyncSource, SyncStatus
 from app.services.apple.healthkit.import_service import (
     ImportService as SDKImportService,
 )
 from app.services.apple.healthkit.import_service import (
     import_service as sdk_import_service,
 )
+from app.services.sync_status_service import completed, failed, started
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -91,6 +93,15 @@ def process_sdk_upload(
         provider=provider,
     )
 
+    started(
+        user_uuid,
+        provider,
+        SyncSource.SDK,
+        run_id=batch_id,
+        message=f"Processing {provider} SDK batch",
+        metadata={"batch_id": batch_id},
+    )
+
     with SessionLocal() as db:
         # Ensure SDK connection exists for this user (SDK-based, no OAuth tokens)
         connection_repo = UserConnectionRepository()
@@ -119,5 +130,38 @@ def process_sdk_upload(
             workouts_saved=result.get("workouts_saved", 0),
             sleep_saved=result.get("sleep_saved", 0),
         )
+
+        status_code = result.get("status_code", 200)
+        records_saved = int(result.get("records_saved", 0) or 0)
+        workouts_saved = int(result.get("workouts_saved", 0) or 0)
+        sleep_saved = int(result.get("sleep_saved", 0) or 0)
+        items_total = records_saved + workouts_saved + sleep_saved
+
+        if isinstance(status_code, int) and 200 <= status_code < 300:
+            completed(
+                user_uuid,
+                provider,
+                SyncSource.SDK,
+                run_id=batch_id,
+                status=SyncStatus.SUCCESS,
+                message=f"{provider.capitalize()} batch saved",
+                items_processed=items_total,
+                metadata={
+                    "batch_id": batch_id,
+                    "records_saved": records_saved,
+                    "workouts_saved": workouts_saved,
+                    "sleep_saved": sleep_saved,
+                },
+            )
+        else:
+            failed(
+                user_uuid,
+                provider,
+                SyncSource.SDK,
+                run_id=batch_id,
+                error=str(result.get("response", "Unknown error")),
+                message=f"{provider.capitalize()} batch failed",
+                metadata={"batch_id": batch_id, "status_code": status_code},
+            )
 
         return {**result, "batch_id": batch_id}

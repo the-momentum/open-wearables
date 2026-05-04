@@ -7,6 +7,7 @@ import {
   Settings,
   ExternalLink,
   Webhook,
+  RefreshCw,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,11 @@ const menuItems = [
     url: ROUTES.webhooks,
     icon: Webhook,
     badge: 'Beta',
+  },
+  {
+    title: 'Syncs',
+    url: ROUTES.syncs,
+    icon: RefreshCw,
   },
   {
     title: 'Settings',

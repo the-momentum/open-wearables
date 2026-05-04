@@ -5,8 +5,9 @@ from contextlib import asynccontextmanager
 from logging import INFO, StreamHandler, basicConfig
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import head_router
@@ -66,7 +67,14 @@ async def root() -> dict[str, str]:
 
 
 @api.exception_handler(RequestValidationError)
-async def request_validation_exception_handler(_: Request, exc: RequestValidationError) -> None:
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # (FastAPI ≥ 0.130 rejects empty required str form fields before the handler runs)
+    if request.url.path.endswith("/auth/login"):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Incorrect email or password"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     raise handle_exception(exc, "")
 
 

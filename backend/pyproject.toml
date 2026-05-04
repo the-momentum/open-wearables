@@ -5,16 +5,16 @@ description = ""
 requires-python = ">=3.13"
 dependencies = [
     "cryptography>=45.0.4",
-    "pydantic-settings>=2.10.1",
+    "pydantic-settings>=2.14.0",
     "email-validator>=2.2.0",
     "psycopg>=3.2.9",
     "sqlalchemy>=2.0.43",
-    "fastapi>=0.120.4",
-    "fastapi-cli>=0.0.8",
+    "fastapi>=0.136.1",
+    "fastapi-cli>=0.0.24",
     "celery>=5.5.3",
     "flower>=2.0.1",
     "redis>=7.0.1",
-    "sentry-sdk[fastapi]>=2.57.0",
+    "sentry-sdk[fastapi]>=2.58.0",
     "python-multipart>=0.0.20",
     "python-jose[cryptography]>=3.5.0",
     "httpx>=0.28.1",
@@ -25,7 +25,7 @@ dependencies = [
     "isodate>=0.7.2",
     "resend>=2.0.0",
     "pyyaml>=6.0.3",
-    "svix>=1.90.0",
+    "svix>=1.92.2",
     "numpy>=2.4.4",
     "faker>=40.13.0",
 ]
@@ -43,7 +43,6 @@ dev = [
     "freezegun>=1.5.0",
     "factory-boy>=3.3.0",
     "psycopg-binary>=3.3.2",
-    "ruff>=0.14.7",
     "testcontainers[postgres,redis]>=4.14.2",
 ]
 

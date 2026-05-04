@@ -22,7 +22,7 @@ def login(
     # Find developer by email
     developers = developer_service.crud.get_all(
         db,
-        filters={"email": form_data.username},  # OAuth2PasswordRequestForm uses 'username' field for login
+        filters={"email": form_data.username},
         offset=0,
         limit=1,
         sort_by=None,
