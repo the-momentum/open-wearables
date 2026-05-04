@@ -1,3 +1,4 @@
+from datetime import date, datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import and_, desc
@@ -67,6 +68,31 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             .filter(HealthScore.user_id == user_id, HealthScore.category == category)
             .order_by(desc(HealthScore.recorded_at))
             .first()
+        )
+
+    def delete_for_user_date(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        score_date: date,
+        category: HealthScoreCategory,
+        provider: str = "internal",
+    ) -> int:
+        """Delete health scores matching user/category/provider/date without loading objects.
+
+        Caller is responsible for commit. Returns deleted row count.
+        Sleep scores are stored with recorded_at = midnight UTC of the local sleep date.
+        """
+        midnight = datetime(score_date.year, score_date.month, score_date.day, tzinfo=timezone.utc)
+        return (
+            db_session.query(HealthScore)
+            .filter(
+                HealthScore.user_id == user_id,
+                HealthScore.provider == provider,
+                HealthScore.category == category,
+                HealthScore.recorded_at == midnight,
+            )
+            .delete(synchronize_session=False)
         )
 
     def get_latest_per_category(
