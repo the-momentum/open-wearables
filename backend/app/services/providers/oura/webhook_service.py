@@ -1,21 +1,19 @@
-"""Service for processing Oura Ring webhook notifications and managing subscriptions."""
+"""Oura webhook subscription management.
 
-from datetime import datetime, timedelta
+Handles app-level subscription registration with the Oura API:
+create, list, and renew subscriptions. These are admin-only operations
+called once during setup, not part of the inbound webhook pipeline.
+
+Inbound webhook processing is handled by OuraWebhookHandler.
+"""
+
+import itertools
 from logging import getLogger
-from typing import Any, cast
-from uuid import UUID
+from typing import Any
 
 import httpx
 
 from app.config import settings
-from app.database import DbSession
-from app.repositories import UserConnectionRepository
-from app.schemas.providers.oura import OuraWebhookNotification
-from app.services.providers.base_strategy import BaseProviderStrategy
-from app.services.providers.factory import ProviderFactory
-from app.services.providers.oura.data_247 import Oura247Data
-from app.services.providers.oura.workouts import OuraWorkouts
-from app.utils.dates import parse_webhook_data_timestamp
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -23,19 +21,42 @@ logger = getLogger(__name__)
 OURA_WEBHOOK_API_URL = "https://api.ouraring.com/v2/webhook/subscription"
 
 OURA_WEBHOOK_DATA_TYPES = [
-    "daily_activity",
-    "daily_readiness",
-    "daily_sleep",
-    "daily_spo2",
     "workout",
+    "sleep",
+    "daily_sleep",
+    "daily_readiness",
+    "daily_activity",
+    "daily_spo2",
+    "daily_cardiovascular_age",
+    "vo2_max",
+    #
+    # ----- not supported yet -----
+    #
+    # "sleep_time",
+    # "rest_mode_period",
+    # "ring_configuration",
+    # "daily_stress",
+    # "daily_cycle_phases",
+    # "activation_status",
+    # "daily_resilience",
+    # "tag",
+    # "enhanced_tag",
+    # "session",
+    #
+    # ----- possibly not accessible via api - up to verification -----
+    #
+    # "blood_glucose",
+    # "period_start",
+    # "pregnancy",
+    # "fertile_window",
+    # "ovulation_confirmed",
 ]
+
+OURA_WEBHOOK_EVENT_TYPES = ["create", "update"]
 
 
 class OuraWebhookService:
-    """Handles Oura webhook notification processing and subscription management."""
-
-    def __init__(self) -> None:
-        self.connection_repo = UserConnectionRepository()
+    """App-level Oura webhook subscription management."""
 
     def _get_oura_credentials(self) -> tuple[str, str]:
         """Get Oura client credentials. Raises ValueError if not configured."""
@@ -53,221 +74,128 @@ class OuraWebhookService:
             "x-client-secret": client_secret,
         }
 
-    @staticmethod
-    def _parse_data_timestamp(
-        notification: OuraWebhookNotification,
-    ) -> tuple[datetime, datetime]:
-        """Parse notification timestamp into a start/end date range."""
-        data_date = parse_webhook_data_timestamp(notification.data_timestamp)
-
-        start_time = data_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_time = start_time + timedelta(days=1)
-        return start_time, end_time
-
-    def process_notification(
-        self,
-        db: DbSession,
-        notification: OuraWebhookNotification,
-    ) -> dict:
-        """Process a single Oura webhook notification.
-
-        Looks up the internal user, fetches the relevant data from Oura API,
-        and saves it to the database.
-
-        Returns:
-            Dict with processing result (status, data_type, records_saved, etc.)
-        """
-        # Look up internal user by Oura user_id
-        connection = self.connection_repo.get_by_provider_user_id(db, "oura", notification.user_id)
-        if not connection:
-            log_structured(
-                logger,
-                "warning",
-                "No connection found for Oura user",
-                action="oura_webhook_user_not_found",
-                oura_user_id=notification.user_id,
-                data_type=notification.data_type,
-            )
-            return {"status": "ignored", "reason": "user_not_connected"}
-
-        internal_user_id: UUID = connection.user_id
-
-        log_structured(
-            logger,
-            "info",
-            "Processing Oura webhook notification",
-            action="oura_webhook_processing",
-            user_id=str(internal_user_id),
-            oura_user_id=notification.user_id,
-            data_type=notification.data_type,
-            event_type=notification.event_type,
-        )
-
-        # Skip delete events
-        if notification.event_type == "delete":
-            log_structured(
-                logger,
-                "info",
-                "Ignoring delete event",
-                action="oura_webhook_delete_skipped",
-                data_type=notification.data_type,
-                user_id=str(internal_user_id),
-            )
-            return {"status": "ignored", "reason": "delete_event"}
-
-        start_time, end_time = self._parse_data_timestamp(notification)
-
-        # Get Oura provider
-        factory = ProviderFactory()
-        oura_strategy = factory.get_provider("oura")
-
-        count = self._dispatch_data_type(db, notification, oura_strategy, internal_user_id, start_time, end_time)
-
-        if count is None:
-            log_structured(
-                logger,
-                "info",
-                "Unhandled Oura data type",
-                action="oura_webhook_unhandled",
-                data_type=notification.data_type,
-                user_id=str(internal_user_id),
-            )
-            return {
-                "status": "ignored",
-                "reason": f"unhandled_data_type: {notification.data_type}",
-            }
-
-        log_structured(
-            logger,
-            "info",
-            "Oura webhook notification processed",
-            action="oura_webhook_complete",
-            user_id=str(internal_user_id),
-            data_type=notification.data_type,
-            event_type=notification.event_type,
-            records_saved=count,
-        )
-
-        return {
-            "status": "processed",
-            "data_type": notification.data_type,
-            "event_type": notification.event_type,
-            "records_saved": count,
-        }
-
-    @staticmethod
-    def _dispatch_data_type(
-        db: DbSession,
-        notification: OuraWebhookNotification,
-        oura_strategy: BaseProviderStrategy,
-        user_id: UUID,
-        start_time: datetime,
-        end_time: datetime,
-    ) -> int | None:
-        """Dispatch webhook to the appropriate data handler.
-
-        Returns the number of records saved, or None if data_type is unhandled.
-        """
-        if notification.data_type in ("sleep", "daily_sleep") and oura_strategy.data_247:
-            oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            return oura_247.save_sleep_data(
-                db,
-                user_id,
-                oura_247.normalize_sleeps(oura_247.get_sleep_data(db, user_id, start_time, end_time), user_id),
-            )
-
-        if notification.data_type == "daily_readiness" and oura_strategy.data_247:
-            oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            return oura_247.save_readiness_data(
-                db,
-                user_id,
-                oura_247.normalize_readiness(oura_247.get_readiness_data(db, user_id, start_time, end_time), user_id),
-            )
-
-        if notification.data_type == "daily_activity" and oura_strategy.data_247:
-            oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            raw = oura_247.get_activity_samples(db, user_id, start_time, end_time)
-            normalized = oura_247.normalize_activity_samples(raw, user_id)
-            return oura_247.save_activity_data(db, user_id, normalized)
-
-        if notification.data_type == "daily_spo2" and oura_strategy.data_247:
-            oura_247 = cast(Oura247Data, oura_strategy.data_247)
-            raw = oura_247.get_spo2_data(db, user_id, start_time, end_time)
-            return oura_247.save_spo2_data(db, user_id, raw)
-
-        if notification.data_type == "workout" and oura_strategy.workouts:
-            oura_workouts = cast(OuraWorkouts, oura_strategy.workouts)
-            return oura_workouts.load_data(db, user_id, start_date=start_time, end_date=end_time)
-
-        return None
-
-    async def create_subscriptions(
+    async def register_subscriptions(
         self,
         callback_url: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Create Oura webhook subscriptions for all data types.
+        """Register missing Oura webhook subscriptions for all supported data types.
 
-        Creates subscriptions for both 'create' and 'update' events
-        across all supported data types.
+        GETs existing subscriptions first and skips ones already registered.
+        Safe to call multiple times.
         """
+        if not callback_url:
+            raise ValueError("callback_url is required to upsert webhook subscriptions")
+
         headers = self._get_client_headers()
         headers["Content-Type"] = "application/json"
 
-        verification_token = (
-            settings.oura_webhook_verification_token.get_secret_value()
-            if settings.oura_webhook_verification_token
-            else ""
-        )
-
-        if not callback_url:
-            raise ValueError("callback_url is required to create webhook subscriptions")
+        if not settings.oura_webhook_verification_token:
+            raise ValueError("Oura webhook verification token is not configured")
+        verification_token = settings.oura_webhook_verification_token.get_secret_value()
 
         results: list[dict[str, Any]] = []
 
         async with httpx.AsyncClient() as client:
-            for data_type in OURA_WEBHOOK_DATA_TYPES:
-                for event_type in ["create", "update"]:
+            # Build index of existing subscriptions keyed by (data_type, event_type) → (id, callback_url)
+            existing: dict[tuple[str, str], tuple[str, str]] = {}
+            try:
+                list_resp = await client.get(OURA_WEBHOOK_API_URL, headers=headers, timeout=30.0)
+                list_resp.raise_for_status()
+                for sub in list_resp.json() or []:
+                    key = (sub.get("data_type", ""), sub.get("event_type", ""))
+                    if key[0] and key[1]:
+                        existing[key] = (sub["id"], sub.get("callback_url", ""))
+            except httpx.HTTPError as e:
+                log_structured(
+                    logger,
+                    "error",
+                    "Failed to list existing Oura subscriptions",
+                    provider="oura",
+                    action="oura_webhook_subscription_list_error",
+                    error=str(e),
+                )
+                raise
+
+            for data_type, event_type in itertools.product(OURA_WEBHOOK_DATA_TYPES, OURA_WEBHOOK_EVENT_TYPES):
+                body = {
+                    "callback_url": callback_url,
+                    "verification_token": verification_token,
+                    "event_type": event_type,
+                    "data_type": data_type,
+                }
+
+                if (data_type, event_type) in existing:
+                    sub_id, existing_url = existing[(data_type, event_type)]
+                    if existing_url == callback_url:
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "skipped"})
+                        continue
+                    # callback_url changed — update the subscription
                     try:
-                        response = await client.post(
-                            OURA_WEBHOOK_API_URL,
+                        response = await client.put(
+                            f"{OURA_WEBHOOK_API_URL}/{sub_id}",
                             headers=headers,
-                            json={
-                                "callback_url": callback_url,
-                                "verification_token": verification_token,
-                                "event_type": event_type,
-                                "data_type": data_type,
-                            },
+                            json=body,
                             timeout=30.0,
                         )
                         response.raise_for_status()
-                        results.append(
-                            {
-                                "data_type": data_type,
-                                "event_type": event_type,
-                                "status": "created",
-                                "response": response.json(),
-                            }
-                        )
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "updated"})
                     except httpx.HTTPError as e:
                         log_structured(
                             logger,
                             "error",
-                            "Failed to create Oura webhook subscription",
+                            "Failed to update Oura webhook subscription",
                             provider="oura",
-                            action="oura_webhook_subscription_create_error",
+                            action="oura_webhook_subscription_update_error",
                             data_type=data_type,
                             event_type=event_type,
+                            subscription_id=sub_id,
                             error=str(e),
                             status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
                         )
                         results.append(
-                            {
-                                "data_type": data_type,
-                                "event_type": event_type,
-                                "status": "error",
-                                "error": str(e),
-                            }
+                            {"data_type": data_type, "event_type": event_type, "status": "error", "error": str(e)}
                         )
+                    continue
+
+                try:
+                    response = await client.post(
+                        OURA_WEBHOOK_API_URL,
+                        headers=headers,
+                        json=body,
+                        timeout=30.0,
+                    )
+                    if response.status_code == 409:
+                        results.append({"data_type": data_type, "event_type": event_type, "status": "skipped"})
+                        continue
+                    response.raise_for_status()
+                    results.append(
+                        {
+                            "data_type": data_type,
+                            "event_type": event_type,
+                            "status": "created",
+                            "response": response.json(),
+                        }
+                    )
+                except httpx.HTTPError as e:
+                    log_structured(
+                        logger,
+                        "error",
+                        "Failed to register Oura webhook subscription",
+                        provider="oura",
+                        action="oura_webhook_subscription_register_error",
+                        data_type=data_type,
+                        event_type=event_type,
+                        error=str(e),
+                        status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+                    )
+                    results.append(
+                        {
+                            "data_type": data_type,
+                            "event_type": event_type,
+                            "status": "error",
+                            "error": str(e),
+                        }
+                    )
 
         return results
 
@@ -289,7 +217,6 @@ class OuraWebhookService:
         headers = self._get_client_headers()
 
         async with httpx.AsyncClient() as client:
-            # List active subscriptions
             list_response = await client.get(
                 OURA_WEBHOOK_API_URL,
                 headers=headers,
