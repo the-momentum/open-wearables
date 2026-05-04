@@ -1,5 +1,6 @@
 DOCKER_COMMAND = docker compose -f docker-compose.yml
 DOCKER_EXEC = $(DOCKER_COMMAND) exec app
+DOCKER_EXEC_AGENT = $(DOCKER_COMMAND) exec agent
 ALEMBIC_CMD = uv run alembic
 
 help:	## Show this help.
@@ -49,3 +50,19 @@ downgrade:  ## Revert the last migration
 
 reset_db:  ## Truncate all tables in the database (WARNING: deletes all data)
 	$(DOCKER_EXEC) uv run python scripts/reset_database.py
+
+agent-test:  ## Run agent tests.
+	cd agent && uv run pytest -v --cov=app
+
+agent-migrate:  ## Apply all agent migrations
+	$(DOCKER_EXEC_AGENT) $(ALEMBIC_CMD) upgrade head
+
+agent-create_migration:  ## Create a new agent migration. Use 'make agent-create_migration m="Description of the change"'
+	@if [ -z "$(m)" ]; then \
+		echo "Error: You must provide a migration description using 'm=\"Description\"'"; \
+		exit 1; \
+	fi
+	$(DOCKER_EXEC_AGENT) $(ALEMBIC_CMD) revision --autogenerate -m "$(m)"
+
+agent-downgrade:  ## Revert the last agent migration
+	$(DOCKER_EXEC_AGENT) $(ALEMBIC_CMD) downgrade -1

@@ -21,6 +21,14 @@ uv run python scripts/init_device_priorities.py
 echo 'Seeding admin account...'
 uv run python scripts/init/seed_admin.py
 
+# Seed agent internal API key — only in local dev or when explicitly configured
+if [ "${ENVIRONMENT:-}" = "local" ] || [ -n "${AGENT_API_KEY:-}" ]; then
+    echo 'Seeding agent API key...'
+    uv run python scripts/init/seed_agent_api_key.py
+else
+    echo 'Skipping agent API key seed; AGENT_API_KEY is not configured.'
+fi
+
 # Initialize series type definitions
 echo 'Initializing series type definitions...'
 uv run python scripts/init/seed_series_types.py

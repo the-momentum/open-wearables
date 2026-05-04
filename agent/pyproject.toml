@@ -1,0 +1,95 @@
+[project]
+name = "agent"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.17.1",
+    "cryptography>=45.0.4",
+    "httpx>=0.28.1",
+    "PyJWT>=2.10.1",
+    "pydantic-settings>=2.10.1",
+    "email-validator>=2.2.0",
+    "psycopg>=3.2.9",
+    "sqlalchemy>=2.0.43",
+    "fastapi>=0.120.4",
+    "fastapi-cli>=0.0.8",
+    "celery>=5.5.3",
+    "flower>=2.0.1",
+    "redis>=7.0.1",
+    "sentry-sdk[fastapi]>=2.42.1",
+    "anthropic>=0.40.0",
+    "openai>=1.30.0",
+    "google-genai>=1.0.0",
+    "pydantic-ai>=0.0.20,<2.0.0",
+    "pygentic-ai @ git+https://github.com/the-momentum/pygentic-ai.git@8c192b23a22ebc524483f9c3650c3434fbb8e912#subdirectory=pygentic-ai",
+]
+
+[dependency-groups]
+code-quality = [
+    "pre-commit>=4.3.0",
+    "ruff>=0.14.3",
+    "ty>=0.0.1a25",
+]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.2.1",
+    "factory-boy>=3.3.0",
+    "testcontainers[postgres]>=4.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 120
+target-version = 'py313'
+
+[tool.ruff.lint]
+select = [
+    "I",     # isort
+    "F",     # pyflakes
+    "FAST",  # FastApi
+    "ANN",   # flake8-annotations
+    "ASYNC", # flake8-async
+    "COM",   # flake8-commas
+    "T10",   # flake8-debugger
+    "PT",    # flake8-pytest-style
+    "RET",   # flake8-return
+    "SIM",   # flake8-simplify
+    "N",     # pep8-naming
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "ANN002", # missing-type-args
+    "ANN003", # missing-type-kwargs
+    "ANN204", # missing-return-type-special-method
+    "ANN401", # any-type
+    "COM812", # trailing-comma-on-bare-tuple
+    "RET503", # implicit-return
+]
+
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.9.17"
+exclude-newer = "2026-04-11T00:00:00Z"
+
+[tool.ty.src]
+exclude = ["tests"]
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "app"

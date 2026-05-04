@@ -8,6 +8,7 @@ on:
       - "mcp/**"
       - "backend/**"
       - "frontend/**"
+      - "agent/**"
   pull_request:
     paths: *paths
 
@@ -21,6 +22,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       mcp: ${{ steps.filter.outputs.mcp }}
+      agent: ${{ steps.filter.outputs.agent }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -33,6 +35,8 @@ jobs:
               - 'frontend/**'
             mcp:
               - 'mcp/**'
+            agent:
+              - 'agent/**'
   backend-build:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' }}
@@ -266,3 +270,93 @@ jobs:
       - name: Run prettier check
         working-directory: frontend
         run: pnpm run format:check
+
+  agent-build:
+    needs: changes
+    if: ${{ needs.changes.outputs.agent == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: agent
+        run: uv sync
+
+  agent-code-quality:
+    needs: changes
+    if: ${{ needs.changes.outputs.agent == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: agent
+        run: uv sync --group code-quality
+      - name: Run linter
+        working-directory: agent
+        run: uv run ruff check
+      - name: Run formatter
+        working-directory: agent
+        run: uv run ruff format --check
+      - name: Run type checker
+        working-directory: agent
+        run: uv run ty check
+
+  agent-test:
+    needs: changes
+    if: ${{ needs.changes.outputs.agent == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: open-wearables
+          POSTGRES_PASSWORD: open-wearables
+          POSTGRES_DB: agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://open-wearables:open-wearables@localhost:5432/agent_test
+      SECRET_KEY: test-secret-key-for-ci
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CELERY_BROKER_URL: memory://
+      CELERY_RESULT_BACKEND: cache+memory://
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install dependencies
+        working-directory: agent
+        run: uv sync --group dev
+      - name: Run tests with coverage
+        working-directory: agent
+        run: uv run pytest -v --cov=app --cov-report=xml --cov-report=term-missing

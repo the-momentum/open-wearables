@@ -109,6 +109,7 @@
           {
             "group": "Developer Guides",
             "pages": [
+              "dev-guides/agent-architecture",
               "dev-guides/integration-guide",
               "dev-guides/how-to-add-new-provider",
               "dev-guides/ngrok-setup",

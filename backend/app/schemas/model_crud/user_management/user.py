@@ -1,8 +1,8 @@
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import date, datetime, timezone
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 # Allowlist for user sort columns - keep in sync with Literal type below
 USER_SORT_COLUMNS: frozenset[str] = frozenset({"created_at", "email", "first_name", "last_name", "last_synced_at"})
@@ -61,6 +61,29 @@ class UserRead(BaseModel):
     external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
     last_synced_at: datetime | None = None
     last_synced_provider: str | None = None
+    birth_date: date | None = None
+    sex: bool | None = None
+    gender: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_personal_record(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        pr = getattr(data, "personal_record", None)
+        return {
+            "id": getattr(data, "id", None),
+            "created_at": getattr(data, "created_at", None),
+            "first_name": getattr(data, "first_name", None),
+            "last_name": getattr(data, "last_name", None),
+            "email": getattr(data, "email", None),
+            "external_user_id": getattr(data, "external_user_id", None),
+            "last_synced_at": getattr(data, "last_synced_at", None),
+            "last_synced_provider": getattr(data, "last_synced_provider", None),
+            "birth_date": pr.birth_date if pr else None,
+            "sex": pr.sex if pr else None,
+            "gender": pr.gender if pr else None,
+        }
 
 
 class UserCreate(BaseModel):

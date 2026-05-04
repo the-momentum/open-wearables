@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import desc, func, nullsfirst, nullslast, or_, select
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, selectinload
 
 from app.database import DbSession
 from app.models import User
@@ -47,7 +47,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             A tuple containing a list of (user, last_synced_at, last_synced_provider) tuples
             and the total count of users.
         """
-        query: Query = db_session.query(self.model)
+        query: Query = db_session.query(self.model).options(selectinload(self.model.personal_record))
 
         if query_params.search:
             # Escape special LIKE characters
