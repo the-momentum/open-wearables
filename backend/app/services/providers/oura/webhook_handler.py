@@ -1,13 +1,8 @@
 """Oura webhook handler.
 
 Oura sends notify-only webhooks: a lightweight payload containing the user ID,
-<<<<<<< HEAD
 data type, event type, and object_id of the changed resource. The actual data
 is fetched via GET /v2/usercollection/{data_type}/{object_id}.
-=======
-data type, and event type. The actual data must be fetched via the REST API
-using the ``data_timestamp`` field to determine the date window.
->>>>>>> 93c3fe67 (1st iteration oura refactor)
 
 Signature scheme
 ----------------
@@ -35,10 +30,6 @@ See: https://cloud.ouraring.com/v2/docs#tag/Webhook-Subscription-Routes
 
 import json
 import logging
-<<<<<<< HEAD
-=======
-from datetime import timedelta
->>>>>>> 93c3fe67 (1st iteration oura refactor)
 from typing import Any
 from uuid import UUID, uuid4
 
