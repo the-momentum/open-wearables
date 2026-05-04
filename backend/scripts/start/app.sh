@@ -25,6 +25,12 @@ uv run python scripts/init/seed_admin.py
 echo 'Initializing series type definitions...'
 uv run python scripts/init/seed_series_types.py
 
+# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
+# Drops legacy recovery_score timeseries data; no-op if already cleaned up.
+echo 'Running recovery_score series type cleanup...'
+uv run python scripts/data_migrations/drop_recovery_score_series_type.py \
+    || echo "Warning: recovery_score cleanup failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py

@@ -233,5 +233,5 @@ class OuraWebhookNotification(BaseModel):
     event_type: str  # create / update / delete
     data_type: str  # e.g. tag, workout, sleep, daily_activity, daily_readiness, daily_spo2
     user_id: str  # Oura user ID
-    event_timestamp: str | None = None  # ISO 8601
-    data_timestamp: str | None = None  # ISO 8601 (date of data)
+    object_id: str | None = None  # ID of the affected resource
+    event_time: str | None = None  # ISO 8601 — when the event occurred

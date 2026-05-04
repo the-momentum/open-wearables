@@ -813,6 +813,7 @@ class TestGetSleepSessions:
             category="sleep",
             type_="sleep",
             duration_seconds=28800,
+            start_datetime=datetime(2026, 4, 15, tzinfo=timezone.utc),
         )
 
         params = EventRecordQueryParams(

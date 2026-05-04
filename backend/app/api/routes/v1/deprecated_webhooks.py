@@ -74,10 +74,7 @@ def garmin_webhook_push_compat(
     return handler.handle(request, body, db)
 
 
-# ---------------------------------------------------------------------------
 # Oura and Strava — re-registered at old paths for completeness.
 # These were never in production at these paths.
-# ---------------------------------------------------------------------------
-
 router.include_router(oura_webhooks_router, prefix="/oura/webhooks")
 router.include_router(strava_webhooks_router, prefix="/strava/webhook")

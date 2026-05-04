@@ -159,6 +159,15 @@ export function BodySection({ userId }: BodySectionProps) {
   const latestData = bodySummary?.latest;
   const bmiCategory = getBmiCategory(slowChangingData?.bmi);
 
+  const hrvValue =
+    averagedData?.avg_hrv_sdnn_ms ?? averagedData?.avg_hrv_rmssd_ms ?? null;
+  const hrvLabel =
+    averagedData?.avg_hrv_sdnn_ms != null
+      ? 'HRV SDNN (ms)'
+      : averagedData?.avg_hrv_rmssd_ms != null
+        ? 'HRV RMSSD (ms)'
+        : 'HRV (ms)';
+
   return (
     <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
       <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
@@ -249,8 +258,8 @@ export function BodySection({ userId }: BodySectionProps) {
                   icon={Activity}
                   iconColor="text-indigo-400"
                   iconBgColor="bg-indigo-500/10"
-                  value={formatHrv(averagedData?.avg_hrv_sdnn_ms)}
-                  label="HRV (ms)"
+                  value={formatHrv(hrvValue)}
+                  label={hrvLabel}
                 />
               </div>
             </div>
