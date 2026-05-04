@@ -11,7 +11,6 @@ Usage (inside Docker):
 """
 
 import argparse
-import sys
 
 from sqlalchemy import text
 
@@ -29,10 +28,10 @@ def main(dry_run: bool) -> None:
         matched_id = db.execute(text(_GUARD), {"id": SERIES_TYPE_ID, "code": SERIES_TYPE_CODE}).scalar()
         if matched_id is None:
             print(
-                f"Abort: series_type_definition row with id={SERIES_TYPE_ID} and "
-                f"code='{SERIES_TYPE_CODE}' not found — id may have drifted or row already deleted."
+                f"Nothing to do: series_type_definition row with id={SERIES_TYPE_ID} and "
+                f"code='{SERIES_TYPE_CODE}' not found — already deleted or never existed."
             )
-            sys.exit(1)
+            return
 
         row_count = db.execute(
             text(f"SELECT COUNT(*) FROM data_point_series WHERE series_type_definition_id IN ({_GUARD})"),
@@ -71,4 +70,3 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Preview counts without deleting")
     args = parser.parse_args()
     main(dry_run=args.dry_run)
-    sys.exit(0)
