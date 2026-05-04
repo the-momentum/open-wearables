@@ -54,12 +54,12 @@ function ProviderItem({
   };
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+    <div className="flex items-center gap-4 px-4 py-3 bg-card/40 border border-border/60 rounded-lg">
       <div className="flex flex-col gap-0.5">
         <button
           onClick={onMoveUp}
           disabled={index === 0}
-          className="p-0.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move up"
         >
           <ChevronUp className="h-4 w-4" />
@@ -67,7 +67,7 @@ function ProviderItem({
         <button
           onClick={onMoveDown}
           disabled={index === total - 1}
-          className="p-0.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move down"
         >
           <ChevronDown className="h-4 w-4" />
@@ -76,10 +76,10 @@ function ProviderItem({
 
       <div className="flex items-center gap-3 flex-1">
         <div className={`w-3 h-3 rounded-full ${info.color}`} />
-        <span className="text-white font-medium">{info.name}</span>
+        <span className="text-foreground font-medium">{info.name}</span>
       </div>
 
-      <div className="text-sm text-zinc-500">Priority {index + 1}</div>
+      <div className="text-sm text-muted-foreground">Priority {index + 1}</div>
     </div>
   );
 }
@@ -105,12 +105,12 @@ function DeviceTypeItem({
   };
 
   return (
-    <div className="flex items-center gap-4 px-4 py-3 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+    <div className="flex items-center gap-4 px-4 py-3 bg-card/40 border border-border/60 rounded-lg">
       <div className="flex flex-col gap-0.5">
         <button
           onClick={onMoveUp}
           disabled={index === 0}
-          className="p-0.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move up"
         >
           <ChevronUp className="h-4 w-4" />
@@ -118,7 +118,7 @@ function DeviceTypeItem({
         <button
           onClick={onMoveDown}
           disabled={index === total - 1}
-          className="p-0.5 text-zinc-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
           title="Move down"
         >
           <ChevronDown className="h-4 w-4" />
@@ -127,10 +127,10 @@ function DeviceTypeItem({
 
       <div className="flex items-center gap-3 flex-1">
         <span className="text-2xl">{info.icon}</span>
-        <span className="text-white font-medium">{info.name}</span>
+        <span className="text-foreground font-medium">{info.name}</span>
       </div>
 
-      <div className="text-sm text-zinc-500">Priority {index + 1}</div>
+      <div className="text-sm text-muted-foreground">Priority {index + 1}</div>
     </div>
   );
 }
@@ -274,9 +274,9 @@ export function PrioritiesTab() {
 
   if (isLoading) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12">
         <div className="flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -284,8 +284,10 @@ export function PrioritiesTab() {
 
   if (error) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-        <p className="text-zinc-400 mb-4">Failed to load provider priorities</p>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+        <p className="text-muted-foreground mb-4">
+          Failed to load provider priorities
+        </p>
         <Button variant="outline" onClick={() => refetch()}>
           Retry
         </Button>
@@ -297,10 +299,10 @@ export function PrioritiesTab() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-medium text-white">
+          <h2 className="text-xl font-medium text-foreground">
             Provider Priorities
           </h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Use arrows to reorder which data providers take priority when data
             overlaps
           </p>
@@ -322,10 +324,12 @@ export function PrioritiesTab() {
         )}
       </div>
 
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800">
-          <h3 className="text-sm font-medium text-white">Priority Order</h3>
-          <p className="text-xs text-zinc-500 mt-1">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60">
+          <h3 className="text-sm font-medium text-foreground">
+            Priority Order
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Higher priority providers are used when multiple sources have the
             same data
           </p>
@@ -345,11 +349,11 @@ export function PrioritiesTab() {
         </div>
       </div>
 
-      <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-zinc-300 mb-2">
+      <div className="bg-muted/30 border border-border/50 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-foreground/90 mb-2">
           How priorities work
         </h4>
-        <ul className="text-xs text-zinc-500 space-y-1">
+        <ul className="text-xs text-muted-foreground space-y-1">
           <li>
             • When data from multiple providers overlaps in time, the higher
             priority provider's data is shown
@@ -366,10 +370,10 @@ export function PrioritiesTab() {
       {/* Device Type Priorities Section */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-medium text-white">
+          <h2 className="text-xl font-medium text-foreground">
             Device Type Priorities
           </h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Set which device types are preferred when the same provider has data
             from multiple devices
           </p>
@@ -395,14 +399,14 @@ export function PrioritiesTab() {
       </div>
 
       {isLoadingDevices ? (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12">
           <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         </div>
       ) : deviceError ? (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-          <p className="text-zinc-400 mb-4">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+          <p className="text-muted-foreground mb-4">
             Failed to load device type priorities
           </p>
           <Button variant="outline" onClick={() => refetchDevices()}>
@@ -410,12 +414,12 @@ export function PrioritiesTab() {
           </Button>
         </div>
       ) : (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800">
-            <h3 className="text-sm font-medium text-white">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60">
+            <h3 className="text-sm font-medium text-foreground">
               Device Type Order
             </h3>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Higher priority device types are preferred within the same
               provider
             </p>

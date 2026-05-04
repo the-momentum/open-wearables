@@ -22,15 +22,17 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
   const navigate = useNavigate();
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+    <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow className="border-zinc-800 hover:bg-transparent">
-            <TableHead className="text-zinc-400">URL</TableHead>
-            <TableHead className="text-zinc-400">Description</TableHead>
-            <TableHead className="text-zinc-400">Events</TableHead>
-            <TableHead className="text-zinc-400">User filter</TableHead>
-            <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+          <TableRow className="border-border/60 hover:bg-transparent">
+            <TableHead className="text-muted-foreground">URL</TableHead>
+            <TableHead className="text-muted-foreground">Description</TableHead>
+            <TableHead className="text-muted-foreground">Events</TableHead>
+            <TableHead className="text-muted-foreground">User filter</TableHead>
+            <TableHead className="text-muted-foreground text-right">
+              Actions
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -43,15 +45,15 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
             return (
               <TableRow
                 key={endpoint.id}
-                className="border-zinc-800 cursor-pointer hover:bg-zinc-900"
+                className="border-border/60 cursor-pointer hover:bg-card"
                 onClick={goToDetail}
               >
-                <TableCell className="font-mono text-xs text-zinc-200 max-w-[280px] truncate">
+                <TableCell className="font-mono text-xs text-foreground max-w-[280px] truncate">
                   {endpoint.url}
                 </TableCell>
-                <TableCell className="text-sm text-zinc-300 max-w-[220px] truncate">
+                <TableCell className="text-sm text-foreground/90 max-w-[220px] truncate">
                   {endpoint.description ?? (
-                    <span className="text-zinc-600">-</span>
+                    <span className="text-muted-foreground/70">-</span>
                   )}
                 </TableCell>
                 <TableCell>
@@ -61,7 +63,7 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                         <Badge
                           key={t}
                           variant="outline"
-                          className="border-zinc-700 text-zinc-300 text-[10px]"
+                          className="border-border text-foreground/90 text-[10px]"
                         >
                           {t}
                         </Badge>
@@ -69,7 +71,7 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                       {endpoint.filter_types.length > 3 && (
                         <Badge
                           variant="outline"
-                          className="border-zinc-700 text-zinc-500 text-[10px]"
+                          className="border-border text-muted-foreground text-[10px]"
                         >
                           +{endpoint.filter_types.length - 3}
                         </Badge>
@@ -78,7 +80,7 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                   ) : (
                     <Badge
                       variant="outline"
-                      className="border-zinc-700 text-zinc-400 text-[10px]"
+                      className="border-border text-muted-foreground text-[10px]"
                     >
                       All events
                     </Badge>
@@ -86,11 +88,13 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                 </TableCell>
                 <TableCell>
                   {endpoint.user_id ? (
-                    <code className="font-mono text-xs text-zinc-300">
+                    <code className="font-mono text-xs text-foreground/90">
                       {endpoint.user_id.slice(0, 8)}...
                     </code>
                   ) : (
-                    <span className="text-xs text-zinc-600">All users</span>
+                    <span className="text-xs text-muted-foreground/70">
+                      All users
+                    </span>
                   )}
                 </TableCell>
                 <TableCell
@@ -102,7 +106,7 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
                     size="sm"
                     onClick={() => onDelete(endpoint.id)}
                     title="Delete"
-                    className="text-zinc-400 hover:text-red-400"
+                    className="text-muted-foreground hover:text-[hsl(var(--destructive-muted))]"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -114,7 +118,9 @@ export function WebhooksTable({ data, onDelete }: WebhooksTableProps) {
       </Table>
       {data.length === 0 && (
         <div className="p-12 text-center">
-          <p className="text-sm text-zinc-500">No webhooks configured.</p>
+          <p className="text-sm text-muted-foreground">
+            No webhooks configured.
+          </p>
         </div>
       )}
     </div>

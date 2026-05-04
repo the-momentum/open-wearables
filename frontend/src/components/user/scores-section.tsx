@@ -53,7 +53,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   readiness: {
     label: 'Readiness',
     icon: Zap,
-    color: 'text-emerald-400',
+    color: 'text-[hsl(var(--success-muted))]',
     maxScale: 100,
   },
   activity: {
@@ -77,7 +77,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   strain: {
     label: 'Strain',
     icon: Dumbbell,
-    color: 'text-red-400',
+    color: 'text-[hsl(var(--destructive-muted))]',
     maxScale: 21,
   },
   resilience: {
@@ -201,13 +201,13 @@ function CategoryPill({
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
         isSelected
-          ? 'bg-zinc-700 text-white border border-zinc-600'
-          : 'bg-zinc-800/50 text-zinc-400 border border-zinc-800 hover:border-zinc-700 hover:text-zinc-300'
+          ? 'bg-muted-foreground/40 text-foreground border border-zinc-600'
+          : 'bg-muted/50 text-muted-foreground border border-border/60 hover:border-border hover:text-foreground/90'
       }`}
     >
       {Icon && (
         <Icon
-          className={`h-3.5 w-3.5 ${isSelected ? 'text-white' : iconColor || 'text-zinc-400'}`}
+          className={`h-3.5 w-3.5 ${isSelected ? 'text-foreground' : iconColor || 'text-muted-foreground'}`}
         />
       )}
       {label}
@@ -244,7 +244,7 @@ function ScoreDayCard({
   );
 
   return (
-    <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
+    <div className="border border-border/60 rounded-lg overflow-hidden bg-card/30 hover:bg-card/40 transition-colors">
       <button
         onClick={() => hasComponents && setIsExpanded(!isExpanded)}
         className="w-full p-4 text-left"
@@ -252,10 +252,10 @@ function ScoreDayCard({
       >
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-foreground">
               {format(new Date(date + 'T00:00:00'), 'EEE, MMM d')}
             </p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               {format(new Date(date + 'T00:00:00'), 'yyyy')}
             </p>
           </div>
@@ -263,9 +263,9 @@ function ScoreDayCard({
           {hasComponents && (
             <div className="flex-shrink-0 ml-2">
               {isExpanded ? (
-                <ChevronUp className="h-5 w-5 text-zinc-400" />
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
               ) : (
-                <ChevronDown className="h-5 w-5 text-zinc-400" />
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
               )}
             </div>
           )}
@@ -281,9 +281,9 @@ function ScoreDayCard({
                 <div key={category} className="flex items-center gap-3">
                   <div className="flex items-center gap-2 w-28 flex-shrink-0">
                     <Icon
-                      className={`h-3.5 w-3.5 ${config?.color || 'text-zinc-400'}`}
+                      className={`h-3.5 w-3.5 ${config?.color || 'text-muted-foreground'}`}
                     />
-                    <span className="text-xs text-zinc-400">
+                    <span className="text-xs text-muted-foreground">
                       {config?.label || category}
                     </span>
                   </div>
@@ -297,21 +297,21 @@ function ScoreDayCard({
                       return (
                         <div
                           key={score.id}
-                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-zinc-800/50 border border-zinc-700/30"
+                          className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-muted/50 border border-border/30"
                         >
                           <SourceBadge provider={score.provider || 'unknown'} />
-                          <span className="text-sm font-semibold text-white">
+                          <span className="text-sm font-semibold text-foreground">
                             {resilienceScore !== null
                               ? Number(resilienceScore).toFixed(0)
                               : formatScore(score.value, category)}
                           </span>
                           {resilienceScore !== null && (
-                            <span className="text-[10px] text-zinc-500">
+                            <span className="text-[10px] text-muted-foreground">
                               {formatScore(score.value, 'resilience')}
                             </span>
                           )}
                           {score.qualifier && (
-                            <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
                               {score.qualifier}
                             </span>
                           )}
@@ -328,8 +328,8 @@ function ScoreDayCard({
 
       {/* Expanded: show components */}
       {isExpanded && (
-        <div className="px-4 pb-4 pt-2 border-t border-zinc-800">
-          <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">
+        <div className="px-4 pb-4 pt-2 border-t border-border/60">
+          <h4 className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">
             Score Components
           </h4>
           <div className="space-y-4">
@@ -341,7 +341,7 @@ function ScoreDayCard({
                 <div key={score.id}>
                   <div className="flex items-center gap-2 mb-2">
                     <SourceBadge provider={score.provider || 'unknown'} />
-                    <span className="text-xs text-zinc-400">
+                    <span className="text-xs text-muted-foreground">
                       {CATEGORY_CONFIG[score.category]?.label || score.category}
                     </span>
                   </div>
@@ -351,15 +351,15 @@ function ScoreDayCard({
                         key={key}
                         className="flex items-center justify-between py-1"
                       >
-                        <span className="text-xs text-zinc-500">
+                        <span className="text-xs text-muted-foreground">
                           {formatComponentName(key)}
                         </span>
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-medium text-white">
+                          <span className="text-xs font-medium text-foreground">
                             {formatScore(comp.value)}
                           </span>
                           {comp.qualifier && (
-                            <span className="text-[10px] text-zinc-600 uppercase">
+                            <span className="text-[10px] text-muted-foreground/70 uppercase">
                               {comp.qualifier}
                             </span>
                           )}
@@ -383,7 +383,7 @@ function ScoresSkeleton() {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="h-7 w-20 bg-zinc-800 rounded-full animate-pulse"
+            className="h-7 w-20 bg-muted rounded-full animate-pulse"
           />
         ))}
       </div>
@@ -391,13 +391,13 @@ function ScoresSkeleton() {
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="p-4 border border-zinc-800 rounded-lg bg-zinc-900/30"
+            className="p-4 border border-border/60 rounded-lg bg-card/30"
           >
-            <div className="h-5 w-24 bg-zinc-800 rounded animate-pulse mb-3" />
+            <div className="h-5 w-24 bg-muted rounded animate-pulse mb-3" />
             <div className="space-y-2">
               <div className="flex gap-2">
-                <div className="h-8 w-32 bg-zinc-800 rounded animate-pulse" />
-                <div className="h-8 w-32 bg-zinc-800 rounded animate-pulse" />
+                <div className="h-8 w-32 bg-muted rounded animate-pulse" />
+                <div className="h-8 w-32 bg-muted rounded animate-pulse" />
               </div>
             </div>
           </div>
@@ -431,7 +431,7 @@ export function ScoresSection({
     limit: 1000,
   });
 
-  const scores = scoresData?.data || [];
+  const scores = useMemo(() => scoresData?.data ?? [], [scoresData?.data]);
 
   // Categories that have data, in defined order
   const availableCategories = useMemo(() => {
@@ -486,7 +486,7 @@ export function ScoresSection({
   return (
     <div className="space-y-6">
       {/* Summary + Chart Section */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
         <SectionHeader
           title="Health Scores"
           dateRange={dateRange}
@@ -504,7 +504,7 @@ export function ScoresSection({
           {isLoading ? (
             <ScoresSkeleton />
           ) : scores.length === 0 ? (
-            <p className="text-sm text-zinc-500 text-center py-4">
+            <p className="text-sm text-muted-foreground text-center py-4">
               No health scores in this period
             </p>
           ) : (
@@ -535,9 +535,9 @@ export function ScoresSection({
               {selectedCategory !== 'all' &&
                 chartData.length > 1 &&
                 providers.length > 0 && (
-                  <div className="pt-4 border-t border-zinc-800">
+                  <div className="pt-4 border-t border-border/60">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-medium text-white">
+                      <h4 className="text-sm font-medium text-foreground">
                         {categoryConfig?.label || selectedCategory} Score Trend
                       </h4>
                       <div className="flex items-center gap-3">
@@ -552,7 +552,7 @@ export function ScoresSection({
                                 backgroundColor: getProviderColor(provider),
                               }}
                             />
-                            <span className="text-xs text-zinc-400">
+                            <span className="text-xs text-muted-foreground">
                               {getProviderLabel(provider)}
                             </span>
                           </div>
@@ -632,7 +632,7 @@ export function ScoresSection({
 
       {/* Daily Scores */}
       {!isLoading && dailyScores.length > 0 && (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
           <SectionHeader title="Daily Scores" />
           <div className="p-6">
             <div className="space-y-3">

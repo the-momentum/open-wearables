@@ -110,9 +110,9 @@ export function DataLifecycleTab() {
 
   if (isLoading) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12">
         <div className="flex items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -120,8 +120,10 @@ export function DataLifecycleTab() {
 
   if (error) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-        <p className="text-zinc-400 mb-4">Failed to load archival settings</p>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+        <p className="text-muted-foreground mb-4">
+          Failed to load archival settings
+        </p>
         <Button variant="outline" onClick={() => refetch()}>
           Retry
         </Button>
@@ -136,8 +138,10 @@ export function DataLifecycleTab() {
       <EarlyAccessBanner />
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-medium text-white">Data Lifecycle</h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <h2 className="text-xl font-medium text-foreground">
+            Data Lifecycle
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Configure data archival and retention policies for time-series data
           </p>
         </div>
@@ -165,10 +169,12 @@ export function DataLifecycleTab() {
 
       {/* Storage Overview */}
       {storage && (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-2">
-            <HardDrive className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-white">Storage Overview</h3>
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+            <HardDrive className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">
+              Storage Overview
+            </h3>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -210,20 +216,22 @@ export function DataLifecycleTab() {
       )}
 
       {/* Archival Settings */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-2">
-          <Archive className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Archival Policy</h3>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+          <Archive className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">
+            Archival Policy
+          </h3>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             When enabled, per-sample time-series data older than the configured
             threshold is aggregated into daily summaries. This dramatically
             reduces storage while preserving aggregate accuracy.
           </p>
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="archive-toggle" className="text-white">
+            <Label htmlFor="archive-toggle" className="text-foreground">
               Enable archival
             </Label>
             <Switch
@@ -237,7 +245,7 @@ export function DataLifecycleTab() {
             <div className="flex items-center gap-3">
               <Label
                 htmlFor="archive-days"
-                className="text-zinc-400 whitespace-nowrap"
+                className="text-muted-foreground whitespace-nowrap"
               >
                 Archive data older than
               </Label>
@@ -250,20 +258,22 @@ export function DataLifecycleTab() {
                 onChange={(e) => setArchiveDays(e.target.value)}
                 className="w-24"
               />
-              <span className="text-zinc-400 text-sm">days</span>
+              <span className="text-muted-foreground text-sm">days</span>
             </div>
           )}
         </div>
       </div>
 
       {/* Retention / Deletion Settings */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-2">
-          <Trash2 className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Retention Policy</h3>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+          <Trash2 className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">
+            Retention Policy
+          </h3>
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             When enabled, data older than the configured threshold is
             permanently deleted. Without archival, rows are deleted directly
             from the live table. With archival, only archived aggregates are
@@ -271,7 +281,7 @@ export function DataLifecycleTab() {
           </p>
 
           <div className="flex items-center justify-between">
-            <Label htmlFor="delete-toggle" className="text-white">
+            <Label htmlFor="delete-toggle" className="text-foreground">
               Enable automatic deletion
             </Label>
             <Switch
@@ -285,7 +295,7 @@ export function DataLifecycleTab() {
             <div className="flex items-center gap-3">
               <Label
                 htmlFor="delete-days"
-                className="text-zinc-400 whitespace-nowrap"
+                className="text-muted-foreground whitespace-nowrap"
               >
                 Delete data older than
               </Label>
@@ -298,7 +308,7 @@ export function DataLifecycleTab() {
                 onChange={(e) => setDeleteDays(e.target.value)}
                 className="w-24"
               />
-              <span className="text-zinc-400 text-sm">days</span>
+              <span className="text-muted-foreground text-sm">days</span>
             </div>
           )}
         </div>
@@ -306,7 +316,7 @@ export function DataLifecycleTab() {
 
       {/* Policy Warning */}
       {policyWarning && (
-        <div className="flex items-center gap-2 text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-[hsl(var(--warning-muted))] bg-[hsl(var(--warning-muted)/0.1)] border border-[hsl(var(--warning-muted)/0.2)] rounded-lg px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {policyWarning}
         </div>
@@ -314,20 +324,22 @@ export function DataLifecycleTab() {
 
       {/* Validation Error */}
       {validationError && (
-        <div className="flex items-center gap-2 text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded-lg px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 text-[hsl(var(--warning-muted))] bg-[hsl(var(--warning-muted)/0.1)] border border-[hsl(var(--warning-muted)/0.2)] rounded-lg px-4 py-3 text-sm">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {validationError}
         </div>
       )}
 
       {/* Manual Trigger */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-2">
-          <Play className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Manual Trigger</h3>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60 flex items-center gap-2">
+          <Play className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">
+            Manual Trigger
+          </h3>
         </div>
         <div className="p-6 flex items-center justify-between">
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             Run the archival and retention job immediately instead of waiting
             for the daily schedule.
           </p>
@@ -369,16 +381,18 @@ function StorageStat({
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <div className="flex items-baseline gap-1.5 flex-wrap">
         <p
-          className={`text-lg font-medium ${highlight ? 'text-blue-400' : 'text-white'}`}
+          className={`text-lg font-medium ${highlight ? 'text-blue-400' : 'text-foreground'}`}
         >
           {value}
         </p>
-        {detail && <p className="text-[10px] text-zinc-600">({detail})</p>}
+        {detail && (
+          <p className="text-[10px] text-muted-foreground/70">({detail})</p>
+        )}
       </div>
-      {sub && <p className="text-xs text-zinc-600">{sub}</p>}
+      {sub && <p className="text-xs text-muted-foreground/70">{sub}</p>}
     </div>
   );
 }
@@ -397,24 +411,24 @@ const VOLUME_COMPRESSION = 0.002;
 const GROWTH_CONFIG = {
   bounded: {
     label: 'O(1) — Bounded',
-    color: 'text-emerald-400',
-    bg: 'bg-emerald-400/10 border-emerald-400/20',
+    color: 'text-[hsl(var(--success-muted))]',
+    bg: 'bg-[hsl(var(--success-muted)/0.1)] border-[hsl(var(--success-muted)/0.2)]',
     chartColor: '#34d399',
     description:
       'Storage is capped. Old data is deleted after the retention window and total size stabilises.',
   },
   linear_efficient: {
     label: 'O(n) — Linear (efficient)',
-    color: 'text-amber-400',
-    bg: 'bg-amber-400/10 border-amber-400/20',
+    color: 'text-[hsl(var(--warning-muted))]',
+    bg: 'bg-[hsl(var(--warning-muted)/0.1)] border-[hsl(var(--warning-muted)/0.2)]',
     chartColor: '#fbbf24',
     description:
       'Live data is bounded by the archive window. Daily aggregates accumulate indefinitely at ~1/500 of the raw rate.',
   },
   linear: {
     label: 'O(n) — Linear',
-    color: 'text-red-400',
-    bg: 'bg-red-400/10 border-red-400/20',
+    color: 'text-[hsl(var(--destructive-muted))]',
+    bg: 'bg-[hsl(var(--destructive-muted)/0.1)] border-[hsl(var(--destructive-muted)/0.2)]',
     chartColor: '#f87171',
     description:
       'All raw samples are kept forever. Storage grows linearly with time and connected devices.',
@@ -528,8 +542,8 @@ function GrowthProjection({
 
   if (archiveInvalid || deleteInvalid) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden min-h-[200px] flex items-center justify-center">
-        <div className="text-center text-zinc-500">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden min-h-[200px] flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
           <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p>Invalid configuration</p>
           <p className="text-xs mt-1">
@@ -589,11 +603,13 @@ function GrowthProjection({
   );
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+    <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+      <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Growth Projection</h3>
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">
+            Growth Projection
+          </h3>
         </div>
         <span
           className={`text-xs font-mono font-semibold px-2.5 py-1 rounded-full border ${cfg.bg} ${cfg.color}`}
@@ -603,7 +619,7 @@ function GrowthProjection({
       </div>
 
       <div className="p-6 space-y-4">
-        <p className="text-sm text-zinc-500">{cfg.description}</p>
+        <p className="text-sm text-muted-foreground">{cfg.description}</p>
 
         <div className="h-48">
           <ResponsiveContainer width="100%" height="100%">
@@ -663,11 +679,11 @@ function GrowthProjection({
           </ResponsiveContainer>
         </div>
 
-        <div className="space-y-1 text-xs text-zinc-600">
+        <div className="space-y-1 text-xs text-muted-foreground/70">
           {storage.live_row_count > 0 ? (
             <p>
               Daily ingest estimate:{' '}
-              <strong className="text-zinc-500">
+              <strong className="text-muted-foreground">
                 ~{formatBytes(dailyRawEstimate)}/day
               </strong>{' '}
               = live table ({formatBytes(liveTotalBytes)}) ÷ {spanDays} days of

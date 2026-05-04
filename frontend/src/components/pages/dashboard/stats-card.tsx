@@ -3,6 +3,8 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import { NumberTicker } from '@/components/ui/number-ticker';
 import { cn } from '@/lib/utils';
 
+export type StatsCardAccent = 'cyan' | 'magenta' | 'purple' | 'green';
+
 export interface StatsCardProps {
   title: string;
   value: number;
@@ -11,8 +13,39 @@ export interface StatsCardProps {
   icon: LucideIcon;
   growth?: number;
   decimalPlaces?: number;
+  accent?: StatsCardAccent;
   className?: string;
 }
+
+// Muted, single-tone accents for the icon chip only.
+const ACCENT_STYLES: Record<
+  StatsCardAccent,
+  {
+    iconBg: string;
+    iconColor: string;
+  }
+> = {
+  cyan: {
+    iconBg:
+      'bg-[hsl(var(--primary-muted)/0.12)] border-[hsl(var(--primary-muted)/0.25)]',
+    iconColor: 'text-[hsl(var(--primary-muted))]',
+  },
+  magenta: {
+    iconBg:
+      'bg-[hsl(var(--secondary-muted)/0.12)] border-[hsl(var(--secondary-muted)/0.25)]',
+    iconColor: 'text-[hsl(var(--secondary-muted))]',
+  },
+  purple: {
+    iconBg:
+      'bg-[hsl(var(--accent-muted)/0.12)] border-[hsl(var(--accent-muted)/0.25)]',
+    iconColor: 'text-[hsl(var(--accent-muted))]',
+  },
+  green: {
+    iconBg:
+      'bg-[hsl(var(--success-muted)/0.12)] border-[hsl(var(--success-muted)/0.25)]',
+    iconColor: 'text-[hsl(var(--success-muted))]',
+  },
+};
 
 export function StatsCard({
   title,
@@ -22,41 +55,66 @@ export function StatsCard({
   icon: Icon,
   growth,
   decimalPlaces = 0,
+  accent = 'cyan',
   className,
 }: StatsCardProps) {
+  const styles = ACCENT_STYLES[accent];
+
   return (
     <div
       className={cn(
-        'bg-zinc-900/50 border border-zinc-800 rounded-xl p-6',
-        'hover:border-zinc-700 transition-colors group',
+        'group relative overflow-hidden rounded-2xl p-6',
+        'bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl',
+        'border border-border/60',
+        'transition-all duration-300 ease-out',
+        'hover:border-border-hover hover:-translate-y-0.5',
         className
       )}
     >
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-sm font-medium text-zinc-400">{title}</span>
-        <Icon className="h-4 w-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+      <div className="flex items-start justify-between mb-5">
+        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          {title}
+        </span>
+        <div
+          className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-xl border',
+            styles.iconBg
+          )}
+        >
+          <Icon className={cn('h-5 w-5', styles.iconColor)} />
+        </div>
       </div>
-      <div className="text-2xl font-medium text-white">
-        <NumberTicker
-          value={value}
-          decimalPlaces={decimalPlaces}
-          className="text-white"
-        />
-        {suffix && <span className="text-zinc-500 ml-0.5">{suffix}</span>}
+
+      <div className="flex items-baseline gap-1">
+        <span className="text-4xl font-semibold tracking-tight text-foreground tabular-nums">
+          <NumberTicker
+            value={value}
+            decimalPlaces={decimalPlaces}
+            className="text-foreground"
+          />
+        </span>
+        {suffix && (
+          <span className="text-xl font-medium text-muted-foreground">
+            {suffix}
+          </span>
+        )}
       </div>
-      <div className="flex items-center justify-between mt-2">
-        <p className="text-xs text-zinc-500">{description}</p>
+
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">{description}</p>
         {growth !== undefined && (
           <div
             className={cn(
-              'flex items-center text-xs',
-              growth >= 0 ? 'text-emerald-400' : 'text-red-400'
+              'flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+              growth >= 0
+                ? 'bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))]'
+                : 'bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))]'
             )}
           >
             {growth >= 0 ? (
-              <TrendingUp className="h-3 w-3 mr-1" />
+              <TrendingUp className="h-3 w-3" />
             ) : (
-              <TrendingDown className="h-3 w-3 mr-1" />
+              <TrendingDown className="h-3 w-3" />
             )}
             <span>{Math.abs(growth).toFixed(1)}%</span>
           </div>

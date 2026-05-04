@@ -35,9 +35,9 @@ export function WebhookDeleteDialog({
           </DialogDescription>
         </DialogHeader>
         {url && (
-          <div className="p-3 bg-zinc-800 rounded-md">
-            <p className="text-xs text-zinc-500">URL:</p>
-            <code className="font-mono text-xs text-zinc-300 break-all">
+          <div className="p-3 bg-muted rounded-md">
+            <p className="text-xs text-muted-foreground">URL:</p>
+            <code className="font-mono text-xs text-foreground/90 break-all">
               {url}
             </code>
           </div>

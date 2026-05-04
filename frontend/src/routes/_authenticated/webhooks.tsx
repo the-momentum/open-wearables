@@ -9,10 +9,12 @@ function WebhooksLayout() {
   return (
     <>
       <div className="px-8 pt-8">
-        <div className="flex items-start gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-amber-300">
-          <FlaskConical className="h-4 w-4 shrink-0 mt-0.5 text-amber-400" />
+        <div className="flex items-start gap-3 rounded-lg border border-[hsl(var(--warning-muted)/0.2)] bg-[hsl(var(--warning-muted)/0.1)] px-4 py-2.5 text-[hsl(var(--warning-muted))]">
+          <FlaskConical className="h-4 w-4 shrink-0 mt-0.5 text-[hsl(var(--warning-muted))]" />
           <p className="text-xs font-medium leading-relaxed">
-            <span className="font-semibold text-amber-200">Beta</span>
+            <span className="font-semibold text-[hsl(var(--warning-muted))]">
+              Beta
+            </span>
             {' - '}
             Webhooks are in beta. The API and delivery behavior may change, and
             we don't recommend relying on them for production workloads yet.

@@ -102,7 +102,7 @@ class SystemInfoService:
                 series_type=get_series_type_from_id(series_type_id).value,
                 count=count,
             )
-            for series_type_id, count in series_type_counts[:5]  # Top 5
+            for series_type_id, count in series_type_counts[:6]  # Top 6
         ]
 
         # Get metrics by workout type
@@ -112,7 +112,7 @@ class SystemInfoService:
                 workout_type=workout_type or "Unknown",
                 count=count,
             )
-            for workout_type, count in workout_type_counts[:5]  # Top 5
+            for workout_type, count in workout_type_counts[:6]  # Top 6
         ]
 
         return SystemInfoResponse(

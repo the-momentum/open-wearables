@@ -30,29 +30,29 @@ const PENDING_STATUSES = new Set([1, 3, 'pending', 'sending']);
 function statusBadge(status: number | string) {
   if (SUCCESS_STATUSES.has(status)) {
     return (
-      <Badge className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+      <Badge className="bg-[hsl(var(--success-muted)/0.15)] text-[hsl(var(--success-muted))] border border-[hsl(var(--success-muted)/0.3)]">
         Success
       </Badge>
     );
   }
   if (PENDING_STATUSES.has(status)) {
     return (
-      <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/30">
+      <Badge className="bg-[hsl(var(--warning-muted)/0.15)] text-[hsl(var(--warning-muted))] border border-[hsl(var(--warning-muted)/0.3)]">
         Pending
       </Badge>
     );
   }
   return (
-    <Badge className="bg-red-500/15 text-red-300 border border-red-500/30">
+    <Badge className="bg-[hsl(var(--destructive-muted)/0.15)] text-[hsl(var(--destructive-muted))] border border-[hsl(var(--destructive-muted)/0.3)]">
       Failed
     </Badge>
   );
 }
 
 function statusCodeColor(code: number) {
-  if (code >= 200 && code < 300) return 'text-emerald-300';
-  if (code >= 300 && code < 400) return 'text-amber-300';
-  return 'text-red-300';
+  if (code >= 200 && code < 300) return 'text-[hsl(var(--success-muted))]';
+  if (code >= 300 && code < 400) return 'text-[hsl(var(--warning-muted))]';
+  return 'text-[hsl(var(--destructive-muted))]';
 }
 
 export function WebhookAttemptsTable({
@@ -63,9 +63,9 @@ export function WebhookAttemptsTable({
 
   if (isLoading) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 animate-pulse space-y-3">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6 animate-pulse space-y-3">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-12 bg-zinc-800/50 rounded-md" />
+          <div key={i} className="h-12 bg-muted/50 rounded-md" />
         ))}
       </div>
     );
@@ -73,9 +73,9 @@ export function WebhookAttemptsTable({
 
   if (!attempts.length) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-        <p className="text-sm text-zinc-500">No deliveries yet.</p>
-        <p className="text-xs text-zinc-600 mt-1">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+        <p className="text-sm text-muted-foreground">No deliveries yet.</p>
+        <p className="text-xs text-muted-foreground/70 mt-1">
           Send a test event or wait for real activity to see delivery attempts
           here.
         </p>
@@ -85,22 +85,22 @@ export function WebhookAttemptsTable({
 
   return (
     <>
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-zinc-800 hover:bg-transparent">
-              <TableHead className="text-zinc-400">Status</TableHead>
-              <TableHead className="text-zinc-400">Code</TableHead>
-              <TableHead className="text-zinc-400">Event</TableHead>
-              <TableHead className="text-zinc-400">Duration</TableHead>
-              <TableHead className="text-zinc-400">When</TableHead>
+            <TableRow className="border-border/60 hover:bg-transparent">
+              <TableHead className="text-muted-foreground">Status</TableHead>
+              <TableHead className="text-muted-foreground">Code</TableHead>
+              <TableHead className="text-muted-foreground">Event</TableHead>
+              <TableHead className="text-muted-foreground">Duration</TableHead>
+              <TableHead className="text-muted-foreground">When</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {attempts.map((a) => (
               <TableRow
                 key={a.id}
-                className="border-zinc-800 cursor-pointer hover:bg-zinc-900"
+                className="border-border/60 cursor-pointer hover:bg-card"
                 onClick={() => setSelected(a)}
               >
                 <TableCell>{statusBadge(a.status)}</TableCell>
@@ -109,13 +109,13 @@ export function WebhookAttemptsTable({
                 >
                   {a.responseStatusCode || '-'}
                 </TableCell>
-                <TableCell className="text-xs text-zinc-300">
+                <TableCell className="text-xs text-foreground/90">
                   {a.msg?.eventType ?? a.msgId}
                 </TableCell>
-                <TableCell className="text-xs text-zinc-400">
+                <TableCell className="text-xs text-muted-foreground">
                   {a.responseDurationMs} ms
                 </TableCell>
-                <TableCell className="text-xs text-zinc-400">
+                <TableCell className="text-xs text-muted-foreground">
                   {a.timestamp
                     ? formatDistanceToNow(new Date(a.timestamp), {
                         addSuffix: true,
@@ -132,12 +132,14 @@ export function WebhookAttemptsTable({
         open={!!selected}
         onOpenChange={(open) => !open && setSelected(null)}
       >
-        <SheetContent className="w-full sm:max-w-xl bg-zinc-950 border-zinc-800 overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-xl bg-popover border-border/60 overflow-y-auto">
           <SheetHeader>
-            <SheetTitle className="text-white">Delivery attempt</SheetTitle>
+            <SheetTitle className="text-foreground">
+              Delivery attempt
+            </SheetTitle>
             <SheetDescription>
               {selected?.id && (
-                <code className="font-mono text-[10px] text-zinc-500 break-all">
+                <code className="font-mono text-[10px] text-muted-foreground break-all">
                   {selected.id}
                 </code>
               )}
@@ -162,23 +164,23 @@ export function WebhookAttemptsTable({
                 </Field>
               </div>
               <Field label="URL">
-                <code className="font-mono text-xs text-zinc-300 break-all">
+                <code className="font-mono text-xs text-foreground/90 break-all">
                   {selected.url}
                 </code>
               </Field>
               <Field label="Event type">
-                <code className="font-mono text-xs text-zinc-300">
+                <code className="font-mono text-xs text-foreground/90">
                   {selected.msg?.eventType ?? '-'}
                 </code>
               </Field>
               <Field label="Response body">
-                <pre className="text-xs text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-md p-3 overflow-x-auto whitespace-pre-wrap break-all">
+                <pre className="text-xs text-foreground/90 bg-card border border-border/60 rounded-md p-3 overflow-x-auto whitespace-pre-wrap break-all">
                   {selected.response || '(empty)'}
                 </pre>
               </Field>
               {selected.msg?.payload && (
                 <Field label="Payload">
-                  <pre className="text-xs text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-md p-3 overflow-x-auto">
+                  <pre className="text-xs text-foreground/90 bg-card border border-border/60 rounded-md p-3 overflow-x-auto">
                     {JSON.stringify(selected.msg.payload, null, 2)}
                   </pre>
                 </Field>
@@ -200,7 +202,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-[10px] uppercase tracking-wide text-zinc-500">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       <div>{children}</div>

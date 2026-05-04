@@ -20,11 +20,11 @@ export function DataSummaryCard({
         className
       )}
     >
-      <div className="text-3xl font-medium text-white">{count}</div>
-      <p className="text-xs text-zinc-500 mt-2">{label}</p>
+      <div className="text-3xl font-medium text-foreground">{count}</div>
+      <p className="text-xs text-muted-foreground mt-2">{label}</p>
       {mostRecentDate && (
-        <div className="mt-4 pt-4 border-t border-zinc-800 w-full flex justify-center">
-          <p className="text-xs text-zinc-500">
+        <div className="mt-4 pt-4 border-t border-border/60 w-full flex justify-center">
+          <p className="text-xs text-muted-foreground">
             Most recent: {new Date(mostRecentDate).toLocaleDateString()}
           </p>
         </div>

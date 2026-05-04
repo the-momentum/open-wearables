@@ -10,7 +10,11 @@ const PROVIDER_STYLES: Record<
   garmin: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Garmin' },
   fitbit: { bg: 'bg-teal-500/20', text: 'text-teal-400', label: 'Fitbit' },
   oura: { bg: 'bg-violet-500/20', text: 'text-violet-400', label: 'Oura' },
-  whoop: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'WHOOP' },
+  whoop: {
+    bg: 'bg-[hsl(var(--warning-muted)/0.15)]',
+    text: 'text-[hsl(var(--warning-muted))]',
+    label: 'WHOOP',
+  },
   strava: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Strava' },
   'google-fit': {
     bg: 'bg-green-500/20',
@@ -19,13 +23,13 @@ const PROVIDER_STYLES: Record<
   },
   withings: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Withings' },
   internal: {
-    bg: 'bg-emerald-500/20',
-    text: 'text-emerald-400',
+    bg: 'bg-[hsl(var(--success-muted)/0.15)]',
+    text: 'text-[hsl(var(--success-muted))]',
     label: 'OW',
   },
 };
 
-const DEFAULT_STYLE = { bg: 'bg-zinc-500/20', text: 'text-zinc-400' };
+const DEFAULT_STYLE = { bg: 'bg-muted/40', text: 'text-muted-foreground' };
 
 export function SourceBadge({ provider, className = '' }: SourceBadgeProps) {
   const style = PROVIDER_STYLES[provider] ?? DEFAULT_STYLE;

@@ -95,14 +95,16 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
     <>
       <div className="space-y-6">
         {/* User Information */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-white">User Information</h2>
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-foreground">
+              User Information
+            </h2>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsEditDialogOpen(true)}
-              className="text-zinc-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               <Pencil className="h-3.5 w-3.5" />
               Edit
@@ -112,20 +114,20 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
             {userLoading ? (
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
-                  <div className="h-5 w-48 bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-4 w-16 bg-muted/50 rounded animate-pulse" />
+                  <div className="h-5 w-48 bg-muted rounded animate-pulse" />
                 </div>
                 <div className="space-y-2">
-                  <div className="h-4 w-16 bg-zinc-800/50 rounded animate-pulse" />
-                  <div className="h-5 w-32 bg-zinc-800 rounded animate-pulse" />
+                  <div className="h-4 w-16 bg-muted/50 rounded animate-pulse" />
+                  <div className="h-5 w-32 bg-muted rounded animate-pulse" />
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">User ID</p>
+                  <p className="text-xs text-muted-foreground mb-1">User ID</p>
                   <div className="flex items-center gap-1.5">
-                    <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
+                    <code className="font-mono text-sm text-foreground/90 bg-muted px-2 py-1 rounded">
                       {truncateId(user?.id ?? '')}
                     </code>
                     <Button
@@ -134,7 +136,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                       onClick={handleCopyUserId}
                     >
                       {copiedUserId ? (
-                        <Check className="h-3 w-3 text-emerald-500" />
+                        <Check className="h-3 w-3 text-[hsl(var(--success-muted))]" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
@@ -142,18 +144,22 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                   </div>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">External User ID</p>
-                  <code className="font-mono text-sm text-zinc-300 bg-zinc-800 px-2 py-1 rounded">
+                  <p className="text-xs text-muted-foreground mb-1">
+                    External User ID
+                  </p>
+                  <code className="font-mono text-sm text-foreground/90 bg-muted px-2 py-1 rounded">
                     {user?.external_user_id || '—'}
                   </code>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">Email</p>
-                  <p className="text-sm text-zinc-300">{user?.email || '—'}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Email</p>
+                  <p className="text-sm text-foreground/90">
+                    {user?.email || '—'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">Created</p>
-                  <p className="text-sm text-zinc-300">
+                  <p className="text-xs text-muted-foreground mb-1">Created</p>
+                  <p className="text-sm text-foreground/90">
                     {formatDate(user?.created_at)}
                   </p>
                 </div>
@@ -163,12 +169,12 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
         </div>
 
         {/* Connected Providers */}
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-zinc-800">
-            <h2 className="text-sm font-medium text-white">
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border/60">
+            <h2 className="text-sm font-medium text-foreground">
               Connected Providers
             </h2>
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Wearable devices and health platforms connected to this user
             </p>
           </div>
@@ -178,15 +184,15 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                 {[1, 2].map((i) => (
                   <div
                     key={i}
-                    className="p-4 border border-zinc-800 rounded-lg space-y-3"
+                    className="p-4 border border-border/60 rounded-lg space-y-3"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="h-6 w-24 bg-zinc-800 rounded animate-pulse" />
-                      <div className="h-5 w-16 bg-zinc-800/50 rounded animate-pulse" />
+                      <div className="h-6 w-24 bg-muted rounded animate-pulse" />
+                      <div className="h-5 w-16 bg-muted/50 rounded animate-pulse" />
                     </div>
                     <div className="space-y-2">
-                      <div className="h-4 w-40 bg-zinc-800/50 rounded animate-pulse" />
-                      <div className="h-4 w-36 bg-zinc-800/50 rounded animate-pulse" />
+                      <div className="h-4 w-40 bg-muted/50 rounded animate-pulse" />
+                      <div className="h-4 w-36 bg-muted/50 rounded animate-pulse" />
                     </div>
                   </div>
                 ))}
@@ -199,11 +205,13 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-zinc-500 mb-4">No providers connected yet</p>
+                <p className="text-muted-foreground mb-4">
+                  No providers connected yet
+                </p>
                 <Button variant="outline" onClick={handleCopyPairLink}>
                   {copied ? (
                     <>
-                      <Check className="h-4 w-4 text-emerald-500" />
+                      <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
                       Link Copied!
                     </>
                   ) : (
@@ -232,7 +240,7 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="first_name" className="text-zinc-300">
+                <Label htmlFor="first_name" className="text-foreground/90">
                   First Name
                 </Label>
                 <Input
@@ -242,11 +250,11 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                     setEditForm({ ...editForm, first_name: e.target.value })
                   }
                   placeholder="John"
-                  className="bg-zinc-800 border-zinc-700"
+                  className="bg-muted border-border"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="last_name" className="text-zinc-300">
+                <Label htmlFor="last_name" className="text-foreground/90">
                   Last Name
                 </Label>
                 <Input
@@ -256,12 +264,12 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                     setEditForm({ ...editForm, last_name: e.target.value })
                   }
                   placeholder="Doe"
-                  className="bg-zinc-800 border-zinc-700"
+                  className="bg-muted border-border"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-zinc-300">
+              <Label htmlFor="email" className="text-foreground/90">
                 Email
               </Label>
               <Input
@@ -272,11 +280,11 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                   setEditForm({ ...editForm, email: e.target.value })
                 }
                 placeholder="john@example.com"
-                className="bg-zinc-800 border-zinc-700"
+                className="bg-muted border-border"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="external_user_id" className="text-zinc-300">
+              <Label htmlFor="external_user_id" className="text-foreground/90">
                 External User ID
               </Label>
               <Input
@@ -289,9 +297,9 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
                   })
                 }
                 placeholder="external-123"
-                className="bg-zinc-800 border-zinc-700"
+                className="bg-muted border-border"
               />
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-muted-foreground">
                 Optional identifier from your system
               </p>
             </div>
