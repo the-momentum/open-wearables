@@ -149,6 +149,22 @@ class SeriesType(str, Enum):
     garmin_body_battery = "garmin_body_battery"  # Garmin body battery (0-100)
 
     # =========================================================================
+    # NUTRITION (IDs 240-259)
+    # =========================================================================
+    dietary_energy = "dietary_energy"
+    dietary_protein = "dietary_protein"
+    dietary_carbohydrates = "dietary_carbohydrates"
+    dietary_fat_total = "dietary_fat_total"
+    dietary_fat_saturated = "dietary_fat_saturated"
+    dietary_fat_monounsaturated = "dietary_fat_monounsaturated"
+    dietary_fat_polyunsaturated = "dietary_fat_polyunsaturated"
+    dietary_fiber = "dietary_fiber"
+    dietary_sugar = "dietary_sugar"
+    dietary_sodium = "dietary_sodium"
+    dietary_cholesterol = "dietary_cholesterol"
+    dietary_caffeine = "dietary_caffeine"
+
+    # =========================================================================
     # OTHER (IDs 500-)
     # =========================================================================
 
@@ -283,6 +299,21 @@ SERIES_TYPE_DEFINITIONS: list[tuple[int, SeriesType, str]] = [
     (221, SeriesType.garmin_skin_temperature, "celsius"),  # kept for backwards compatibility
     (222, SeriesType.garmin_fitness_age, "years"),
     (223, SeriesType.garmin_body_battery, "percent"),
+    # -------------------------------------------------------------------------
+    # NUTRITION (IDs 240-259)
+    # -------------------------------------------------------------------------
+    (240, SeriesType.dietary_energy, "kcal"),
+    (241, SeriesType.dietary_protein, "g"),
+    (242, SeriesType.dietary_carbohydrates, "g"),
+    (243, SeriesType.dietary_fat_total, "g"),
+    (244, SeriesType.dietary_fat_saturated, "g"),
+    (245, SeriesType.dietary_fat_monounsaturated, "g"),
+    (246, SeriesType.dietary_fat_polyunsaturated, "g"),
+    (247, SeriesType.dietary_fiber, "g"),
+    (248, SeriesType.dietary_sugar, "g"),
+    (249, SeriesType.dietary_sodium, "g"),
+    (250, SeriesType.dietary_cholesterol, "g"),
+    (251, SeriesType.dietary_caffeine, "g"),
     # -------------------------------------------------------------------------
     # OTHER (IDs 500-)
     # -------------------------------------------------------------------------
