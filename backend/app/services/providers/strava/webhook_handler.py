@@ -8,7 +8,7 @@ Signature scheme
 ----------------
   Header   : X-Strava-Signature: t=<unix_ts>,v1=<hex_digest>
   Message  : {t}.{raw_request_body}
-  Algorithm: HMAC-SHA256(strava_webhook_verify_token, message)
+  Algorithm: HMAC-SHA256(strava_client_secret, message)
   Tolerance: settings.strava_webhook_signature_tolerance_seconds (default 300)
 
 Challenge verification
@@ -73,7 +73,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         Header format: ``t=<unix_ts>,v1=<hex_digest>``
         Signed payload: ``{t}.{raw_body}``
-        Signing key: ``strava_webhook_verify_token`` (derived from secret_key if unset).
+        Signing key: ``strava_client_secret`` (the shared signing secret).
         """
         header = request.headers.get("X-Strava-Signature", "")
         if not header:
@@ -111,7 +111,8 @@ class StravaWebhookHandler(BaseWebhookHandler):
             )
             return False
 
-        secret = settings.strava_webhook_verify_token.get_secret_value()  # type: ignore[union-attr]
+        # Strava signs with the app's client_secret (the "shared signing secret")
+        secret = settings.strava_client_secret.get_secret_value()  # type: ignore[union-attr]
         return self._verify_hmac_sha256(secret, body, signature, prefix=f"{timestamp}.".encode())
 
     def parse_payload(self, body: bytes) -> StravaWebhookEvent:
