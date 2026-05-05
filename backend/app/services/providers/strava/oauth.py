@@ -23,7 +23,7 @@ class StravaOAuth(BaseOAuthTemplate):
         """OAuth endpoints for authorization and token exchange."""
         return ProviderEndpoints(
             authorize_url="https://www.strava.com/oauth/authorize",
-            token_url=f"{self.api_base_url}/oauth/token",
+            token_url="https://www.strava.com/oauth/token",
         )
 
     @property
