@@ -150,11 +150,16 @@ def sync_vendor_data(
                     strategy = factory.get_provider(provider_name)
                     provider_result = ProviderSyncResult(success=True, params={})
 
+                    # Read before any DB writes: workouts.load_data commits the session,
+                    # expiring all ORM objects. Accessing this after commit triggers a
+                    # failed lazy-load on an already-committed session.
+                    last_synced_at = connection.last_synced_at
+
                     # Resolve effective start: explicit arg > last_synced_at > now
                     # This ensures live syncs never re-pull history.
                     effective_start = start_date
                     if effective_start is None:
-                        last = connection.last_synced_at
+                        last = last_synced_at
                         if last is not None:
                             if last.tzinfo is None:
                                 last = last.replace(tzinfo=timezone.utc)
@@ -194,7 +199,7 @@ def sync_vendor_data(
                     # Sync 247 data (sleep, recovery, activity) and SAVE to database
                     if hasattr(strategy, "data_247") and strategy.data_247:
                         # Determine if this is first sync (for API compatibility with providers)
-                        is_first_sync = connection.last_synced_at is None
+                        is_first_sync = last_synced_at is None
 
                         # effective_start is always set above; parse into datetime objects
                         start_dt = datetime.fromisoformat(effective_start.replace("Z", "+00:00"))
