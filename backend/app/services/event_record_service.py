@@ -1,6 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import event as sa_event
@@ -43,6 +45,53 @@ from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_c
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+
+
+@dataclass(frozen=True)
+class _RecordSnapshot:
+    """Plain-Python snapshot of EventRecord fields used by the outgoing webhook.
+
+    Captured before commit so that a later session.rollback() (which always
+    expires every attached instance) cannot turn the after_commit listener
+    into a lazy-load on a closed session.
+    """
+
+    id: UUID
+    category: str | None
+    type: str | None
+    start_datetime: datetime
+    end_datetime: datetime
+    zone_offset: str | None
+    duration_seconds: int | None
+
+
+@dataclass(frozen=True)
+class _DataSourceSnapshot:
+    """Plain-Python snapshot of DataSource fields used by the outgoing webhook."""
+
+    user_id: UUID
+    provider: Any
+    device_model: str | None
+
+
+def _snapshot_record(record: EventRecord) -> _RecordSnapshot:
+    return _RecordSnapshot(
+        id=record.id,
+        category=record.category,
+        type=record.type,
+        start_datetime=record.start_datetime,
+        end_datetime=record.end_datetime,
+        zone_offset=record.zone_offset,
+        duration_seconds=record.duration_seconds,
+    )
+
+
+def _snapshot_data_source(data_source: DataSource) -> _DataSourceSnapshot:
+    return _DataSourceSnapshot(
+        user_id=data_source.user_id,
+        provider=data_source.provider,
+        device_model=data_source.device_model,
+    )
 
 
 class EventRecordService(
@@ -114,11 +163,19 @@ class EventRecordService(
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                _record, _data_source, _detail = record, data_source, detail
+                # Snapshot ORM fields into plain dataclasses BEFORE registering the
+                # listener.  Any rollback that happens later in the same session
+                # (e.g. an IntegrityError on a duplicate workout during a historical
+                # sync) expires every attached instance — regardless of
+                # expire_on_commit — and the after_commit listener would then trip
+                # a lazy-load on a session that is already in 'committed' state.
+                _record_snap = _snapshot_record(record)
+                _data_source_snap = _snapshot_data_source(data_source)
+                _detail = detail
 
                 @sa_event.listens_for(db_session, "after_commit", once=True)
                 def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
-                    self._emit_event_record_webhook(_record, _data_source, _detail)
+                    self._emit_event_record_webhook(_record_snap, _data_source_snap, _detail)
 
         return result  # type: ignore[return-value]
 
@@ -395,11 +452,16 @@ class EventRecordService(
 
     @staticmethod
     def _emit_event_record_webhook(
-        record: EventRecord,
-        data_source: DataSource,
+        record: _RecordSnapshot,
+        data_source: _DataSourceSnapshot,
         detail: EventRecordDetailCreate,
     ) -> None:
-        """Fire the appropriate outgoing webhook for a newly created event record."""
+        """Fire the appropriate outgoing webhook for a newly created event record.
+
+        Operates on plain-Python snapshots — never on live ORM instances —
+        because this runs from an after_commit listener where the session can
+        already be in a 'committed' state and a stray lazy-load would crash.
+        """
         if not svix_service.is_enabled():
             return
         category = (record.category or "").lower()
@@ -495,7 +557,10 @@ class EventRecordService(
         )
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
-        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
+        # Snapshot ORM fields up front; see create_detail() for why this is
+        # required (rollback expires every attached instance and would break
+        # an after_commit listener that closed over ORM references).
+        dispatches: list[tuple[_RecordSnapshot, _DataSourceSnapshot, EventRecordDetailCreate]] = []
         for detail in details:
             record = records_by_id.get(detail.record_id)
             if record is None or record.data_source_id is None:
@@ -503,15 +568,15 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            dispatches.append((record, data_source, detail))
+            dispatches.append((_snapshot_record(record), _snapshot_data_source(data_source), detail))
 
         if not dispatches:
             return
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
-            for record, data_source, detail in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail)
+            for record_snap, data_source_snap, detail in dispatches:
+                self._emit_event_record_webhook(record_snap, data_source_snap, detail)
 
     @handle_exceptions
     def _get_records_with_filters(

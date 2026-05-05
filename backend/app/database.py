@@ -39,7 +39,10 @@ async_engine = create_async_engine(settings.db_uri)
 
 
 def _prepare_sessionmaker(engine: Engine) -> sessionmaker:
-    return sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    # expire_on_commit=False matches the async sessionmaker below and lets
+    # `after_commit` listeners (e.g. webhook dispatch in EventRecordService)
+    # read ORM attributes without triggering a lazy-load on a closed session.
+    return sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 
 def _prepare_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker:
