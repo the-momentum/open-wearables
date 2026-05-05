@@ -381,6 +381,19 @@ class BaseOAuthTemplate(ABC):
                 provider_username=provider_username,
                 scope=scope,
             )
+            # Bazard patch: emit connection.created on the update branch too.
+            # Upstream OW only emits on first-ever connect; we need the event
+            # on every successful (re)authorisation so downstream consumers
+            # (api.bazard.run) can flip their local row from 'pending' back
+            # to 'active'. The webhook is idempotent on the consumer side
+            # (UPDATE wearable_connections SET status='active'), so re-emitting
+            # is safe.
+            on_connection_created(
+                user_id=user_id,
+                provider=self.provider_name,
+                connection_id=existing_connection.id,  # type: ignore[union-attr]
+                connected_at=datetime.now(timezone.utc).isoformat(),
+            )
         else:
             connection_create = UserConnectionCreate(
                 user_id=user_id,
