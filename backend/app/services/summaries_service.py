@@ -50,12 +50,6 @@ from app.utils.pagination import (
 )
 from app.utils.structured_logging import log_structured
 
-# Series types needed for sleep physiological metrics
-# TODO: Add HRV, respiratory rate, and SpO2 when ready
-SLEEP_PHYSIO_SERIES_TYPES = [
-    SeriesType.heart_rate,
-]
-
 # Activity summary constants
 DEFAULT_MAX_HR = 190  # Assumes ~30 years old when birth_date unavailable
 ACTIVE_STEPS_THRESHOLD = 30  # Steps per minute to be considered "active"
@@ -80,7 +74,6 @@ BODY_SLOW_CHANGING_SERIES = [
 BODY_AVERAGED_SERIES = [
     SeriesType.resting_heart_rate,
     SeriesType.heart_rate_variability_sdnn,
-    SeriesType.heart_rate_variability_rmssd,
 ]
 
 # Default settings for body summary
@@ -292,6 +285,30 @@ class SummariesService:
                 first_date_midnight = datetime.combine(first_date, datetime.min.time()).replace(tzinfo=timezone.utc)
                 previous_cursor = encode_cursor(first_date_midnight, first_id, "prev")
 
+        sleep_hr_by_record: dict[UUID, int] = {}
+        hr_windows: list[tuple[UUID, datetime, datetime]] = []
+        for result in results:
+            sleep_start = result.get("min_start_time")
+            sleep_end = result.get("max_end_time")
+            rid = result.get("record_id")
+            if sleep_start and sleep_end and rid is not None:
+                hr_windows.append((rid, sleep_start, sleep_end))
+
+        if hr_windows:
+            try:
+                sleep_hr_by_record = self.data_point_repo.get_avg_hr_for_user_time_windows_batch(
+                    db_session,
+                    user_id,
+                    hr_windows,
+                )
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to batch-fetch heart rate metrics for sleep: {e}",
+                    window_count=len(hr_windows),
+                )
+
         # Transform to schema
         data = []
         for result in results:
@@ -308,31 +325,10 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            # Fetch average heart rate during the sleep period
+            # Average heart rate during the sleep period (batch-loaded above)
             # TODO: Add HRV, respiratory rate, and SpO2 when ready
-            avg_hr: int | None = None
-
-            sleep_start = result.get("min_start_time")
-            sleep_end = result.get("max_end_time")
-            if sleep_start and sleep_end:
-                try:
-                    physio_averages = self.data_point_repo.get_averages_for_time_range(
-                        db_session,
-                        user_id,
-                        sleep_start,
-                        sleep_end,
-                        SLEEP_PHYSIO_SERIES_TYPES,
-                    )
-                    hr_avg = physio_averages.get(SeriesType.heart_rate)
-                    avg_hr = int(round(hr_avg)) if hr_avg is not None else None
-                except Exception as e:
-                    log_structured(
-                        self.logger,
-                        "warning",
-                        f"Failed to fetch heart rate metrics for sleep: {e}",
-                        sleep_start=sleep_start,
-                        sleep_end=sleep_end,
-                    )
+            rid = result.get("record_id")
+            avg_hr = sleep_hr_by_record.get(rid) if rid is not None else None
 
             summary = SleepSummary(
                 date=result["sleep_date"],
@@ -715,21 +711,17 @@ class SummariesService:
         )
 
         resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
-        hrv_sdnn_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
-        hrv_rmssd_data = vitals_aggregates.get(SeriesType.heart_rate_variability_rmssd)
+        hrv_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
 
         resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
-        hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
-        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
-        hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
+        hrv_avg = hrv_data.get("avg") if hrv_data else None
+        avg_hrv = round(hrv_avg, 1) if hrv_avg else None
 
         body_averaged = BodyAveraged(
             period_days=average_period_days,
             resting_heart_rate_bpm=resting_hr,
-            avg_hrv_sdnn_ms=hrv_sdnn_avg,
-            avg_hrv_rmssd_ms=hrv_rmssd_avg,
+            avg_hrv_sdnn_ms=avg_hrv,
             period_start=period_start,
             period_end=period_end,
         )
@@ -779,10 +771,10 @@ class SummariesService:
 
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])
-        has_averaged = any([resting_hr, hrv_sdnn_avg, hrv_rmssd_avg])
+        has_averaged = any([resting_hr, avg_hrv])
         has_latest = any([body_temp_celsius, skin_temp_celsius, blood_pressure])
 
-        if not (has_slow_changing or has_averaged or has_latest):
+        if not has_slow_changing and not has_averaged and not has_latest:
             return None
 
         body_latest = BodyLatest(

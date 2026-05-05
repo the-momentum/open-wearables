@@ -688,3 +688,60 @@ class TestDataPointSeriesRepository:
         assert total_count == 2
         for _, data_source in results:
             assert data_source.user_id == user1.id
+
+    def test_get_avg_hr_for_user_time_windows_batch_matches_per_window_average(
+        self, db: Session, series_repo: DataPointSeriesRepository
+    ) -> None:
+        """Batch sleep-style HR windows matches repeated get_averages_for_time_range calls."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="apple", device_model="watch1")
+
+        w1_start = datetime(2025, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+        w1_end = w1_start + timedelta(hours=2)
+        w2_start = datetime(2025, 6, 1, 16, 0, 0, tzinfo=timezone.utc)
+        w2_end = w2_start + timedelta(hours=2)
+
+        for recorded_at, value in [
+            (w1_start + timedelta(minutes=30), Decimal("60")),
+            (w1_start + timedelta(minutes=90), Decimal("62")),
+            (w2_start + timedelta(minutes=60), Decimal("70")),
+        ]:
+            series_repo.create(
+                db,
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user.id,
+                    source="apple",
+                    device_model="watch1",
+                    data_source_id=mapping.id,
+                    recorded_at=recorded_at,
+                    value=value,
+                    series_type=SeriesType.heart_rate,
+                ),
+            )
+
+        window_a = uuid4()
+        window_b = uuid4()
+        empty_window = uuid4()
+
+        batch = series_repo.get_avg_hr_for_user_time_windows_batch(
+            db,
+            user.id,
+            [
+                (window_a, w1_start, w1_end),
+                (window_b, w2_start, w2_end),
+                (empty_window, w2_end + timedelta(days=1), w2_end + timedelta(days=2)),
+            ],
+        )
+
+        avg_a = series_repo.get_averages_for_time_range(
+            db, user.id, w1_start, w1_end, [SeriesType.heart_rate]
+        )[SeriesType.heart_rate]
+        avg_b = series_repo.get_averages_for_time_range(
+            db, user.id, w2_start, w2_end, [SeriesType.heart_rate]
+        )[SeriesType.heart_rate]
+
+        assert avg_a is not None and avg_b is not None
+        assert batch[window_a] == round(avg_a)
+        assert batch[window_b] == round(avg_b)
+        assert empty_window not in batch
