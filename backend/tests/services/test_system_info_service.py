@@ -220,8 +220,8 @@ class TestSystemInfoServiceGetSystemInfo:
         assert step_metric is not None
         assert step_metric.count >= 5
 
-    def test_get_system_info_top_series_types_limited_to_five(self, db: Session) -> None:
-        """Should return at most 5 top series types."""
+    def test_get_system_info_top_series_types_limited_to_six(self, db: Session) -> None:
+        """Should return at most 6 top series types by default."""
         # Arrange
         mapping = DataSourceFactory()
 
@@ -230,16 +230,16 @@ class TestSystemInfoServiceGetSystemInfo:
         step_type = SeriesTypeDefinitionFactory.get_or_create_steps()
 
         # Create samples - using seeded types to avoid unique constraint violations
-        for _ in range(6):
+        for _ in range(7):
             DataPointSeriesFactory(mapping=mapping, series_type=hr_type)
-        for _ in range(4):
+        for _ in range(5):
             DataPointSeriesFactory(mapping=mapping, series_type=step_type)
 
         # Act
         info = system_info_service.get_system_info(db)
 
         # Assert
-        assert len(info.data_points.top_series_types) <= 5
+        assert len(info.data_points.top_series_types) <= 6
 
     def test_get_system_info_top_workout_types(self, db: Session) -> None:
         """Should return top workout types by count."""
@@ -277,13 +277,13 @@ class TestSystemInfoServiceGetSystemInfo:
         assert swimming_metric is not None
         assert swimming_metric.count >= 3
 
-    def test_get_system_info_top_workout_types_limited_to_five(self, db: Session) -> None:
-        """Should return at most 5 top workout types."""
+    def test_get_system_info_top_workout_types_limited_to_six(self, db: Session) -> None:
+        """Should return at most 6 top workout types by default."""
         # Arrange
         mapping = DataSourceFactory()
 
-        # Create 6 different workout types
-        for i in range(6):
+        # Create 7 different workout types
+        for i in range(7):
             for _ in range(i + 1):
                 EventRecordFactory(mapping=mapping, category="workout", type_=f"workout_{i}")
 
@@ -291,7 +291,7 @@ class TestSystemInfoServiceGetSystemInfo:
         info = system_info_service.get_system_info(db)
 
         # Assert
-        assert len(info.data_points.top_workout_types) <= 5
+        assert len(info.data_points.top_workout_types) <= 6
 
     def test_get_system_info_handles_null_workout_type(self, db: Session) -> None:
         """Should handle workouts with null type."""
@@ -312,6 +312,38 @@ class TestSystemInfoServiceGetSystemInfo:
         if unknown_metric:
             assert unknown_metric.count >= 2
 
+    def test_get_system_info_custom_top_limit(self, db: Session) -> None:
+        """Should respect custom top_limit parameter."""
+        # Arrange
+        mapping = DataSourceFactory()
+
+        # Create 10 different series types
+        series_types = []
+        for i in range(10):
+            series_type = SeriesTypeDefinitionFactory()
+            series_types.append(series_type)
+            for _ in range(i + 1):
+                DataPointSeriesFactory(mapping=mapping, series_type=series_type)
+
+        # Create 10 different workout types
+        for i in range(10):
+            for _ in range(i + 1):
+                EventRecordFactory(mapping=mapping, category="workout", type_=f"workout_{i}")
+
+        # Act - test with custom limit of 3
+        info = system_info_service.get_system_info(db, top_limit=3)
+
+        # Assert
+        assert len(info.data_points.top_series_types) <= 3
+        assert len(info.data_points.top_workout_types) <= 3
+
+        # Act - test with custom limit of 8
+        info = system_info_service.get_system_info(db, top_limit=8)
+
+        # Assert
+        assert len(info.data_points.top_series_types) <= 8
+        assert len(info.data_points.top_workout_types) <= 8
+
     def test_get_system_info_empty_database(self, db: Session) -> None:
         """Should handle empty database gracefully."""
         # Act
@@ -331,7 +363,6 @@ class TestSystemInfoServiceGetSystemInfo:
 
         # Arrange - clear any existing data or use isolated test scenario
         now = datetime.now(timezone.utc)
-        now - timedelta(days=7)
 
         # Create user only in this week (not last week)
         UserFactory(created_at=now - timedelta(hours=1))

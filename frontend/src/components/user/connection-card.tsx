@@ -144,7 +144,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
       case 'revoked':
         return (
           <Badge variant="destructive" className="flex items-center gap-1">
-            <XCircle className="h-3 w-3 text-red-400" />
+            <XCircle className="h-3 w-3 text-[hsl(var(--destructive-muted))]" />
             Revoked
           </Badge>
         );
@@ -167,7 +167,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
           <div className="flex items-center gap-3">
             {/* Provider Icon - placeholder for now TODO: Implement provider icon */}
             <div className="h-14 w-14 rounded-full bg-white flex items-center justify-center">
-              <Watch className="h-6 w-6 text-zinc-400" />
+              <Watch className="h-6 w-6 text-muted-foreground" />
             </div>
             <div>
               <h3 className="font-semibold text-card-foreground text-lg">
@@ -189,7 +189,7 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                       Webhook
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
                       <Timer className="h-3 w-3" />
                       Periodic pull
                     </span>
@@ -352,8 +352,8 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
         {timedOutTypes.length > 0 &&
           !isBackfillInProgress &&
           !isPermanentlyFailed && (
-            <div className="space-y-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
-              <p className="text-sm font-medium text-amber-600 dark:text-amber-500">
+            <div className="space-y-2 p-3 bg-[hsl(var(--warning-muted)/0.1)] rounded-lg border border-[hsl(var(--warning-muted)/0.2)]">
+              <p className="text-sm font-medium text-[hsl(var(--warning-muted))] dark:text-[hsl(var(--warning-muted))]">
                 Some data types timed out:
               </p>
               <div className="space-y-1.5">

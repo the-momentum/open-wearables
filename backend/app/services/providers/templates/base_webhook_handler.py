@@ -121,7 +121,7 @@ class BaseWebhookHandler(ABC):
 
         This is where the business logic lives.  Implementations should inspect
         the event/data type on ``payload`` and call the relevant service method
-        (e.g. ``oura_webhook_service.process_notification``).
+        (e.g. ``oura_handler._dispatch_data_type``).
 
         **Delivery-mode contract:**
 

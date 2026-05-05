@@ -27,10 +27,10 @@ export function WebhookSecretReveal({ endpointId }: WebhookSecretRevealProps) {
   };
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 space-y-3">
+    <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-5 space-y-3">
       <div>
-        <h3 className="text-sm font-medium text-white">Signing secret</h3>
-        <p className="text-xs text-zinc-500 mt-0.5">
+        <h3 className="text-sm font-medium text-foreground">Signing secret</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
           Use this secret to verify the <code>svix-signature</code> header on
           incoming webhook requests.
         </p>
@@ -44,19 +44,21 @@ export function WebhookSecretReveal({ endpointId }: WebhookSecretRevealProps) {
       )}
 
       {revealed && isLoading && (
-        <div className="flex items-center gap-2 text-xs text-zinc-500 py-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
           <Loader2 className="h-3 w-3 animate-spin" />
           Loading secret...
         </div>
       )}
 
       {revealed && error && (
-        <p className="text-xs text-red-500">Failed to load secret.</p>
+        <p className="text-xs text-[hsl(var(--destructive-muted))]">
+          Failed to load secret.
+        </p>
       )}
 
       {revealed && data && (
         <div className="flex items-center gap-2">
-          <code className="flex-1 font-mono text-xs text-zinc-200 bg-zinc-800 px-3 py-2 rounded-md break-all">
+          <code className="flex-1 font-mono text-xs text-foreground bg-muted px-3 py-2 rounded-md break-all">
             {data.key}
           </code>
           <Button variant="outline" size="sm" onClick={handleCopy}>

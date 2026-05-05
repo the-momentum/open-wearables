@@ -1,11 +1,17 @@
+from celery import current_app as celery_app
+
+from app.config import settings
 from app.database import DbSession
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth.live_sync_mode import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.data_priority import (
     ProviderSettingRead,
     ProviderSettingUpdate,
 )
 from app.services.providers.factory import ProviderFactory
+
+_REGISTER_WEBHOOKS_TASK = "app.integrations.celery.tasks.register_provider_webhooks_task.register_provider_webhooks"
 
 
 class ProviderSettingsService:
@@ -63,6 +69,11 @@ class ProviderSettingsService:
             effective_live_sync_mode = strategy.default_live_sync_mode
 
         setting = self.repo.upsert(db, provider, new_is_enabled, effective_live_sync_mode)
+
+        if update.live_sync_mode == LiveSyncMode.WEBHOOK and strategy.capabilities.webhook_registration_api:
+            callback_url = f"{settings.api_base_url}{settings.api_v1}/providers/{provider}/webhooks"
+            celery_app.send_task(_REGISTER_WEBHOOKS_TASK, args=[provider, callback_url], queue="webhook_sync")
+
         return ProviderSettingRead(
             provider=provider,
             name=strategy.display_name,

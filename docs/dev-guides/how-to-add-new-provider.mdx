@@ -37,6 +37,7 @@ Each provider declares its data delivery modes via `ProviderCapabilities`:
 | `webhook_callback` | Provider-initiates async export delivered to our webhook | Garmin backfill |
 | `webhook_stream` | Provider pushes full data payload in every webhook | Garmin, Suunto |
 | `webhook_ping` | Provider sends a lightweight notification; actual data must be fetched via REST | Oura, Strava, Fitbit, Polar |
+| `webhook_registration_api` | Provider exposes an API to programmatically register webhook subscriptions. When `False`, subscriptions must be configured manually in the provider's developer portal. | Oura |
 
 <Note>
 `webhook_stream` and `webhook_ping` are mutually exclusive. Use `webhook_stream` when the provider embeds the complete record in the webhook body (Garmin, Suunto). Use `webhook_ping` when the webhook is only a trigger and you must call the REST API to retrieve the actual data (Oura, Strava, Fitbit, Polar).
@@ -705,6 +706,35 @@ That's all — no new route files needed. The unified router at `/api/v1/provide
 `POST /api/v1/providers/{provider}/webhooks` → `strategy.webhooks.handle(request, body, db)`
 </Note>
 
+### Automatic webhook registration (optional)
+
+Some providers expose an API to register webhook subscriptions programmatically (e.g. Oura). For these, you can have subscriptions registered automatically whenever an admin switches the provider's live sync mode to `webhook` — no manual setup in the developer portal required.
+
+To enable this:
+
+1. Set `webhook_registration_api=True` in your strategy's `ProviderCapabilities`.
+2. Override `register_webhooks(callback_url)` in your strategy to call your provider's subscription registration API. It should be idempotent — skip existing subscriptions, create missing ones.
+
+```python
+class MyProviderStrategy(BaseProviderStrategy):
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(
+            rest_pull=True,
+            webhook_ping=True,
+            webhook_registration_api=True,
+        )
+
+    async def register_webhooks(self, callback_url: str) -> Any:
+        return await my_provider_webhook_service.register_subscriptions(callback_url)
+```
+
+When an admin switches the sync mode to `webhook` via `PUT /api/v1/oauth/providers/{provider}`, the platform automatically dispatches a Celery task (`register_provider_webhooks`) that calls `strategy.register_webhooks(callback_url)` in the background. The callback URL is derived from `API_BASE_URL`: `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+
+<Note>
+If `webhook_registration_api=False` (the default), switching sync mode to `webhook` only updates the database — you must register subscriptions manually in the provider's developer portal pointing to `{API_BASE_URL}/api/v1/providers/{provider}/webhooks`.
+</Note>
+
 ---
 
 ## Troubleshooting
@@ -746,6 +776,7 @@ Use this checklist to ensure you've completed all steps:
 - [ ] Verified data in database
 - [ ] Tested webhook delivery at `POST /api/v1/providers/{provider}/webhooks` (if applicable)
 - [ ] Tested subscription verification at `GET /api/v1/providers/{provider}/webhooks` (if applicable)
+- [ ] If `webhook_registration_api=True`: implemented `register_webhooks()` in strategy and verified auto-registration fires on sync mode switch
 - [ ] Added error handling and logging
 - [ ] Updated API documentation
 

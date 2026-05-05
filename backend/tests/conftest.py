@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import pytest
 import redis as redis_lib
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
@@ -80,6 +80,11 @@ def engine(_postgres_url: str) -> Any:
             if not existing:
                 series_type = SeriesTypeDefinition(id=type_id, code=enum.value, unit=unit)
                 session.add(series_type)
+        session.commit()
+        # Reset the sequence so auto-generated IDs don't collide with seeded ones
+        session.execute(
+            text("SELECT setval('series_type_definition_id_seq', (SELECT MAX(id) FROM series_type_definition))")
+        )
         session.commit()
 
     yield test_engine

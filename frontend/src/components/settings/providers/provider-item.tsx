@@ -29,7 +29,7 @@ export function ProviderItem({
   const currentMode = provider.live_sync_mode ?? 'pull';
 
   return (
-    <div className="px-6 py-4 hover:bg-zinc-800/30 transition-colors">
+    <div className="px-6 py-4 hover:bg-muted/40 transition-colors">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 flex-1">
           <div className="flex-shrink-0 p-2 rounded-lg overflow-hidden bg-white">
@@ -43,7 +43,7 @@ export function ProviderItem({
                 }}
               />
             ) : (
-              <div className="h-12 w-12 bg-white text-zinc-500 font-medium rounded-lg flex items-center justify-center">
+              <div className="h-12 w-12 bg-white text-muted-foreground font-medium rounded-lg flex items-center justify-center">
                 {provider.name.charAt(0).toUpperCase()}
               </div>
             )}
@@ -51,7 +51,7 @@ export function ProviderItem({
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="text-sm font-medium text-white">
+              <h4 className="text-sm font-medium text-foreground">
                 {provider.name}
               </h4>
               {isEnabledInBackend ? (
@@ -59,7 +59,7 @@ export function ProviderItem({
                   Enabled
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-400">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
                   Disabled
                 </span>
               )}
@@ -68,7 +68,7 @@ export function ProviderItem({
             <div className="mt-2">
               {provider.live_sync_configurable ? (
                 /* Segmented control for configurable providers */
-                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+                <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-card border border-border/60">
                   {(
                     [
                       { mode: 'pull', label: 'Periodic pull', Icon: Timer },
@@ -85,8 +85,8 @@ export function ProviderItem({
                         currentMode === mode && mode === 'webhook'
                           ? 'bg-indigo-500/20 text-indigo-300 shadow-sm border border-indigo-500/30'
                           : currentMode === mode && mode === 'pull'
-                            ? 'bg-zinc-700 text-zinc-100 shadow-sm border border-zinc-600'
-                            : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60'
+                            ? 'bg-muted-foreground/40 text-foreground shadow-sm border border-zinc-600'
+                            : 'text-muted-foreground hover:text-foreground/90 hover:bg-muted/60'
                       )}
                     >
                       <Icon className="h-3 w-3" />
@@ -103,7 +103,7 @@ export function ProviderItem({
                       Webhook only
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
                       <Timer className="h-3 w-3" />
                       Periodic pull only
                     </span>

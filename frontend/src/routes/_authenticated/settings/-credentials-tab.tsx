@@ -109,12 +109,12 @@ export function CredentialsTab() {
 
   if (isLoading) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-zinc-800 rounded-md w-full" />
+          <div className="h-10 bg-muted rounded-md w-full" />
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-16 bg-zinc-800/50 rounded-md" />
+              <div key={i} className="h-16 bg-muted/50 rounded-md" />
             ))}
           </div>
         </div>
@@ -124,8 +124,8 @@ export function CredentialsTab() {
 
   if (error) {
     return (
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-        <p className="text-zinc-400 mb-4">Failed to load API keys</p>
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+        <p className="text-muted-foreground mb-4">Failed to load API keys</p>
         <Button onClick={() => refetch()}>Retry</Button>
       </div>
     );
@@ -136,8 +136,10 @@ export function CredentialsTab() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-medium text-white">API Credentials</h2>
-          <p className="text-sm text-zinc-500 mt-1">
+          <h2 className="text-xl font-medium text-foreground">
+            API Credentials
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Manage your API keys and widget embed codes
           </p>
         </div>
@@ -148,13 +150,13 @@ export function CredentialsTab() {
       </div>
 
       {/* API Base URL */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Globe className="h-4 w-4 text-zinc-500" />
+            <Globe className="h-4 w-4 text-muted-foreground" />
             <div>
-              <p className="text-xs text-zinc-500">API Base URL</p>
-              <code className="font-mono text-sm text-zinc-300">
+              <p className="text-xs text-muted-foreground">API Base URL</p>
+              <code className="font-mono text-sm text-foreground/90">
                 {API_CONFIG.baseUrl}
               </code>
             </div>
@@ -173,10 +175,10 @@ export function CredentialsTab() {
       </div>
 
       {/* API Keys Table */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-zinc-800">
-          <h3 className="text-sm font-medium text-white">API Keys</h3>
-          <p className="text-xs text-zinc-500 mt-1">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border/60">
+          <h3 className="text-sm font-medium text-foreground">API Keys</h3>
+          <p className="text-xs text-muted-foreground mt-1">
             Use these keys to authenticate API requests and embed widgets
           </p>
         </div>
@@ -185,33 +187,33 @@ export function CredentialsTab() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-zinc-800 text-left">
-                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                <tr className="border-b border-border/60 text-left">
+                  <th className="px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Key
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wider text-right">
+                  <th className="px-6 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/50">
+              <tbody className="divide-y divide-border/40">
                 {apiKeys.map((key) => (
                   <tr
                     key={key.id}
-                    className="hover:bg-zinc-800/30 transition-colors"
+                    className="hover:bg-muted/40 transition-colors"
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-zinc-300">
+                    <td className="px-6 py-4 text-sm font-medium text-foreground/90">
                       {key.name}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <code className="font-mono text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">
+                        <code className="font-mono text-xs bg-muted text-foreground/90 px-2 py-1 rounded">
                           {visibleKeys.has(key.id) ? key.id : maskKey(key.id)}
                         </code>
                         <Button
@@ -234,7 +236,7 @@ export function CredentialsTab() {
                         </Button>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs text-zinc-500">
+                    <td className="px-6 py-4 text-xs text-muted-foreground">
                       {formatDate(key.created_at)}
                     </td>
                     <td className="px-6 py-4">
@@ -265,9 +267,9 @@ export function CredentialsTab() {
           </div>
         ) : (
           <div className="p-12 text-center">
-            <Key className="h-12 w-12 text-zinc-700 mx-auto mb-4" />
-            <p className="text-zinc-400 mb-2">No API keys yet</p>
-            <p className="text-sm text-zinc-500 mb-4">
+            <Key className="h-12 w-12 text-muted-foreground/60 mx-auto mb-4" />
+            <p className="text-muted-foreground mb-2">No API keys yet</p>
+            <p className="text-sm text-muted-foreground mb-4">
               Create your first key to get started
             </p>
             <Button
@@ -299,7 +301,7 @@ export function CredentialsTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="rename_key_name" className="text-zinc-300">
+            <Label htmlFor="rename_key_name" className="text-foreground/90">
               Key Name
             </Label>
             <Input
@@ -308,9 +310,9 @@ export function CredentialsTab() {
               placeholder="e.g., Production API Key"
               value={renameKeyName}
               onChange={(e) => setRenameKeyName(e.target.value)}
-              className="bg-zinc-800 border-zinc-700"
+              className="bg-muted border-border"
             />
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-muted-foreground/70">
               A descriptive name to identify this key
             </p>
           </div>
@@ -345,7 +347,7 @@ export function CredentialsTab() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="key_name" className="text-zinc-300">
+            <Label htmlFor="key_name" className="text-foreground/90">
               Key Name
             </Label>
             <Input
@@ -354,9 +356,9 @@ export function CredentialsTab() {
               placeholder="e.g., Production API Key"
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
-              className="bg-zinc-800 border-zinc-700"
+              className="bg-muted border-border"
             />
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-muted-foreground/70">
               A descriptive name to identify this key
             </p>
           </div>
