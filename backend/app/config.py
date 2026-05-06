@@ -206,7 +206,6 @@ class Settings(BaseSettings):
             self.strava_webhook_verify_token = SecretStr(self.secret_key)
         return self
 
-
     @model_validator(mode="after")
     def derive_oura_webhook_verification_token(self) -> "Settings":
         if (
