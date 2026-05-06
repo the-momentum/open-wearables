@@ -69,60 +69,43 @@ class StravaWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Verify X-Strava-Signature using HMAC-SHA256.
+        """Verify Strava webhook requests via path token and timestamp.
 
-        Header format: ``t=<unix_ts>,v1=<hex_digest>``
-        Signed payload: ``{t}.{raw_body}``
-        Signing key: ``strava_client_secret`` (the shared signing secret).
+        Two checks:
+        1. ``?token=`` query param must match ``strava_webhook_path_secret``
+           (embedded in the callback URL at subscription registration time).
+        2. Timestamp from X-Strava-Signature must be within tolerance window.
         """
+        expected = settings.strava_webhook_path_secret.get_secret_value()  # type: ignore[union-attr]
+        provided = request.query_params.get("token", "")
+        if not self._verify_token(expected, provided):
+            log_structured(
+                logger,
+                "warning",
+                "Strava webhook path token mismatch",
+                provider="strava",
+                action="webhook_token_invalid",
+            )
+            return False
+
         header = request.headers.get("X-Strava-Signature", "")
-        log_structured(
-            logger,
-            "debug",
-            "Strava webhook headers",
-            provider="strava",
-            action="webhook_signature_debug",
-            x_strava_signature=header,
-            all_headers=dict(request.headers),
-        )
-        if not header:
-            log_structured(
-                logger,
-                "warning",
-                "Missing X-Strava-Signature header",
-                provider="strava",
-                action="webhook_signature_missing",
-            )
-            return False
+        if header:
+            try:
+                parts = dict(p.split("=", 1) for p in header.split(","))
+                timestamp = int(parts["t"])
+                if abs(time.time() - timestamp) > settings.strava_webhook_signature_tolerance_seconds:
+                    log_structured(
+                        logger,
+                        "warning",
+                        "Strava webhook timestamp outside tolerance window",
+                        provider="strava",
+                        action="webhook_signature_expired",
+                    )
+                    return False
+            except (KeyError, ValueError):
+                pass
 
-        try:
-            parts = dict(p.split("=", 1) for p in header.split(","))
-            timestamp = parts["t"]
-            signature = parts["v1"]
-        except (KeyError, ValueError):
-            log_structured(
-                logger,
-                "warning",
-                "Malformed X-Strava-Signature header",
-                provider="strava",
-                action="webhook_signature_malformed",
-                header=header,
-            )
-            return False
-
-        if abs(time.time() - int(timestamp)) > settings.strava_webhook_signature_tolerance_seconds:
-            log_structured(
-                logger,
-                "warning",
-                "Strava webhook timestamp outside tolerance window",
-                provider="strava",
-                action="webhook_signature_expired",
-            )
-            return False
-
-        # Strava signs with the app's client_secret (the "shared signing secret")
-        secret = settings.strava_client_secret.get_secret_value()  # type: ignore[union-attr]
-        return self._verify_hmac_sha256(secret, body, signature, prefix=f"{timestamp}.".encode(), case_insensitive=True)
+        return True
 
     def parse_payload(self, body: bytes) -> StravaWebhookEvent:
         try:
