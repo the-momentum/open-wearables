@@ -46,6 +46,7 @@ from app.database import DbSession
 from app.repositories import UserConnectionRepository
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.schemas.providers.strava import StravaWebhookEvent
+from app.services.event_record_service import event_record_service
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
@@ -170,9 +171,53 @@ class StravaWebhookHandler(BaseWebhookHandler):
     def supported_event_types(self) -> list[str]:
         return ["activity_create", "activity_update", "activity_delete", "athlete_delete"]
 
-    # ------------------------------------------------------------------
-    # Async processing (called by Celery task)
-    # ------------------------------------------------------------------
+    def _handle_activity_delete(
+        self, db: DbSession, user_id: UUID, activity_id: int, trace_id: str
+    ) -> dict[str, Any]:
+        deleted = event_record_service.crud.delete_by_external_id(
+            db, user_id, str(activity_id), provider="strava"
+        )
+        log_structured(
+            logger,
+            "info",
+            "Strava activity deleted",
+            provider="strava",
+            trace_id=trace_id,
+            action="webhook_activity_deleted",
+            activity_id=activity_id,
+            user_id=str(user_id),
+            records_deleted=deleted,
+        )
+        return {"status": "deleted", "activity_id": activity_id, "records_deleted": deleted}
+
+    def _handle_athlete_deauthorize(
+        self, db: DbSession, owner_id: int, trace_id: str
+    ) -> dict[str, Any]:
+        connection = self.connection_repo.get_by_provider_user_id(db, "strava", str(owner_id))
+        if not connection:
+            log_structured(
+                logger,
+                "warning",
+                "No connection found for deauthorizing Strava athlete",
+                provider="strava",
+                trace_id=trace_id,
+                action="webhook_deauth_no_connection",
+                strava_athlete_id=owner_id,
+            )
+            return {"status": "user_not_found", "strava_athlete_id": owner_id}
+
+        self.connection_repo.disconnect(db, connection.user_id, "strava")
+        log_structured(
+            logger,
+            "info",
+            "Strava athlete deauthorized",
+            provider="strava",
+            trace_id=trace_id,
+            action="webhook_athlete_deauthorized",
+            strava_athlete_id=owner_id,
+            user_id=str(connection.user_id),
+        )
+        return {"status": "deauthorized", "strava_athlete_id": owner_id}
 
     def process_payload(self, db: DbSession, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
         """Process a Strava notify-only payload.
@@ -189,6 +234,9 @@ class StravaWebhookHandler(BaseWebhookHandler):
         object_id = event.object_id
         owner_id = event.owner_id
 
+        if object_type == "athlete" and aspect_type == "delete":
+            return self._handle_athlete_deauthorize(db, owner_id, trace_id)
+
         if object_type != "activity":
             log_structured(
                 logger,
@@ -199,18 +247,6 @@ class StravaWebhookHandler(BaseWebhookHandler):
                 object_type=object_type,
             )
             return {"status": "ignored", "reason": f"object_type:{object_type}"}
-
-        if aspect_type not in ("create", "update"):
-            log_structured(
-                logger,
-                "info",
-                "Ignoring Strava activity event",
-                provider="strava",
-                trace_id=trace_id,
-                aspect_type=aspect_type,
-                object_id=object_id,
-            )
-            return {"status": "ignored", "reason": f"aspect_type:{aspect_type}"}
 
         connection = self.connection_repo.get_by_provider_user_id(db, "strava", str(owner_id))
         if not connection:
@@ -226,6 +262,12 @@ class StravaWebhookHandler(BaseWebhookHandler):
             return {"status": "user_not_found", "strava_athlete_id": owner_id}
 
         user_id: UUID = connection.user_id
+
+        if aspect_type == "delete":
+            return self._handle_activity_delete(db, user_id, object_id, trace_id)
+
+        if aspect_type not in ("create", "update"):
+            return {"status": "ignored", "reason": f"aspect_type:{aspect_type}"}
 
         log_structured(
             logger,

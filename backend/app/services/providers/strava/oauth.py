@@ -42,13 +42,12 @@ class StravaOAuth(BaseOAuthTemplate):
 
     def deregister_user(self, access_token: str) -> None:
         """Revoke access and remove the app from the athlete's connected apps."""
-        with suppress(Exception):  # best-effort; connection is deleted locally regardless
-            response = httpx.post(
-                "https://www.strava.com/oauth/deauthorize",
-                params={"access_token": access_token},
-                timeout=30.0,
-            )
-            response.raise_for_status()
+        response = httpx.post(
+            "https://www.strava.com/oauth/deauthorize",
+            params={"access_token": access_token},
+            timeout=30.0,
+        )
+        response.raise_for_status()
 
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Fetches Strava athlete ID and username via API."""
