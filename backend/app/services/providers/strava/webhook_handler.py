@@ -76,6 +76,15 @@ class StravaWebhookHandler(BaseWebhookHandler):
         Signing key: ``strava_client_secret`` (the shared signing secret).
         """
         header = request.headers.get("X-Strava-Signature", "")
+        log_structured(
+            logger,
+            "debug",
+            "Strava webhook headers",
+            provider="strava",
+            action="webhook_signature_debug",
+            x_strava_signature=header,
+            all_headers=dict(request.headers),
+        )
         if not header:
             log_structured(
                 logger,
@@ -113,7 +122,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         # Strava signs with the app's client_secret (the "shared signing secret")
         secret = settings.strava_client_secret.get_secret_value()  # type: ignore[union-attr]
-        return self._verify_hmac_sha256(secret, body, signature, prefix=f"{timestamp}.".encode())
+        return self._verify_hmac_sha256(secret, body, signature, prefix=f"{timestamp}.".encode(), case_insensitive=True)
 
     def parse_payload(self, body: bytes) -> StravaWebhookEvent:
         try:
