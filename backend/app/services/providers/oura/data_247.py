@@ -505,10 +505,39 @@ class Oura247Data(Base247DataTemplate):
         start_time: datetime,
         end_time: datetime,
     ) -> list[dict[str, Any]]:
-        """Fetch sleep data from Oura API."""
+        """Fetch sleep data from Oura API.
+
+        Pads the ``[start_date, end_date]`` window by one day on each
+        side before serialization.  Oura's ``/v2/usercollection/sleep``
+        filters sessions by their ``day`` field with
+        ``start_date < day <= end_date`` semantics — the start is
+        exclusive — so a narrow request whose ``start_date`` falls on
+        the same calendar day as the target session returns ``[]``
+        even though that session exists in their database.
+
+        Empirically (verified against a live Oura account whose
+        ``day=2026-05-06`` session was visible in the dashboard):
+
+        ===============================  ==============
+        ``?start_date=…&end_date=…``     items returned
+        ===============================  ==============
+        ``05-06`` … ``05-06``            0
+        ``05-06`` … ``05-07``            0
+        ``05-06`` … ``05-08``            0
+        ``05-05`` … ``05-06``            1  ← day=05-06
+        ``05-05`` … ``05-07``            1
+        ``05-04`` … ``05-07``            2
+        ===============================  ==============
+
+        Without padding, live periodic syncs (where the natural
+        ``[start, end]`` window collapses to minutes inside the same
+        calendar day after the first cycle) silently miss today's
+        sleep.  ``save_sleep_data`` is idempotent on ``external_id``
+        so the over-fetch at both boundaries is safe.
+        """
         params = {
-            "start_date": start_time.strftime("%Y-%m-%d"),
-            "end_date": end_time.strftime("%Y-%m-%d"),
+            "start_date": (start_time - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "end_date": (end_time + timedelta(days=1)).strftime("%Y-%m-%d"),
         }
         return self._paginate(db, user_id, "/v2/usercollection/sleep", params)
 
