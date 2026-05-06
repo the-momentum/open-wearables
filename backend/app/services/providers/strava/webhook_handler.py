@@ -71,19 +71,18 @@ class StravaWebhookHandler(BaseWebhookHandler):
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Validate timestamp from X-Strava-Signature; skip HMAC.
 
-        The HMAC signing secret cannot be reliably derived from app credentials.
         Security relies on the hub.challenge handshake at subscription time.
         Replays are rejected using the timestamp in X-Strava-Signature.
         """
         header = request.headers.get("X-Strava-Signature", "")
         if not header:
-            return True
+            return False
 
         try:
             parts = dict(p.split("=", 1) for p in header.split(","))
             timestamp = int(parts["t"])
         except (KeyError, ValueError):
-            return True
+            return False
 
         if abs(time.time() - timestamp) > settings.strava_webhook_signature_tolerance_seconds:
             log_structured(
