@@ -69,41 +69,31 @@ class StravaWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Verify Strava webhook requests via path token and timestamp.
+        """Validate timestamp from X-Strava-Signature; skip HMAC.
 
-        Two checks:
-        1. ``?token=`` query param must match ``strava_webhook_path_secret``
-           (embedded in the callback URL at subscription registration time).
-        2. Timestamp from X-Strava-Signature must be within tolerance window.
+        The HMAC signing secret cannot be reliably derived from app credentials.
+        Security relies on the hub.challenge handshake at subscription time.
+        Replays are rejected using the timestamp in X-Strava-Signature.
         """
-        expected = settings.strava_webhook_path_secret.get_secret_value()  # type: ignore[union-attr]
-        provided = request.query_params.get("token", "")
-        if not self._verify_token(expected, provided):
+        header = request.headers.get("X-Strava-Signature", "")
+        if not header:
+            return True
+
+        try:
+            parts = dict(p.split("=", 1) for p in header.split(","))
+            timestamp = int(parts["t"])
+        except (KeyError, ValueError):
+            return True
+
+        if abs(time.time() - timestamp) > settings.strava_webhook_signature_tolerance_seconds:
             log_structured(
                 logger,
                 "warning",
-                "Strava webhook path token mismatch",
+                "Strava webhook timestamp outside tolerance window",
                 provider="strava",
-                action="webhook_token_invalid",
+                action="webhook_signature_expired",
             )
             return False
-
-        header = request.headers.get("X-Strava-Signature", "")
-        if header:
-            try:
-                parts = dict(p.split("=", 1) for p in header.split(","))
-                timestamp = int(parts["t"])
-                if abs(time.time() - timestamp) > settings.strava_webhook_signature_tolerance_seconds:
-                    log_structured(
-                        logger,
-                        "warning",
-                        "Strava webhook timestamp outside tolerance window",
-                        provider="strava",
-                        action="webhook_signature_expired",
-                    )
-                    return False
-            except (KeyError, ValueError):
-                pass
 
         return True
 

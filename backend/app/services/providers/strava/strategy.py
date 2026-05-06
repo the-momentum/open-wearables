@@ -51,6 +51,4 @@ class StravaStrategy(BaseProviderStrategy):
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
 
     async def register_webhooks(self, callback_url: str) -> list[dict]:
-        from app.config import settings
-        secret = settings.strava_webhook_path_secret.get_secret_value()  # type: ignore[union-attr]
-        return await strava_webhook_service.register_subscriptions(f"{callback_url}?token={secret}")
+        return await strava_webhook_service.register_subscriptions(callback_url)
