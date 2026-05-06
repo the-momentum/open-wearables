@@ -1,5 +1,3 @@
-from contextlib import suppress
-
 import httpx
 
 from app.config import settings

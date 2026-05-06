@@ -171,12 +171,8 @@ class StravaWebhookHandler(BaseWebhookHandler):
     def supported_event_types(self) -> list[str]:
         return ["activity_create", "activity_update", "activity_delete", "athlete_delete"]
 
-    def _handle_activity_delete(
-        self, db: DbSession, user_id: UUID, activity_id: int, trace_id: str
-    ) -> dict[str, Any]:
-        deleted = event_record_service.crud.delete_by_external_id(
-            db, user_id, str(activity_id), provider="strava"
-        )
+    def _handle_activity_delete(self, db: DbSession, user_id: UUID, activity_id: int, trace_id: str) -> dict[str, Any]:
+        deleted = event_record_service.crud.delete_by_external_id(db, user_id, str(activity_id), provider="strava")
         log_structured(
             logger,
             "info",
@@ -190,9 +186,7 @@ class StravaWebhookHandler(BaseWebhookHandler):
         )
         return {"status": "deleted", "activity_id": activity_id, "records_deleted": deleted}
 
-    def _handle_athlete_deauthorize(
-        self, db: DbSession, owner_id: int, trace_id: str
-    ) -> dict[str, Any]:
+    def _handle_athlete_deauthorize(self, db: DbSession, owner_id: int, trace_id: str) -> dict[str, Any]:
         connection = self.connection_repo.get_by_provider_user_id(db, "strava", str(owner_id))
         if not connection:
             log_structured(
