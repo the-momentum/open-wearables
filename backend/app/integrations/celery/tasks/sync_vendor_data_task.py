@@ -285,7 +285,11 @@ def sync_vendor_data(
                                         start_time=start_dt,
                                         end_time=end_dt,
                                     )
-                                    provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
+                                    provider_result.params["data_247"] = {
+                                        "success": True,
+                                        "saved": False,
+                                        **results_247,
+                                    }
                             log_structured(
                                 logger,
                                 "info",
