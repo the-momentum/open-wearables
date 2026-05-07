@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from logging import Logger, getLogger
@@ -43,6 +44,31 @@ from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_c
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
+
+
+@dataclass
+class _EventRecordSnapshot:
+    """Plain-value snapshot of EventRecord attributes for use in after_commit listeners.
+
+    after_commit expires all ORM objects; accessing attributes on them triggers lazy
+    loads that fail because the session is in 'committed' state. This snapshot captures
+    the needed values as plain Python objects before the listener is registered.
+    """
+
+    category: str | None
+    id: UUID
+    zone_offset: str | None
+    start_datetime: datetime
+    end_datetime: datetime
+    duration_seconds: int | None
+    type: str | None
+
+
+@dataclass
+class _DataSourceSnapshot:
+    provider: str
+    device_model: str | None
+    user_id: UUID
 
 
 class EventRecordService(
@@ -114,11 +140,28 @@ class EventRecordService(
         if record is not None and record.data_source_id is not None:
             data_source = db_session.get(DataSource, record.data_source_id)
             if data_source is not None:
-                _record, _data_source, _detail = record, data_source, detail
+                # Snapshot ORM attributes as plain values before registering the listener.
+                # after_commit expires all ORM objects, so accessing attributes inside the
+                # listener would trigger lazy loads on a committed session → InvalidRequestError.
+                _rec = _EventRecordSnapshot(
+                    category=record.category,
+                    id=record.id,
+                    zone_offset=record.zone_offset,
+                    start_datetime=record.start_datetime,
+                    end_datetime=record.end_datetime,
+                    duration_seconds=record.duration_seconds,
+                    type=getattr(record, "type", None),
+                )
+                _ds = _DataSourceSnapshot(
+                    provider=str(data_source.provider),
+                    device_model=data_source.device_model,
+                    user_id=data_source.user_id,
+                )
+                _detail = detail
 
                 @sa_event.listens_for(db_session, "after_commit", once=True)
                 def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
-                    self._emit_event_record_webhook(_record, _data_source, _detail)
+                    self._emit_event_record_webhook(_rec, _ds, _detail)
 
         return result  # type: ignore[return-value]
 
@@ -495,7 +538,10 @@ class EventRecordService(
         )
         data_sources_by_id = {ds.id: ds for ds in data_sources}
 
-        dispatches: list[tuple[EventRecord, DataSource, EventRecordDetailCreate]] = []
+        # Snapshot ORM attributes as plain values before registering the listener.
+        # after_commit expires all ORM objects, so the listener captures snapshots
+        # instead of live ORM references to avoid lazy loads on a committed session.
+        dispatches: list[tuple[_EventRecordSnapshot, _DataSourceSnapshot, EventRecordDetailCreate]] = []
         for detail in details:
             record = records_by_id.get(detail.record_id)
             if record is None or record.data_source_id is None:
@@ -503,15 +549,31 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            dispatches.append((record, data_source, detail))
+            dispatches.append((
+                _EventRecordSnapshot(
+                    category=record.category,
+                    id=record.id,
+                    zone_offset=record.zone_offset,
+                    start_datetime=record.start_datetime,
+                    end_datetime=record.end_datetime,
+                    duration_seconds=record.duration_seconds,
+                    type=getattr(record, "type", None),
+                ),
+                _DataSourceSnapshot(
+                    provider=str(data_source.provider),
+                    device_model=data_source.device_model,
+                    user_id=data_source.user_id,
+                ),
+                detail,
+            ))
 
         if not dispatches:
             return
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
         def _dispatch_bulk_webhooks(session: DbSession) -> None:  # noqa: ARG001
-            for record, data_source, detail in dispatches:
-                self._emit_event_record_webhook(record, data_source, detail)
+            for rec, ds, detail in dispatches:
+                self._emit_event_record_webhook(rec, ds, detail)
 
     @handle_exceptions
     def _get_records_with_filters(
