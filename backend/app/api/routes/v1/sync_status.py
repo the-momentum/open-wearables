@@ -128,11 +128,7 @@ def list_sync_run_summaries(
     return get_run_summaries(user_id, limit=limit)
 
 
-@router.get(
-    "/sync/runs",
-    response_model=list[SyncRunSummary],
-    tags=["Dashboard: Sync Status"],
-)
+@router.get("/sync/runs", response_model=list[SyncRunSummary])
 def list_all_sync_run_summaries(
     _api_key: ApiKeyDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
