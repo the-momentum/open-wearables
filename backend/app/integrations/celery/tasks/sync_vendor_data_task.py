@@ -264,26 +264,28 @@ def sync_vendor_data(
                         )
 
                         try:
-                            # Use load_and_save_all if available (saves data to DB)
-                            # Otherwise fallback to load_all_247_data (just returns data)
+                            # Use a fresh session for data_247: workouts.load_data() may commit
+                            # the shared session mid-task (when strain scores exist), leaving it
+                            # in 'committed' state. A new session avoids that contamination.
                             provider_any = cast(Any, strategy.data_247)
-                            if hasattr(provider_any, "load_and_save_all"):
-                                results_247 = provider_any.load_and_save_all(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                    is_first_sync=is_first_sync,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
-                            else:
-                                results_247 = strategy.data_247.load_all_247_data(
-                                    db,
-                                    user_uuid,
-                                    start_time=start_dt,
-                                    end_time=end_dt,
-                                )
-                                provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
+                            with SessionLocal() as db_247:
+                                if hasattr(provider_any, "load_and_save_all"):
+                                    results_247 = provider_any.load_and_save_all(
+                                        db_247,
+                                        user_uuid,
+                                        start_time=start_dt,
+                                        end_time=end_dt,
+                                        is_first_sync=is_first_sync,
+                                    )
+                                    provider_result.params["data_247"] = {"success": True, "saved": True, **results_247}
+                                else:
+                                    results_247 = strategy.data_247.load_all_247_data(
+                                        db_247,
+                                        user_uuid,
+                                        start_time=start_dt,
+                                        end_time=end_dt,
+                                    )
+                                    provider_result.params["data_247"] = {"success": True, "saved": False, **results_247}
                             log_structured(
                                 logger,
                                 "info",
