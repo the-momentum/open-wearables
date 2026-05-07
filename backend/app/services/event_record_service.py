@@ -520,8 +520,8 @@ class EventRecordService(
 
     @staticmethod
     def _emit_event_record_webhook(
-        record: EventRecord,
-        data_source: DataSource,
+        record: _EventRecordSnapshot,
+        data_source: _DataSourceSnapshot,
         detail: EventRecordDetailCreate,
     ) -> None:
         """Fire the appropriate outgoing webhook for a newly created event record."""
