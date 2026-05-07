@@ -256,7 +256,8 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
           params={{ userId: run.user_id }}
           className="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline"
         >
-          {shortUserId}…
+          {shortUserId}
+          {run.user_id.length > 8 ? '…' : ''}
         </Link>
       </td>
       <td className="px-4 py-2.5 capitalize">{run.provider}</td>

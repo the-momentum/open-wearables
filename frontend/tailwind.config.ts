@@ -6,7 +6,16 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: [
+          'Inter',
+          'ui-sans-serif',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Roboto',
+          'sans-serif',
+        ],
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -101,9 +110,12 @@ const config: Config = {
         },
       },
       boxShadow: {
-        'glow-primary': '0 0 20px hsla(185, 100%, 50%, 0.4), 0 0 40px hsla(185, 100%, 50%, 0.2)',
-        'glow-secondary': '0 0 20px hsla(315, 100%, 60%, 0.4), 0 0 40px hsla(315, 100%, 60%, 0.2)',
-        'glow-accent': '0 0 20px hsla(270, 100%, 65%, 0.4), 0 0 40px hsla(270, 100%, 65%, 0.2)',
+        'glow-primary':
+          '0 0 20px hsla(185, 100%, 50%, 0.4), 0 0 40px hsla(185, 100%, 50%, 0.2)',
+        'glow-secondary':
+          '0 0 20px hsla(315, 100%, 60%, 0.4), 0 0 40px hsla(315, 100%, 60%, 0.2)',
+        'glow-accent':
+          '0 0 20px hsla(270, 100%, 65%, 0.4), 0 0 40px hsla(270, 100%, 65%, 0.2)',
         'glow-ambient': '0 0 30px hsla(185, 100%, 50%, 0.08)',
         'neon-sm': '0 0 10px hsla(185, 100%, 50%, 0.3)',
         'neon-md': '0 0 20px hsla(185, 100%, 50%, 0.4)',
@@ -111,18 +123,18 @@ const config: Config = {
       },
       transitionTimingFunction: {
         'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
-        'spring': 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
       transitionDuration: {
-        'fast': '150ms',
-        'normal': '200ms',
-        'slow': '300ms',
+        fast: '150ms',
+        normal: '200ms',
+        slow: '300ms',
       },
       animation: {
         'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-        'float': 'float 3s ease-in-out infinite',
-        'gradient': 'gradient 3s ease infinite',
-        'shimmer': 'shimmer 2s ease-in-out infinite',
+        float: 'float 3s ease-in-out infinite',
+        gradient: 'gradient 3s ease infinite',
+        shimmer: 'shimmer 2s ease-in-out infinite',
         'border-glow': 'border-glow-pulse 2s ease-in-out infinite',
       },
       keyframes: {
@@ -130,15 +142,15 @@ const config: Config = {
           '0%, 100%': { opacity: '0.4' },
           '50%': { opacity: '0.7' },
         },
-        'float': {
+        float: {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-10px)' },
         },
-        'gradient': {
+        gradient: {
           '0%, 100%': { backgroundPosition: '0% 50%' },
           '50%': { backgroundPosition: '100% 50%' },
         },
-        'shimmer': {
+        shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
