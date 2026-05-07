@@ -25,6 +25,8 @@ export const Route = createFileRoute('/_authenticated/syncs/')({
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 50;
+/** Must not exceed the backend's le= on GET /sync/runs. */
+const MAX_ALL_RUNS_LIMIT = 10_000;
 
 function SyncsPage() {
   const [filters, setFilters] = useState<AllSyncRunsFilters>({});
@@ -49,7 +51,10 @@ function SyncsPage() {
     isLoading,
     isFetching,
     refetch,
-  } = useAllSyncRuns(activeFilters, pageSize * (page + 1) + 1);
+  } = useAllSyncRuns(
+    activeFilters,
+    Math.min(pageSize * (page + 1) + 1, MAX_ALL_RUNS_LIMIT)
+  );
 
   const paginatedRuns = useMemo(() => {
     if (!runs) return [];

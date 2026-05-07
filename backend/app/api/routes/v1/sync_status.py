@@ -138,7 +138,7 @@ def list_sync_run_summaries(
 )
 def list_all_sync_run_summaries(
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
     user_id: Annotated[UUID | None, Query(description="Filter by user ID.")] = None,
     provider: Annotated[str | None, Query(description="Filter by provider name.")] = None,
     status: Annotated[str | None, Query(description="Filter by status.")] = None,

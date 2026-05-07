@@ -98,7 +98,13 @@ def emit(event: SyncStatusEvent) -> None:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Failed to emit sync status event: %s", exc, exc_info=True)
 
-    _maybe_dispatch_outgoing_webhook(event)
+    # Dispatch outgoing webhooks in a background thread so the Svix HTTP
+    # round-trip (~2 s) does not block the Celery task or inflate sync duration.
+    threading.Thread(
+        target=_maybe_dispatch_outgoing_webhook,
+        args=(event,),
+        daemon=True,
+    ).start()
 
 
 def _maybe_dispatch_outgoing_webhook(event: SyncStatusEvent) -> None:
@@ -204,6 +210,10 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
     the latest event for each run from its dedicated hash key.  This avoids
     the hard ceiling imposed by reading only the capped recent-events list
     (``MAX_RECENT_EVENTS`` raw events / ~4 events-per-run ≈ 50 runs max).
+
+    Terminal events (completed / failed / cancelled) don't carry
+    ``started_at``; we recover it by scanning the recent-events list once
+    and building a run → started_at lookup so duration can be calculated.
     """
     client = get_redis_client()
 
@@ -212,6 +222,13 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
         return []
 
     run_ids = [r if isinstance(r, str) else r.decode("utf-8") for r in raw_run_ids]
+
+    # Build started_at lookup from the recent-events list.  Terminal events
+    # don't carry started_at, so we need this to compute run duration.
+    started_at_by_run: dict[str, datetime] = {}
+    for evt in get_recent_events(user_id, limit=MAX_RECENT_EVENTS):
+        if evt.started_at is not None and evt.run_id not in started_at_by_run:
+            started_at_by_run[evt.run_id] = evt.started_at
 
     pipe = client.pipeline(transaction=False)
     for rid in run_ids:
@@ -237,7 +254,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
                     items_processed=event.items_processed,
                     items_total=event.items_total,
                     error=event.error,
-                    started_at=event.started_at,
+                    started_at=event.started_at or started_at_by_run.get(event.run_id),
                     ended_at=event.ended_at,
                     last_update=event.timestamp,
                 )
