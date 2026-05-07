@@ -360,7 +360,7 @@ export function SeedDataTab() {
       },
       {
         onSuccess: (result) => {
-          if (result.seed_used != null) {
+          if (result.seed_used !== null) {
             setLastSeedUsed(result.seed_used);
           }
         },
@@ -472,22 +472,27 @@ export function SeedDataTab() {
     <div className="space-y-8 max-w-4xl">
       {/* Header */}
       <div>
-        <h2 className="text-lg font-medium text-white">Seed Data Generator</h2>
-        <p className="text-sm text-zinc-500 mt-1">
+        <h2 className="text-lg font-medium text-foreground">
+          Seed Data Generator
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Generate synthetic users with customizable health data profiles for
           testing.
         </p>
       </div>
 
       {/* User count & seed */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Users className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Users</h3>
+          <Users className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">Users</h3>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
           <div className="flex items-center gap-3">
-            <Label htmlFor="num-users" className="text-sm text-zinc-400">
+            <Label
+              htmlFor="num-users"
+              className="text-sm text-muted-foreground"
+            >
               Number of users to create
             </Label>
             <Input
@@ -506,7 +511,7 @@ export function SeedDataTab() {
           </div>
           <div className="space-y-1.5">
             <div className="flex items-center gap-3">
-              <Label className="text-sm text-zinc-400 whitespace-nowrap">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">
                 Override random seed
               </Label>
               <Input
@@ -516,16 +521,16 @@ export function SeedDataTab() {
                 onChange={(e) => setRandomSeed(e.target.value)}
                 className="w-48"
               />
-              {lastSeedUsed != null && (
+              {lastSeedUsed !== null && (
                 <button
                   onClick={() => setRandomSeed(String(lastSeedUsed))}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap"
+                  className="text-xs text-muted-foreground hover:text-foreground/90 transition-colors whitespace-nowrap"
                 >
                   Reuse last: {lastSeedUsed}
                 </button>
               )}
             </div>
-            <p className="text-xs text-zinc-600">
+            <p className="text-xs text-muted-foreground/70">
               Seed and preset are embedded in generated user names - copy the
               seed from there to reproduce data.
             </p>
@@ -534,20 +539,22 @@ export function SeedDataTab() {
       </div>
 
       {/* Presets */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-white">Profile Presets</h3>
+          <h3 className="text-sm font-medium text-foreground">
+            Profile Presets
+          </h3>
           {activePreset && (
             <button
               onClick={resetToDefault}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground/90 transition-colors"
             >
               Reset to default
             </button>
           )}
         </div>
         {presetsLoading ? (
-          <div className="flex items-center gap-2 text-zinc-500 text-sm">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading presets...
           </div>
@@ -560,13 +567,13 @@ export function SeedDataTab() {
                 className={`text-left p-3 rounded-lg border transition-colors ${
                   activePreset === preset.id
                     ? 'border-blue-500/50 bg-blue-500/10'
-                    : 'border-zinc-700 bg-zinc-800/50 hover:border-zinc-600'
+                    : 'border-border bg-muted/50 hover:border-border-hover'
                 }`}
               >
-                <div className="text-sm font-medium text-white">
+                <div className="text-sm font-medium text-foreground">
                   {preset.label}
                 </div>
-                <div className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
                   {preset.description}
                 </div>
               </button>
@@ -576,11 +583,11 @@ export function SeedDataTab() {
       </div>
 
       {/* Workouts */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Dumbbell className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-white">Workouts</h3>
+            <Dumbbell className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">Workouts</h3>
           </div>
           <Switch
             checked={profile.generate_workouts}
@@ -595,7 +602,7 @@ export function SeedDataTab() {
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs text-zinc-500">Count</Label>
+                <Label className="text-xs text-muted-foreground">Count</Label>
                 <Input
                   type="number"
                   min={1}
@@ -615,7 +622,7 @@ export function SeedDataTab() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-zinc-500">
+                <Label className="text-xs text-muted-foreground">
                   Duration min (min)
                 </Label>
                 <Input
@@ -637,7 +644,7 @@ export function SeedDataTab() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-zinc-500">
+                <Label className="text-xs text-muted-foreground">
                   Duration max (min)
                 </Label>
                 <Input
@@ -662,12 +669,16 @@ export function SeedDataTab() {
 
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
-                <Label className="text-xs text-zinc-500">Date range</Label>
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <Label className="text-xs text-muted-foreground">
+                  Date range
+                </Label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Label className="text-xs text-muted-foreground/70">
+                    From
+                  </Label>
                   <Input
                     type="date"
                     value={profile.workout_config.date_from ?? ''}
@@ -685,7 +696,7 @@ export function SeedDataTab() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Label className="text-xs text-muted-foreground/70">To</Label>
                   <Input
                     type="date"
                     value={profile.workout_config.date_to ?? ''}
@@ -706,15 +717,15 @@ export function SeedDataTab() {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-xs text-zinc-500 block">
+              <Label className="text-xs text-muted-foreground block">
                 Workout types{' '}
-                <span className="text-zinc-600">
+                <span className="text-muted-foreground/70">
                   (none selected = all types)
                 </span>
               </Label>
               {WORKOUT_TYPE_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                  <div className="text-xs text-muted-foreground/70 mb-1.5 uppercase tracking-wide">
                     {group.label}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -725,7 +736,7 @@ export function SeedDataTab() {
                         className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                           selectedWorkoutTypes?.includes(type)
                             ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                            : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                            : 'border-border text-muted-foreground hover:border-border-hover'
                         }`}
                       >
                         {type.replace(/_/g, ' ')}
@@ -740,11 +751,13 @@ export function SeedDataTab() {
       </div>
 
       {/* Sleep */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Moon className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-white">Sleep Records</h3>
+            <Moon className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">
+              Sleep Records
+            </h3>
           </div>
           <Switch
             checked={profile.generate_sleep}
@@ -759,7 +772,7 @@ export function SeedDataTab() {
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label className="text-xs text-zinc-500">Count</Label>
+                <Label className="text-xs text-muted-foreground">Count</Label>
                 <Input
                   type="number"
                   min={1}
@@ -779,7 +792,7 @@ export function SeedDataTab() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-zinc-500">
+                <Label className="text-xs text-muted-foreground">
                   Duration min (min)
                 </Label>
                 <Input
@@ -801,7 +814,7 @@ export function SeedDataTab() {
                 />
               </div>
               <div>
-                <Label className="text-xs text-zinc-500">
+                <Label className="text-xs text-muted-foreground">
                   Duration max (min)
                 </Label>
                 <Input
@@ -826,12 +839,16 @@ export function SeedDataTab() {
 
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
-                <Label className="text-xs text-zinc-500">Date range</Label>
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <Label className="text-xs text-muted-foreground">
+                  Date range
+                </Label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Label className="text-xs text-muted-foreground/70">
+                    From
+                  </Label>
                   <Input
                     type="date"
                     value={profile.sleep_config.date_from ?? ''}
@@ -849,7 +866,7 @@ export function SeedDataTab() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Label className="text-xs text-muted-foreground/70">To</Label>
                   <Input
                     type="date"
                     value={profile.sleep_config.date_to ?? ''}
@@ -868,7 +885,7 @@ export function SeedDataTab() {
                 </div>
               </div>
               {sleepCountExceedsDays && (
-                <p className="text-xs text-red-400 mt-2">
+                <p className="text-xs text-[hsl(var(--destructive-muted))] mt-2">
                   Sleep count ({profile.sleep_config.count}) exceeds the number
                   of days in the selected range ({sleepDays}). Each day can have
                   at most one sleep record.
@@ -878,7 +895,9 @@ export function SeedDataTab() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs text-zinc-500">Nap chance (%)</Label>
+                <Label className="text-xs text-muted-foreground">
+                  Nap chance (%)
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -914,10 +933,10 @@ export function SeedDataTab() {
                 />
                 <Label
                   htmlFor="weekend-catchup"
-                  className="text-sm text-zinc-400"
+                  className="text-sm text-muted-foreground"
                 >
                   Weekend catch-up
-                  <span className="block text-xs text-zinc-600">
+                  <span className="block text-xs text-muted-foreground/70">
                     Short weekday sleep, long weekend sleep
                   </span>
                 </Label>
@@ -925,8 +944,8 @@ export function SeedDataTab() {
             </div>
 
             {/* Stage Distribution */}
-            <div className="border-t border-zinc-800 pt-4 mt-2">
-              <Label className="text-xs text-zinc-500 mb-3 block">
+            <div className="border-t border-border/60 pt-4 mt-2">
+              <Label className="text-xs text-muted-foreground mb-3 block">
                 Stage Distribution
               </Label>
 
@@ -939,7 +958,7 @@ export function SeedDataTab() {
                     className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                       profile.sleep_config.stage_profile === p.id
                         ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                        : 'border-border text-muted-foreground hover:border-border-hover'
                     }`}
                   >
                     {p.label}
@@ -952,10 +971,10 @@ export function SeedDataTab() {
                 <div className="grid grid-cols-[auto_1fr_80px_80px] items-center gap-3">
                   <span className="h-2.5 w-2.5" />
                   <span />
-                  <span className="text-[10px] text-zinc-600 text-center">
+                  <span className="text-[10px] text-muted-foreground/70 text-center">
                     Min %
                   </span>
-                  <span className="text-[10px] text-zinc-600 text-center">
+                  <span className="text-[10px] text-muted-foreground/70 text-center">
                     Max %
                   </span>
                 </div>
@@ -973,7 +992,9 @@ export function SeedDataTab() {
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${STAGE_COLORS[key]}`}
                     />
-                    <span className="text-xs text-zinc-400">{label}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {label}
+                    </span>
                     <Input
                       type="number"
                       min={0}
@@ -1013,11 +1034,11 @@ export function SeedDataTab() {
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${STAGE_COLORS.light}`}
                   />
-                  <span className="text-xs text-zinc-500">Light</span>
-                  <span className="text-xs text-zinc-600 text-center">
+                  <span className="text-xs text-muted-foreground">Light</span>
+                  <span className="text-xs text-muted-foreground/70 text-center">
                     ~{lightMin}%
                   </span>
-                  <span className="text-xs text-zinc-600 text-center">
+                  <span className="text-xs text-muted-foreground/70 text-center">
                     ~{lightMax}%
                   </span>
                 </div>
@@ -1042,7 +1063,7 @@ export function SeedDataTab() {
                   style={{ width: `${awakeMid}%` }}
                 />
               </div>
-              <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
+              <div className="flex justify-between text-[10px] text-muted-foreground/70 mt-1">
                 <span>Deep {Math.round(deepMid)}%</span>
                 <span>REM {Math.round(remMid)}%</span>
                 <span>Light {Math.round(lightMid)}%</span>
@@ -1050,7 +1071,7 @@ export function SeedDataTab() {
               </div>
 
               {stageDistInvalid && (
-                <p className="text-xs text-red-400 mt-2">
+                <p className="text-xs text-[hsl(var(--destructive-muted))] mt-2">
                   Sum of max percentages ({stageMaxSum}%) exceeds 95% - not
                   enough room for light sleep.
                 </p>
@@ -1061,11 +1082,11 @@ export function SeedDataTab() {
       </div>
 
       {/* Time Series */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <Activity className="h-4 w-4 text-zinc-400" />
-            <h3 className="text-sm font-medium text-white">Time Series</h3>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium text-foreground">Time Series</h3>
           </div>
           <Switch
             checked={profile.generate_time_series}
@@ -1078,7 +1099,7 @@ export function SeedDataTab() {
 
         {profile.generate_time_series && (
           <div className="space-y-5">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-muted-foreground">
               Continuous samples are emitted across the date range below,
               independently of workouts. Workout-specific metrics (running
               power, cadence, ...) still come from the workout generator.
@@ -1086,12 +1107,16 @@ export function SeedDataTab() {
 
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
-                <Label className="text-xs text-zinc-500">Date range</Label>
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <Label className="text-xs text-muted-foreground">
+                  Date range
+                </Label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs text-zinc-600">From</Label>
+                  <Label className="text-xs text-muted-foreground/70">
+                    From
+                  </Label>
                   <Input
                     type="date"
                     value={profile.time_series_config.date_from ?? ''}
@@ -1109,7 +1134,7 @@ export function SeedDataTab() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-zinc-600">To</Label>
+                  <Label className="text-xs text-muted-foreground/70">To</Label>
                   <Input
                     type="date"
                     value={profile.time_series_config.date_to ?? ''}
@@ -1140,7 +1165,7 @@ export function SeedDataTab() {
                   profile.time_series_config.include_blood_pressure;
                 return (
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs text-zinc-500">
+                    <Label className="text-xs text-muted-foreground">
                       Series types
                     </Label>
                     <button
@@ -1155,7 +1180,7 @@ export function SeedDataTab() {
                         });
                         clearPreset();
                       }}
-                      className="text-xs text-zinc-500 hover:text-zinc-300"
+                      className="text-xs text-muted-foreground hover:text-foreground/90"
                     >
                       {allEnabled ? 'Clear all' : 'Select all'}
                     </button>
@@ -1164,7 +1189,7 @@ export function SeedDataTab() {
               })()}
               {CONTINUOUS_SERIES_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                  <div className="text-xs text-muted-foreground/70 mb-1.5 uppercase tracking-wide">
                     {group.label}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -1190,7 +1215,7 @@ export function SeedDataTab() {
                           className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                             selected
                               ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                              : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                              : 'border-border text-muted-foreground hover:border-border-hover'
                           }`}
                         >
                           {type.label}
@@ -1202,7 +1227,7 @@ export function SeedDataTab() {
               ))}
 
               <div>
-                <div className="text-xs text-zinc-600 mb-1.5 uppercase tracking-wide">
+                <div className="text-xs text-muted-foreground/70 mb-1.5 uppercase tracking-wide">
                   Paired
                 </div>
                 <button
@@ -1220,7 +1245,7 @@ export function SeedDataTab() {
                   className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                     profile.time_series_config.include_blood_pressure
                       ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                      : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                      : 'border-border text-muted-foreground hover:border-border-hover'
                   }`}
                 >
                   Blood pressure (systolic + diastolic)
@@ -1232,11 +1257,11 @@ export function SeedDataTab() {
       </div>
 
       {/* Providers */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Wifi className="h-4 w-4 text-zinc-400" />
-          <h3 className="text-sm font-medium text-white">Providers</h3>
-          <span className="text-xs text-zinc-600">
+          <Wifi className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium text-foreground">Providers</h3>
+          <span className="text-xs text-muted-foreground/70">
             (none selected = random {profile.num_connections})
           </span>
         </div>
@@ -1248,7 +1273,7 @@ export function SeedDataTab() {
               className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                 selectedProviders?.includes(prov.id)
                   ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
-                  : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                  : 'border-border text-muted-foreground hover:border-border-hover'
               }`}
             >
               {prov.label}
@@ -1256,7 +1281,9 @@ export function SeedDataTab() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <Label className="text-xs text-zinc-500">Connections per user</Label>
+          <Label className="text-xs text-muted-foreground">
+            Connections per user
+          </Label>
           <Input
             type="number"
             min={1}
@@ -1298,7 +1325,7 @@ export function SeedDataTab() {
               ? 'Dispatching...'
               : `Generate ${numUsers} user${numUsers > 1 ? 's' : ''}`}
           </Button>
-          <span className="text-xs text-zinc-600">
+          <span className="text-xs text-muted-foreground/70">
             Data generation runs in the background via Celery.
           </span>
         </div>

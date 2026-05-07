@@ -53,14 +53,14 @@ export function WebhookTestEventDialog({
         </DialogHeader>
 
         <div className="space-y-1.5">
-          <Label htmlFor="test-event-type" className="text-zinc-300">
+          <Label htmlFor="test-event-type" className="text-foreground/90">
             Event type
           </Label>
           <select
             id="test-event-type"
             value={eventType}
             onChange={(e) => setEventType(e.target.value)}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-200"
+            className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-foreground"
           >
             {eventTypes.data?.map((t) => (
               <option key={t.name} value={t.name}>
@@ -68,7 +68,7 @@ export function WebhookTestEventDialog({
               </option>
             ))}
           </select>
-          <p className="text-[10px] text-zinc-600">
+          <p className="text-[10px] text-muted-foreground/70">
             {eventTypes.data?.find((t) => t.name === eventType)?.description}
           </p>
         </div>

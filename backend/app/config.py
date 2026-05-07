@@ -199,6 +199,15 @@ class Settings(BaseSettings):
             self.suunto_webhook_secret = SecretStr(self.secret_key)
         return self
 
+    @model_validator(mode="after")
+    def derive_oura_webhook_verification_token(self) -> "Settings":
+        if (
+            self.oura_webhook_verification_token is None
+            or self.oura_webhook_verification_token.get_secret_value() == ""
+        ):
+            self.oura_webhook_verification_token = SecretStr(self.secret_key)
+        return self
+
     @field_validator("cors_origins", mode="after")
     @classmethod
     def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:

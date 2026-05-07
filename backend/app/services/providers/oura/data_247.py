@@ -453,7 +453,6 @@ class Oura247Data(Base247DataTemplate):
         recovery_metrics, health_scores = normalized
 
         metrics = [
-            ("recovery_score", SeriesType.recovery_score),
             ("temperature_deviation", SeriesType.skin_temperature_deviation),
             ("temperature_trend_deviation", SeriesType.skin_temperature_trend_deviation),
         ]

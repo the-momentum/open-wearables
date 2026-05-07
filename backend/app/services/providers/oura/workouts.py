@@ -104,6 +104,19 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         """Get detailed workout data from Oura API."""
         return self._make_api_request(db, user_id, f"/v2/usercollection/workout/{workout_id}")
 
+    def save_by_id(self, db: DbSession, user_id: UUID, workout_id: str) -> int:
+        """Fetch a single workout by ID and save it."""
+        raw = self.get_workout_detail_from_api(db, user_id, workout_id)
+        if not raw or not isinstance(raw, dict):
+            return 0
+        count = 0
+        for record, details in self._build_bundles([OuraWorkoutJSON(**raw)], user_id):
+            created = event_record_service.create(db, record)
+            detail = details.model_copy(update={"record_id": created.id})
+            event_record_service.create_detail(db, detail)
+            count += 1
+        return count
+
     def _extract_dates(self, start_timestamp: str, end_timestamp: str) -> tuple[datetime, datetime]:
         """Extract start and end dates from ISO 8601 strings."""
         start_date = datetime.fromisoformat(start_timestamp.replace("Z", "+00:00"))

@@ -173,9 +173,6 @@ EXAMPLE_PAYLOADS: dict[str, dict] = {
         WebhookEventType.SERIES_HEART_RATE_VARIABILITY_RMSSD, "heart_rate_variability_rmssd", "garmin", "ms", 42.0
     ),
     # Recovery
-    WebhookEventType.SERIES_RECOVERY_SCORE: _ts_payload(
-        WebhookEventType.SERIES_RECOVERY_SCORE, "recovery_score", "oura", "score", 78.0
-    ),
     WebhookEventType.SERIES_GARMIN_BODY_BATTERY: _ts_payload(
         WebhookEventType.SERIES_GARMIN_BODY_BATTERY, "garmin_body_battery", "garmin", "score", 65.0
     ),

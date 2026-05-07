@@ -18,7 +18,7 @@ export function DateRangeSelector({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 bg-zinc-800/50 p-1 rounded-lg',
+        'flex items-center gap-1 bg-muted/50 p-1 rounded-lg',
         className
       )}
     >
@@ -29,8 +29,8 @@ export function DateRangeSelector({
           className={cn(
             'px-2 py-1 text-xs font-medium rounded-md transition-colors',
             value === days
-              ? 'bg-zinc-700 text-white'
-              : 'text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800'
+              ? 'bg-muted-foreground/40 text-foreground'
+              : 'text-muted-foreground hover:text-foreground/90 hover:bg-muted'
           )}
         >
           {days}d

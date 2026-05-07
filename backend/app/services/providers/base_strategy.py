@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from celery import current_app as celery_app
@@ -64,6 +64,7 @@ class ProviderCapabilities:
     webhook_callback: bool = False
     webhook_stream: bool = False
     webhook_ping: bool = False
+    webhook_registration_api: bool = False
     max_historical_days: int | None = None
     """Hard limit on how many days of history the provider allows. None = no known limit."""
 
@@ -189,6 +190,14 @@ class BaseProviderStrategy(ABC):
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
+
+    async def register_webhooks(self, callback_url: str) -> Any:
+        """Register webhook subscriptions for this provider.
+
+        Only meaningful when ``capabilities.webhook_registration_api`` is True.
+        Concrete strategies that support programmatic registration should override this.
+        """
+        raise NotImplementedError(f"Provider '{self.name}' does not support programmatic webhook registration")
 
     @property
     def icon_url(self) -> str:

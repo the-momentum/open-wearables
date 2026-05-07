@@ -112,7 +112,7 @@ export function WebhookForm({
   return (
     <form onSubmit={handleFormSubmit} className="space-y-4">
       <div className="space-y-1.5">
-        <Label htmlFor="webhook-url" className="text-zinc-300">
+        <Label htmlFor="webhook-url" className="text-foreground/90">
           Endpoint URL
         </Label>
         <Input
@@ -120,20 +120,22 @@ export function WebhookForm({
           type="url"
           placeholder="https://example.com/webhooks/openwearables"
           {...form.register('url')}
-          className="bg-zinc-800 border-zinc-700"
+          className="bg-muted border-border"
         />
         {form.formState.errors.url && (
-          <p className="text-xs text-red-500">
+          <p className="text-xs text-[hsl(var(--destructive-muted))]">
             {form.formState.errors.url.message}
           </p>
         )}
-        <p className="text-[10px] text-zinc-600">Must use HTTPS.</p>
+        <p className="text-[10px] text-muted-foreground/70">Must use HTTPS.</p>
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="webhook-description" className="text-zinc-300">
+        <Label htmlFor="webhook-description" className="text-foreground/90">
           Description{' '}
-          <span className="text-zinc-600 font-normal">(optional)</span>
+          <span className="text-muted-foreground/70 font-normal">
+            (optional)
+          </span>
         </Label>
         <Input
           id="webhook-description"
@@ -141,48 +143,52 @@ export function WebhookForm({
           placeholder="Production ingestion pipeline"
           maxLength={500}
           {...form.register('description')}
-          className="bg-zinc-800 border-zinc-700"
+          className="bg-muted border-border"
         />
         {form.formState.errors.description && (
-          <p className="text-xs text-red-500">
+          <p className="text-xs text-[hsl(var(--destructive-muted))]">
             {form.formState.errors.description.message}
           </p>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="webhook-user-id" className="text-zinc-300">
+        <Label htmlFor="webhook-user-id" className="text-foreground/90">
           User filter{' '}
-          <span className="text-zinc-600 font-normal">(optional)</span>
+          <span className="text-muted-foreground/70 font-normal">
+            (optional)
+          </span>
         </Label>
         <Input
           id="webhook-user-id"
           type="text"
           placeholder="UUID - leave empty to receive events for all users"
           {...form.register('user_id')}
-          className="bg-zinc-800 border-zinc-700 font-mono text-xs"
+          className="bg-muted border-border font-mono text-xs"
         />
         {form.formState.errors.user_id && (
-          <p className="text-xs text-red-500">
+          <p className="text-xs text-[hsl(var(--destructive-muted))]">
             {form.formState.errors.user_id.message}
           </p>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-zinc-300">
+        <Label className="text-foreground/90">
           Event types{' '}
-          <span className="text-zinc-600 font-normal">
+          <span className="text-muted-foreground/70 font-normal">
             (leave none selected to receive all)
           </span>
         </Label>
         {eventTypes.isLoading ? (
-          <div className="flex items-center gap-2 text-xs text-zinc-500 py-2">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
             <Loader2 className="h-3 w-3 animate-spin" />
             Loading event types...
           </div>
         ) : eventTypes.error ? (
-          <p className="text-xs text-red-500">Failed to load event types.</p>
+          <p className="text-xs text-[hsl(var(--destructive-muted))]">
+            Failed to load event types.
+          </p>
         ) : (
           <Controller
             control={form.control}
@@ -246,7 +252,7 @@ export function WebhookForm({
                     className={
                       isOn
                         ? 'cursor-pointer bg-white text-black hover:bg-zinc-200'
-                        : 'cursor-pointer border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
+                        : 'cursor-pointer border-border text-muted-foreground hover:border-zinc-500 hover:text-foreground'
                     }
                   >
                     {name}
@@ -261,9 +267,9 @@ export function WebhookForm({
                     placeholder="Filter event types..."
                     value={eventFilter}
                     onChange={(e) => setEventFilter(e.target.value)}
-                    className="bg-zinc-800 border-zinc-700 h-8 text-xs"
+                    className="bg-muted border-border h-8 text-xs"
                   />
-                  <div className="flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-900/50 p-2">
+                  <div className="flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-card/40 p-2">
                     {filteredTop.length ? (
                       filteredTop.map((t) => {
                         const children = childrenByGroup.get(t.name);
@@ -300,7 +306,7 @@ export function WebhookForm({
                               <button
                                 type="button"
                                 onClick={() => toggleExpanded(t.name)}
-                                className="text-zinc-500 hover:text-zinc-300 focus:outline-none flex-shrink-0"
+                                className="text-muted-foreground hover:text-foreground/90 focus:outline-none flex-shrink-0"
                                 title={
                                   isExpanded
                                     ? 'Collapse'
@@ -328,7 +334,7 @@ export function WebhookForm({
                                 onClick={() =>
                                   toggleAllChildren(t.name, children)
                                 }
-                                className="text-[10px] text-zinc-500 hover:text-zinc-300 focus:outline-none flex-shrink-0"
+                                className="text-[10px] text-muted-foreground hover:text-foreground/90 focus:outline-none flex-shrink-0"
                                 title={
                                   allChildrenOn
                                     ? 'Deselect all specific events'
@@ -336,7 +342,7 @@ export function WebhookForm({
                                 }
                               >
                                 {allChildrenOn ? (
-                                  <span className="text-zinc-300">
+                                  <span className="text-foreground/90">
                                     − all specific
                                   </span>
                                 ) : someChildrenOn ? (
@@ -350,7 +356,7 @@ export function WebhookForm({
                             </div>
 
                             {isExpanded && (
-                              <div className="mt-1 ml-4 flex flex-wrap gap-1.5 border-l border-zinc-800 pl-2.5 pb-1.5">
+                              <div className="mt-1 ml-4 flex flex-wrap gap-1.5 border-l border-border/60 pl-2.5 pb-1.5">
                                 {children.map((c) => (
                                   <EventBadge
                                     key={c.name}
@@ -366,13 +372,13 @@ export function WebhookForm({
                         );
                       })
                     ) : (
-                      <p className="text-xs text-zinc-600 px-1 py-2">
+                      <p className="text-xs text-muted-foreground/70 px-1 py-2">
                         No matching event types.
                       </p>
                     )}
                   </div>
                   {selected.size > 0 && (
-                    <p className="text-[10px] text-zinc-600">
+                    <p className="text-[10px] text-muted-foreground/70">
                       {selected.size} event type{selected.size !== 1 ? 's' : ''}{' '}
                       selected
                     </p>

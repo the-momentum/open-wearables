@@ -229,8 +229,8 @@ function UserDetailPage() {
   if (!userLoading && !user) {
     return (
       <div className="p-8">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-12 text-center">
-          <p className="text-zinc-400">User not found</p>
+        <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl p-12 text-center">
+          <p className="text-muted-foreground">User not found</p>
           <Button variant="outline" className="mt-4" asChild>
             <Link to={ROUTES.users}>
               <ArrowLeft className="h-4 w-4" />
@@ -249,23 +249,23 @@ function UserDetailPage() {
         <div className="flex items-center gap-4">
           <Link
             to={ROUTES.users}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
           {userLoading ? (
             <div className="space-y-2">
-              <div className="h-7 w-48 bg-zinc-800 rounded animate-pulse" />
-              <div className="h-4 w-32 bg-zinc-800/50 rounded animate-pulse" />
+              <div className="h-7 w-48 bg-muted rounded animate-pulse" />
+              <div className="h-4 w-32 bg-muted/50 rounded animate-pulse" />
             </div>
           ) : (
             <div>
-              <h1 className="text-2xl font-medium text-white">
+              <h1 className="text-2xl font-medium text-foreground">
                 {user?.first_name || user?.last_name
                   ? `${user?.first_name || ''} ${user?.last_name || ''}`.trim()
                   : 'Unnamed User'}
               </h1>
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-muted-foreground">
                 {user?.email || 'No email'}
               </p>
             </div>
@@ -275,7 +275,7 @@ function UserDetailPage() {
           <Button variant="secondary" onClick={handleCopyPairLink}>
             {copied ? (
               <>
-                <Check className="h-4 w-4 text-emerald-600" />
+                <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
                 Copied!
               </>
             ) : (
@@ -332,7 +332,7 @@ function UserDetailPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="bg-zinc-800 border-zinc-700/50"
+                className="bg-muted border-border/50"
               >
                 <DropdownMenuItem
                   onSelect={handleUploadClick}
@@ -408,7 +408,7 @@ function UserDetailPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="api-url" className="text-zinc-300">
+              <Label htmlFor="api-url" className="text-foreground/90">
                 API URL
               </Label>
               <div className="flex items-center gap-2">
@@ -416,7 +416,7 @@ function UserDetailPage() {
                   id="api-url"
                   readOnly
                   value={API_CONFIG.baseUrl}
-                  className="bg-zinc-800 border-zinc-700 font-mono text-sm focus-visible:ring-0"
+                  className="bg-muted border-border font-mono text-sm focus-visible:ring-0"
                 />
                 <Button
                   onClick={async () => {
@@ -435,7 +435,7 @@ function UserDetailPage() {
                   aria-label="Copy API URL"
                 >
                   {urlCopied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
+                    <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -443,7 +443,7 @@ function UserDetailPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invitation-code" className="text-zinc-300">
+              <Label htmlFor="invitation-code" className="text-foreground/90">
                 Invitation Code
               </Label>
               <div className="flex items-center gap-2">
@@ -451,7 +451,7 @@ function UserDetailPage() {
                   id="invitation-code"
                   readOnly
                   value={invitationCodeData?.code || ''}
-                  className="bg-zinc-800 border-zinc-700 font-mono text-lg tracking-widest text-center focus-visible:ring-0"
+                  className="bg-muted border-border font-mono text-lg tracking-widest text-center focus-visible:ring-0"
                 />
                 <Button
                   onClick={handleCopyCode}
@@ -461,14 +461,14 @@ function UserDetailPage() {
                   aria-label="Copy invitation code"
                 >
                   {codeCopied ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
+                    <Check className="h-4 w-4 text-[hsl(var(--success-muted))]" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
                 </Button>
               </div>
               {invitationCodeData?.expires_at && (
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-muted-foreground">
                   Expires:{' '}
                   {new Date(invitationCodeData.expires_at).toLocaleString()}
                 </p>

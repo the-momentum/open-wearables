@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.database import DbSession
 from app.schemas.enums import get_series_type_from_id
+from app.schemas.enums.series_types import SERIES_TYPE_ENUM_BY_ID
 from app.schemas.responses.dashboard import ProviderDataCount, UserDataSummaryResponse
 from app.schemas.responses.upload import (
     CountWithGrowth,
@@ -59,7 +60,7 @@ class SystemInfoService:
         growth = self._calculate_weekly_growth(this_week, last_week)
         return CountWithGrowth(count=total, weekly_growth=growth)
 
-    def get_system_info(self, db_session: DbSession) -> SystemInfoResponse:
+    def get_system_info(self, db_session: DbSession, top_limit: int = 6) -> SystemInfoResponse:
         """Get system dashboard information."""
         now = datetime.now(timezone.utc)
         week_ago = now - timedelta(days=7)
@@ -102,8 +103,9 @@ class SystemInfoService:
                 series_type=get_series_type_from_id(series_type_id).value,
                 count=count,
             )
-            for series_type_id, count in series_type_counts[:5]  # Top 5
-        ]
+            for series_type_id, count in series_type_counts
+            if series_type_id in SERIES_TYPE_ENUM_BY_ID
+        ][:top_limit]
 
         # Get metrics by workout type
         workout_type_counts = self.event_record_service.get_count_by_workout_type(db_session)
@@ -112,7 +114,7 @@ class SystemInfoService:
                 workout_type=workout_type or "Unknown",
                 count=count,
             )
-            for workout_type, count in workout_type_counts[:5]  # Top 5
+            for workout_type, count in workout_type_counts[:top_limit]
         ]
 
         return SystemInfoResponse(

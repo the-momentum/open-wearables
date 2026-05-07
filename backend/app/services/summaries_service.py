@@ -80,6 +80,7 @@ BODY_SLOW_CHANGING_SERIES = [
 BODY_AVERAGED_SERIES = [
     SeriesType.resting_heart_rate,
     SeriesType.heart_rate_variability_sdnn,
+    SeriesType.heart_rate_variability_rmssd,
 ]
 
 # Default settings for body summary
@@ -714,17 +715,21 @@ class SummariesService:
         )
 
         resting_hr_data = vitals_aggregates.get(SeriesType.resting_heart_rate)
-        hrv_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
+        hrv_sdnn_data = vitals_aggregates.get(SeriesType.heart_rate_variability_sdnn)
+        hrv_rmssd_data = vitals_aggregates.get(SeriesType.heart_rate_variability_rmssd)
 
         resting_hr_avg = resting_hr_data.get("avg") if resting_hr_data else None
         resting_hr = int(round(resting_hr_avg)) if resting_hr_avg else None
-        hrv_avg = hrv_data.get("avg") if hrv_data else None
-        avg_hrv = round(hrv_avg, 1) if hrv_avg else None
+        hrv_sdnn_raw = hrv_sdnn_data.get("avg") if hrv_sdnn_data else None
+        hrv_sdnn_avg = round(hrv_sdnn_raw, 1) if hrv_sdnn_raw is not None else None
+        hrv_rmssd_raw = hrv_rmssd_data.get("avg") if hrv_rmssd_data else None
+        hrv_rmssd_avg = round(hrv_rmssd_raw, 1) if hrv_rmssd_raw is not None else None
 
         body_averaged = BodyAveraged(
             period_days=average_period_days,
             resting_heart_rate_bpm=resting_hr,
-            avg_hrv_sdnn_ms=avg_hrv,
+            avg_hrv_sdnn_ms=hrv_sdnn_avg,
+            avg_hrv_rmssd_ms=hrv_rmssd_avg,
             period_start=period_start,
             period_end=period_end,
         )
@@ -774,10 +779,10 @@ class SummariesService:
 
         # Check if we have any data at all
         has_slow_changing = any([weight_kg, height_cm, body_fat_pct, muscle_mass_kg])
-        has_averaged = any([resting_hr, avg_hrv])
+        has_averaged = any([resting_hr, hrv_sdnn_avg, hrv_rmssd_avg])
         has_latest = any([body_temp_celsius, skin_temp_celsius, blood_pressure])
 
-        if not has_slow_changing and not has_averaged and not has_latest:
+        if not (has_slow_changing or has_averaged or has_latest):
             return None
 
         body_latest = BodyLatest(
