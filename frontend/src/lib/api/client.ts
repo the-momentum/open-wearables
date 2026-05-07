@@ -209,6 +209,53 @@ export const apiClient = {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   },
 
+  /**
+   * Perform a raw fetch through the shared auth layer and return the
+   * Response without parsing the body. Handles 401 the same way as
+   * `request<T>` (clears session and redirects). Use this for streaming
+   * responses such as SSE where the body must be consumed by the caller.
+   */
+  async fetchRaw(
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<Response> {
+    let url = `${API_CONFIG.baseUrl}${endpoint}`;
+    const token = getToken();
+
+    if (options.params) {
+      const searchParams = new URLSearchParams();
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, String(value));
+        }
+      });
+      const queryString = searchParams.toString();
+      if (queryString) {
+        url += (url.includes('?') ? '&' : '?') + queryString;
+      }
+    }
+
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string>),
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const { params: _params, ...fetchOptions } = options;
+    const response = await fetch(url, { ...fetchOptions, headers });
+
+    if (response.status === 401) {
+      clearSession();
+      if (typeof window !== 'undefined') {
+        window.location.href = ROUTES.login;
+      }
+      throw ApiError.fromResponse(response);
+    }
+
+    return response;
+  },
+
   async postMultipart<T>(
     endpoint: string,
     formData: FormData,

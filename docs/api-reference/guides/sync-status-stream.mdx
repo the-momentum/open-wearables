@@ -24,15 +24,38 @@ Three endpoints are exposed:
 
 All three accept the same `ApiKeyDep` authentication as the rest of the public API: pass your API key via the `X-API-Key` header.
 
+<CodeGroup>
+```bash X-API-Key
+curl -H "X-API-Key: YOUR_API_KEY" \
+  "https://api.openwearables.io/api/v1/users/USER_ID/sync/stream"
+```
+</CodeGroup>
+
+**HTTP status codes (all three endpoints)**
+
+| Code | Meaning |
+| ---- | ------- |
+| `200` | Success |
+| `401` | Missing or invalid API key |
+| `404` | User not found |
+| `422` | Validation error (invalid parameter value) |
+| `500` | Internal server error |
+
+**Error response shape**
+
+```json
+{ "detail": "User not found" }
+```
+
 <Note>
-The SSE endpoint also supports webhooks — if you have outgoing webhook endpoints registered, terminal sync events (`sync.started`, `sync.completed`, `sync.failed`) are also dispatched as Svix webhooks. See the [Webhooks guide](/api-reference/guides/webhooks).
+The SSE endpoint also supports webhooks — if you have outgoing webhook endpoints registered, terminal sync events (`sync.completed`, `sync.failed`, `sync.cancelled`) are also dispatched as Svix webhooks. See the [Webhooks guide](/api-reference/guides/webhooks).
 </Note>
 
 ---
 
 ## Event Schema
 
-Every event is a JSON object emitted as the `data` field of an SSE message with `event: sync_status`:
+Every event is a JSON object emitted as the `data` field of an SSE message with `event: sync.status`:
 
 ```json
 {
@@ -80,7 +103,19 @@ curl -N "https://api.openwearables.io/api/v1/users/USER_ID/sync/stream?replay=20
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-The `replay` query parameter (1..200, default `20`) causes the most recent events from the last 24 hours to be replayed before the live stream begins, so a freshly connected client can see in-progress syncs immediately.
+**Path parameters**
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `user_id` | `string (UUID)` | Required | The user whose sync events to stream. |
+
+**Query parameters**
+
+| Parameter | Type | Default | Range | Description |
+| --------- | ---- | ------- | ----- | ----------- |
+| `replay` | `integer` | `20` | `1..200` | Number of recent events to replay before the live stream begins. Allows a freshly connected client to catch up on in-progress syncs. |
+
+The `replay` parameter causes the most recent events from the last 24 hours to be replayed before the live stream begins, so a freshly connected client can see in-progress syncs immediately.
 
 The stream emits:
 
@@ -89,6 +124,32 @@ The stream emits:
 - A `: heartbeat` comment every 15 seconds to keep the connection alive.
 
 Browsers can consume the stream using `EventSource` (without auth headers) or `fetch` + `ReadableStream` (with a `Bearer` JWT token in the `Authorization` header). Both authentication methods are accepted by the same endpoint — no separate dashboard variant is needed.
+
+**Example SSE stream output**
+
+```
+: connected
+
+event: sync.status
+data: {"event_id":"evt_01HZ...","run_id":"pull_garmin_user42_1730000000","provider":"garmin","stage":"fetching","status":"in_progress","progress":0.42,...}
+
+: heartbeat
+
+event: sync.status
+data: {"event_id":"evt_01HZ...","run_id":"pull_garmin_user42_1730000000","provider":"garmin","stage":"completed","status":"success","progress":1.0,"ended_at":"2024-10-27T10:16:45Z",...}
+```
+
+**Error responses**
+
+```json
+HTTP/1.1 401 Unauthorized
+{ "detail": "Invalid authentication credentials" }
+```
+
+```json
+HTTP/1.1 404 Not Found
+{ "detail": "User not found" }
+```
 
 ### Example: Node.js
 
@@ -117,7 +178,44 @@ curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/recent?limit=50" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-Returns up to `limit` events (default 50, max 200) ordered newest first. Useful when reconnecting or rendering a "history" tab.
+**Path parameters**
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `user_id` | `string (UUID)` | Required | The user whose events to return. |
+
+**Query parameters**
+
+| Parameter | Type | Default | Range | Description |
+| --------- | ---- | ------- | ----- | ----------- |
+| `limit` | `integer` | `50` | `1..200` | Maximum number of events to return, ordered newest first. |
+
+Events are retained in Redis for **24 hours**. Useful when reconnecting or rendering a "history" tab to seed the UI before opening the SSE stream.
+
+**Success response** — array of [`SyncStatusEvent`](#event-schema) objects, newest first.
+
+```json
+[
+  {
+    "event_id": "evt_01HZ...",
+    "run_id": "pull_garmin_user42_1730000000",
+    "user_id": "user42",
+    "provider": "garmin",
+    "source": "pull",
+    "stage": "completed",
+    "status": "success",
+    "message": null,
+    "progress": 1.0,
+    "items_processed": 42,
+    "items_total": 42,
+    "error": null,
+    "metadata": {},
+    "started_at": "2024-10-27T10:15:00Z",
+    "ended_at": "2024-10-27T10:16:45Z",
+    "timestamp": "2024-10-27T10:16:45Z"
+  }
+]
+```
 
 ---
 
@@ -128,7 +226,74 @@ curl "https://api.openwearables.io/api/v1/users/USER_ID/sync/runs?limit=20" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-Returns the **latest** event for each unique `run_id` from the past 24 hours, ordered newest first. This is the most concise way to render a "recent syncs" panel.
+**Path parameters**
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `user_id` | `string (UUID)` | Required | The user whose run summaries to return. |
+
+**Query parameters**
+
+| Parameter | Type | Default | Range | Description |
+| --------- | ---- | ------- | ----- | ----------- |
+| `limit` | `integer` | `20` | `1..50` | Maximum number of run summaries to return. |
+
+Returns the **latest** event for each unique `run_id` from the past 24 hours (one row per run), ordered newest first. Each `run_id` is stable for the entire lifetime of a single sync invocation — multiple progress events share the same `run_id` and only the most recent one is surfaced here. For Garmin backfill, the `run_id` is unique per execution and incorporates an execution-scoped trace identifier.
+
+**Success response** — array of run summary objects:
+
+```json
+[
+  {
+    "run_id": "pull_garmin_user42_1730000000",
+    "user_id": "user42",
+    "provider": "garmin",
+    "source": "pull",
+    "stage": "completed",
+    "status": "success",
+    "message": null,
+    "progress": 1.0,
+    "items_processed": 42,
+    "items_total": 42,
+    "error": null,
+    "started_at": "2024-10-27T10:15:00Z",
+    "ended_at": "2024-10-27T10:16:45Z",
+    "last_update": "2024-10-27T10:16:45Z"
+  },
+  {
+    "run_id": "garmin_backfill_user42_trace-abc123",
+    "user_id": "user42",
+    "provider": "garmin",
+    "source": "backfill",
+    "stage": "fetching",
+    "status": "in_progress",
+    "message": "Fetching activities window 3 of 12",
+    "progress": 0.25,
+    "items_processed": null,
+    "items_total": null,
+    "error": null,
+    "started_at": "2024-10-27T09:00:00Z",
+    "ended_at": null,
+    "last_update": "2024-10-27T09:45:00Z"
+  }
+]
+```
+
+---
+
+## Rate limiting
+
+The sync status endpoints share the global API rate limit. The SSE stream endpoint (`/sync/stream`) holds a single long-lived connection per client — there is no per-user connection cap, but you should maintain **at most one open stream per user** and reuse it rather than opening a new one on each page load.
+
+For polling-based fallbacks using `/sync/recent` or `/sync/runs`, a reasonable poll interval is **5–15 seconds**. Polling faster than once per second provides no meaningful benefit since event latency is already sub-second via the SSE stream.
+
+**Retry guidance**
+
+If the SSE stream disconnects (network error, server restart, or a `5xx` response), implement exponential back-off before reconnecting:
+
+1. On first disconnect, reconnect after **1 second**.
+2. Double the interval on each subsequent failure (2 s, 4 s, 8 s…) up to a maximum of **30 seconds**.
+3. Pass `replay=<N>` on reconnect so you don't miss events that arrived while offline.
 
 ---
 

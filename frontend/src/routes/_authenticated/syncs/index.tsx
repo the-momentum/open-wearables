@@ -56,12 +56,14 @@ function formatRelative(iso: string | null): string {
   return date.toLocaleString();
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 50;
 
 function SyncsPage() {
   const [filters, setFilters] = useState<AllSyncRunsFilters>({});
   const [userIdInput, setUserIdInput] = useState('');
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
 
   const activeFilters = useMemo(() => {
     const f: AllSyncRunsFilters = { ...filters };
@@ -74,14 +76,14 @@ function SyncsPage() {
     isLoading,
     isFetching,
     refetch,
-  } = useAllSyncRuns(activeFilters, PAGE_SIZE * (page + 1));
+  } = useAllSyncRuns(activeFilters, pageSize * (page + 1) + 1);
 
   const paginatedRuns = useMemo(() => {
     if (!runs) return [];
-    return runs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  }, [runs, page]);
+    return runs.slice(page * pageSize, (page + 1) * pageSize);
+  }, [runs, page, pageSize]);
 
-  const hasMore = (runs?.length ?? 0) > (page + 1) * PAGE_SIZE;
+  const hasMore = (runs?.length ?? 0) > pageSize * (page + 1);
 
   const clearFilters = () => {
     setFilters({});
@@ -166,6 +168,23 @@ function SyncsPage() {
             Clear
           </Button>
         )}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-zinc-500">Per page:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(0);
+            }}
+            className="h-8 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-xs text-zinc-300 outline-none focus:ring-1 focus:ring-zinc-600"
+          >
+            {PAGE_SIZE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Table */}
@@ -216,9 +235,9 @@ function SyncsPage() {
           {/* Pagination */}
           <div className="flex items-center justify-between mt-4">
             <p className="text-xs text-zinc-500">
-              Showing {page * PAGE_SIZE + 1}–
-              {Math.min((page + 1) * PAGE_SIZE, runs?.length ?? 0)} of{' '}
-              {runs?.length ?? 0}
+              Showing {page * pageSize + 1}–
+              {page * pageSize + paginatedRuns.length}
+              {hasMore ? '+' : ''}
             </p>
             <div className="flex gap-2">
               <Button

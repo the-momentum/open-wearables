@@ -1,6 +1,5 @@
 import { apiClient } from '../client';
-import { API_CONFIG, API_ENDPOINTS } from '../config';
-import { getToken } from '../../auth/session';
+import { API_ENDPOINTS } from '../config';
 
 export type SyncSource = 'pull' | 'webhook' | 'sdk' | 'backfill' | 'xml_import';
 export type SyncStage =
@@ -87,25 +86,24 @@ export const syncStatusService = {
   },
 
   /**
-   * Open the SSE stream using fetch + ReadableStream so we can send the
-   * developer JWT via Authorization header (EventSource cannot).
+   * Open the SSE stream via the shared apiClient so 401 responses trigger
+   * the centralized session-clear / redirect logic.
    *
    * Returns the raw Response; consumers iterate the body via a TextDecoder.
    */
-  async openStream(
+  openStream(
     userId: string,
     replay = 20,
     signal?: AbortSignal
   ): Promise<Response> {
-    const token = getToken();
-    const params = new URLSearchParams();
-    params.set('replay', String(replay));
-    const url = `${API_CONFIG.baseUrl}${API_ENDPOINTS.syncStatusStream(userId)}?${params.toString()}`;
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-    };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    return fetch(url, { headers, signal, credentials: 'include' });
+    return apiClient.fetchRaw(API_ENDPOINTS.syncStatusStream(userId), {
+      params: { replay: String(replay) },
+      headers: {
+        Accept: 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+      credentials: 'include',
+      signal,
+    });
   },
 };

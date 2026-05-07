@@ -6,7 +6,7 @@ import { queryKeys } from '../../lib/query/keys';
 
 export function useRecentSyncs(userId: string, limit = 50, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.syncStatus.recent(userId),
+    queryKey: queryKeys.syncStatus.recent(userId, limit),
     queryFn: () => syncStatusService.getRecent(userId, limit),
     enabled: !!userId && enabled,
     refetchOnWindowFocus: false,
@@ -15,7 +15,7 @@ export function useRecentSyncs(userId: string, limit = 50, enabled = true) {
 
 export function useSyncRuns(userId: string, limit = 20, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.syncStatus.runs(userId),
+    queryKey: queryKeys.syncStatus.runs(userId, limit),
     queryFn: () => syncStatusService.getRuns(userId, limit),
     enabled: !!userId && enabled,
     refetchOnWindowFocus: false,
@@ -36,7 +36,8 @@ export function useAllSyncRuns(
 ) {
   return useQuery({
     queryKey: queryKeys.syncStatus.allRuns(
-      filters as Record<string, string | undefined>
+      filters as Record<string, string | undefined>,
+      limit
     ),
     queryFn: () => syncStatusService.getAllRuns({ ...filters, limit }),
     enabled,
@@ -98,6 +99,10 @@ export function useSyncStatusStream(
 
   useEffect(() => {
     if (!userId || !enabled) return;
+
+    // Clear any events/runs from a previous user before opening a new stream.
+    setEvents([]);
+    setActiveRuns(new Map());
 
     let cancelled = false;
     const controller = new AbortController();

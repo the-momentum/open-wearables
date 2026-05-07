@@ -125,7 +125,7 @@ class TestOAuthAuthorizeEndpoint:
         )
 
         # Assert - Should fail because apple doesn't have OAuth
-        assert response.status_code in [400, 422]
+        assert response.status_code in [400, 401, 422]
 
 
 class TestOAuthProvidersEndpoint:

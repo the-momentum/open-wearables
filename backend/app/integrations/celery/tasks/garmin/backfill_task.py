@@ -154,7 +154,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
-            run_id=f"garmin_backfill_{user_id}",
+            run_id=f"garmin_backfill_{user_id}_{trace_id}",
             message=f"Resuming Garmin backfill at window {current_window}",
             metadata={
                 "trace_id": trace_id,
@@ -195,7 +195,7 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         UUID(user_id),
         "garmin",
         SyncSource.BACKFILL,
-        run_id=f"garmin_backfill_{user_id}",
+        run_id=f"garmin_backfill_{user_id}_{trace_id}",
         message=f"Starting Garmin {MAX_BACKFILL_DAYS}-day historical backfill",
         metadata={
             "trace_id": trace_id,
