@@ -264,9 +264,9 @@ def sync_vendor_data(
                         )
 
                         try:
-                            # Use a fresh session for data_247: workouts.load_data() may commit
-                            # the shared session mid-task (when strain scores exist), leaving it
-                            # in 'committed' state. A new session avoids that contamination.
+                            # Fresh session: workouts.load_data() commits internally when
+                            # strain scores exist, leaving the shared session in 'committed'
+                            # state. A new session keeps data_247 isolated from that.
                             provider_any = cast(Any, strategy.data_247)
                             with SessionLocal() as db_247:
                                 if hasattr(provider_any, "load_and_save_all"):
