@@ -18,7 +18,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   pull: 'Live Sync',
   webhook: 'Webhook',
   sdk: 'SDK Upload',
-  backfill: 'Historical Backfill',
+  backfill: 'Historical Sync',
   xml_import: 'XML Import',
 };
 

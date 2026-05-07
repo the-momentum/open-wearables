@@ -149,10 +149,11 @@ def sync_vendor_data(
                 )
 
                 run_id = new_run_id(prefix="pull")
+                sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
                 started(
                     user_uuid,
                     provider_name,
-                    SyncSource.PULL,
+                    sync_source,
                     run_id=run_id,
                     message=(
                         f"Historical sync from {provider_name} started"
@@ -190,7 +191,7 @@ def sync_vendor_data(
                         progress(
                             user_uuid,
                             provider_name,
-                            SyncSource.PULL,
+                            sync_source,
                             run_id=run_id,
                             stage=SyncStage.FETCHING,
                             message=f"Fetching workouts from {provider_name}",
@@ -235,7 +236,7 @@ def sync_vendor_data(
                         progress(
                             user_uuid,
                             provider_name,
-                            SyncSource.PULL,
+                            sync_source,
                             run_id=run_id,
                             stage=SyncStage.FETCHING,
                             message=f"Fetching 24/7 data (sleep / recovery / activity) from {provider_name}",
@@ -311,7 +312,7 @@ def sync_vendor_data(
                     completed(
                         user_uuid,
                         provider_name,
-                        SyncSource.PULL,
+                        sync_source,
                         run_id=run_id,
                         status=final_status,
                         message=(
@@ -326,7 +327,7 @@ def sync_vendor_data(
                     failed(
                         user_uuid,
                         provider_name,
-                        SyncSource.PULL,
+                        sync_source,
                         run_id=run_id,
                         error=str(e),
                         message=f"Sync from {provider_name} failed",
