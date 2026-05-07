@@ -17,6 +17,7 @@ import { formatDate, truncateId } from '@/lib/utils/format';
 import { copyToClipboard } from '@/lib/utils/clipboard';
 import { ConnectionCard } from '@/components/user/connection-card';
 import { DataSummarySection } from '@/components/user/data-summary-section';
+import { useSyncStatusStream, useSyncRuns } from '@/hooks/api/use-sync-status';
 
 interface ProfileSectionProps {
   userId: string;
@@ -27,6 +28,10 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
   const { data: connections, isLoading: connectionsLoading } =
     useUserConnections(userId);
   const { mutate: updateUser, isPending: isUpdating } = useUpdateUser();
+
+  // Live sync stream – one SSE connection shared across all provider cards
+  const { activeRuns } = useSyncStatusStream(userId);
+  const { data: syncRuns } = useSyncRuns(userId, 30);
 
   const [copied, setCopied] = useState(false);
   const [copiedUserId, setCopiedUserId] = useState(false);
@@ -199,9 +204,23 @@ export function ProfileSection({ userId }: ProfileSectionProps) {
               </div>
             ) : connections && connections.length > 0 ? (
               <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(400px,1fr))]">
-                {connections.map((connection) => (
-                  <ConnectionCard key={connection.id} connection={connection} />
-                ))}
+                {connections.map((connection) => {
+                  const activeSync =
+                    Array.from(activeRuns.values()).find(
+                      (e) => e.provider === connection.provider
+                    ) ?? null;
+                  const recentRuns = (syncRuns ?? [])
+                    .filter((r) => r.provider === connection.provider)
+                    .slice(0, 10);
+                  return (
+                    <ConnectionCard
+                      key={connection.id}
+                      connection={connection}
+                      activeSync={activeSync}
+                      recentRuns={recentRuns}
+                    />
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8">

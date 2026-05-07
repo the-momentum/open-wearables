@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   EllipsisVertical,
   History,
   Info,
   Loader2,
+  PlayCircle,
   RefreshCw,
   RotateCcw,
   Timer,
@@ -50,10 +52,201 @@ import {
   useGarminCancelBackfill,
   useRetryGarminBackfill,
 } from '@/hooks/api/use-health';
+import type { SyncStatusEvent, SyncRunSummary } from '@/lib/api';
+
+// ─── Sync display helpers ────────────────────────────────────────────────────
+
+const STAGE_LABELS: Record<string, string> = {
+  queued: 'Queued',
+  started: 'Starting',
+  fetching: 'Fetching',
+  processing: 'Processing',
+  saving: 'Saving',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  pull: 'Live Sync',
+  webhook: 'Webhook',
+  sdk: 'SDK Upload',
+  backfill: 'Historical Backfill',
+  xml_import: 'XML Import',
+};
+
+const RUN_STATUS_CLASSES: Record<string, string> = {
+  success:
+    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  partial:
+    'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  failed: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  cancelled: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300',
+  in_progress:
+    'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+};
+
+function formatRunDuration(start: string | null, end: string | null): string {
+  if (!start || !end) return '—';
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (ms < 0 || !Number.isFinite(ms)) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}m ${rem}s`;
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  const diff = Date.now() - date.getTime();
+  if (diff < 0) return date.toLocaleString();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return date.toLocaleString();
+}
+
+function SyncProgressBar({ value }: { value: number }) {
+  const pct = Math.max(0, Math.min(100, value * 100));
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div
+        className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function ActiveSyncPanel({ event }: { event: SyncStatusEvent }) {
+  const stageLabel = STAGE_LABELS[event.stage] ?? event.stage;
+  const sourceLabel = SOURCE_LABELS[event.source] ?? event.source;
+  const itemsLabel =
+    event.items_total !== null && event.items_processed !== null
+      ? `${event.items_processed} / ${event.items_total} items`
+      : event.items_processed !== null
+        ? `${event.items_processed} items`
+        : null;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-blue-200/60 bg-gradient-to-r from-blue-50/80 to-indigo-50/40 p-3 dark:border-blue-900/40 dark:from-blue-950/40 dark:to-indigo-950/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+            {sourceLabel}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-200">
+            {stageLabel}
+          </span>
+          {itemsLabel && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {itemsLabel}
+            </span>
+          )}
+        </div>
+      </div>
+      {event.progress !== null && <SyncProgressBar value={event.progress} />}
+      {event.message && (
+        <p className="text-xs text-blue-700/70 dark:text-blue-300/70 line-clamp-1">
+          {event.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SyncRunRow({ run }: { run: SyncRunSummary }) {
+  const sourceLabel = SOURCE_LABELS[run.source] ?? run.source;
+  const badgeClass =
+    RUN_STATUS_CLASSES[run.status] ?? RUN_STATUS_CLASSES.in_progress;
+
+  const isSuccess = run.status === 'success';
+  const isPartial = run.status === 'partial';
+  const isFailed = run.status === 'failed';
+  const isCancelled = run.status === 'cancelled';
+
+  const Icon = isSuccess
+    ? CheckCircle2
+    : isPartial
+      ? AlertTriangle
+      : isFailed || isCancelled
+        ? XCircle
+        : PlayCircle;
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card/40 p-2.5">
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon
+          className={cn(
+            'h-3.5 w-3.5 shrink-0',
+            isSuccess && 'text-emerald-500',
+            isPartial && 'text-amber-500',
+            (isFailed || isCancelled) && 'text-rose-500',
+            !isSuccess &&
+              !isPartial &&
+              !isFailed &&
+              !isCancelled &&
+              'text-muted-foreground'
+          )}
+        />
+        <div className="flex flex-col min-w-0 gap-0.5">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>{sourceLabel}</span>
+            <span>·</span>
+            <span>{formatRelative(run.last_update)}</span>
+            {run.started_at && run.ended_at && (
+              <>
+                <span>·</span>
+                <span>{formatRunDuration(run.started_at, run.ended_at)}</span>
+              </>
+            )}
+            {run.items_processed !== null && (
+              <>
+                <span>·</span>
+                <span className="tabular-nums">
+                  {run.items_processed}
+                  {run.items_total !== null ? ` / ${run.items_total}` : ''}{' '}
+                  items
+                </span>
+              </>
+            )}
+          </div>
+          {run.error && (
+            <p className="text-xs text-rose-600 dark:text-rose-400 line-clamp-1">
+              {run.error}
+            </p>
+          )}
+        </div>
+      </div>
+      <span
+        className={cn(
+          'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+          badgeClass
+        )}
+      >
+        {run.status.replace('_', ' ')}
+      </span>
+    </div>
+  );
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 interface ConnectionCardProps {
   connection: UserConnection;
   className?: string;
+  /** Currently active sync event for this provider (from SSE stream). */
+  activeSync?: SyncStatusEvent | null;
+  /** Recent completed sync runs for this provider. */
+  recentRuns?: SyncRunSummary[];
 }
 
 // Format data type name for display (e.g., "bodyComps" -> "Body Comps")
@@ -70,8 +263,14 @@ function parseScopeString(scope: string): string[] {
   return scope.split(/[,\s]+/).filter(Boolean);
 }
 
-export function ConnectionCard({ connection, className }: ConnectionCardProps) {
+export function ConnectionCard({
+  connection,
+  className,
+  activeSync,
+  recentRuns,
+}: ConnectionCardProps) {
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [showLastSyncs, setShowLastSyncs] = useState(false);
 
   const { mutate: disconnectProvider, isPending: isDisconnecting } =
     useDisconnectProvider(connection.provider, connection.user_id);
@@ -511,6 +710,38 @@ export function ConnectionCard({ connection, className }: ConnectionCardProps) {
                   )}
                 </>
               )}
+          </div>
+        )}
+
+        {/* ── Active sync (live status from SSE) ─────────────────────── */}
+        {activeSync && <ActiveSyncPanel event={activeSync} />}
+
+        {/* ── Last syncs (collapsible) ────────────────────────────────── */}
+        {recentRuns && recentRuns.length > 0 && (
+          <div className="border-t pt-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowLastSyncs((v) => !v)}
+              className="flex w-full items-center justify-between text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5" />
+                Last syncs ({recentRuns.length})
+              </span>
+              <ChevronDown
+                className={cn(
+                  'h-3.5 w-3.5 transition-transform',
+                  showLastSyncs && 'rotate-180'
+                )}
+              />
+            </button>
+            {showLastSyncs && (
+              <div className="flex flex-col gap-1.5">
+                {recentRuns.map((run) => (
+                  <SyncRunRow key={run.run_id} run={run} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

@@ -34,7 +34,6 @@ import { ActivitySection } from '@/components/user/activity-section';
 import { BodySection } from '@/components/user/body-section';
 import { WorkoutSection } from '@/components/user/workout-section';
 import { ScoresSection } from '@/components/user/scores-section';
-import { SyncStatusBanner } from '@/components/user/sync-status-banner';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
 import {
   AlertDialog,
@@ -374,9 +373,6 @@ function UserDetailPage() {
           </AlertDialog>
         </div>
       </div>
-
-      {/* Live sync status */}
-      <SyncStatusBanner userId={userId} />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
