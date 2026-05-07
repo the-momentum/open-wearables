@@ -631,23 +631,25 @@ class EventRecordService(
             data_source = data_sources_by_id.get(record.data_source_id)
             if data_source is None:
                 continue
-            dispatches.append((
-                _EventRecordSnapshot(
-                    category=record.category,
-                    id=record.id,
-                    zone_offset=record.zone_offset,
-                    start_datetime=record.start_datetime,
-                    end_datetime=record.end_datetime,
-                    duration_seconds=record.duration_seconds,
-                    type=getattr(record, "type", None),
-                ),
-                _DataSourceSnapshot(
-                    provider=str(data_source.provider),
-                    device_model=data_source.device_model,
-                    user_id=data_source.user_id,
-                ),
-                detail,
-            ))
+            dispatches.append(
+                (
+                    _EventRecordSnapshot(
+                        category=record.category,
+                        id=record.id,
+                        zone_offset=record.zone_offset,
+                        start_datetime=record.start_datetime,
+                        end_datetime=record.end_datetime,
+                        duration_seconds=record.duration_seconds,
+                        type=getattr(record, "type", None),
+                    ),
+                    _DataSourceSnapshot(
+                        provider=str(data_source.provider),
+                        device_model=data_source.device_model,
+                        user_id=data_source.user_id,
+                    ),
+                    detail,
+                )
+            )
 
         if not dispatches:
             return
