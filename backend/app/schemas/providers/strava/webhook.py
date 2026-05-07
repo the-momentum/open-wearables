@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -11,9 +11,9 @@ class StravaWebhookEvent(BaseModel):
     See: https://developers.strava.com/docs/webhooks/
     """
 
-    object_type: str  # "activity" or "athlete"
+    object_type: Literal["activity", "athlete"]
     object_id: int
-    aspect_type: str  # "create", "update", or "delete"
+    aspect_type: Literal["create", "update", "delete"]
     updates: dict[str, Any] = {}
     owner_id: int  # Strava athlete ID
     subscription_id: int

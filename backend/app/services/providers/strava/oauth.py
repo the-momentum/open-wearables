@@ -20,8 +20,8 @@ class StravaOAuth(BaseOAuthTemplate):
     def endpoints(self) -> ProviderEndpoints:
         """OAuth endpoints for authorization and token exchange."""
         return ProviderEndpoints(
-            authorize_url="https://www.strava.com/oauth/authorize",
-            token_url="https://www.strava.com/oauth/token",
+            authorize_url=f"{self.api_base_url}/oauth/authorize",
+            token_url=f"{self.api_base_url}/oauth/token",
         )
 
     @property
@@ -41,7 +41,7 @@ class StravaOAuth(BaseOAuthTemplate):
     def deregister_user(self, access_token: str) -> None:
         """Revoke access and remove the app from the athlete's connected apps."""
         response = httpx.post(
-            "https://www.strava.com/oauth/deauthorize",
+            f"{self.api_base_url}/oauth/deauthorize",
             params={"access_token": access_token},
             timeout=30.0,
         )
@@ -51,7 +51,7 @@ class StravaOAuth(BaseOAuthTemplate):
         """Fetches Strava athlete ID and username via API."""
         try:
             response = httpx.get(
-                f"{self.api_base_url}/athlete",
+                f"{self.api_base_url}/api/v3/athlete",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )

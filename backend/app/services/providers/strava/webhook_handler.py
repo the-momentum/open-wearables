@@ -50,6 +50,7 @@ from app.services.event_record_service import event_record_service
 from app.services.providers.strava.workouts import StravaWorkouts
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,17 @@ class StravaWebhookHandler(BaseWebhookHandler):
         try:
             event = StravaWebhookEvent(**payload)
         except (ValidationError, TypeError) as exc:
+            log_and_capture_error(
+                exc,
+                logger,
+                "Invalid Strava webhook payload",
+                extra={
+                    "provider": "strava",
+                    "trace_id": trace_id,
+                    "action": "webhook_invalid_payload",
+                    "error": str(exc),
+                },
+            )
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
         object_type = event.object_type
@@ -325,29 +337,33 @@ class StravaWebhookHandler(BaseWebhookHandler):
             return {"status": "ignored", "reason": "duplicate_activity", "activity_id": object_id}
 
         except ValidationError as exc:
-            log_structured(
+            log_and_capture_error(
+                exc,
                 logger,
-                "error",
                 "Failed to parse Strava activity",
-                provider="strava",
-                trace_id=trace_id,
-                action="webhook_validation_error",
-                activity_id=object_id,
-                user_id=str(user_id),
-                error=str(exc),
+                extra={
+                    "provider": "strava",
+                    "trace_id": trace_id,
+                    "action": "webhook_validation_error",
+                    "activity_id": object_id,
+                    "user_id": str(user_id),
+                    "error": str(exc),
+                },
             )
             return {"status": "error", "error": f"validation_error: {exc}"}
 
         except Exception as exc:
-            log_structured(
+            log_and_capture_error(
+                exc,
                 logger,
-                "error",
                 "Error processing Strava activity",
-                provider="strava",
-                trace_id=trace_id,
-                action="webhook_processing_error",
-                activity_id=object_id,
-                user_id=str(user_id),
-                error=str(exc),
+                extra={
+                    "provider": "strava",
+                    "trace_id": trace_id,
+                    "action": "webhook_processing_error",
+                    "activity_id": object_id,
+                    "user_id": str(user_id),
+                    "error": str(exc),
+                },
             )
             raise

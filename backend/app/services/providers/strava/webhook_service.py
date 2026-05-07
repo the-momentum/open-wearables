@@ -20,11 +20,16 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
-STRAVA_PUSH_SUBSCRIPTIONS_URL = "https://www.strava.com/api/v3/push_subscriptions"
+
+_STRAVA_API_URL = "https://www.strava.com/api/v3"
 
 
 class StravaWebhookService:
     """App-level Strava webhook subscription management."""
+
+    @property
+    def api_current_url(self) -> str:
+        return _STRAVA_API_URL
 
     def _get_strava_credentials(self) -> tuple[str, str]:
         """Get Strava client credentials. Raises ValueError if not configured."""
@@ -46,14 +51,14 @@ class StravaWebhookService:
             raise ValueError("callback_url is required to register webhook subscription")
 
         client_id, client_secret = self._get_strava_credentials()
-        verify_token = settings.strava_webhook_verify_token.get_secret_value()  # type: ignore[union-attr]
+        verify_token = settings.strava_webhook_verify_token.get_secret_value()
 
         async with httpx.AsyncClient() as client:
             # Check for existing subscription
             existing: dict[str, Any] | None = None
             try:
                 list_resp = await client.get(
-                    STRAVA_PUSH_SUBSCRIPTIONS_URL,
+                    f"{self.api_current_url}/push_subscriptions",
                     params={"client_id": client_id, "client_secret": client_secret},
                     timeout=30.0,
                 )
@@ -90,7 +95,7 @@ class StravaWebhookService:
                 # Callback URL changed — delete and re-create
                 try:
                     del_resp = await client.delete(
-                        f"{STRAVA_PUSH_SUBSCRIPTIONS_URL}/{sub_id}",
+                        f"{self.api_current_url}/push_subscriptions/{sub_id}",
                         params={"client_id": client_id, "client_secret": client_secret},
                         timeout=30.0,
                     )
@@ -119,7 +124,7 @@ class StravaWebhookService:
             # Create new subscription (Strava requires form-encoded body)
             try:
                 create_resp = await client.post(
-                    STRAVA_PUSH_SUBSCRIPTIONS_URL,
+                    f"{self.api_current_url}/push_subscriptions",
                     data={
                         "client_id": client_id,
                         "client_secret": client_secret,
@@ -159,7 +164,7 @@ class StravaWebhookService:
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                STRAVA_PUSH_SUBSCRIPTIONS_URL,
+                f"{self.api_current_url}/push_subscriptions",
                 params={"client_id": client_id, "client_secret": client_secret},
                 timeout=30.0,
             )
