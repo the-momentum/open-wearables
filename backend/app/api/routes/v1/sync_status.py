@@ -121,7 +121,7 @@ def list_sync_run_summaries(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
 ) -> list[SyncRunSummary]:
     """Return aggregated per-run summaries for recent sync activity."""
     _ensure_user_exists(db, user_id)

@@ -10,53 +10,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import {
+  SOURCE_LABELS,
+  RUN_STATUS_CLASSES,
+  formatRunDuration,
+  formatRelative,
+} from '@/lib/utils/sync-format';
 import { ROUTES } from '@/lib/constants/routes';
 import type { SyncRunSummary } from '@/lib/api';
 
 export const Route = createFileRoute('/_authenticated/syncs/')({
   component: SyncsPage,
 });
-
-const SOURCE_LABELS: Record<string, string> = {
-  pull: 'Live Sync',
-  webhook: 'Webhook',
-  sdk: 'SDK Upload',
-  backfill: 'Backfill',
-  xml_import: 'XML Import',
-};
-
-const STATUS_BADGE: Record<string, string> = {
-  success: 'bg-emerald-900/40 text-emerald-300',
-  partial: 'bg-amber-900/40 text-amber-300',
-  failed: 'bg-rose-900/40 text-rose-300',
-  cancelled: 'bg-zinc-800/60 text-zinc-300',
-  in_progress: 'bg-blue-900/40 text-blue-300',
-};
-
-function formatDuration(start: string | null, end: string | null): string {
-  if (!start || !end) return '—';
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (ms < 0 || !Number.isFinite(ms)) return '—';
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const rem = s % 60;
-  return `${m}m ${rem}s`;
-}
-
-function formatRelative(iso: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  const diff = Date.now() - date.getTime();
-  if (diff < 0) return date.toLocaleString();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return date.toLocaleString();
-}
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE = 50;
@@ -273,7 +238,8 @@ function SyncsPage() {
 }
 
 function SyncRow({ run }: { run: SyncRunSummary }) {
-  const badgeClass = STATUS_BADGE[run.status] ?? STATUS_BADGE.in_progress;
+  const badgeClass =
+    RUN_STATUS_CLASSES[run.status] ?? RUN_STATUS_CLASSES.in_progress;
   const sourceLabel = SOURCE_LABELS[run.source] ?? run.source;
   const shortUserId = run.user_id.slice(0, 8);
 
@@ -301,7 +267,7 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
         </span>
       </td>
       <td className="px-4 py-2.5 text-zinc-400 tabular-nums">
-        {formatDuration(run.started_at, run.ended_at)}
+        {formatRunDuration(run.started_at, run.ended_at)}
       </td>
       <td className="px-4 py-2.5 text-zinc-400 max-w-xs">
         {run.items_processed !== null ? (

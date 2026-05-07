@@ -198,37 +198,51 @@ def get_recent_events(user_id: str | UUID, limit: int = 50) -> list[SyncStatusEv
 
 
 def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSummary]:
-    """Aggregate recent events into per-run summaries (newest first)."""
-    by_run: dict[str, SyncStatusEvent] = {}
-    started_at: dict[str, datetime] = {}
-    for event in get_recent_events(user_id, limit=MAX_RECENT_EVENTS):
-        prev = by_run.get(event.run_id)
-        if prev is None or event.timestamp >= prev.timestamp:
-            by_run[event.run_id] = event
-        if event.stage in (SyncStage.QUEUED.value, SyncStage.STARTED.value):
-            existing = started_at.get(event.run_id)
-            if existing is None or event.timestamp < existing:
-                started_at[event.run_id] = event.timestamp
+    """Aggregate recent events into per-run summaries (newest first).
 
-    summaries = [
-        SyncRunSummary(
-            run_id=event.run_id,
-            user_id=event.user_id,
-            provider=event.provider,
-            source=str(event.source),
-            stage=str(event.stage),
-            status=str(event.status),
-            message=event.message,
-            progress=event.progress,
-            items_processed=event.items_processed,
-            items_total=event.items_total,
-            error=event.error,
-            started_at=event.started_at or started_at.get(event.run_id),
-            ended_at=event.ended_at,
-            last_update=event.timestamp,
-        )
-        for event in by_run.values()
-    ]
+    Reads the per-user runs set to discover all known run IDs, then fetches
+    the latest event for each run from its dedicated hash key.  This avoids
+    the hard ceiling imposed by reading only the capped recent-events list
+    (``MAX_RECENT_EVENTS`` raw events / ~4 events-per-run ≈ 50 runs max).
+    """
+    client = get_redis_client()
+
+    raw_run_ids: set[str | bytes] = client.smembers(_user_runs_key(user_id))
+    if not raw_run_ids:
+        return []
+
+    run_ids = [r if isinstance(r, str) else r.decode("utf-8") for r in raw_run_ids]
+
+    pipe = client.pipeline(transaction=False)
+    for rid in run_ids:
+        pipe.get(_run_key(rid))
+    raw_events = pipe.execute()
+
+    summaries: list[SyncRunSummary] = []
+    for item in raw_events:
+        if not item:
+            continue
+        with suppress(ValueError, TypeError):
+            event = SyncStatusEvent.model_validate_json(item)
+            summaries.append(
+                SyncRunSummary(
+                    run_id=event.run_id,
+                    user_id=event.user_id,
+                    provider=event.provider,
+                    source=str(event.source),
+                    stage=str(event.stage),
+                    status=str(event.status),
+                    message=event.message,
+                    progress=event.progress,
+                    items_processed=event.items_processed,
+                    items_total=event.items_total,
+                    error=event.error,
+                    started_at=event.started_at,
+                    ended_at=event.ended_at,
+                    last_update=event.timestamp,
+                )
+            )
+
     summaries.sort(key=lambda s: s.last_update, reverse=True)
     return summaries[:limit]
 

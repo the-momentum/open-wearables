@@ -280,7 +280,8 @@
             "pages": [
               "GET /api/v1/users/{user_id}/sync/stream",
               "GET /api/v1/users/{user_id}/sync/recent",
-              "GET /api/v1/users/{user_id}/sync/runs"
+              "GET /api/v1/users/{user_id}/sync/runs",
+              "GET /api/v1/sync/runs"
             ]
           }
         ]
