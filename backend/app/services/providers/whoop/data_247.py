@@ -352,6 +352,8 @@ class Whoop247Data(Base247DataTemplate):
                 task="save_sleep_data",
                 user_id=str(user_id),
             )
+            db.rollback()
+            raise
 
     def get_sleep_record(
         self,
