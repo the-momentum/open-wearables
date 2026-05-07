@@ -56,6 +56,7 @@ def _ensure_user_exists(db: DbSession, user_id: UUID) -> None:
 @router.get(
     "/users/{user_id}/sync/stream",
     response_class=StreamingResponse,
+    status_code=status.HTTP_200_OK,
     responses={
         200: {
             "description": "Server-Sent Events stream of sync status updates.",
@@ -67,7 +68,7 @@ def stream_user_sync_status(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    replay: Annotated[int, Query(ge=0, le=200, description="Replay last N events on connect.")] = 20,
+    replay: Annotated[int, Query(ge=1, le=200, description="Replay last N events on connect.")] = 20,
 ) -> StreamingResponse:
     """Open a Server-Sent Events stream of sync status for a user.
 
@@ -97,6 +98,7 @@ def stream_user_sync_status(
 @router.get(
     "/users/{user_id}/sync/recent",
     response_model=list[SyncStatusEvent],
+    status_code=status.HTTP_200_OK,
 )
 def list_recent_sync_events(
     user_id: UUID,
@@ -116,6 +118,7 @@ def list_recent_sync_events(
 @router.get(
     "/users/{user_id}/sync/runs",
     response_model=list[SyncRunSummary],
+    status_code=status.HTTP_200_OK,
 )
 def list_sync_run_summaries(
     user_id: UUID,
@@ -128,7 +131,11 @@ def list_sync_run_summaries(
     return get_run_summaries(user_id, limit=limit)
 
 
-@router.get("/sync/runs", response_model=list[SyncRunSummary])
+@router.get(
+    "/sync/runs",
+    response_model=list[SyncRunSummary],
+    status_code=status.HTTP_200_OK,
+)
 def list_all_sync_run_summaries(
     _api_key: ApiKeyDep,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
