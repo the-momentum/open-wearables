@@ -120,17 +120,20 @@ export function useSyncStatusStream(
         const next = [evt, ...prev];
         return next.slice(0, 200);
       });
+      const isTerminal = TERMINAL_STATUSES.has(evt.status);
       setActiveRuns((prev) => {
         const next = new Map(prev);
-        if (TERMINAL_STATUSES.has(evt.status)) {
+        if (isTerminal) {
           next.delete(evt.run_id);
-          // Invalidate sync data queries so UI refreshes after sync completes
-          queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus.all });
         } else {
           next.set(evt.run_id, evt);
         }
         return next;
       });
+      // Invalidate sync data queries so UI refreshes after sync completes
+      if (isTerminal) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.syncStatus.all });
+      }
       // Invalidate connections whenever a sync starts — a new provider may
       // have just been paired, so the connections list should refresh.
       if (evt.stage === 'started' && userId) {

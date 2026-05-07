@@ -5,10 +5,12 @@ import {
   useAllSyncRuns,
   type AllSyncRunsFilters,
 } from '@/hooks/api/use-sync-status';
+import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { ROUTES } from '@/lib/constants/routes';
 import type { SyncRunSummary } from '@/lib/api';
 
 export const Route = createFileRoute('/_authenticated/syncs/')({
@@ -64,6 +66,12 @@ function SyncsPage() {
   const [userIdInput, setUserIdInput] = useState('');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+
+  const { data: providerSettings } = useOAuthProviders();
+  const providerOptions = useMemo(
+    () => (providerSettings ?? []).map((p) => p.provider).sort(),
+    [providerSettings]
+  );
 
   const activeFilters = useMemo(() => {
     const f: AllSyncRunsFilters = { ...filters };
@@ -133,7 +141,7 @@ function SyncsPage() {
         <FilterSelect
           value={filters.provider}
           placeholder="Provider"
-          options={['garmin', 'whoop', 'oura', 'polar', 'suunto', 'fitbit']}
+          options={providerOptions}
           onChange={(v) => {
             setFilters((f) => ({ ...f, provider: v || undefined }));
             setPage(0);
@@ -273,7 +281,7 @@ function SyncRow({ run }: { run: SyncRunSummary }) {
     <tr className="hover:bg-zinc-900/30 transition-colors">
       <td className="px-4 py-2.5">
         <Link
-          to="/users/$userId"
+          to={ROUTES.user}
           params={{ userId: run.user_id }}
           className="font-mono text-xs text-blue-400 hover:text-blue-300 hover:underline"
         >
