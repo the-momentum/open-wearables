@@ -21,6 +21,19 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
+def _emit_sync_status(fn: Any, /, *args: Any, **kwargs: Any) -> None:
+    """Best-effort sync status emission — never aborts the sync flow."""
+    try:
+        fn(*args, **kwargs)
+    except Exception as exc:
+        log_and_capture_error(
+            exc,
+            logger,
+            "Failed to emit sync status event",
+            extra={"detail": str(exc)},
+        )
+
+
 def _include_in_periodic_pull(caps: Any, live_sync_mode: LiveSyncMode | None, is_historical: bool) -> bool:
     """True if the provider should be included in this REST pull run.
 
@@ -150,7 +163,8 @@ def sync_vendor_data(
 
                 run_id = new_run_id(prefix="pull")
                 sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
-                started(
+                _emit_sync_status(
+                    started,
                     user_uuid,
                     provider_name,
                     sync_source,
@@ -188,7 +202,8 @@ def sync_vendor_data(
                     # Sync workouts
                     if strategy.workouts:
                         params = _build_sync_params(provider_name, effective_start, end_date)
-                        progress(
+                        _emit_sync_status(
+                            progress,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -233,7 +248,8 @@ def sync_vendor_data(
                             with suppress(ValueError):
                                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
-                        progress(
+                        _emit_sync_status(
+                            progress,
                             user_uuid,
                             provider_name,
                             sync_source,
@@ -307,24 +323,47 @@ def sync_vendor_data(
                     )
 
                     sub_results = list(provider_result.params.values())
-                    any_failed = any(isinstance(r, dict) and r.get("success") is False for r in sub_results)
-                    final_status = SyncStatus.PARTIAL if any_failed else SyncStatus.SUCCESS
-                    completed(
-                        user_uuid,
-                        provider_name,
-                        sync_source,
-                        run_id=run_id,
-                        status=final_status,
-                        message=(
-                            f"Sync from {provider_name} completed"
-                            if not any_failed
-                            else f"Sync from {provider_name} completed with errors"
-                        ),
-                        metadata={"is_historical": is_historical, "params": provider_result.params},
+                    all_failed = bool(sub_results) and all(
+                        isinstance(r, dict) and r.get("success") is False for r in sub_results
                     )
+                    any_failed = any(isinstance(r, dict) and r.get("success") is False for r in sub_results)
+                    if all_failed:
+                        final_status = SyncStatus.FAILED
+                    elif any_failed:
+                        final_status = SyncStatus.PARTIAL
+                    else:
+                        final_status = SyncStatus.SUCCESS
+
+                    if final_status == SyncStatus.FAILED:
+                        _emit_sync_status(
+                            failed,
+                            user_uuid,
+                            provider_name,
+                            sync_source,
+                            run_id=run_id,
+                            error="All sync sub-tasks failed",
+                            message=f"Sync from {provider_name} failed",
+                            metadata={"is_historical": is_historical, "params": provider_result.params},
+                        )
+                    else:
+                        _emit_sync_status(
+                            completed,
+                            user_uuid,
+                            provider_name,
+                            sync_source,
+                            run_id=run_id,
+                            status=final_status,
+                            message=(
+                                f"Sync from {provider_name} completed"
+                                if not any_failed
+                                else f"Sync from {provider_name} completed with errors"
+                            ),
+                            metadata={"is_historical": is_historical, "params": provider_result.params},
+                        )
 
                 except Exception as e:
-                    failed(
+                    _emit_sync_status(
+                        failed,
                         user_uuid,
                         provider_name,
                         sync_source,

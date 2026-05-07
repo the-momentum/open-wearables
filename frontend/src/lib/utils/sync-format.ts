@@ -50,6 +50,7 @@ export function formatRunDuration(
 export function formatRelative(iso: string | null): string {
   if (!iso) return '—';
   const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
   const diff = Date.now() - date.getTime();
   if (diff < 0) return date.toLocaleString();
   const s = Math.floor(diff / 1000);
