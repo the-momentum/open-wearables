@@ -184,7 +184,9 @@ export function DataMetricsSection({
             </div>
 
             {totalUsers === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">No users yet</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No users yet
+              </p>
             ) : (
               <>
                 {/* Main bar: green + red side by side */}
@@ -195,14 +197,16 @@ export function DataMetricsSection({
                         className="h-full transition-[width] duration-700 ease-out"
                         style={{
                           width: `${coveredPct}%`,
-                          background: 'linear-gradient(to right, hsl(var(--success-muted)), hsl(var(--success-muted)/0.6))',
+                          background:
+                            'linear-gradient(to right, hsl(var(--success-muted)), hsl(var(--success-muted)/0.6))',
                         }}
                       />
                       <div
                         className="h-full transition-[width] duration-700 ease-out"
                         style={{
                           width: `${uncoveredPct}%`,
-                          background: 'linear-gradient(to right, hsl(var(--destructive-muted)/0.8), hsl(var(--destructive-muted)/0.5))',
+                          background:
+                            'linear-gradient(to right, hsl(var(--destructive-muted)/0.8), hsl(var(--destructive-muted)/0.5))',
                         }}
                       />
                     </div>
@@ -235,7 +239,9 @@ export function DataMetricsSection({
                   <span className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-[hsl(var(--destructive-muted))]" />
                     <span className="font-mono font-semibold text-foreground">
-                      {(totalUsers - connectionsCoverage.users_with_active).toLocaleString()}
+                      {(
+                        totalUsers - connectionsCoverage.users_with_active
+                      ).toLocaleString()}
                     </span>{' '}
                     not connected
                   </span>
