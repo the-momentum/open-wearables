@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # API SETTINGS
     api_name: str = "Open Wearables API"
+    api_port: int = 8000
     api_v1: str = "/api/v1"
     api_latest: str = api_v1
     paging_limit: int = 100

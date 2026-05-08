@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: open-wearables
       POSTGRES_PASSWORD: open-wearables
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
       interval: 5s
@@ -30,7 +30,7 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -114,7 +114,7 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     ports:
-      - 5555:5555
+      - "${FLOWER_PORT:-5555}:5555"
     depends_on:
       - redis
       - db
@@ -131,7 +131,7 @@ services:
     container_name: redis__open-wearables
     image: redis:8
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/var/lib/redis/data
 
@@ -155,7 +155,7 @@ services:
       SVIX_REDIS_DSN: "redis://redis:6379/1"
       SVIX_CACHE_TYPE: "redis"
     ports:
-      - "8071:8071"
+      - "${SVIX_PORT:-8071}:8071"
     depends_on:
       db:
         condition: service_healthy
@@ -179,7 +179,7 @@ services:
     image: open-wearables-frontend:dev
     pull_policy: never
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       - app
     develop:
