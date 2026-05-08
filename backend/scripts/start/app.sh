@@ -31,6 +31,12 @@ echo 'Running recovery_score series type cleanup...'
 uv run python scripts/data_migrations/drop_recovery_score_series_type.py \
     || echo "Warning: recovery_score cleanup failed — will retry on next startup."
 
+# TODO: Remove this after ~2026-06-01 once all deployments have migrated.
+# Divides body_fat_percentage values stored 100x too large (Samsung/Google bug, PR #917); no-op if already corrected.
+echo 'Running body_fat_percentage normalization...'
+uv run python scripts/data_migrations/normalize_body_fat_percentage.py \
+    || echo "Warning: body_fat_percentage normalization failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
