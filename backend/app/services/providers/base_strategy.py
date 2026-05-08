@@ -101,6 +101,18 @@ class BaseProviderStrategy(ABC):
         """Returns the base URL for the provider's API."""
 
     @property
+    def api_version(self) -> str:
+        """API version string (e.g. 'v3'). Override in providers that version their API."""
+        return ""
+
+    @property
+    def api_current_url(self) -> str:
+        """Versioned API base URL. Override or let the default derive from api_base_url + api_version."""
+        if self.api_version:
+            return f"{self.api_base_url}/api/{self.api_version}"
+        return self.api_base_url
+
+    @property
     @abstractmethod
     def capabilities(self) -> ProviderCapabilities:
         """Declares the data delivery capabilities of this provider.

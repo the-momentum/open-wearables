@@ -51,6 +51,7 @@ class StravaOAuth(BaseOAuthTemplate):
         """Fetches Strava athlete ID and username via API."""
         try:
             response = httpx.get(
+                # hard-coded value - update with base template changes
                 f"{self.api_base_url}/api/v3/athlete",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,

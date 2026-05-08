@@ -43,6 +43,7 @@ class StravaStrategy(BaseProviderStrategy):
         """Base URL for the provider's API."""
         return "https://www.strava.com"
 
+    # two properties below not used in oauth and workouts - update with base template changes
     @property
     def api_version(self) -> str:
         """API version string."""

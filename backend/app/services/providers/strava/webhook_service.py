@@ -20,7 +20,7 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
-
+# hard-coded value - update with base template changes
 _STRAVA_API_URL = "https://www.strava.com/api/v3"
 
 
