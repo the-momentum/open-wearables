@@ -73,28 +73,20 @@ function WorkoutCard({
   const style = getWorkoutStyle(type);
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-card/40 p-4 transition-colors duration-200 hover:bg-card/60">
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-1.5">
-          <span
-            className={cn(
-              'font-mono text-[10px] font-semibold',
-              RANK_COLORS[index] ?? RANK_COLORS[2]
-            )}
-          >
-            #{index + 1}
-          </span>
-          <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
-            {count.toLocaleString()}
-          </p>
-          <p
-            className="truncate text-xs text-muted-foreground"
-            title={style.label}
-          >
-            {style.label}
-          </p>
-        </div>
-        <span className="text-3xl leading-none">{style.emoji}</span>
-      </div>
+      <span
+        className={cn(
+          'font-mono text-[10px] font-semibold',
+          RANK_COLORS[index] ?? RANK_COLORS[2]
+        )}
+      >
+        #{index + 1}
+      </span>
+      <p className="text-2xl font-bold tabular-nums leading-none text-foreground">
+        {count.toLocaleString()}
+      </p>
+      <p className="truncate text-xs text-muted-foreground" title={style.label}>
+        {style.label}
+      </p>
     </div>
   );
 }
