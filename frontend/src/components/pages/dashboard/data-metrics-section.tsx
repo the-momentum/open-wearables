@@ -183,63 +183,65 @@ export function DataMetricsSection({
               </span>
             </div>
 
-            {/* Main bar: green + red side by side */}
-            <div className="pb-3">
-              <div className="relative">
-                <div className="flex h-5 w-full overflow-hidden rounded-lg border border-border/30 bg-muted/20">
-                  <div
-                    className="h-full transition-[width] duration-700 ease-out"
-                    style={{
-                      width: `${coveredPct}%`,
-                      background:
-                        'linear-gradient(to right, hsl(var(--success-muted)), hsl(var(--success-muted)/0.6))',
-                    }}
-                  />
-                  <div
-                    className="h-full transition-[width] duration-700 ease-out"
-                    style={{
-                      width: `${uncoveredPct}%`,
-                      background:
-                        'linear-gradient(to right, hsl(var(--destructive-muted)/0.8), hsl(var(--destructive-muted)/0.5))',
-                    }}
-                  />
+            {totalUsers === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">No users yet</p>
+            ) : (
+              <>
+                {/* Main bar: green + red side by side */}
+                <div className="pb-3">
+                  <div className="relative">
+                    <div className="flex h-5 w-full overflow-hidden rounded-lg border border-border/30 bg-muted/20">
+                      <div
+                        className="h-full transition-[width] duration-700 ease-out"
+                        style={{
+                          width: `${coveredPct}%`,
+                          background: 'linear-gradient(to right, hsl(var(--success-muted)), hsl(var(--success-muted)/0.6))',
+                        }}
+                      />
+                      <div
+                        className="h-full transition-[width] duration-700 ease-out"
+                        style={{
+                          width: `${uncoveredPct}%`,
+                          background: 'linear-gradient(to right, hsl(var(--destructive-muted)/0.8), hsl(var(--destructive-muted)/0.5))',
+                        }}
+                      />
+                    </div>
+                    {/* Upward triangle marker at multiPct position */}
+                    <div
+                      className="absolute top-full mt-1 -translate-x-1/2 transition-[left] duration-700 ease-out"
+                      style={{ left: `${multiPct}%` }}
+                    >
+                      <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[9px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
+                    </div>
+                  </div>
                 </div>
-                {/* Upward triangle marker at multiPct position */}
-                <div
-                  className="absolute top-full mt-1 -translate-x-1/2 transition-[left] duration-700 ease-out"
-                  style={{ left: `${multiPct}%` }}
-                >
-                  <div className="h-0 w-0 border-l-[7px] border-r-[7px] border-b-[9px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
-                </div>
-              </div>
-            </div>
 
-            {/* Legend */}
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[hsl(var(--success-muted))]" />
-                <span className="font-mono font-semibold text-foreground">
-                  {connectionsCoverage.users_with_active.toLocaleString()}
-                </span>{' '}
-                connected
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-0 w-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
-                <span className="font-mono font-semibold text-foreground">
-                  {connectionsCoverage.users_with_multi_active.toLocaleString()}
-                </span>{' '}
-                multiple connections
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-[hsl(var(--destructive-muted))]" />
-                <span className="font-mono font-semibold text-foreground">
-                  {(
-                    totalUsers - connectionsCoverage.users_with_active
-                  ).toLocaleString()}
-                </span>{' '}
-                not connected
-              </span>
-            </div>
+                {/* Legend */}
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[hsl(var(--success-muted))]" />
+                    <span className="font-mono font-semibold text-foreground">
+                      {connectionsCoverage.users_with_active.toLocaleString()}
+                    </span>{' '}
+                    connected
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0 w-0 border-l-[6px] border-r-[6px] border-b-[8px] border-l-transparent border-r-transparent border-b-[hsl(var(--primary)/0.8)]" />
+                    <span className="font-mono font-semibold text-foreground">
+                      {connectionsCoverage.users_with_multi_active.toLocaleString()}
+                    </span>{' '}
+                    multiple connections
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[hsl(var(--destructive-muted))]" />
+                    <span className="font-mono font-semibold text-foreground">
+                      {(totalUsers - connectionsCoverage.users_with_active).toLocaleString()}
+                    </span>{' '}
+                    not connected
+                  </span>
+                </div>
+              </>
+            )}
 
             {/* Top providers */}
             {connectionsCoverage.top_providers.length > 0 && (

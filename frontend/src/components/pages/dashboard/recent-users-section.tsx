@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ElementType } from 'react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { RefreshCw, Users as UsersIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,7 +56,7 @@ function EmptyState({
   icon: Icon,
   message,
 }: {
-  icon: React.ElementType;
+  icon: ElementType;
   message: string;
 }) {
   return (
