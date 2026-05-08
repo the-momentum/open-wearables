@@ -120,7 +120,8 @@
             "pages": [
               "data-migrations/index",
               "data-migrations/backfill-garmin-sleep-end-datetime",
-              "data-migrations/backfill-sleep-scores"
+              "data-migrations/backfill-sleep-scores",
+              "data-migrations/normalize-body-fat-percentage"
             ]
           },
           {
