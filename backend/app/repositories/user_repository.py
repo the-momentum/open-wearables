@@ -44,8 +44,8 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             query_params: The query parameters.
 
         Returns:
-            A tuple containing a list of (user, last_synced_at, last_synced_provider) tuples
-            and the total count of users.
+            A tuple of (results, total_count) where each result is a
+            (User, last_synced_at, last_synced_provider, has_active_connection) tuple.
         """
         query: Query = db_session.query(self.model)
 

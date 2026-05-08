@@ -133,7 +133,11 @@ export function DataMetricsSection({
       )}
     >
       <div className="flex items-center gap-3 border-b border-border/60 px-4 py-2">
-        <div className="relative flex flex-1 rounded-lg bg-foreground/5 p-1">
+        <div
+          role="tablist"
+          aria-label="Data metrics"
+          className="relative flex flex-1 rounded-lg bg-foreground/5 p-1"
+        >
           <span
             aria-hidden
             className="absolute inset-y-1 rounded-md bg-white shadow-sm transition-transform duration-200 ease-out"
@@ -148,6 +152,11 @@ export function DataMetricsSection({
               <button
                 key={value}
                 type="button"
+                role="tab"
+                id={`metrics-tab-${value}`}
+                aria-selected={active}
+                aria-controls={`metrics-panel-${value}`}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setTab(value)}
                 className={cn(
                   'relative z-10 flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-medium transition-colors duration-200',
@@ -169,7 +178,12 @@ export function DataMetricsSection({
 
       <div className="p-6">
         {tab === 'coverage' && (
-          <div className="space-y-5">
+          <div
+            role="tabpanel"
+            id="metrics-panel-coverage"
+            aria-labelledby="metrics-tab-coverage"
+            className="space-y-5"
+          >
             {/* Header */}
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-semibold text-foreground">
@@ -278,41 +292,55 @@ export function DataMetricsSection({
           </div>
         )}
 
-        {tab === 'series' &&
-          (seriesTop6.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3">
-              {seriesTop6.map((m, i) => (
-                <SeriesCard
-                  key={m.series_type}
-                  index={i}
-                  label={m.series_type.replace(/_/g, ' ')}
-                  count={m.count}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No data available
-            </p>
-          ))}
+        {tab === 'series' && (
+          <div
+            role="tabpanel"
+            id="metrics-panel-series"
+            aria-labelledby="metrics-tab-series"
+          >
+            {seriesTop6.length > 0 ? (
+              <div className="grid grid-cols-3 gap-3">
+                {seriesTop6.map((m, i) => (
+                  <SeriesCard
+                    key={m.series_type}
+                    index={i}
+                    label={m.series_type.replace(/_/g, ' ')}
+                    count={m.count}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No data available
+              </p>
+            )}
+          </div>
+        )}
 
-        {tab === 'workouts' &&
-          (workoutsTop6.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3">
-              {workoutsTop6.map((m, i) => (
-                <WorkoutCard
-                  key={m.workout_type ?? 'unknown'}
-                  index={i}
-                  type={m.workout_type}
-                  count={m.count}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              No data available
-            </p>
-          ))}
+        {tab === 'workouts' && (
+          <div
+            role="tabpanel"
+            id="metrics-panel-workouts"
+            aria-labelledby="metrics-tab-workouts"
+          >
+            {workoutsTop6.length > 0 ? (
+              <div className="grid grid-cols-3 gap-3">
+                {workoutsTop6.map((m, i) => (
+                  <WorkoutCard
+                    key={m.workout_type ?? 'unknown'}
+                    index={i}
+                    type={m.workout_type}
+                    count={m.count}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No data available
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

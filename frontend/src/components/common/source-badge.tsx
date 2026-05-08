@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils';
+
 interface SourceBadgeProps {
   provider: string;
   className?: string;
@@ -43,7 +45,12 @@ export function SourceBadge({ provider, className = '' }: SourceBadgeProps) {
 
   return (
     <span
-      className={`inline-flex items-center text-[10px] font-medium leading-none px-2 py-1 rounded-md border border-current/20 ${style.bg} ${style.text} ${className}`}
+      className={cn(
+        'inline-flex items-center text-[10px] font-medium leading-none px-2 py-1 rounded-md border border-current/20',
+        style.bg,
+        style.text,
+        className
+      )}
     >
       {label}
     </span>

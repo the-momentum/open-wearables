@@ -85,7 +85,11 @@ export function RecentUsersSection({
       )}
     >
       <div className="flex items-center gap-3 border-b border-border/60 px-4 py-2">
-        <div className="relative flex flex-1 rounded-lg bg-foreground/5 p-1">
+        <div
+          role="tablist"
+          aria-label="Recent users"
+          className="relative flex flex-1 rounded-lg bg-foreground/5 p-1"
+        >
           {/* sliding pill */}
           <span
             aria-hidden
@@ -105,6 +109,11 @@ export function RecentUsersSection({
               <button
                 key={value}
                 type="button"
+                role="tab"
+                id={`users-tab-${value}`}
+                aria-selected={active}
+                aria-controls={`users-panel-${value}`}
+                tabIndex={active ? 0 : -1}
                 onClick={() => setTab(value)}
                 className={cn(
                   'relative z-10 flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-medium transition-colors duration-200',
@@ -125,137 +134,153 @@ export function RecentUsersSection({
       </div>
 
       <div className="p-3">
-        {tab === 'recent' &&
-          (isLoading ? (
-            <SkeletonRows />
-          ) : users.length > 0 ? (
-            <div className="space-y-1">
-              {users.map((user) => {
-                const userName =
-                  user.first_name || user.last_name
-                    ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
-                    : user.email || 'Unknown User';
-                const date = new Date(user.created_at);
-                const formattedDate = isNaN(date.getTime())
-                  ? 'Invalid date'
-                  : format(date, 'MMM d, yyyy');
-                return (
-                  <div
-                    key={user.id}
-                    className={cn(
-                      'flex items-center gap-3 rounded-xl px-3 py-2.5',
-                      'transition-colors duration-200 hover:bg-card-elevated/60'
-                    )}
-                  >
+        {tab === 'recent' && (
+          <div
+            role="tabpanel"
+            id="users-panel-recent"
+            aria-labelledby="users-tab-recent"
+          >
+            {isLoading ? (
+              <SkeletonRows />
+            ) : users.length > 0 ? (
+              <div className="space-y-1">
+                {users.map((user) => {
+                  const userName =
+                    user.first_name || user.last_name
+                      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                      : user.email || 'Unknown User';
+                  const date = new Date(user.created_at);
+                  const formattedDate = isNaN(date.getTime())
+                    ? 'Invalid date'
+                    : format(date, 'MMM d, yyyy');
+                  return (
                     <div
+                      key={user.id}
                       className={cn(
-                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-                        'bg-muted/60 text-foreground/80 border border-border/60'
+                        'flex items-center gap-3 rounded-xl px-3 py-2.5',
+                        'transition-colors duration-200 hover:bg-card-elevated/60'
                       )}
                     >
-                      {getInitials(userName)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {userName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {user.email || user.external_user_id || 'No email'}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground/70">
-                        Joined {formattedDate}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span
+                      <div
                         className={cn(
-                          'h-1.5 w-1.5 rounded-full',
-                          user.has_active_connection
-                            ? 'bg-[hsl(var(--success-muted))]'
-                            : 'bg-[hsl(var(--destructive-muted))]'
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                          'bg-muted/60 text-foreground/80 border border-border/60'
                         )}
-                      />
-                      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                        {user.has_active_connection ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState icon={UsersIcon} message="No users found" />
-          ))}
-
-        {tab === 'last-synced' &&
-          (isLoadingLastSynced ? (
-            <SkeletonRows />
-          ) : lastSyncedUsers.length > 0 ? (
-            <div className="space-y-1">
-              {lastSyncedUsers.map((user) => {
-                const userName =
-                  user.first_name || user.last_name
-                    ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
-                    : user.email || 'Unknown User';
-                const syncedAt = user.last_synced_at;
-                const provider = user.last_synced_provider;
-                const relativeTime = syncedAt
-                  ? formatDistanceToNow(new Date(syncedAt), { addSuffix: true })
-                  : 'Never';
-                return (
-                  <div
-                    key={user.id}
-                    className={cn(
-                      'flex items-center gap-3 rounded-xl px-3 py-2.5',
-                      'transition-colors duration-200 hover:bg-card-elevated/60'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
-                        'bg-muted/60 text-foreground/80 border border-border/60'
-                      )}
-                    >
-                      {getInitials(userName)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {userName}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {user.email || user.external_user_id || 'No email'}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {provider && <SourceBadge provider={provider} />}
-                      <div className="flex items-center gap-1">
-                        {syncedAt && (
-                          <span
-                            className={cn(
-                              'h-1.5 w-1.5 rounded-full',
-                              syncRecencyDot(syncedAt)
-                            )}
-                          />
-                        )}
+                      >
+                        {getInitials(userName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {userName}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {user.email || user.external_user_id || 'No email'}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                          Joined {formattedDate}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
                         <span
                           className={cn(
-                            'text-[11px]',
-                            syncedAt
-                              ? syncRecencyColor(syncedAt)
-                              : 'text-muted-foreground/50'
+                            'h-1.5 w-1.5 rounded-full',
+                            user.has_active_connection
+                              ? 'bg-[hsl(var(--success-muted))]'
+                              : 'bg-[hsl(var(--destructive-muted))]'
                           )}
-                        >
-                          {relativeTime}
+                        />
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          {user.has_active_connection ? 'Active' : 'Inactive'}
                         </span>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState icon={RefreshCw} message="No synced users yet" />
-          ))}
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState icon={UsersIcon} message="No users found" />
+            )}
+          </div>
+        )}
+
+        {tab === 'last-synced' && (
+          <div
+            role="tabpanel"
+            id="users-panel-last-synced"
+            aria-labelledby="users-tab-last-synced"
+          >
+            {isLoadingLastSynced ? (
+              <SkeletonRows />
+            ) : lastSyncedUsers.length > 0 ? (
+              <div className="space-y-1">
+                {lastSyncedUsers.map((user) => {
+                  const userName =
+                    user.first_name || user.last_name
+                      ? `${user.first_name || ''} ${user.last_name || ''}`.trim()
+                      : user.email || 'Unknown User';
+                  const syncedAt = user.last_synced_at;
+                  const provider = user.last_synced_provider;
+                  const relativeTime = syncedAt
+                    ? formatDistanceToNow(new Date(syncedAt), {
+                        addSuffix: true,
+                      })
+                    : 'Never';
+                  return (
+                    <div
+                      key={user.id}
+                      className={cn(
+                        'flex items-center gap-3 rounded-xl px-3 py-2.5',
+                        'transition-colors duration-200 hover:bg-card-elevated/60'
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold',
+                          'bg-muted/60 text-foreground/80 border border-border/60'
+                        )}
+                      >
+                        {getInitials(userName)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {userName}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {user.email || user.external_user_id || 'No email'}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {provider && <SourceBadge provider={provider} />}
+                        <div className="flex items-center gap-1">
+                          {syncedAt && (
+                            <span
+                              className={cn(
+                                'h-1.5 w-1.5 rounded-full',
+                                syncRecencyDot(syncedAt)
+                              )}
+                            />
+                          )}
+                          <span
+                            className={cn(
+                              'text-[11px]',
+                              syncedAt
+                                ? syncRecencyColor(syncedAt)
+                                : 'text-muted-foreground/50'
+                            )}
+                          >
+                            {relativeTime}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState icon={RefreshCw} message="No synced users yet" />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
