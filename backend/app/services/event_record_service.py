@@ -51,7 +51,7 @@ from app.utils.exceptions import handle_exceptions
 from app.utils.pagination import encode_cursor
 
 
-@dataclass
+@dataclass(frozen=True)
 class _EventRecordSnapshot:
     """Plain-value snapshot of EventRecord attributes for use in after_commit listeners.
 
@@ -69,7 +69,7 @@ class _EventRecordSnapshot:
     type: str | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class _DataSourceSnapshot:
     provider: str
     device_model: str | None
@@ -163,11 +163,10 @@ class EventRecordService(
                     device_model=data_source.device_model,
                     user_id=data_source.user_id,
                 )
-                _detail = detail
 
                 @sa_event.listens_for(db_session, "after_commit", once=True)
                 def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
-                    self._emit_event_record_webhook(_rec, _ds, _detail)
+                    self._emit_event_record_webhook(_rec, _ds, detail)
 
         return result  # ty:ignore[invalid-return-type]
 
