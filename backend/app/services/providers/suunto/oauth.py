@@ -32,6 +32,18 @@ class SuuntoOAuth(BaseOAuthTemplate):
             ),
         )
 
+    def _prepare_token_request(self, code: str, code_verifier: str | None) -> tuple[dict, dict]:
+        token_data, headers = super()._prepare_token_request(code, code_verifier)
+        if self.credentials.subscription_key:
+            headers["Ocp-Apim-Subscription-Key"] = self.credentials.subscription_key
+        return token_data, headers
+
+    def _prepare_refresh_request(self, refresh_token: str) -> tuple[dict, dict]:
+        token_data, headers = super()._prepare_refresh_request(refresh_token)
+        if self.credentials.subscription_key:
+            headers["Ocp-Apim-Subscription-Key"] = self.credentials.subscription_key
+        return token_data, headers
+
     def _get_provider_user_info(self, token_response: OAuthTokenResponse, user_id: str) -> dict[str, str | None]:
         """Extracts Suunto user info from JWT access token."""
         try:
