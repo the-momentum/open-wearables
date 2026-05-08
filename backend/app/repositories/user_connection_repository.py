@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, func, update
+from sqlalchemy import CursorResult, and_, func, select, update
 from sqlalchemy.orm.exc import MultipleResultsFound
 
 from app.database import DbSession
@@ -45,6 +45,38 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             .scalar()
             or 0
         )
+
+    def get_users_with_active_conn_count(self, db_session: DbSession) -> int:
+        """Count of distinct users with at least one active connection."""
+        return (
+            db_session.query(func.count(func.distinct(self.model.user_id)))
+            .filter(self.model.status == ConnectionStatus.ACTIVE)
+            .scalar()
+            or 0
+        )
+
+    def get_users_with_multi_active_conn_count(self, db_session: DbSession) -> int:
+        """Count of distinct users with more than one active connection."""
+        subq = (
+            select(self.model.user_id)
+            .where(self.model.status == ConnectionStatus.ACTIVE)
+            .group_by(self.model.user_id)
+            .having(func.count(self.model.id) > 1)
+            .subquery()
+        )
+        return db_session.query(func.count()).select_from(subq).scalar() or 0
+
+    def get_top_providers_by_active_conn(self, db_session: DbSession, limit: int = 3) -> list[tuple[str, int]]:
+        """Top providers by active connection count, returns (provider, count) pairs."""
+        rows = (
+            db_session.query(self.model.provider, func.count(self.model.id).label("cnt"))
+            .filter(self.model.status == ConnectionStatus.ACTIVE)
+            .group_by(self.model.provider)
+            .order_by(func.count(self.model.id).desc())
+            .limit(limit)
+            .all()
+        )
+        return [(row.provider, row.cnt) for row in rows]
 
     def get_by_user_and_provider(
         self,

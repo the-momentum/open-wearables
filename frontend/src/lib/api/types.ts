@@ -19,6 +19,7 @@ export interface UserRead {
   external_user_id: string | null;
   last_synced_at: string | null;
   last_synced_provider: string | null;
+  has_active_connection: boolean;
 }
 
 export interface UserCreate {
@@ -179,10 +180,22 @@ export interface DataPointsInfo {
   top_workout_types: WorkoutTypeMetric[];
 }
 
+export interface ProviderConnectionCount {
+  provider: string;
+  count: number;
+}
+
+export interface ConnectionsCoverage {
+  users_with_active: number;
+  users_with_multi_active: number;
+  top_providers: ProviderConnectionCount[];
+}
+
 export interface DashboardStats {
   total_users: CountWithGrowth;
   active_conn: CountWithGrowth;
   data_points: DataPointsInfo;
+  connections_coverage: ConnectionsCoverage;
 }
 
 export interface ProviderDataCount {

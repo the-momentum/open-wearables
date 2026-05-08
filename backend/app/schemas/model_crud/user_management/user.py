@@ -61,6 +61,7 @@ class UserRead(BaseModel):
     external_user_id: str | None = Field(None, description=_EXTERNAL_USER_ID_DEPRECATION, deprecated=True)
     last_synced_at: datetime | None = None
     last_synced_provider: str | None = None
+    has_active_connection: bool = False
 
 
 class UserCreate(BaseModel):

@@ -132,7 +132,7 @@ export function WebhookAttemptsTable({
         open={!!selected}
         onOpenChange={(open) => !open && setSelected(null)}
       >
-        <SheetContent className="w-full sm:max-w-xl bg-popover border-border/60 overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-xl border-border/60 overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-foreground">
               Delivery attempt

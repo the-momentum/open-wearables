@@ -31,9 +31,21 @@ class DataPointsInfo(BaseModel):
     top_workout_types: list[WorkoutTypeMetric]
 
 
+class ProviderConnectionCount(BaseModel):
+    provider: str
+    count: int
+
+
+class ConnectionsCoverage(BaseModel):
+    users_with_active: int
+    users_with_multi_active: int
+    top_providers: list[ProviderConnectionCount]
+
+
 class SystemInfoResponse(BaseModel):
     """Dashboard system information response."""
 
     total_users: CountWithGrowth
     active_conn: CountWithGrowth
     data_points: DataPointsInfo
+    connections_coverage: ConnectionsCoverage
