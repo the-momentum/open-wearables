@@ -14,6 +14,7 @@ from uuid import UUID
 
 from app.constants.webhooks.events import SERIES_TYPE_TO_GRANULAR_EVENT, SERIES_TYPE_TO_GROUP_EVENT
 from app.schemas.webhooks.event_types import WebhookEventType
+from app.services.outgoing_webhooks import svix as svix_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +44,12 @@ def _dispatch(
 ) -> None:
     """Schedule the Celery emit task.
 
-    Import is deferred to avoid circular dependencies. Silently drops the
-    event when the broker (Redis) is unreachable so that data ingestion is
-    never blocked by webhook infrastructure.
+    Silently drops the event when Svix is not configured or the broker
+    (Redis) is unreachable so that data ingestion is never blocked by
+    webhook infrastructure.
     """
+    if not svix_service.is_enabled():
+        return
     try:
         from app.integrations.celery.tasks.emit_webhook_event_task import emit_webhook_event
 
