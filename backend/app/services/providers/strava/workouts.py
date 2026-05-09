@@ -38,13 +38,31 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         Strava API uses epoch timestamps for after/before parameters
         and supports up to 200 activities per page.
+
+        Pads the [start_date, end_date] window by one day on each side
+        before serializing to ``after``/``before`` epochs.  Strava
+        finalises an activity asynchronously after upload (sometimes
+        minutes, sometimes longer for large GPS files), and a periodic
+        sync that polls ``[last_synced_at, now()]`` will sit at exactly
+        the moment the activity becomes visible on Strava — but the
+        next sync's window starts after the activity's ``start_date``,
+        so the activity is silently never returned again.  This is the
+        same class of bug as the Oura sleep narrow-window
+        (`get_sleep_data`) issue.
+
+        Padding by one day on each side guarantees recently-finalised
+        activities are picked up on the next periodic sync after the
+        Strava processing delay.  ``event_record_service.create``
+        upserts on ``(data_source_id, start_datetime, end_datetime)``
+        so the overlap at the trailing edge of consecutive syncs is
+        idempotent — duplicates are dropped by the unique index.
         """
         all_activities: list[Any] = []
         page = 1
         per_page = self.events_per_page
 
-        after = int(start_date.timestamp())
-        before = int(end_date.timestamp())
+        after = int((start_date - timedelta(days=1)).timestamp())
+        before = int((end_date + timedelta(days=1)).timestamp())
 
         while True:
             params: dict[str, Any] = {
