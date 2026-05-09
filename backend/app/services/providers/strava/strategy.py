@@ -41,8 +41,21 @@ class StravaStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Strava REST API is used for historical activity backfills.
-        # Strava webhook events contain only the object_id and aspect_type;
-        # the full activity must still be fetched via GET /activities/{id}.
-        return ProviderCapabilities(rest_pull=True)  # use the line below after implementing webhooks
-        # return ProviderCapabilities(rest_pull=True, webhook_ping=True)
+        # Strava push subscriptions deliver an `aspect_type=create` event
+        # for every new activity within seconds of upload-finalisation.
+        # The webhook handler at
+        # ``backend/app/services/providers/strava/handlers/webhook_helpers.py``
+        # then fetches the full activity via GET ``/activities/{id}`` and
+        # persists it through the same path as a REST pull.
+        #
+        # REST polling (``rest_pull``) is kept on for historical backfills
+        # and as a safety net against webhook delivery failures.
+        #
+        # ``webhook_ping=True`` only advertises the capability; deployments
+        # that haven't created a Strava push subscription yet remain on the
+        # rest_pull path with no behaviour change.  See the route at
+        # ``backend/app/api/routes/v1/strava_webhooks.py`` and the
+        # subscription-creation flow in
+        # ``handlers/webhook_helpers.py:handle_webhook_verification`` for
+        # operator setup.
+        return ProviderCapabilities(rest_pull=True, webhook_ping=True)
