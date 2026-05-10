@@ -119,3 +119,9 @@ git push origin sync/upstream-YYYY-MM-DD
 4. Sync upstream via une PR dédiée
 
 **Pour tout le reste** (nouveau provider, nouvel endpoint, custom logic métier) → ça vit dans `api.bazard.run`, pas ici. OW reste vanille autant que possible.
+
+---
+
+## Setup dev local
+
+Pour lancer OW en local et l'intégrer à `api.bazard.run` + `app.bazard.run`, suis [`contributing/bazard-dev-setup.md`](contributing/bazard-dev-setup.md). Inclut le flow complet : copie de `backend/config/.env.dev.example` (Bazard-only, ne pas confondre avec l'`.env.example` upstream), génération de la clé OW admin, configuration Svix → API, vérif end-to-end avec Strava sandbox.
