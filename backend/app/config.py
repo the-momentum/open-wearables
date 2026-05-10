@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # API SETTINGS
     api_name: str = "Open Wearables API"
+    api_port: int = 8000
     api_v1: str = "/api/v1"
     api_latest: str = api_v1
     paging_limit: int = 100
@@ -143,6 +144,7 @@ class Settings(BaseSettings):
     strava_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     strava_default_scope: str = "activity:read_all,profile:read_all"
     strava_webhook_verify_token: SecretStr | None = None
+    strava_webhook_signature_tolerance_seconds: int = Field(300, ge=0)
     # Strava API max is 200 activities per page
     strava_events_per_page: int = 200
 
@@ -197,6 +199,12 @@ class Settings(BaseSettings):
     def derive_suunto_webhook_secret(self) -> "Settings":
         if self.suunto_webhook_secret is None or self.suunto_webhook_secret.get_secret_value() == "":
             self.suunto_webhook_secret = SecretStr(self.secret_key)
+        return self
+
+    @model_validator(mode="after")
+    def derive_strava_webhook_verify_token(self) -> "Settings":
+        if self.strava_webhook_verify_token is None or self.strava_webhook_verify_token.get_secret_value() == "":
+            self.strava_webhook_verify_token = SecretStr(self.secret_key)
         return self
 
     @model_validator(mode="after")

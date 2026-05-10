@@ -127,8 +127,14 @@ class ImportService:
 
             if not series_type:
                 continue
-            # Convert from meters to centimeters or ratio to percentage
-            if series_type in (SeriesType.height, SeriesType.body_fat_percentage):
+            # Convert meters -> centimeters for height (both HealthKit and Health Connect report meters)
+            # and ratio (0..1) -> percent for Apple body_fat_percentage (HealthKit HKUnit.percent()).
+            # Android Health Connect's BodyFatRecord.percentage is already in percent, so only scale
+            # body_fat_percentage for provider == "apple" — otherwise Google/Samsung values are stored
+            # ~100x too large.
+            if series_type == SeriesType.height or (
+                series_type == SeriesType.body_fat_percentage and provider == "apple"
+            ):
                 value = value * 100
 
             # Extract device info

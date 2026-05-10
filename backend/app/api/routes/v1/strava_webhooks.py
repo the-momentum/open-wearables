@@ -1,57 +1,45 @@
 """Strava webhook endpoints for receiving push event notifications."""
 
-from logging import getLogger
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Request
 
 from app.database import DbSession
-from app.services.providers.strava.handlers.webhook_helpers import (
-    handle_webhook_event,
-    handle_webhook_verification,
-)
+from app.services.providers.factory import ProviderFactory
 
 router = APIRouter()
-logger = getLogger(__name__)
+
+_strategy = ProviderFactory().get_provider("strava")
+if _strategy.webhooks is None:
+    raise RuntimeError("Strava webhook handler not initialised")
+_handler = _strategy.webhooks
+
+
+async def _read_body(request: Request) -> bytes:
+    return await request.body()
 
 
 @router.get("")
-def strava_webhook_verification(
-    hub_mode: Annotated[str, Query(alias="hub.mode")] = "",
-    hub_challenge: Annotated[str, Query(alias="hub.challenge")] = "",
-    hub_verify_token: Annotated[str, Query(alias="hub.verify_token")] = "",
-) -> dict:
+def strava_webhook_verification(request: Request) -> dict:
     """Strava webhook subscription verification (GET).
 
-    When creating a webhook subscription, Strava sends a GET request
-    with hub.mode, hub.challenge, and hub.verify_token parameters.
-    We must echo back hub.challenge if the verify_token matches.
+    Delegates to StravaWebhookHandler.handle_challenge().
     """
-    return handle_webhook_verification(hub_mode, hub_challenge, hub_verify_token)
+    return _handler.handle_challenge(request)
 
 
 @router.post("")
 def strava_webhook_event(
-    payload: dict,
+    request: Request,
     db: DbSession,
+    body: Annotated[bytes, Depends(_read_body)],
 ) -> dict:
     """Strava webhook event handler (POST).
 
-    Receives events when activities are created, updated, or deleted.
-
-    Expected payload:
-    {
-        "object_type": "activity",
-        "object_id": 12345678,
-        "aspect_type": "create",
-        "owner_id": 87654321,
-        "subscription_id": 999,
-        "event_time": 1234567890
-    }
-
-    Must always return 200 to prevent Strava from retrying.
+    Delegates to StravaWebhookHandler (signature verification, parsing,
+    Celery task dispatch).
     """
-    return handle_webhook_event(payload, db)
+    return _handler.handle(request, body, db)
 
 
 @router.get("/health")
