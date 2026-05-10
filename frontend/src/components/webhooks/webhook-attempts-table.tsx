@@ -132,7 +132,7 @@ export function WebhookAttemptsTable({
         open={!!selected}
         onOpenChange={(open) => !open && setSelected(null)}
       >
-        <SheetContent className="w-full sm:max-w-xl bg-popover border-border/60 overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-xl border-border/60">
           <SheetHeader>
             <SheetTitle className="text-foreground">
               Delivery attempt
@@ -146,7 +146,7 @@ export function WebhookAttemptsTable({
             </SheetDescription>
           </SheetHeader>
           {selected && (
-            <div className="px-4 space-y-4 text-sm">
+            <div className="overflow-y-auto px-4 space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Status">{statusBadge(selected.status)}</Field>
                 <Field label="HTTP code">

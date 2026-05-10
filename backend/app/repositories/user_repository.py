@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import desc, func, nullsfirst, nullslast, or_, select
+from sqlalchemy import desc, func, literal, nullsfirst, nullslast, or_, select
 from sqlalchemy.orm import Query
 
 from app.database import DbSession
@@ -36,7 +36,7 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
         self,
         db_session: DbSession,
         query_params: UserQueryParams,
-    ) -> tuple[list[tuple[User, datetime | None, str | None]], int]:
+    ) -> tuple[list[tuple[User, datetime | None, str | None, bool]], int]:
         """Get users with filtering, searching, and pagination.
 
         Args:
@@ -44,8 +44,8 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             query_params: The query parameters.
 
         Returns:
-            A tuple containing a list of (user, last_synced_at, last_synced_provider) tuples
-            and the total count of users.
+            A tuple of (results, total_count) where each result is a
+            (User, last_synced_at, last_synced_provider, has_active_connection) tuple.
         """
         query: Query = db_session.query(self.model)
 
@@ -87,7 +87,15 @@ class UserRepository(CrudRepository[User, UserCreateInternal, UserUpdateInternal
             .scalar_subquery()
             .label("last_synced_provider")
         )
-        query = query.add_columns(last_synced_subq, last_synced_provider_subq)
+        has_active_conn_subq = (
+            select(literal(True))
+            .where(UserConnection.user_id == User.id)
+            .where(UserConnection.status == "active")
+            .correlate(User)
+            .exists()
+            .label("has_active_connection")
+        )
+        query = query.add_columns(last_synced_subq, last_synced_provider_subq, has_active_conn_subq)
 
         # Validate sort_by against explicit allowlist (defense in depth)
         sort_by_column = query_params.sort_by or "created_at"

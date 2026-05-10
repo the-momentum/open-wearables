@@ -126,6 +126,7 @@ class SystemInfoService:
                 top_series_types=top_series_types,
                 top_workout_types=top_workout_types,
             ),
+            connections_coverage=self.user_connection_service.get_connections_coverage(db_session),
         )
 
     def get_user_data_summary(self, db_session: DbSession, user_id: UUID) -> UserDataSummaryResponse:

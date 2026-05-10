@@ -102,10 +102,11 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
         self.logger.debug(f"Retrieved {len(rows)} users out of {total_count} total")
 
         items = []
-        for user, last_synced_at, last_synced_provider in rows:
+        for user, last_synced_at, last_synced_provider, has_active_connection in rows:
             user_read = UserRead.model_validate(user)
             user_read.last_synced_at = last_synced_at
             user_read.last_synced_provider = last_synced_provider
+            user_read.has_active_connection = bool(has_active_connection)
             items.append(user_read)
 
         return OldPaginatedResponse[UserRead](

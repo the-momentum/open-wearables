@@ -21,6 +21,11 @@ function DashboardPage() {
     sort_order: 'desc',
     limit: 5,
   });
+  const { data: lastSyncedUsers, isLoading: isLoadingLastSynced } = useUsers({
+    sort_by: 'last_synced_at',
+    sort_order: 'desc',
+    limit: 5,
+  });
 
   if (isLoading) {
     return <DashboardLoadingState />;
@@ -66,12 +71,17 @@ function DashboardPage() {
           <DataMetricsSection
             topSeriesTypes={stats.data_points.top_series_types}
             topWorkoutTypes={stats.data_points.top_workout_types}
+            connectionsCoverage={stats.connections_coverage}
+            totalUsers={stats.total_users.count}
             className="lg:col-span-4"
           />
           <RecentUsersSection
             users={users?.items ?? []}
-            totalUsersCount={stats.total_users.count}
+            lastSyncedUsers={(lastSyncedUsers?.items ?? []).filter(
+              (u) => u.last_synced_at
+            )}
             isLoading={isLoadingUsers}
+            isLoadingLastSynced={isLoadingLastSynced}
             className="lg:col-span-3"
           />
         </div>

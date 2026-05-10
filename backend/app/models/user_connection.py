@@ -19,6 +19,7 @@ class UserConnection(BaseDbModel):
             postgresql_where="status = 'active'",
         ),
         Index("ix_user_connection_user_provider", "user_id", "provider", unique=True),
+        Index("ix_user_connection_status_user_id", "status", "user_id"),
     )
     __tablename__ = "user_connection"
 

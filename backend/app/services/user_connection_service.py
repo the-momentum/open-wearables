@@ -6,6 +6,7 @@ from app.database import DbSession
 from app.models import UserConnection
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.model_crud.user_management import UserConnectionCreate, UserConnectionUpdate
+from app.schemas.responses.upload import ConnectionsCoverage, ProviderConnectionCount
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.services import AppService
 from app.utils.exceptions import ResourceNotFoundError, handle_exceptions
@@ -27,6 +28,17 @@ class UserConnectionService(
     def get_active_count_in_range(self, db_session: DbSession, start_date: datetime, end_date: datetime) -> int:
         """Get count of active connections created within a date range."""
         return self.crud.get_active_count_in_range(db_session, start_date, end_date)
+
+    def get_connections_coverage(self, db_session: DbSession) -> ConnectionsCoverage:
+        """Aggregate coverage stats: users with active conn, multi-conn, top providers."""
+        return ConnectionsCoverage(
+            users_with_active=self.crud.get_users_with_active_conn_count(db_session),
+            users_with_multi_active=self.crud.get_users_with_multi_active_conn_count(db_session),
+            top_providers=[
+                ProviderConnectionCount(provider=p, count=c)
+                for p, c in self.crud.get_top_providers_by_active_conn(db_session)
+            ],
+        )
 
     @handle_exceptions
     def get_connections_by_user(self, db_session: DbSession, user_id: UUID) -> list[UserConnection]:
