@@ -217,11 +217,11 @@ class Garmin247Data(Base247DataTemplate):
             components=sleep_score_components,
         )
 
-    def normalize_sleep(  # type: ignore[override]
+    def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:
+    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
         """Normalize Garmin sleep data to internal schema."""
         start_ts = raw_sleep.get("startTimeInSeconds", 0)
         duration = raw_sleep.get("durationInSeconds", 0)
@@ -1833,11 +1833,11 @@ class Garmin247Data(Base247DataTemplate):
         """Use dailies for daily stats."""
         return self.get_dailies_data(db, user_id, start_date, end_date)
 
-    def normalize_daily_activity(  # type: ignore[override]
+    def normalize_daily_activity(
         self,
         raw_stats: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:
+    ) -> tuple[dict[str, Any], list[HealthScoreCreate]]:  # ty:ignore[invalid-method-override]
         """Delegate to normalize_dailies."""
         return self.normalize_dailies(raw_stats, user_id)
 

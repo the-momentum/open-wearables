@@ -96,7 +96,7 @@ class SNSService:
 
         try:
             # sns uses PKCS1v15 padding for the signature
-            public_key.verify(decoded_signature, string_to_sign.encode("utf-8"), padding.PKCS1v15(), hash_algo)  # type: ignore[call-arg]
+            public_key.verify(decoded_signature, string_to_sign.encode("utf-8"), padding.PKCS1v15(), hash_algo)  # ty:ignore[invalid-argument-type, too-many-positional-arguments, unresolved-attribute]
         except InvalidSignature:
             log_structured(
                 logger,

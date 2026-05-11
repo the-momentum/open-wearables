@@ -107,20 +107,20 @@ class RefreshTokenService:
         # Generate new access token and refresh token based on token type
         if token.token_type == TokenType.SDK:
             access_token = create_sdk_user_token(
-                app_id=token.app_id,  # type: ignore[arg-type]
+                app_id=token.app_id,  # ty:ignore[invalid-argument-type]
                 user_id=str(token.user_id),
             )
             new_refresh_token = self.create_sdk_refresh_token(
                 db_session,
-                user_id=token.user_id,  # type: ignore[arg-type]
-                app_id=token.app_id,  # type: ignore[arg-type]
+                user_id=token.user_id,  # ty:ignore[invalid-argument-type]
+                app_id=token.app_id,  # ty:ignore[invalid-argument-type]
             )
             self.logger.debug(f"Refreshed SDK token for user {token.user_id} (rotated)")
         elif token.token_type == TokenType.DEVELOPER:
             access_token = create_access_token(subject=str(token.developer_id))
             new_refresh_token = self.create_developer_refresh_token(
                 db_session,
-                developer_id=token.developer_id,  # type: ignore[arg-type]
+                developer_id=token.developer_id,  # ty:ignore[invalid-argument-type]
             )
             self.logger.debug(f"Refreshed developer token for developer {token.developer_id} (rotated)")
         else:

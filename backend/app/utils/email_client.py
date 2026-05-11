@@ -65,7 +65,7 @@ def _configure_resend() -> None:
     Since we use a single API key for the entire application,
     this is safe even in concurrent environments.
     """
-    resend.api_key = settings.resend_api_key.get_secret_value()
+    resend.api_key = settings.resend_api_key.get_secret_value()  # ty:ignore[unresolved-attribute]
 
 
 def send_invitation_email(to_email: str, invite_url: str, invited_by_email: str | None = None) -> bool:

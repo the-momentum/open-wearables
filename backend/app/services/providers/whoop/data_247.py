@@ -184,11 +184,11 @@ class Whoop247Data(Base247DataTemplate):
             components=components or None,
         )
 
-    def normalize_sleep(  # type: ignore[override]
+    def normalize_sleep(
         self,
         raw_sleep: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:
+    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
         """Normalize Whoop sleep data to our schema."""
         # Extract basic fields
         sleep_id = raw_sleep.get("id")
@@ -739,11 +739,11 @@ class Whoop247Data(Base247DataTemplate):
             components=components or None,
         )
 
-    def normalize_recovery(  # type: ignore[override]
+    def normalize_recovery(
         self,
         raw_recovery: dict[str, Any],
         user_id: UUID,
-    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:
+    ) -> tuple[dict[str, Any], HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
         """Normalize Whoop recovery data to our schema.
 
         Extracts recovery metrics from the score object:

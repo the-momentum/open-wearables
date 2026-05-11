@@ -330,7 +330,7 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
         normalised: SDKWorkoutType | str = sdk_activity_type.strip().lower()
     else:
         normalised = sdk_activity_type
-    return SDK_TO_UNIFIED.get(normalised, WorkoutType.OTHER)  # type: ignore[arg-type]
+    return SDK_TO_UNIFIED.get(normalised, WorkoutType.OTHER)  # ty: ignore[no-matching-overload]
 
 
 def get_activity_name(sdk_activity_type: str) -> str:

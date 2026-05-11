@@ -23,7 +23,7 @@ def finalize_stale_sleeps() -> None:
     redis_client = get_redis_client()
 
     with SessionLocal() as db:
-        for user_id in redis_client.smembers(active_users_key()):
+        for user_id in redis_client.smembers(active_users_key()):  # ty:ignore[not-iterable]
             try:
                 # Skip users whose upload is currently in progress.
                 lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=0)

@@ -113,7 +113,7 @@ class EventRecordDetailRepository(
             data = creator.model_dump()
             # Serialize sleep_stages datetimes to ISO strings for JSONB storage
             if detail_type == "sleep" and data.get("sleep_stages"):
-                data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # type: ignore[union-attr]
+                data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
             # Filter to keep only columns present in the target model
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)

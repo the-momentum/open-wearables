@@ -126,7 +126,7 @@ class EventRecordService(
                 def _dispatch_webhook(session: DbSession) -> None:  # noqa: ARG001
                     self._emit_event_record_webhook(_record, _data_source, _detail)
 
-        return result  # type: ignore[return-value]
+        return result  # ty:ignore[invalid-return-type]
 
     @staticmethod
     def _local_sleep_date(start_datetime: datetime, zone_offset: str | None) -> date:
@@ -559,7 +559,7 @@ class EventRecordService(
         detail_type: str = "workout",
     ) -> None:
         """Bulk create event record details and fire one webhook per detail on commit."""
-        self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # type: ignore[arg-type]
+        self.event_record_detail_repo.bulk_create(db_session, details, detail_type=detail_type)  # ty:ignore[invalid-argument-type]
 
         if not details or not svix_service.is_enabled():
             return
@@ -742,8 +742,8 @@ class EventRecordService(
             # Seconds per kilometer - speed is in meters per second
             if details.average_speed and details.average_speed > 0:
                 avg_pace_sec_per_km = 1000 / details.average_speed
-            elif details.distance > 0:
-                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000
+            elif details.distance > 0:  # ty:ignore[unsupported-operator]
+                avg_pace_sec_per_km = record.duration_seconds / details.distance * 1000  # ty:ignore[unsupported-operator]
         else:
             avg_pace_sec_per_km = None
 
@@ -760,7 +760,7 @@ class EventRecordService(
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=self._resolve_avg_hr(db_session, [record]).get(record.id),
             max_heart_rate_bpm=details.heart_rate_max if details else None,
-            avg_pace_sec_per_km=avg_pace_sec_per_km,
+            avg_pace_sec_per_km=avg_pace_sec_per_km,  # ty:ignore[invalid-argument-type]
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
@@ -834,7 +834,7 @@ class EventRecordService(
                 if details and details.sleep_efficiency_score
                 else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
-                sleep_stage_intervals=details.sleep_stages if details else None,
+                sleep_stage_intervals=details.sleep_stages if details else None,  # ty:ignore[invalid-argument-type]
                 stages=SleepStagesSummary(
                     deep_minutes=details.sleep_deep_minutes or 0 if details else 0,
                     light_minutes=details.sleep_light_minutes or 0 if details else 0,

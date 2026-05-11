@@ -34,8 +34,8 @@ class AppService[
 
     def create(self, db_session: DbSession, creator: CreateSchemaType) -> ModelType:
         creation = self.crud.create(db_session, creator)
-        self.logger.debug(f"Created {self.name} with ID: {creation.id}.")  # type: ignore[union-attr]
-        return creation  # type: ignore[return-value]
+        self.logger.debug(f"Created {self.name} with ID: {creation.id}.")  # ty:ignore[unresolved-attribute]
+        return creation  # ty:ignore[invalid-return-type]
 
     @handle_exceptions
     def get(
@@ -54,8 +54,8 @@ class AppService[
         else:
             id_to_fetch = object_id
 
-        if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:  # type: ignore[arg-type]
-            raise ResourceNotFoundError(self.name, id_to_fetch)  # type: ignore[arg-type]
+        if not (fetched := self.crud.get(db_session, id_to_fetch)) and raise_404:  # ty:ignore[invalid-argument-type]
+            raise ResourceNotFoundError(self.name, id_to_fetch)  # ty:ignore[invalid-argument-type]
 
         if fetched and print_log:
             self.logger.debug(f"Fetched {self.name} with ID: {fetched.id}.")

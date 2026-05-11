@@ -18,7 +18,7 @@ def record_timed_out_entry(user_id: str | UUID, data_type: str, window_idx: int)
     uid = str(user_id)
     key = _get_key(uid, "timed_out_types")
     existing = get_redis_client().get(key)
-    entries: list[dict[str, Any]] = json.loads(existing) if existing else []
+    entries: list[dict[str, Any]] = json.loads(existing) if existing else []  # ty:ignore[invalid-argument-type]
     entries.append({"type": data_type, "window": window_idx})
     get_redis_client().setex(key, REDIS_TTL, json.dumps(entries))
 
@@ -29,7 +29,7 @@ def get_retry_targets(user_id: str | UUID) -> list[dict[str, Any]]:
     raw = get_redis_client().get(_get_key(uid, "timed_out_types"))
     if not raw:
         return []
-    entries: list[dict[str, Any]] = json.loads(raw)
+    entries: list[dict[str, Any]] = json.loads(raw)  # ty:ignore[invalid-argument-type]
     if not entries:
         return []
     latest: dict[str, int] = {}
@@ -68,7 +68,7 @@ def get_next_retry_target(user_id: str | UUID) -> dict[str, Any] | None:
     raw = get_redis_client().get(key)
     if not raw:
         return None
-    targets: list[dict[str, Any]] = json.loads(raw)
+    targets: list[dict[str, Any]] = json.loads(raw)  # ty:ignore[invalid-argument-type]
     if not targets:
         return None
     entry = targets.pop(0)

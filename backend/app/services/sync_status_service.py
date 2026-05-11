@@ -197,7 +197,7 @@ def get_recent_events(user_id: str | UUID, limit: int = 50) -> list[SyncStatusEv
     """Return the most recent stored events for a user (newest first)."""
     raw = get_redis_client().lrange(_user_recent_key(user_id), 0, max(0, limit - 1))
     events: list[SyncStatusEvent] = []
-    for item in raw:
+    for item in raw:  # ty:ignore[not-iterable]
         with suppress(ValueError, TypeError):
             events.append(SyncStatusEvent.model_validate_json(item))
     return events
@@ -217,7 +217,7 @@ def get_run_summaries(user_id: str | UUID, limit: int = 20) -> list[SyncRunSumma
     """
     client = get_redis_client()
 
-    raw_run_ids: set[str | bytes] = client.smembers(_user_runs_key(user_id))
+    raw_run_ids: set[str | bytes] = client.smembers(_user_runs_key(user_id))  # ty:ignore[invalid-assignment]
     if not raw_run_ids:
         return []
 
@@ -285,7 +285,7 @@ def get_all_run_summaries(
         user_ids = []
         cursor: int = 0
         while True:
-            cursor, keys = client.scan(cursor=cursor, match=pattern, count=200)
+            cursor, keys = client.scan(cursor=cursor, match=pattern, count=200)  # ty:ignore[not-iterable]
             for key in keys:
                 k = key if isinstance(key, str) else key.decode("utf-8")
                 parts = k.split(":")

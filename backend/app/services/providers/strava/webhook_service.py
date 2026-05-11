@@ -51,7 +51,7 @@ class StravaWebhookService:
             raise ValueError("callback_url is required to register webhook subscription")
 
         client_id, client_secret = self._get_strava_credentials()
-        verify_token = settings.strava_webhook_verify_token.get_secret_value()
+        verify_token = settings.strava_webhook_verify_token.get_secret_value()  # ty:ignore[unresolved-attribute]
 
         async with httpx.AsyncClient() as client:
             # Check for existing subscription
