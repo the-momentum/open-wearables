@@ -7,6 +7,7 @@ Each tool has two error paths worth covering:
 """
 
 import pytest
+from fastmcp.tools import FunctionTool
 from pytest_httpx import HTTPXMock
 
 from app.tools.activity import get_activity_summary
@@ -48,7 +49,7 @@ async def test_get_users_returns_empty_envelope_on_auth_error(httpx_mock: HTTPXM
     ],
 )
 async def test_summary_tools_return_user_not_found_envelope_on_404(
-    tool: object,
+    tool: FunctionTool,
     httpx_mock: HTTPXMock,
 ) -> None:
     """Summary tools turn a 404 on user lookup into the 'User not found' envelope (inner except block)."""
