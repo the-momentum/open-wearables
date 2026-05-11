@@ -344,6 +344,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -674,6 +675,7 @@ class Oura247Data(Base247DataTemplate):
                 event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
                 count += 1
             except Exception as e:
+                db.rollback()
                 log_structured(
                     self.logger,
                     "error",
@@ -878,6 +880,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -947,6 +950,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1037,6 +1041,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1095,6 +1100,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
+            db.commit()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1169,6 +1175,7 @@ class Oura247Data(Base247DataTemplate):
             try:
                 results[data_type] = fn()
             except Exception as e:
+                db.rollback()
                 results[data_type] = 0
                 log_structured(
                     self.logger,
