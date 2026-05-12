@@ -5,7 +5,7 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, ProviderPriority, User
+from app.models import DataPointSeries, EventRecord, HealthScore, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
 from app.repositories.archival_repository import (
     ArchivalSettingRepository,
@@ -17,6 +17,7 @@ from app.repositories.data_point_series_repository import (
     IntensityMinutesResult,
 )
 from app.repositories.device_type_priority_repository import DeviceTypePriorityRepository
+from app.repositories.health_score_repository import HealthScoreRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     ProviderName,
@@ -33,6 +34,7 @@ from app.schemas.responses.activity import (
     BodySummary,
     HeartRateStats,
     IntensityMinutes,
+    RecoverySummary,
     SleepStagesSummary,
     SleepSummary,
 )
@@ -98,6 +100,7 @@ class SummariesService:
         self.user_repo = UserRepository(User)
         self.archival_settings_repo = ArchivalSettingRepository()
         self.archive_repo = DataPointSeriesArchiveRepository()
+        self.health_score_repo = HealthScoreRepository(HealthScore)
 
     def _filter_by_priority(
         self,
@@ -352,6 +355,73 @@ class SummariesService:
                 avg_spo2_percent=None,
             )
             data.append(summary)
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=start_date,
+                end_time=end_date,
+            ),
+        )
+
+    @handle_exceptions
+    def get_recovery_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> PaginatedResponse[RecoverySummary]:
+        """Get daily recovery summaries from HealthScore(RECOVERY) records.
+
+        Metrics come from the components JSONB stored alongside the recovery score:
+        resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
+        """
+        results = self.health_score_repo.get_recovery_summaries(
+            db_session, user_id, start_date, end_date, cursor, limit
+        )
+
+        results = self._filter_by_priority(db_session, user_id, results, date_key="recovery_date")
+
+        has_more = len(results) > limit
+        if has_more:
+            results = results[:limit]
+
+        next_cursor: str | None = None
+        previous_cursor: str | None = None
+
+        if results:
+            last_result = results[-1]
+            if has_more:
+                next_cursor = encode_cursor(last_result["recorded_at"], last_result["record_id"], "next")
+
+            if cursor:
+                first_result = results[0]
+                previous_cursor = encode_cursor(first_result["recorded_at"], first_result["record_id"], "prev")
+
+        data = [
+            RecoverySummary(
+                date=r["recovery_date"],
+                source=SourceMetadata(provider=r["source"] or "unknown", device=r.get("device_model")),
+                sleep_duration_seconds=None,
+                sleep_efficiency_percent=None,
+                resting_heart_rate_bpm=int(r["resting_heart_rate"])
+                if r.get("resting_heart_rate") is not None
+                else None,
+                avg_hrv_sdnn_ms=float(r["hrv_rmssd_milli"]) if r.get("hrv_rmssd_milli") is not None else None,
+                avg_spo2_percent=float(r["spo2_percentage"]) if r.get("spo2_percentage") is not None else None,
+                recovery_score=r.get("recovery_score"),
+            )
+            for r in results
+        ]
 
         return PaginatedResponse(
             data=data,

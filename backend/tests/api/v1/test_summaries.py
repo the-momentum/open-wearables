@@ -6,12 +6,13 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.schemas.enums import ProviderName
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from tests.factories import (
     ApiKeyFactory,
     DataPointSeriesFactory,
     DataSourceFactory,
     EventRecordFactory,
+    HealthScoreFactory,
     PersonalRecordFactory,
     SeriesTypeDefinitionFactory,
     SleepDetailsFactory,
@@ -1295,3 +1296,191 @@ class TestBodySummaryEndpoint:
 
         # Should use the most recent value
         assert data["slow_changing"]["weight_kg"] == 72.5
+
+
+class TestRecoverySummaryEndpoint:
+    """Test suite for recovery summaries endpoint."""
+
+    BASE_PARAMS = {
+        "start_date": "2025-12-25T00:00:00Z",
+        "end_date": "2025-12-28T00:00:00Z",
+    }
+
+    def _url(self, user_id: object) -> str:
+        return f"/api/v1/users/{user_id}/summaries/recovery"
+
+    def test_returns_200_with_recovery_score(self, client: TestClient, db: Session) -> None:
+        """Basic recovery record is returned with correct score and date."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("78"),
+            provider=ProviderName.WHOOP,
+            recorded_at=recorded_at,
+            components=None,
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        item = data["data"][0]
+        assert item["date"] == "2025-12-26"
+        assert item["recovery_score"] == 78
+        assert item["source"]["provider"] == "whoop"
+
+    def test_returns_component_metrics(self, client: TestClient, db: Session) -> None:
+        """RHR, HRV and SpO2 are populated from HealthScore components."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        recorded_at = datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("65"),
+            provider=ProviderName.WHOOP,
+            recorded_at=recorded_at,
+            components={
+                "resting_heart_rate": {"value": 58.0},
+                "hrv_rmssd_milli": {"value": 45.5},
+                "spo2_percentage": {"value": 97.0},
+            },
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["resting_heart_rate_bpm"] == 58
+        assert item["avg_hrv_sdnn_ms"] == 45.5
+        assert item["avg_spo2_percent"] == 97.0
+
+    def test_empty_range_returns_no_data(self, client: TestClient, db: Session) -> None:
+        """Empty range returns empty list, not an error."""
+        user = UserFactory()
+        api_key = ApiKeyFactory()
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2025-12-25T00:00:00Z", "end_date": "2025-12-26T00:00:00Z"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
+    def test_multiple_days_ordered_ascending(self, client: TestClient, db: Session) -> None:
+        """Multiple recovery records are returned in ascending date order."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        for day, score in ((26, 70), (27, 85), (25, 60)):
+            HealthScoreFactory(
+                data_source=source,
+                category=HealthScoreCategory.RECOVERY,
+                value=Decimal(str(score)),
+                provider=ProviderName.WHOOP,
+                recorded_at=datetime(2025, 12, day, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        scores = [item["recovery_score"] for item in response.json()["data"]]
+        assert scores == [60, 70, 85]
+
+    def test_records_outside_range_excluded(self, client: TestClient, db: Session) -> None:
+        """Records outside the requested date range are not included."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        # Inside range
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("72"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        # Outside range (too early)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("50"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 24, 0, 0, 0, tzinfo=timezone.utc),
+        )
+        # Outside range (too late — end_date is exclusive)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("90"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 28, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["recovery_score"] == 72
+
+    def test_null_components_returns_none_metrics(self, client: TestClient, db: Session) -> None:
+        """Recovery record with no components returns None for all metric fields."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        HealthScoreFactory(
+            data_source=source,
+            category=HealthScoreCategory.RECOVERY,
+            value=Decimal("55"),
+            provider=ProviderName.WHOOP,
+            recorded_at=datetime(2025, 12, 26, 0, 0, 0, tzinfo=timezone.utc),
+            components=None,
+        )
+        api_key = ApiKeyFactory()
+
+        response = client.get(self._url(user.id), headers=api_key_headers(api_key.id), params=self.BASE_PARAMS)
+
+        assert response.status_code == 200
+        item = response.json()["data"][0]
+        assert item["resting_heart_rate_bpm"] is None
+        assert item["avg_hrv_sdnn_ms"] is None
+        assert item["avg_spo2_percent"] is None
+        assert item["sleep_duration_seconds"] is None
+        assert item["sleep_efficiency_percent"] is None
+
+    def test_pagination_limit(self, client: TestClient, db: Session) -> None:
+        """Limit parameter caps results and has_more is set when more data exists."""
+        user = UserFactory()
+        source = DataSourceFactory(user=user, source=ProviderName.WHOOP)
+        api_key = ApiKeyFactory()
+
+        for day in range(1, 10):
+            HealthScoreFactory(
+                data_source=source,
+                category=HealthScoreCategory.RECOVERY,
+                value=Decimal("70"),
+                provider=ProviderName.WHOOP,
+                recorded_at=datetime(2026, 1, day, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+        response = client.get(
+            self._url(user.id),
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2026-01-01T00:00:00Z", "end_date": "2026-01-31T00:00:00Z", "limit": 3},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 3
+        assert data["pagination"]["has_more"] is True
+        assert data["pagination"]["next_cursor"] is not None

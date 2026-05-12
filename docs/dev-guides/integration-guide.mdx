@@ -631,6 +631,21 @@ To page through results, pass `cursor=<next_cursor>` until `has_more` is `false`
     ```
     `duration_minutes` / `time_in_bed_minutes` exclude naps. Units are minutes, not seconds.
   </Tab>
+  <Tab title="RecoverySummary">
+    ```json
+    {
+      "date": "2025-01-15",
+      "source": { "provider": "whoop", "device": null },
+      "sleep_duration_seconds": null,
+      "sleep_efficiency_percent": null,
+      "resting_heart_rate_bpm": 58,
+      "avg_hrv_sdnn_ms": 45.5,
+      "avg_spo2_percent": 97.0,
+      "recovery_score": 78
+    }
+    ```
+    `recovery_score` is 0–100. `avg_hrv_sdnn_ms` contains RMSSD for Whoop (the field holds whichever HRV metric the provider reports). All fields except `date` and `source` are nullable.
+  </Tab>
   <Tab title="BodySummary">
     ```json
     {
@@ -807,6 +822,12 @@ class OpenWearablesClient:
     async def get_sleep_summary(self, user_id: str, start_date: str, end_date: str) -> list[dict]:
         return await self._paginated(
             f"/api/v1/users/{user_id}/summaries/sleep",
+            {"start_date": start_date, "end_date": end_date},
+        )
+
+    async def get_recovery_summary(self, user_id: str, start_date: str, end_date: str) -> list[dict]:
+        return await self._paginated(
+            f"/api/v1/users/{user_id}/summaries/recovery",
             {"start_date": start_date, "end_date": end_date},
         )
 
