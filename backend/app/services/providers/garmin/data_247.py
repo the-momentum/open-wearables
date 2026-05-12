@@ -1700,7 +1700,7 @@ class Garmin247Data(Base247DataTemplate):
                         all_samples.extend(self._build_stress_samples(user_id, item))
                         if score := self._normalize_body_battery_health_score(user_id, item):
                             all_health_scores.append(score)
-                    case "respiration":
+                    case "allDayRespiration":
                         all_samples.extend(self._build_respiration_samples(user_id, item))
                     case "pulseox":
                         all_samples.extend(self._build_pulse_ox_samples(user_id, item))
@@ -1729,7 +1729,7 @@ class Garmin247Data(Base247DataTemplate):
                             record, detail = result
                             all_records.append(record)
                             all_workout_details.append(detail)
-                    case "moveiq":
+                    case "moveIQActivities":
                         record = self._build_moveiq_record(user_id, item)
                         if record:
                             all_records.append(record)
