@@ -259,14 +259,14 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             retry_window_str = get_redis_client().get(_get_key(user_id, "retry_current_window"))
             retry_type_str = get_redis_client().get(_get_key(user_id, "retry_current_type"))
             if retry_window_str and retry_type_str:
-                current_status = get_redis_client().get(_get_key(user_id, "types", retry_type_str, "status"))
+                current_status = get_redis_client().get(_get_key(user_id, "types", retry_type_str, "status"))  # ty:ignore[invalid-argument-type]
                 if current_status == "success":
-                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "done")
+                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "done")  # ty:ignore[invalid-argument-type]
                 elif current_status == "timed_out":
-                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")
-                    mark_type_failed(user_id, retry_type_str, "Timed out during retry (escalated to failed)")
+                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")  # ty:ignore[invalid-argument-type]
+                    mark_type_failed(user_id, retry_type_str, "Timed out during retry (escalated to failed)")  # ty:ignore[invalid-argument-type]
                 elif current_status == "failed":
-                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")
+                    update_window_cell(user_id, int(retry_window_str), retry_type_str, "failed")  # ty:ignore[invalid-argument-type]
 
             next_entry = get_next_retry_target(user_id)
             if next_entry:

@@ -10,7 +10,7 @@ def add_cors_middleware(app: FastAPI) -> None:
         cors_origins = ["*"]
 
     app.add_middleware(
-        CORSMiddleware,  # type: ignore[arg-type]
+        CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],

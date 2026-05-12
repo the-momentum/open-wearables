@@ -272,6 +272,11 @@ export interface SleepStage {
   duration_seconds?: number;
 }
 
+export interface SourceMetadata {
+  provider: string;
+  device: string | null;
+}
+
 export interface SleepSession {
   id: string;
   start_time: string;

@@ -310,7 +310,7 @@ class DataPointSeriesArchiveRepository:
             )
             deleted = (
                 db.query(DataPointSeries)
-                .filter(DataPointSeries.id.in_(ids_to_delete))
+                .filter(DataPointSeries.id.in_(ids_to_delete))  # ty:ignore[invalid-argument-type]
                 .delete(synchronize_session=False)
             )
 
@@ -451,7 +451,7 @@ def _pretty_bytes(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(n) < 1024:
             return f"{n:.2f} {unit}" if unit != "B" else f"{n} B"
-        n /= 1024  # type: ignore[assignment]
+        n /= 1024  # ty:ignore[invalid-assignment]
     return f"{n:.2f} PB"
 
 

@@ -24,7 +24,7 @@ const config = defineConfig({
     nitro({
       // decimal.js-light has "main": "decimal" (no extension) in package.json
       // which breaks ESM resolution when externalized. Force inline bundling.
-      externals: { inline: ['decimal.js-light'] },
+      noExternals: ['decimal.js-light'],
     }),
     tailwindcss(),
     tanstackStart(),

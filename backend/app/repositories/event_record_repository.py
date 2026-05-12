@@ -329,7 +329,7 @@ class EventRecordRepository(
                 limit = query_params.limit or 20
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count
+                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
 
             # Forward pagination: get items AFTER cursor
             if sort_by == "start_datetime":
@@ -353,7 +353,7 @@ class EventRecordRepository(
         if not query_params.cursor and query_params.offset:
             query = query.offset(query_params.offset)
 
-        return query.limit(limit + 1).all(), total_count
+        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_user_event_counts_by_provider(
         self, db_session: DbSession, user_id: UUID

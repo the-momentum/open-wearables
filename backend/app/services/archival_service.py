@@ -76,9 +76,7 @@ class ArchivalService:
         # When both are active and delete threshold is at or below the archive
         # threshold, archival is effectively disabled — data will be deleted
         # before it's old enough to be archived. Treat as retention-only.
-        archival_effective = archive_days is not None and (
-            not both_active or delete_days > archive_days  # type: ignore[operator]
-        )
+        archival_effective = archive_days is not None and (not both_active or delete_days > archive_days)
 
         # ── Archival step ──
         if archival_effective and archive_days is not None:

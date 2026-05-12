@@ -60,11 +60,11 @@ def load_sleep_state(user_id: str) -> SleepState | None:
     try:
         if isinstance(state, bytes):
             state = state.decode("utf-8")
-        return SleepState.model_validate_json(state)
+        return SleepState.model_validate_json(state)  # ty:ignore[invalid-argument-type]
     except Exception as e:
         logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
         try:
-            raw = json.loads(state)
+            raw = json.loads(state)  # ty:ignore[invalid-argument-type]
             return SleepState.model_validate(raw)
         except Exception as fallback_e:
             logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")
@@ -401,10 +401,10 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
                 current_end = end
                 continue
 
-            if start < current_end:
-                current_end = max(current_end, end)
+            if start < current_end:  # ty:ignore[unsupported-operator]
+                current_end = max(current_end, end)  # ty:ignore[invalid-argument-type]
             else:
-                metrics["in_bed_seconds"] += (current_end - current_start).total_seconds()
+                metrics["in_bed_seconds"] += (current_end - current_start).total_seconds()  # ty:ignore[unsupported-operator]
                 current_start = start
                 current_end = end
 

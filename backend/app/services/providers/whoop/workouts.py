@@ -247,11 +247,11 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
             components=components or None,
         )
 
-    def _normalize_workout(  # type: ignore[override]
+    def _normalize_workout(
         self,
         raw_workout: WhoopWorkoutJSON,
         user_id: UUID,
-    ) -> tuple[EventRecordCreate, EventRecordDetailCreate, HealthScoreCreate | None]:
+    ) -> tuple[EventRecordCreate, EventRecordDetailCreate, HealthScoreCreate | None]:  # ty:ignore[invalid-method-override]
         """Normalize Whoop workout to EventRecordCreate, EventRecordDetailCreate, and strain HealthScoreCreate."""
         workout_id = uuid4()
 

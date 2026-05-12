@@ -37,8 +37,8 @@ def set_trace_id(user_id: str | UUID) -> str:
 def get_trace_id(user_id: str | UUID, data_type: str | None = None) -> str | None:
     """Return the active backfill trace ID for a user, optionally per-type."""
     if data_type:
-        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))
-    return get_redis_client().get(_get_key(user_id, "trace_id"))
+        return get_redis_client().get(_get_key(user_id, "types", data_type, "trace_id"))  # ty:ignore[invalid-return-type]
+    return get_redis_client().get(_get_key(user_id, "trace_id"))  # ty:ignore[invalid-return-type]
 
 
 def set_type_trace_id(user_id: str | UUID, data_type: str) -> str:
@@ -88,7 +88,7 @@ def release_backfill_lock(user_id: str | UUID, token: str | None = None) -> bool
     lock_key = _get_key(uid, "lock")
     token_key = _get_key(uid, "lock_token")
     if token is None:
-        token = get_redis_client().get(token_key)
+        token = get_redis_client().get(token_key)  # ty:ignore[invalid-assignment]
     if not token:
         return False
     result = bool(get_redis_client().eval(_RELEASE_LUA, 1, lock_key, token))
@@ -170,9 +170,9 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         for dt in BACKFILL_DATA_TYPES:
             key = f"{REDIS_PREFIX}:{uid}:w:{w}:{dt}:status"
             state = get_redis_client().get(key) or "pending"
-            window_states[dt] = state
+            window_states[dt] = state  # ty:ignore[invalid-assignment]
             if state in summary[dt]:
-                summary[dt][state] += 1
+                summary[dt][state] += 1  # ty:ignore[invalid-argument-type]
         windows[str(w)] = window_states
 
     if current_window < total_windows:
@@ -208,13 +208,13 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         ]
     )
 
-    lock_exists = status_vals[0] is not None
-    cancel_flag = status_vals[1] == "1"
-    retry_phase_active = status_vals[2] == "1"
-    retry_type = status_vals[3]
-    retry_window = int(status_vals[4]) if status_vals[4] else None
-    attempt_count = int(status_vals[5]) if status_vals[5] else 0
-    permanently_failed = status_vals[6] == "1"
+    lock_exists = status_vals[0] is not None  # ty:ignore[not-subscriptable]
+    cancel_flag = status_vals[1] == "1"  # ty:ignore[not-subscriptable]
+    retry_phase_active = status_vals[2] == "1"  # ty:ignore[not-subscriptable]
+    retry_type = status_vals[3]  # ty:ignore[not-subscriptable]
+    retry_window = int(status_vals[4]) if status_vals[4] else None  # ty:ignore[not-subscriptable]
+    attempt_count = int(status_vals[5]) if status_vals[5] else 0  # ty:ignore[not-subscriptable]
+    permanently_failed = status_vals[6] == "1"  # ty:ignore[not-subscriptable]
 
     if permanently_failed:
         overall_status = "permanently_failed"

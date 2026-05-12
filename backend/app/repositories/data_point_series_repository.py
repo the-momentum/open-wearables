@@ -282,7 +282,7 @@ class DataPointSeriesRepository(
                 limit = params.limit or 50
                 results = query.limit(limit + 1).all()
                 # Reverse to get correct order
-                return list(reversed(results)), total_count
+                return list(reversed(results)), total_count  # ty:ignore[invalid-return-type]
             # Forward pagination: get items AFTER cursor
             query = query.filter(
                 tuple_(self.model.recorded_at, self.model.id) > (cursor_ts, cursor_id),
@@ -293,7 +293,7 @@ class DataPointSeriesRepository(
 
         # Limit + 1 to check for next page
         limit = params.limit or 50
-        return query.limit(limit + 1).all(), total_count
+        return query.limit(limit + 1).all(), total_count  # ty:ignore[invalid-return-type]
 
     def get_total_count(self, db_session: DbSession) -> int:
         """Get total count of all data points."""

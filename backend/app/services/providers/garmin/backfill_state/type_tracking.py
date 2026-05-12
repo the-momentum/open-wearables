@@ -20,7 +20,7 @@ def get_pending_types(user_id: str | UUID) -> list[str]:
     user_id_str = str(user_id)
     keys = [_get_key(user_id_str, "types", dt, "status") for dt in BACKFILL_DATA_TYPES]
     statuses = get_redis_client().mget(keys)
-    return [dt for dt, status in zip(BACKFILL_DATA_TYPES, statuses) if not status or status == "pending"]
+    return [dt for dt, status in zip(BACKFILL_DATA_TYPES, statuses) if not status or status == "pending"]  # ty:ignore[invalid-argument-type, not-iterable]
 
 
 def mark_type_triggered(user_id: str | UUID, data_type: str) -> None:
@@ -130,7 +130,7 @@ def mark_type_timed_out(user_id: str | UUID, data_type: str) -> int:
         skip_count=new_count,
         user_id=user_id_str,
     )
-    return new_count
+    return new_count  # ty:ignore[invalid-return-type]
 
 
 def get_timed_out_types(user_id: str | UUID) -> list[str]:
@@ -146,4 +146,4 @@ def get_timed_out_types(user_id: str | UUID) -> list[str]:
 def get_type_skip_count(user_id: str | UUID, data_type: str) -> int:
     """Return the number of times a type has been skipped/timed-out."""
     count = get_redis_client().get(_get_key(str(user_id), "types", data_type, "skip_count"))
-    return int(count) if count else 0
+    return int(count) if count else 0  # ty:ignore[invalid-argument-type]

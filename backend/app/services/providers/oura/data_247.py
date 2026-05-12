@@ -194,7 +194,7 @@ class Oura247Data(Base247DataTemplate):
         self,
         raw_samples: list[dict[str, Any]],
         user_id: UUID,
-    ) -> tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]]:  # type: ignore[override]
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[HealthScoreCreate]]:  # ty:ignore[invalid-method-override]
         """Normalize daily activity data into categorized samples and health scores."""
         activity_items = [OuraDailyActivityJSON(**item) for item in raw_samples]
         activity_scores = self._normalize_activity_scores(activity_items, user_id)

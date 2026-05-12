@@ -1,7 +1,8 @@
 from datetime import date, datetime, timezone
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, desc
+from sqlalchemy import and_, asc, desc, tuple_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.database import DbSession
@@ -9,6 +10,7 @@ from app.models import HealthScore
 from app.repositories.repositories import CrudRepository
 from app.schemas.enums import HealthScoreCategory
 from app.schemas.model_crud.activities import HealthScoreCreate, HealthScoreQueryParams, HealthScoreUpdate
+from app.utils.pagination import decode_cursor
 
 
 class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, HealthScoreUpdate]):
@@ -94,6 +96,59 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
             )
             .delete(synchronize_session=False)
         )
+
+    def get_recovery_summaries(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Get recovery health scores for a date range with cursor-based pagination.
+
+        Returns list of dicts with keys: recovery_date, source, device_model, record_id,
+        recorded_at, recovery_score, resting_heart_rate, hrv_rmssd_milli, spo2_percentage.
+        Fetches limit+1 rows so callers can detect has_more without a separate COUNT query.
+        Ordering matches get_sleep_summaries: ASC by default, DESC when paginating backward.
+        """
+        query = db_session.query(HealthScore).filter(
+            HealthScore.user_id == user_id,
+            HealthScore.category == HealthScoreCategory.RECOVERY,
+            HealthScore.recorded_at >= start_date,
+            HealthScore.recorded_at < end_date,
+        )
+
+        if cursor:
+            cursor_ts, cursor_id, direction = decode_cursor(cursor)
+            if direction == "prev":
+                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) < (cursor_ts, cursor_id)).order_by(
+                    desc(HealthScore.recorded_at), desc(HealthScore.id)
+                )
+            else:
+                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id)).order_by(
+                    asc(HealthScore.recorded_at), asc(HealthScore.id)
+                )
+        else:
+            query = query.order_by(asc(HealthScore.recorded_at), asc(HealthScore.id))
+
+        rows = query.limit(limit + 1).all()
+
+        return [
+            {
+                "recovery_date": row.recorded_at.date(),
+                "source": row.provider,
+                "device_model": None,
+                "record_id": row.id,
+                "recorded_at": row.recorded_at,
+                "recovery_score": int(row.value) if row.value is not None else None,
+                "resting_heart_rate": cast(dict, row.components or {}).get("resting_heart_rate", {}).get("value"),
+                "hrv_rmssd_milli": cast(dict, row.components or {}).get("hrv_rmssd_milli", {}).get("value"),
+                "spo2_percentage": cast(dict, row.components or {}).get("spo2_percentage", {}).get("value"),
+            }
+            for row in rows
+        ]
 
     def get_latest_per_category(
         self,

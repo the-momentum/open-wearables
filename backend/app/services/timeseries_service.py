@@ -54,7 +54,7 @@ class TimeSeriesService(
         db_session: DbSession,
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
-        self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
+        self.crud.bulk_create(db_session, samples)  # ty:ignore[invalid-argument-type]
         samples_copy = list(samples)
 
         @sa_event.listens_for(db_session, "after_commit", once=True)
