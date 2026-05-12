@@ -113,15 +113,11 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
         Fetches limit+1 rows so callers can detect has_more without a separate COUNT query.
         Ordering matches get_sleep_summaries: ASC by default, DESC when paginating backward.
         """
-        query = (
-            db_session.query(HealthScore)
-            .filter(
-                HealthScore.user_id == user_id,
-                HealthScore.category == HealthScoreCategory.RECOVERY,
-                HealthScore.recorded_at >= start_date,
-                HealthScore.recorded_at < end_date,
-            )
-            .order_by(asc(HealthScore.recorded_at), asc(HealthScore.id))
+        query = db_session.query(HealthScore).filter(
+            HealthScore.user_id == user_id,
+            HealthScore.category == HealthScoreCategory.RECOVERY,
+            HealthScore.recorded_at >= start_date,
+            HealthScore.recorded_at < end_date,
         )
 
         if cursor:
@@ -131,7 +127,11 @@ class HealthScoreRepository(CrudRepository[HealthScore, HealthScoreCreate, Healt
                     desc(HealthScore.recorded_at), desc(HealthScore.id)
                 )
             else:
-                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id))
+                query = query.filter(tuple_(HealthScore.recorded_at, HealthScore.id) > (cursor_ts, cursor_id)).order_by(
+                    asc(HealthScore.recorded_at), asc(HealthScore.id)
+                )
+        else:
+            query = query.order_by(asc(HealthScore.recorded_at), asc(HealthScore.id))
 
         rows = query.limit(limit + 1).all()
 
