@@ -2,6 +2,8 @@ from datetime import datetime
 from logging import Logger, getLogger
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from app.database import DbSession
 from app.models import User
 from app.repositories.user_repository import UserRepository
@@ -101,13 +103,39 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
 
         self.logger.debug(f"Retrieved {len(rows)} users out of {total_count} total")
 
+        skipped = []
         items = []
         for user, last_synced_at, last_synced_provider, has_active_connection in rows:
-            user_read = UserRead.model_validate(user)
+            try:
+                user_read = UserRead.model_validate(user)
+            except ValidationError as exc:
+                validation_errors = exc.errors()
+                has_invalid_email = any("email" in error.get("loc", []) for error in validation_errors)
+
+                # Only tolerate known email validation issue (#862)
+                # Any other validation error should still fail loudly.
+
+                if not has_invalid_email:
+                    raise
+
+                skipped.append(
+                    {
+                        "id": str(user.id),
+                        "email": str(user.email),
+                    }
+                )
+                continue
+
             user_read.last_synced_at = last_synced_at
             user_read.last_synced_provider = last_synced_provider
             user_read.has_active_connection = bool(has_active_connection)
             items.append(user_read)
+
+        if skipped:
+            self.logger.warning(
+                "Skipped users with invalid emails: %s",
+                skipped,
+            )
 
         return OldPaginatedResponse[UserRead](
             items=items,
