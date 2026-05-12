@@ -17,7 +17,9 @@ from app.integrations.sentry import init_sentry
 from app.middlewares import add_cors_middleware
 from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
+from app.utils.config_utils import EnvironmentType
 from app.utils.exceptions import DatetimeParseError, handle_exception
+from app.utils.log_filters import UvicornAccess2xxFilter
 
 # Configure logging to use stdout instead of stderr
 # Some platforms convert stderr logs to level.error automatically, so we must use stdout
@@ -34,6 +36,12 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _logger.propagate = True
+
+# In production, drop happy-path 2xx access lines from uvicorn — they
+# were 88% of GCP log ingest on this project (axlbrains/open-wearables#8).
+# 4xx/5xx pass through unchanged, and dev gets the full firehose still.
+if settings.environment == EnvironmentType.PRODUCTION:
+    logging.getLogger("uvicorn.access").addFilter(UvicornAccess2xxFilter())
 
 
 @asynccontextmanager
