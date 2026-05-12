@@ -665,8 +665,13 @@ function GrowthProjection({
                   borderRadius: '8px',
                   fontSize: 12,
                 }}
-                labelFormatter={(m: number) => `Month ${m} (day ${m * 30})`}
-                formatter={(v: number) => [formatBytes(v), 'Estimated size']}
+                labelFormatter={(m) =>
+                  `Month ${Number(m)} (day ${Number(m) * 30})`
+                }
+                formatter={(v) => [
+                  formatBytes(Number(v ?? 0)),
+                  'Estimated size',
+                ]}
               />
               <Area
                 type="monotone"

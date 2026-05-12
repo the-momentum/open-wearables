@@ -162,9 +162,11 @@ export function BodySection({ userId }: BodySectionProps) {
   const hrvValue =
     averagedData?.avg_hrv_sdnn_ms ?? averagedData?.avg_hrv_rmssd_ms ?? null;
   const hrvLabel =
-    averagedData?.avg_hrv_sdnn_ms != null
+    averagedData?.avg_hrv_sdnn_ms !== null &&
+    averagedData?.avg_hrv_sdnn_ms !== undefined
       ? 'HRV SDNN (ms)'
-      : averagedData?.avg_hrv_rmssd_ms != null
+      : averagedData?.avg_hrv_rmssd_ms !== null &&
+          averagedData?.avg_hrv_rmssd_ms !== undefined
         ? 'HRV RMSSD (ms)'
         : 'HRV (ms)';
 
