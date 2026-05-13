@@ -644,9 +644,14 @@ class EventRecordRepository(
         - workout_date, source, device_model
         - elevation_meters, distance_meters, energy_burned_kcal
         """
+        local_workout_date = cast(
+            self.model.end_datetime + cast(func.coalesce(self.model.zone_offset, "+00:00"), Interval),
+            Date,
+        )
+
         results = (
             db_session.query(
-                cast(self.model.end_datetime, Date).label("workout_date"),
+                local_workout_date.label("workout_date"),
                 DataSource.source,
                 DataSource.device_model,
                 # Sum elevation gain for all workouts on that day
@@ -663,14 +668,14 @@ class EventRecordRepository(
                 DataSource.user_id == user_id,
                 self.model.category == "workout",
                 self.model.end_datetime >= start_date,
-                cast(self.model.end_datetime, Date) < cast(end_date, Date),
+                local_workout_date < cast(end_date, Date),
             )
             .group_by(
-                cast(self.model.end_datetime, Date),
+                local_workout_date,
                 DataSource.source,
                 DataSource.device_model,
             )
-            .order_by(asc(cast(self.model.end_datetime, Date)))
+            .order_by(asc(local_workout_date))
             .all()
         )
 
