@@ -546,7 +546,8 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
-                self.model.recorded_at >= start_date,
+                self.model.recorded_at >= start_date - timedelta(days=1),
+                local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id.in_(
                     [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
@@ -627,7 +628,8 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
-                self.model.recorded_at >= start_date,
+                self.model.recorded_at >= start_date - timedelta(days=1),
+                local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id == steps_id,
             )
@@ -728,7 +730,8 @@ class DataPointSeriesRepository(
             .join(DataSource, self.model.data_source_id == DataSource.id)
             .filter(
                 DataSource.user_id == user_id,
-                self.model.recorded_at >= start_date,
+                self.model.recorded_at >= start_date - timedelta(days=1),
+                local_date >= cast(start_date, Date),
                 local_date < cast(end_date, Date),
                 self.model.series_type_definition_id == hr_id,
             )

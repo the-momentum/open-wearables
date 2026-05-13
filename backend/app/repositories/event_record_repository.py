@@ -667,7 +667,8 @@ class EventRecordRepository(
             .filter(
                 DataSource.user_id == user_id,
                 self.model.category == "workout",
-                self.model.end_datetime >= start_date,
+                self.model.end_datetime >= start_date - timedelta(days=1),
+                local_workout_date >= cast(start_date, Date),
                 local_workout_date < cast(end_date, Date),
             )
             .group_by(
