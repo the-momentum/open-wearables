@@ -1,0 +1,312 @@
+# Production Deploy — main → ECR + S3 → ECS
+#
+# Triggered on every push to main. Build matrix produces:
+#   - backend container image → ECR lucie/ow-backend (tagged :latest + :sha-<short>)
+#   - frontend SPA bundle → workflow artifact (consumed by deploy-frontend job)
+#
+# Then runs alembic migrator, then rolls services in order:
+#   migrate → (deploy-frontend ‖ deploy-svix → deploy-app)
+
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: lucie-prod
+  BACKEND_REPO: lucie/ow-backend
+  FRONTEND_BUCKET: lucie-prod-ow-frontend
+  CLOUDFRONT_DIST_ID: EGJ176KVVGWFL
+  OW_API_BASE_URL: https://ow.getlucie.ai
+  ROLE_ARN: arn:aws:iam::031244176128:role/ow-deploy-prod
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            target: ecr
+          - name: frontend
+            context: ./frontend
+            target: artifact
+    outputs:
+      sha_short: ${{ steps.tag.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: ow-build-${{ matrix.name }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Compute short SHA
+        id: tag
+        run: echo "sha_short=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
+      - name: Login to ECR
+        if: matrix.target == 'ecr'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: matrix.target == 'ecr'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push backend image
+        if: matrix.target == 'ecr'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.BACKEND_REPO }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.BACKEND_REPO }}:sha-${{ steps.tag.outputs.sha_short }}
+
+      - name: Setup pnpm
+        if: matrix.target == 'artifact'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        if: matrix.target == 'artifact'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: pnpm install + build
+        if: matrix.target == 'artifact'
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: ${{ env.OW_API_BASE_URL }}
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Upload frontend dist
+        if: matrix.target == 'artifact'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  migrate:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: ow-migrate
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run ow-migrator task
+        id: run
+        run: |
+          set -e
+          NET_CFG=$(aws ecs describe-services \
+            --cluster "${ECS_CLUSTER}" \
+            --services ow-backend \
+            --query 'services[0].networkConfiguration' --output json)
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "${ECS_CLUSTER}" \
+            --task-definition ow-migrator \
+            --launch-type EC2 \
+            --network-configuration "${NET_CFG}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Started migrator task: ${TASK_ARN}"
+          echo "task_arn=${TASK_ARN}" >> $GITHUB_OUTPUT
+          aws ecs wait tasks-stopped --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}"
+
+      - name: Verify migration succeeded
+        env:
+          TASK_ARN: ${{ steps.run.outputs.task_arn }}
+        run: |
+          set -e
+          STOP_CODE=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          STOP_REASON=$(aws ecs describe-tasks \
+            --cluster "${ECS_CLUSTER}" --tasks "${TASK_ARN}" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "Migrator exit code: ${STOP_CODE}"
+          echo "Stopped reason: ${STOP_REASON}"
+          if [ "${STOP_CODE}" != "0" ]; then
+            echo "::error::Migration failed (exit ${STOP_CODE}: ${STOP_REASON})"
+            aws logs tail /ecs/ow-migrator --since 5m --region "${AWS_REGION}" || true
+            exit 1
+          fi
+
+  deploy-frontend:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: ow-deploy-frontend
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      - name: S3 sync
+        run: |
+          aws s3 sync dist/ "s3://${FRONTEND_BUCKET}/" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/index.html "s3://${FRONTEND_BUCKET}/index.html" \
+            --cache-control "public, max-age=60"
+
+      - name: CloudFront invalidation
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DIST_ID}" \
+            --paths "/*" \
+            --query 'Invalidation.{id:Id,status:Status}' --output table
+
+  deploy-svix:
+    needs: migrate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: ow-deploy-svix
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new deployment (ow-svix-server)
+        run: |
+          aws ecs update-service --cluster "${ECS_CLUSTER}" \
+            --service ow-svix-server --force-new-deployment \
+            --query 'service.{rollout:deployments[0].rolloutState}' --output table
+
+      - name: Wait + confirm svix rollout
+        run: |
+          set -e
+          DEADLINE=$(( $(date +%s) + 1800 ))
+          while true; do
+            R=$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services ow-svix-server \
+              --query 'services[0].deployments[0].rolloutState' --output text)
+            echo "[ow-svix-server] rolloutState=$R"
+            case "$R" in COMPLETED|FAILED) break ;; esac
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+              echo "::error::ow-svix-server rollout did not reach terminal state within 30 min"
+              exit 1
+            fi
+            sleep 20
+          done
+          if [ "$R" != "COMPLETED" ]; then
+            echo "::error::ow-svix-server deployment failed"
+            aws logs tail /ecs/ow-svix-server --since 5m --region "${AWS_REGION}" || true
+            exit 1
+          fi
+
+  deploy-app:
+    needs: deploy-svix
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          role-session-name: ow-deploy-app
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new deployment on 3 services
+        run: |
+          for svc in ow-backend ow-celery-worker ow-celery-beat; do
+            aws ecs update-service --cluster "${ECS_CLUSTER}" \
+              --service "$svc" --force-new-deployment \
+              --query 'service.serviceName' --output text
+          done
+
+      - name: Wait for all 3 rollouts
+        run: |
+          set -e
+          DEADLINE=$(( $(date +%s) + 1800 ))
+          for svc in ow-backend ow-celery-worker ow-celery-beat; do
+            echo "Polling $svc..."
+            while true; do
+              R=$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "$svc" \
+                --query 'services[0].deployments[0].rolloutState' --output text)
+              echo "  [$svc] rolloutState=$R"
+              case "$R" in COMPLETED|FAILED) break ;; esac
+              if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+                echo "::error::[$svc] rollout did not reach terminal state within 30 min"
+                exit 1
+              fi
+              sleep 20
+            done
+          done
+
+      - name: Confirm all 3 outcomes
+        run: |
+          set -e
+          FAILED=0
+          for svc in ow-backend ow-celery-worker ow-celery-beat; do
+            R=$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "$svc" \
+              --query 'services[0].deployments[0].rolloutState' --output text)
+            REASON=$(aws ecs describe-services --cluster "${ECS_CLUSTER}" --services "$svc" \
+              --query 'services[0].deployments[0].rolloutStateReason' --output text)
+            echo "[$svc] rollout=$R reason=$REASON"
+            if [ "$R" != "COMPLETED" ]; then
+              echo "::error::[$svc] deployment failed: $REASON"
+              aws logs tail "/ecs/$svc" --since 5m --region "${AWS_REGION}" || true
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
+      - name: Deployment summary
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "## OW Production Deployment Complete"
+            echo ""
+            echo "| Property | Value |"
+            echo "|---|---|"
+            echo "| Cluster | \`${ECS_CLUSTER}\` |"
+            echo "| Services rolled | ow-svix-server, ow-backend, ow-celery-worker, ow-celery-beat |"
+            echo "| Frontend bucket | \`${FRONTEND_BUCKET}\` |"
+            echo "| CloudFront | \`${CLOUDFRONT_DIST_ID}\` |"
+            echo "| Image tag | \`latest\` + \`sha-${COMMIT_SHA:0:7}\` |"
+            echo "| Commit | \`${COMMIT_SHA}\` |"
+            echo "| URL | https://ow.getlucie.ai |"
+          } >> $GITHUB_STEP_SUMMARY
