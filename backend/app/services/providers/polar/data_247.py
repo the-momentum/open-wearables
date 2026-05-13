@@ -1,8 +1,10 @@
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
@@ -42,6 +44,8 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
+
+_T = TypeVar("_T", bound=BaseModel)
 
 
 class Polar247Data(Base247DataTemplate):
@@ -132,6 +136,37 @@ class Polar247Data(Base247DataTemplate):
             headers=headers,
         )
 
+    def _parse_time_key(self, key: str) -> time:
+        parts = key.split(":")
+        h, m = int(parts[0]), int(parts[1])
+        s = int(parts[2]) if len(parts) > 2 else 0
+        return time(h, m, s)
+
+    def _hhmm_to_datetimes(
+        self,
+        items: dict[str, Any],
+        anchor: datetime,
+    ) -> list[tuple[datetime, Any]]:
+        """Convert dict[HH:MM or HH:MM:SS, value] to [(datetime, value)], handling midnight crossover."""
+        result: list[tuple[datetime, Any]] = []
+        current_date = anchor.date()
+        prev_t: time | None = None
+        for key, val in items.items():
+            t = self._parse_time_key(key)
+            if prev_t is not None and t < prev_t:
+                current_date += timedelta(days=1)
+            result.append((datetime.combine(current_date, t, tzinfo=anchor.tzinfo), val))
+            prev_t = t
+        return result
+
+    def _parse(self, raw: dict[str, Any], schema: type[_T], user_id: UUID, context: str) -> _T | None:
+        try:
+            return schema.model_validate(raw)
+        except ValidationError as e:
+            log_structured(self.logger, "warning", f"Polar {context} validation error: {e}",
+                           provider="polar", user_id=str(user_id))
+            return None
+
     # -------------------------------------------------------------------------
     # Sleep - GET /v3/users/sleep, GET /v3/users/sleep/{date} and GET /v3/users/sleep/available
     # -------------------------------------------------------------------------
@@ -158,29 +193,6 @@ class Polar247Data(Base247DataTemplate):
             if response:
                 sleep_data.append(response)
         return sleep_data
-
-    def _parse_time_key(self, key: str) -> time:
-        parts = key.split(":")
-        h, m = int(parts[0]), int(parts[1])
-        s = int(parts[2]) if len(parts) > 2 else 0
-        return time(h, m, s)
-
-    def _hhmm_to_datetimes(
-        self,
-        items: dict[str, Any],
-        anchor: datetime,
-    ) -> list[tuple[datetime, Any]]:
-        """Convert dict[HH:MM or HH:MM:SS, value] to [(datetime, value)], handling midnight crossover."""
-        result: list[tuple[datetime, Any]] = []
-        current_date = anchor.date()
-        prev_t: time | None = None
-        for key, val in items.items():
-            t = self._parse_time_key(key)
-            if prev_t is not None and t < prev_t:
-                current_date += timedelta(days=1)
-            result.append((datetime.combine(current_date, t, tzinfo=anchor.tzinfo), val))
-            prev_t = t
-        return result
 
     def _parse_hypnogram(
         self,
@@ -340,7 +352,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = DailyActivityJSON.model_validate(raw)
+            if (parsed := self._parse(raw, DailyActivityJSON, user_id, "daily_activity")) is None:
+                continue
             if not parsed.start_time:
                 continue
             recorded_at = datetime.fromisoformat(parsed.start_time)
@@ -393,7 +406,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = ContinuousHeartRateJSON.model_validate(raw)
+            if (parsed := self._parse(raw, ContinuousHeartRateJSON, user_id, "continuous_hr")) is None:
+                continue
             if not parsed.date or not parsed.heart_rate_samples:
                 continue
             anchor = datetime.fromisoformat(parsed.date)
@@ -436,7 +450,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[HealthScoreCreate]:
         scores: list[HealthScoreCreate] = []
         for raw in raw_items:
-            parsed = CardioLoadJSON.model_validate(raw)
+            if (parsed := self._parse(raw, CardioLoadJSON, user_id, "cardio_load")) is None:
+                continue
             if parsed.cardio_load is None or not parsed.date:
                 continue
             raw_components: dict[str, float | int | None] = {
@@ -490,7 +505,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[HealthScoreCreate]:
         scores: list[HealthScoreCreate] = []
         for raw in raw_items:
-            parsed = NightlyRechargeJSON.model_validate(raw)
+            if (parsed := self._parse(raw, NightlyRechargeJSON, user_id, "nightly_recharge")) is None:
+                continue
             if parsed.nightly_recharge_status is None or not parsed.date:
                 continue
             components: dict[str, ScoreComponent] = {}
@@ -541,7 +557,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[HealthScoreCreate]:
         scores: list[HealthScoreCreate] = []
         for raw in raw_items:
-            parsed = AlertnessJSON.model_validate(raw)
+            if (parsed := self._parse(raw, AlertnessJSON, user_id, "alertness")) is None:
+                continue
             # Only score primary results — additional are supplementary assessments
             if parsed.grade is None or parsed.grade_type != GradeType.PRIMARY:
                 continue
@@ -591,7 +608,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[HealthScoreCreate]:
         scores: list[HealthScoreCreate] = []
         for raw in raw_items:
-            parsed = CircadianBedtimeJSON.model_validate(raw)
+            if (parsed := self._parse(raw, CircadianBedtimeJSON, user_id, "circadian_bedtime")) is None:
+                continue
             if parsed.quality is None or parsed.quality == CircadianBedtimeQuality.UNKNOWN:
                 continue
             if not parsed.period_start_time:
@@ -634,7 +652,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = BodyTemperaturePeriodJSON.model_validate(raw)
+            if (parsed := self._parse(raw, BodyTemperaturePeriodJSON, user_id, "body_temperature")) is None:
+                continue
             if not parsed.samples or not parsed.start_time or not parsed.measurement_type:
                 continue
             series_type = self._BODY_TEMP_SERIES_TYPE.get(parsed.measurement_type)
@@ -674,7 +693,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = SkinTemperatureJSON.model_validate(raw)
+            if (parsed := self._parse(raw, SkinTemperatureJSON, user_id, "sleep_skin_temperature")) is None:
+                continue
             if not parsed.sleep_date:
                 continue
             recorded_at = datetime.fromisoformat(parsed.sleep_date)
@@ -714,7 +734,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = Spo2TestResultJSON.model_validate(raw)
+            if (parsed := self._parse(raw, Spo2TestResultJSON, user_id, "spo2")) is None:
+                continue
             if parsed.test_status != Spo2TestStatus.PASSED or parsed.test_time is None:
                 continue
             recorded_at = datetime.fromtimestamp(parsed.test_time, tz=timezone.utc)
@@ -754,7 +775,8 @@ class Polar247Data(Base247DataTemplate):
     ) -> list[TimeSeriesSampleCreate]:
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
-            parsed = EcgTestResultJSON.model_validate(raw)
+            if (parsed := self._parse(raw, EcgTestResultJSON, user_id, "wrist_ecg")) is None:
+                continue
             if parsed.test_time is None:
                 continue
             recorded_at = datetime.fromtimestamp(parsed.test_time, tz=timezone.utc)
