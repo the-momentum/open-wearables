@@ -203,7 +203,6 @@ class TestPolarWorkoutsMetricsBuilding:
         # Assert
         assert metrics["heart_rate_avg"] == Decimal("145")
         assert metrics["heart_rate_max"] == 175
-        assert metrics["heart_rate_min"] == 145
         assert metrics["steps_count"] is None
         assert metrics["energy_burned"] == Decimal("650")
         assert metrics["distance"] == Decimal("10000")
@@ -250,7 +249,6 @@ class TestPolarWorkoutsMetricsBuilding:
         # Assert
         assert metrics["heart_rate_avg"] is None
         assert metrics["heart_rate_max"] is None
-        assert metrics["heart_rate_min"] is None
 
 
 class TestPolarWorkoutsNormalization:

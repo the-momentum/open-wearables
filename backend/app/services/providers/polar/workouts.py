@@ -90,10 +90,8 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         distance = Decimal(str(raw_workout.distance)) if raw_workout.distance is not None else None
 
         return {
-            "heart_rate_min": int(hr_avg) if hr_avg is not None else None,
             "heart_rate_max": int(hr_max) if hr_max is not None else None,
             "heart_rate_avg": hr_avg,
-            "steps_count": None,
             "energy_burned": energy_burned,
             "distance": distance,
         }

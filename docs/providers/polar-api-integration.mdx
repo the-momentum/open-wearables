@@ -1,13 +1,13 @@
 ---
 title: "Polar API Integration"
-description: "Connect Polar devices via AccessLink API with OAuth 2.0. Syncs exercise and workout data. Requires Client ID and Secret from Polar AccessLink Admin."
+description: "Connect Polar devices via AccessLink API with OAuth 2.0. Syncs workouts, sleep, daily activity, continuous HR, Nightly Recharge, and cardio load. Requires Client ID and Secret from Polar AccessLink Admin."
 keywords: ["polar api", "polar api integration", "polar health data", "polar fitness api"]
 "og:title": "Polar API Integration | Open Wearables"
-"og:description": "Connect Polar via AccessLink API with OAuth 2.0. Syncs exercise and workout data. Free Polar Flow account required."
+"og:description": "Connect Polar via AccessLink API with OAuth 2.0. Syncs workouts, sleep, daily activity, continuous HR, Nightly Recharge, and cardio load. Free Polar Flow account required."
 "og:url": "https://docs.openwearables.io/providers/polar-api-integration"
 "og:type": "article"
 "twitter:title": "Polar API Integration | Open Wearables"
-"twitter:description": "Connect Polar via AccessLink API with OAuth 2.0. Syncs exercise and workout data. Free Polar Flow account required."
+"twitter:description": "Connect Polar via AccessLink API with OAuth 2.0. Syncs workouts, sleep, daily activity, continuous HR, Nightly Recharge, and cardio load. Free Polar Flow account required."
 "twitter:card": "summary_large_image"
 ---
 
@@ -24,20 +24,24 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Exercises | Yes (with optional HR samples, zones, route) |
-| Sleep (with stages) | Available via API - not yet implemented |
-| Daily activity | Available via API - not yet implemented |
-| Continuous heart rate (5-min intervals) | Available via API - not yet implemented |
-| Nightly Recharge / Recovery | Available via API - not yet implemented |
-
-<Info>
-Open Wearables currently syncs **exercise/workout data** from Polar. The AccessLink API also exposes sleep, daily activity, continuous HR, and Nightly Recharge data - support for these types is planned for a future release.
-</Info>
+| Sleep (with stages) | Yes |
+| Daily activity (steps, calories, activity zones) | Yes |
+| Continuous heart rate | Yes |
+| Nightly Recharge / Recovery | Yes |
+| Cardio Load | Yes |
+| Sleepwise Alertness | Yes (requires Polar Sleepwise subscription) |
+| Sleepwise Circadian Bedtime | Yes (requires Polar Sleepwise subscription) |
+| Body Temperature | Yes (requires Polar Elixir device) |
+| Sleep Skin Temperature | Yes (requires Polar Elixir device) |
+| SpO2 | Yes (requires Polar Elixir device) |
+| Wrist ECG | Yes (requires Polar Elixir device) |
 
 ### Data delivery
 
 | Method | Description |
 |--------|-------------|
-| **Polling (pull)** | Open Wearables periodically fetches exercise data via the Polar AccessLink API (via Celery Beat) |
+| **Polling (pull) — Exercises** | Open Wearables fetches new exercises via the transaction-based AccessLink API (Celery). Covers exercises uploaded in the last 30 days. |
+| **Polling (pull) — 24/7 data** | Sleep, daily activity, continuous HR, Nightly Recharge, cardio load, and Elixir/Sleepwise metrics are fetched via range endpoints covering the last 90 days. |
 
 <Info>
 **Webhooks:** Polar supports webhooks for event notifications, but Open Wearables does not yet implement a Polar webhook handler. Data is synced via periodic polling only. Webhook support is planned for a future release.
@@ -163,7 +167,7 @@ POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
     ```
 
     <Note>
-    Polar only returns exercises uploaded within the last 30 days. Older data is not accessible via the AccessLink API.
+    Exercises: Polar only returns exercises uploaded within the last 30 days via the transaction-based endpoint. 24/7 data (sleep, activity, HR, etc.) is fetched over a 90-day lookback window using range endpoints.
     </Note>
   </Step>
 
@@ -173,6 +177,14 @@ POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
     ```bash
     # Fetch workouts
     curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/workouts?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch sleep records
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/sleep?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
+      -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+
+    # Fetch daily activity
+    curl -X GET "http://localhost:8000/api/v1/users/{user_id}/events/daily-activity?start_date=2026-01-01T00:00:00Z&end_date=2026-02-01T00:00:00Z" \
       -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
     ```
 

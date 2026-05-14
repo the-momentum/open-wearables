@@ -20,10 +20,10 @@ This guide provides a comprehensive overview of data type support across all int
 |------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
 | **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| **Sleep** | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **24/7 Data** | ✅ | ✅ | ❌ | ✅ | ✅ | ◐ | ✅ | ❌ |
-| **Timeseries** | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| **Health Scores** | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ |
+| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Fully implemented and collecting data
@@ -46,10 +46,10 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| `heart_rate` | bpm | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ |
 | `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ◐ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -64,7 +64,7 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| `oxygen_saturation` | % | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `oxygen_saturation` | % | ✅ | ✅ | ◐ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | `blood_glucose` | mg/dL | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `blood_pressure_systolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `blood_pressure_diastolic` | mmHg | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -80,9 +80,9 @@ This guide provides a comprehensive overview of data type support across all int
 | `body_fat_percentage` | % | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `body_mass_index` | kg/m² | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `lean_body_mass` | kg | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `body_temperature` | °C | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| `skin_temperature` | °C | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `skin_temperature_deviation` | °C | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| `body_temperature` | °C | ✅ | ❌ | ◐ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| `skin_temperature` | °C | ❌ | ✅ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `skin_temperature_deviation` | °C | ❌ | ❌ | ◐ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `skin_temperature_trend_deviation` | °C | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 ### Fitness Metrics
@@ -98,8 +98,8 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| `steps` | count | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `energy` | kcal | ✅ | ✅ | ◐ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `steps` | count | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| `energy` | kcal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | `basal_energy` | kcal | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `exercise_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -110,7 +110,7 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| `distance_walking_running` | meters | ✅ | ✅ | ◐ | ◐ | ✅ | ❌ | ❌ | ❌ |
+| `distance_walking_running` | meters | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ | ❌ |
 | `distance_cycling` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
 | `distance_swimming` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
 | `distance_downhill_snow_sports` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ |
@@ -170,19 +170,19 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 
 | Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| Sleep sessions | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Total duration | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Time in bed | ✅ | ❌ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Sleep efficiency | 🔜 | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Sleep sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Total duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Time in bed | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Sleep efficiency | 🔜 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Sleep Stages** | | | | | | | | |
-| Stage timestamps | ✅ | ✅ | 🔜 | ❌ | ✅ | 🔜 | 🔜 | ❌ |
-| Deep sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Light sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| REM sleep | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Awake time | ✅ | ✅ | 🔜 | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Stage timestamps | ✅ | ✅ | ✅ | ❌ | ✅ | 🔜 | 🔜 | ❌ |
+| Deep sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Light sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| REM sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Awake time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Biometrics During Sleep** | | | | | | | | |
-| Average heart rate | 🔜 | ✅ | 🔜 | ✅ | 🔜 | ❌ | ❌ | ❌ |
-| Min heart rate | 🔜 | ✅ | 🔜 | ✅ | 🔜 | ❌ | ❌ | ❌ |
+| Average heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ |
+| Min heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ |
 | Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ |
 | SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -242,14 +242,14 @@ Health scores are composite metrics that summarize a specific aspect of health i
 
 | Score | Internal | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
 |-------|:--------:|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| Sleep score | 🔜 | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Readiness score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Sleep score | 🔜 | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Readiness score | ❌ | ❌ | ❌ | ◐ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Activity score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Recovery score | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Recovery score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | Resilience score | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Stress score | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Body battery | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Strain score | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Strain score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 
 <Note>
   **Internal scores** are calculated by Open Wearables from raw data, independent of any provider. They are available for any provider that reports the required underlying data.
@@ -291,13 +291,19 @@ Key differences and limitations to be aware of when working with each provider:
 </Accordion>
 
 <Accordion title="Polar">
-  **Integration Method:** OAuth 2.0 (pull-based)
-  
-  - No webhooks or 24/7 continuous data — workouts only
-  - "Sleep" in API is activity zone detection (lying down), **not** sleep stage analysis
-  - RR interval (HRV) data requires Polar H6, H7, H9, or H10 chest strap sensors
-  - Calories and distance extracted from exercise data
+  **Integration Method:** OAuth 2.0 (pull-based polling)
+
+  - No webhooks; data is synced via periodic polling only
+  - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, and stage timestamps from hypnogram; sleep efficiency not available in the API
+  - Sleep HR timeseries saved from per-night heart rate samples (not summarised avg/min on the sleep record)
+  - Continuous 24/7 heart rate sampled at ~5-min intervals via range endpoint (90-day lookback)
+  - Daily activity: steps, active calories, and walking/running distance from `/v3/users/activities`
+  - Health scores: sleep score, Nightly Recharge (recovery), Cardio Load (strain)
+  - Sleepwise Alertness and Circadian Bedtime scores require an active **Polar Sleepwise** subscription
+  - Body temperature, sleep skin temperature, SpO2, and wrist ECG (HRV RMSSD) require a **Polar Elixir** device
+  - HRV RMSSD available from Elixir SpO2 spot tests and wrist ECG measurements; not available from standard devices
   - 75+ workout type mappings to unified taxonomy
+  - Exercises accessible via transaction-based endpoint (last 30 days only)
 </Accordion>
 
 <Accordion title="Suunto">
