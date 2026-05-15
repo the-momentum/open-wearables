@@ -1,6 +1,8 @@
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.oauth import PolarOAuth
+from app.services.providers.polar.webhook_handler import PolarWebhookHandler
+from app.services.providers.polar.webhook_service import polar_webhook_service
 from app.services.providers.polar.workouts import PolarWorkouts
 
 
@@ -27,6 +29,7 @@ class PolarStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
+        self.webhooks = PolarWebhookHandler()
 
     @property
     def name(self) -> str:
@@ -38,8 +41,7 @@ class PolarStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        # Polar AccessLink 3.0 uses a transaction-based REST API for data pull
-        # and supports a webhook feature that sends a notification when new data
-        # is available.  Actual data is fetched via the transaction endpoints.
-        return ProviderCapabilities(rest_pull=True)  # use the line below after implementing webhooks
-        # return ProviderCapabilities(rest_pull=True, webhook_ping=True)
+        return ProviderCapabilities(rest_pull=True, webhook_ping=True)
+
+    async def register_webhooks(self, callback_url: str) -> list[dict]:
+        return await polar_webhook_service.register_subscriptions(callback_url)

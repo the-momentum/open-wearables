@@ -1,0 +1,155 @@
+"""Polar webhook subscription management.
+
+Handles app-level webhook registration with the Polar AccessLink API.
+Polar supports exactly one webhook per application, registered via Basic auth
+(client_id:client_secret).
+
+When created, Polar immediately POSTs a PING to the configured URL. The URL
+must respond with HTTP 200 or the webhook will not be created. Polar returns a
+``signature_secret_key`` that must be stored in ``POLAR_WEBHOOK_SIGNATURE_SECRET``
+— it is shown only once.
+
+Webhook auto-deactivates after 7 days of failed delivery. Use activate() to
+re-enable it.
+"""
+
+from logging import getLogger
+from typing import Any
+
+import httpx
+
+from app.config import settings
+from app.utils.structured_logging import log_structured
+
+logger = getLogger(__name__)
+
+_POLAR_API_URL = "https://www.polaraccesslink.com"
+
+_ALL_EVENTS = [
+    "EXERCISE",
+    "SLEEP",
+    "CONTINUOUS_HEART_RATE",
+    "ACTIVITY_SUMMARY",
+    "SLEEP_WISE_ALERTNESS",
+    "SLEEP_WISE_CIRCADIAN_BEDTIME",
+    "PHYSICAL_INFORMATION",
+]
+
+
+class PolarWebhookService:
+    """App-level Polar webhook subscription management."""
+
+    def _get_basic_auth(self) -> httpx.BasicAuth:
+        client_id = settings.polar_client_id
+        client_secret = settings.polar_client_secret.get_secret_value() if settings.polar_client_secret else None
+        if not client_id or not client_secret:
+            raise ValueError("Polar client credentials (POLAR_CLIENT_ID / POLAR_CLIENT_SECRET) not configured")
+        return httpx.BasicAuth(client_id, client_secret)
+
+    async def get_webhook(self) -> dict[str, Any] | None:
+        """Return the existing webhook config, or None if not registered."""
+        auth = self._get_basic_auth()
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(f"{_POLAR_API_URL}/v3/webhooks", auth=auth, timeout=30.0)
+            resp.raise_for_status()
+            data = resp.json()
+            webhooks = data.get("data", [])
+            return webhooks[0] if webhooks else None
+
+    async def register_subscriptions(self, callback_url: str) -> list[dict[str, Any]]:
+        """Create or verify the Polar webhook subscription.
+
+        If a webhook already exists with the same URL it is left in place.
+        If the URL differs, the old one is deleted and a new one is created.
+        Returns a list with one result dict describing the outcome.
+
+        Note: on creation Polar returns ``signature_secret_key`` which must be
+        saved to ``POLAR_WEBHOOK_SIGNATURE_SECRET`` immediately — it is not
+        retrievable afterwards.
+        """
+        if not callback_url:
+            raise ValueError("callback_url is required")
+
+        auth = self._get_basic_auth()
+
+        existing = await self.get_webhook()
+        if existing:
+            existing_url = existing.get("url", "")
+            webhook_id = existing.get("id")
+
+            if existing_url == callback_url:
+                log_structured(
+                    logger, "info", "Polar webhook already registered",
+                    provider="polar", action="polar_webhook_skipped",
+                    webhook_id=webhook_id,
+                )
+                return [{"status": "skipped", "webhook_id": webhook_id}]
+
+            # URL changed — delete and recreate
+            await self._delete_webhook(auth, webhook_id)
+
+        return [await self._create_webhook(auth, callback_url)]
+
+    async def _delete_webhook(self, auth: httpx.BasicAuth, webhook_id: str) -> None:
+        async with httpx.AsyncClient() as client:
+            resp = await client.delete(
+                f"{_POLAR_API_URL}/v3/webhooks/{webhook_id}", auth=auth, timeout=30.0
+            )
+            resp.raise_for_status()
+            log_structured(
+                logger, "info", "Deleted stale Polar webhook",
+                provider="polar", action="polar_webhook_deleted", webhook_id=webhook_id,
+            )
+
+    async def _create_webhook(self, auth: httpx.BasicAuth, callback_url: str) -> dict[str, Any]:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{_POLAR_API_URL}/v3/webhooks",
+                auth=auth,
+                json={"events": _ALL_EVENTS, "url": callback_url},
+                timeout=30.0,
+            )
+            if resp.status_code == 409:
+                return {"status": "skipped", "reason": "already_exists"}
+            resp.raise_for_status()
+            result = resp.json().get("data", resp.json())
+            log_structured(
+                logger, "info", "Polar webhook created",
+                provider="polar", action="polar_webhook_created",
+                webhook_id=result.get("id"),
+            )
+            log_structured(
+                logger, "warning",
+                "IMPORTANT: Save the Polar webhook signature_secret_key to POLAR_WEBHOOK_SIGNATURE_SECRET — it is shown only once",
+                provider="polar",
+            )
+            return {"status": "created", "response": result}
+
+    async def activate(self) -> dict[str, Any]:
+        """Activate a deactivated Polar webhook."""
+        auth = self._get_basic_auth()
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/activate", auth=auth, timeout=30.0)
+            if resp.status_code == 204:
+                return {"status": "not_found"}
+            resp.raise_for_status()
+            log_structured(logger, "info", "Polar webhook activated", provider="polar")
+            return {"status": "activated"}
+
+    async def deactivate(self) -> dict[str, Any]:
+        """Deactivate the active Polar webhook."""
+        auth = self._get_basic_auth()
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
+            if resp.status_code == 204:
+                return {"status": "not_found"}
+            resp.raise_for_status()
+            log_structured(logger, "info", "Polar webhook deactivated", provider="polar")
+            return {"status": "deactivated"}
+
+    async def list_subscriptions(self) -> list[dict[str, Any]]:
+        webhook = await self.get_webhook()
+        return [webhook] if webhook else []
+
+
+polar_webhook_service = PolarWebhookService()
