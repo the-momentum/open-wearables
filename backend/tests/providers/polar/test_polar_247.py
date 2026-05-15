@@ -1,5 +1,6 @@
 """Tests for Polar247Data normalization."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -361,8 +362,6 @@ class TestPolar247NightlyRechargeNormalization:
 
 class TestPolar247HypnogramParsing:
     def test_consecutive_same_stage_grouped(self, data_247: Polar247Data) -> None:
-        from datetime import datetime, timezone
-
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         # Two consecutive light (2) entries then deep (4)
@@ -374,8 +373,6 @@ class TestPolar247HypnogramParsing:
         assert len(light_stages) == 1
 
     def test_midnight_crossover(self, data_247: Polar247Data) -> None:
-        from datetime import datetime, timezone
-
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         hypnogram = {"23:00": 2, "00:00": 4}
@@ -387,8 +384,6 @@ class TestPolar247HypnogramParsing:
         assert deep_stage.start_time.day == 16
 
     def test_empty_hypnogram(self, data_247: Polar247Data) -> None:
-        from datetime import datetime, timezone
-
         start = datetime(2024, 1, 15, 23, 0, tzinfo=timezone.utc)
         end = datetime(2024, 1, 16, 7, 0, tzinfo=timezone.utc)
         assert data_247._parse_hypnogram({}, start, end) == []

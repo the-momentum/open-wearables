@@ -56,12 +56,13 @@ class PolarWebhookService:
     async def register_subscriptions(self, callback_url: str) -> dict[str, Any]:
         """Create or verify the Polar webhook subscription.
 
-        If a webhook already exists with the same URL it is left in place.
-        If the URL differs, the old one is deleted and a new one is created.
-        Returns a result dict describing the outcome.
+        Calls ``get_webhook`` to check for an existing registration:
+        - Same URL: returns skipped, no changes made.
+        - Different URL: calls ``_patch_webhook`` to update the existing webhook in place.
+        - No existing webhook: calls ``_create_webhook``; Polar returns
+          ``signature_secret_key`` on creation which is not retrievable afterwards.
 
-        Note: on creation Polar returns ``signature_secret_key`` which must be
-        saved immediately — it is not retrievable afterwards.
+        Returns a result dict describing the outcome.
         """
         if not callback_url:
             raise ValueError("callback_url is required")
@@ -139,8 +140,6 @@ class PolarWebhookService:
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/activate", auth=auth, timeout=30.0)
-            if resp.status_code == status.HTTP_204_NO_CONTENT:
-                return {"status": "not_found"}
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook activated", provider="polar")
             return {"status": "activated"}
@@ -150,8 +149,6 @@ class PolarWebhookService:
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
-            if resp.status_code == status.HTTP_204_NO_CONTENT:
-                return {"status": "not_found"}
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook deactivated", provider="polar")
             return {"status": "deactivated"}

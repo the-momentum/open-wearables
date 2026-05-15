@@ -901,7 +901,7 @@ class Polar247Data(Base247DataTemplate):
                 return {"sleep": count}
 
             case PolarWebhookEventType.ACTIVITY_SUMMARY:
-                return {"daily_activity": self._save_timeseries(db, self.normalize_daily_activity(raw, user_id))}
+                return {"daily_activity": self._save_timeseries(db, self.normalize_daily_activity([raw], user_id))}
 
             case PolarWebhookEventType.CONTINUOUS_HEART_RATE:
                 return {
@@ -911,10 +911,10 @@ class Polar247Data(Base247DataTemplate):
                 }
 
             case PolarWebhookEventType.SLEEP_WISE_ALERTNESS:
-                return {"alertness": self._save_scores(db, self.normalize_alertness(raw, user_id))}
+                return {"alertness": self._save_scores(db, self.normalize_alertness([raw], user_id))}
 
             case PolarWebhookEventType.SLEEP_WISE_CIRCADIAN_BEDTIME:
-                return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime(raw, user_id))}
+                return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime([raw], user_id))}
 
             case _:
                 log_structured(

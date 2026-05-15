@@ -47,6 +47,7 @@ from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 if TYPE_CHECKING:
@@ -64,6 +65,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
     def __init__(self, workouts: "PolarWorkouts | None" = None, data_247: "Polar247Data | None" = None) -> None:
         super().__init__("polar")
         self.connection_repo = UserConnectionRepository()
+        self.provider_settings_repo = ProviderSettingsRepository()
         self.workouts = workouts
         self.data_247 = data_247
 
@@ -74,7 +76,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Verify HMAC-SHA256 signature from X-Polar-Webhook-Signature header."""
         with SessionLocal() as db:
-            secret = ProviderSettingsRepository().get_webhook_secret(db, ProviderName.POLAR)
+            secret = self.provider_settings_repo.get_webhook_secret(db, ProviderName.POLAR)
 
         if not secret:
             log_structured(logger, "warning", "Polar webhook signature secret not configured", provider="polar")
@@ -217,13 +219,29 @@ class PolarWebhookHandler(BaseWebhookHandler):
             user_id=str(user_id),
         )
 
-        if event.event == PolarWebhookEventType.EXERCISE:
-            if not self.workouts:
-                return {"status": "error", "error": "workouts service not initialised"}
-            saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
-            return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
+        try:
+            if event.event == PolarWebhookEventType.EXERCISE:
+                if not self.workouts:
+                    return {"status": "error", "error": "workouts service not initialised"}
+                saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
+                return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
 
-        if not self.data_247:
-            return {"status": "error", "error": "data_247 service not initialised"}
-        saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
-        return {"status": "accepted", "user_id": str(user_id), "saved": saved}
+            if not self.data_247:
+                return {"status": "error", "error": "data_247 service not initialised"}
+            saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
+            return {"status": "accepted", "user_id": str(user_id), "saved": saved}
+        except Exception as exc:
+            log_and_capture_error(
+                exc,
+                logger,
+                "Error fetching/saving Polar webhook data",
+                extra={
+                    "provider": "polar",
+                    "trace_id": trace_id,
+                    "event": event.event,
+                    "polar_user_id": event.user_id,
+                    "path": path,
+                    "user_id": str(user_id),
+                },
+            )
+            return {"status": "error", "error": str(exc)}

@@ -14,6 +14,7 @@ class PolarStrategy(BaseProviderStrategy):
 
     def __init__(self):
         super().__init__()
+        self.provider_settings_repo = ProviderSettingsRepository()
         self.oauth = PolarOAuth(
             user_repo=self.user_repo,
             connection_repo=self.connection_repo,
@@ -52,5 +53,5 @@ class PolarStrategy(BaseProviderStrategy):
             secret = result.get("response", {}).get("signature_secret_key")
             if secret:
                 with SessionLocal() as db:
-                    ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, secret)
+                    self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
         return result
