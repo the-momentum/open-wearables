@@ -58,6 +58,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 _T = TypeVar("_T", bound=BaseModel)
@@ -946,13 +947,11 @@ class Polar247Data(Base247DataTemplate):
                     scores.append(score)
                 hr_samples.extend(hr)
             except Exception as e:
-                log_structured(
+                log_and_capture_error(
+                    e,
                     self.logger,
-                    "warning",
-                    f"Failed to save Polar sleep record: {e}",
-                    provider="polar",
-                    task="_save_sleep",
-                    user_id=str(user_id),
+                    "Failed to save Polar sleep record",
+                    extra={"provider": "polar", "task": "_save_sleep", "user_id": str(user_id)},
                 )
 
         self._save_scores(db, scores)
@@ -1038,15 +1037,16 @@ class Polar247Data(Base247DataTemplate):
             except Exception as e:
                 db.rollback()
                 results[data_type] = 0
-                log_structured(
+                log_and_capture_error(
+                    e,
                     self.logger,
-                    "error",
                     f"Failed to sync {data_type} data",
-                    provider="polar",
-                    task="load_and_save_all",
-                    data_type=data_type,
-                    user_id=str(user_id),
-                    error=str(e),
+                    extra={
+                        "provider": "polar",
+                        "task": "load_and_save_all",
+                        "data_type": data_type,
+                        "user_id": str(user_id),
+                    },
                 )
 
         return results

@@ -101,8 +101,7 @@ class PolarWebhookService:
                 timeout=30.0,
             )
             resp.raise_for_status()
-            data = resp.json().get("data", [])
-            result = data[0] if data else {}
+            result = resp.json().get("data") or {}
             log_structured(
                 logger,
                 "info",
@@ -122,6 +121,15 @@ class PolarWebhookService:
                 timeout=30.0,
             )
             if resp.status_code == status.HTTP_409_CONFLICT:
+                log_structured(
+                    logger,
+                    "warning",
+                    "Polar webhook already exists (409) — signature_secret_key not returned;"
+                    " delete and recreate manually to obtain it",
+                    provider="polar",
+                    callback_url=callback_url,
+                    response=resp.text,
+                )
                 return {"status": "skipped", "reason": "already_exists"}
             resp.raise_for_status()
             result = resp.json().get("data", resp.json())
