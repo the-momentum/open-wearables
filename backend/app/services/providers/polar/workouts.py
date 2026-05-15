@@ -168,6 +168,18 @@ class PolarWorkouts(BaseWorkoutsTemplate):
 
         return count
 
+    def fetch_and_save_exercise(self, db: DbSession, user_id: UUID, path: str) -> int:
+        """Fetch a single exercise by URL path and save it. Used by webhook handler."""
+        raw = self._make_api_request(db, user_id, path)
+        if not raw:
+            return 0
+        count = 0
+        for record, detail in self._build_bundles([PolarExerciseJSON(**raw)], user_id):
+            created = event_record_service.create(db, record)
+            event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+            count += 1
+        return count
+
     def get_exercise_detail(
         self,
         db: DbSession,

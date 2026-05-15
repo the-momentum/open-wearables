@@ -1,3 +1,6 @@
+from app.database import SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.enums import ProviderName
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.oauth import PolarOAuth
@@ -43,5 +46,11 @@ class PolarStrategy(BaseProviderStrategy):
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True, webhook_ping=True)
 
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        return await polar_webhook_service.register_subscriptions(callback_url)
+    async def register_webhooks(self, callback_url: str) -> dict:
+        result = await polar_webhook_service.register_subscriptions(callback_url)
+        if result.get("status") == "created":
+            secret = result.get("response", {}).get("signature_secret_key")
+            if secret:
+                with SessionLocal() as db:
+                    ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, secret)
+        return result

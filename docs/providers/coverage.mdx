@@ -48,7 +48,7 @@ This guide provides a comprehensive overview of data type support across all int
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
 | `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ◐ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -291,9 +291,10 @@ Key differences and limitations to be aware of when working with each provider:
 </Accordion>
 
 <Accordion title="Polar">
-  **Integration Method:** OAuth 2.0 (pull-based polling)
+  **Integration Method:** OAuth 2.0 (pull + webhook)
 
-  - No webhooks; data is synced via periodic polling only
+  - Data synced via periodic polling; real-time webhook notifications for exercise, sleep, activity, nightly recharge, and Sleepwise events
+  - Webhooks are notify-only: Polar sends a lightweight event payload, Open Wearables acknowledges immediately and enqueues a targeted sync for the affected data type
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, and stage timestamps from hypnogram; sleep efficiency not available in the API
   - Sleep HR timeseries saved from per-night heart rate samples (not summarised avg/min on the sleep record)
   - Continuous 24/7 heart rate sampled at ~5-min intervals via range endpoint (90-day lookback)
@@ -301,9 +302,9 @@ Key differences and limitations to be aware of when working with each provider:
   - Health scores: sleep score, Nightly Recharge (recovery), Cardio Load (strain)
   - Sleepwise Alertness and Circadian Bedtime scores require an active **Polar Sleepwise** subscription
   - Body temperature, sleep skin temperature, SpO2, and wrist ECG (HRV RMSSD) require a **Polar Elixir** device
-  - HRV RMSSD available from Elixir SpO2 spot tests and wrist ECG measurements; not available from standard devices
+  - HRV RMSSD available from Elixir SpO2 spot tests and wrist ECG measurements; not available from standard devices; SDNN not provided
   - 75+ workout type mappings to unified taxonomy
-  - Exercises accessible via transaction-based endpoint (last 30 days only)
+  - Exercises fetched from `/v3/exercises` (all exercises in Polar Flow for the connected user; no date filter)
 </Accordion>
 
 <Accordion title="Suunto">

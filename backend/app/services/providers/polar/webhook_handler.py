@@ -39,9 +39,10 @@ from celery import current_app as celery_app
 from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
-from app.config import settings
-from app.database import DbSession
+from app.database import DbSession, SessionLocal
 from app.repositories import UserConnectionRepository
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.enums import ProviderName
 from app.schemas.providers.polar.webhook import PolarWebhookEvent
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
@@ -79,11 +80,9 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
         """Verify HMAC-SHA256 signature from X-Polar-Webhook-Signature header."""
-        secret = (
-            settings.polar_webhook_signature_secret.get_secret_value()
-            if settings.polar_webhook_signature_secret
-            else None
-        )
+        with SessionLocal() as db:
+            secret = ProviderSettingsRepository().get_webhook_secret(db, ProviderName.POLAR)
+
         if not secret:
             log_structured(logger, "warning", "Polar webhook signature secret not configured", provider="polar")
             return False
@@ -111,10 +110,12 @@ class PolarWebhookHandler(BaseWebhookHandler):
         except (json.JSONDecodeError, ValueError):
             event = ""
 
+        # ping received at first after endpoint creation
         if event == "PING":
             log_structured(logger, "info", "Polar webhook ping received", provider="polar")
             return {"status": "ok"}
 
+        # handle actual incoming event
         return super().handle(request, body, db)
 
     def dispatch(self, db: DbSession, payload: PolarWebhookEvent) -> dict[str, Any]:

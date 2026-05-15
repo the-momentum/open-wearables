@@ -40,12 +40,13 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 
 | Method | Description |
 |--------|-------------|
-| **Polling (pull) — Exercises** | Open Wearables fetches new exercises via the transaction-based AccessLink API (Celery). Covers exercises uploaded in the last 30 days. |
+| **Polling (pull) — Exercises** | Open Wearables fetches exercises via the AccessLink v3 API (`/v3/exercises`). Returns all exercises available in Polar Flow for the connected user. |
 | **Polling (pull) — 24/7 data** | Sleep, daily activity, continuous HR, Nightly Recharge, cardio load, and Elixir/Sleepwise metrics are fetched via range endpoints covering the last 90 days. |
+| **Webhooks (push)** | Polar sends a lightweight notification on each event (exercise, sleep, activity, etc.). Open Wearables acknowledges immediately and enqueues a targeted sync for the affected data type. |
 
-<Info>
-**Webhooks:** Polar supports webhooks for event notifications, but Open Wearables does not yet implement a Polar webhook handler. Data is synced via periodic polling only. Webhook support is planned for a future release.
-</Info>
+<Note>
+Webhook delivery requires a registered webhook subscription and `POLAR_WEBHOOK_SIGNATURE_SECRET` set in your environment. See the configuration step below.
+</Note>
 
 ## What you need by the end
 
@@ -106,6 +107,8 @@ Polar provides access to exercise, daily activity, sleep, and heart rate data fr
 POLAR_CLIENT_ID=your-polar-client-id
 POLAR_CLIENT_SECRET=your-polar-client-secret
 POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
+# Optional — required only if using webhooks (set automatically on first registration)
+POLAR_WEBHOOK_SIGNATURE_SECRET=
 ```
 
     **Configuration details:**
@@ -115,6 +118,7 @@ POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
     | `POLAR_CLIENT_ID` | Client ID from the Polar AccessLink Admin panel |
     | `POLAR_CLIENT_SECRET` | Client Secret from the Polar AccessLink Admin panel |
     | `POLAR_REDIRECT_URI` | Must match the Authorization redirect URL registered in your Polar application. For local dev: `http://localhost:8000/api/v1/oauth/polar/callback` |
+    | `POLAR_WEBHOOK_SIGNATURE_SECRET` | HMAC-SHA256 signing secret returned by Polar on webhook creation. Returned once — save it immediately. Used to verify incoming webhook payloads. |
 
     <Note>
     The OAuth scope is hardcoded to `accesslink.read_all` which grants full read access to the AccessLink API. No additional scope configuration is needed.
@@ -167,7 +171,7 @@ POLAR_REDIRECT_URI=http://localhost:8000/api/v1/oauth/polar/callback
     ```
 
     <Note>
-    Exercises: Polar only returns exercises uploaded within the last 30 days via the transaction-based endpoint. 24/7 data (sleep, activity, HR, etc.) is fetched over a 90-day lookback window using range endpoints.
+    Exercises are fetched from `/v3/exercises` which returns all exercises available in Polar Flow for the connected user (no date filter). 24/7 data (sleep, activity, HR, etc.) is fetched over a 90-day lookback window using range endpoints.
     </Note>
   </Step>
 
