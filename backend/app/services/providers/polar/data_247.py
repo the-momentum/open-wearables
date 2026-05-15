@@ -220,11 +220,11 @@ class Polar247Data(Base247DataTemplate):
         EventRecordCreate, EventRecordDetailCreate, HealthScoreCreate | None, list[TimeSeriesSampleCreate]
     ]
 
-    def normalize_sleep(  # type: ignore[override]
+    def normalize_sleep(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[SleepNormalized]:
+    ) -> list[SleepNormalized]:  # ty:ignore[invalid-method-override]
         results: list[Polar247Data.SleepNormalized] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, SleepJSON, user_id, "sleep")) is None:
@@ -331,11 +331,11 @@ class Polar247Data(Base247DataTemplate):
             chunk_start = chunk_end + timedelta(days=1)
         return results
 
-    def normalize_daily_activity(  # type: ignore[override]
+    def normalize_daily_activity(
         self,
         raw_items: list[dict[str, Any]],
         user_id: UUID,
-    ) -> list[TimeSeriesSampleCreate]:
+    ) -> list[TimeSeriesSampleCreate]:  # ty:ignore[invalid-method-override]
         samples: list[TimeSeriesSampleCreate] = []
         for raw in raw_items:
             if (parsed := self._parse(raw, DailyActivityJSON, user_id, "daily_activity")) is None:

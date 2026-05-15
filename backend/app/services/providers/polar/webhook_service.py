@@ -85,6 +85,8 @@ class PolarWebhookService:
                 )
                 return {"status": "skipped", "webhook_id": webhook_id}
 
+            if not webhook_id:
+                return {"status": "error", "error": "existing webhook has no id"}
             # URL changed — patch in place
             return await self._patch_webhook(auth, webhook_id, callback_url)
 
