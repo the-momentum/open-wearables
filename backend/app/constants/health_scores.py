@@ -4,8 +4,8 @@ from app.schemas.enums import HealthScoreCategory, ProviderName
 
 
 class ScoreRange(NamedTuple):
-    min: int
-    max: int
+    min: int | float
+    max: int | float
 
 
 HEALTH_SCORE_RANGES: dict[HealthScoreCategory, dict[ProviderName, ScoreRange]] = {
@@ -18,7 +18,7 @@ HEALTH_SCORE_RANGES: dict[HealthScoreCategory, dict[ProviderName, ScoreRange]] =
     },
     HealthScoreCategory.READINESS: {
         ProviderName.OURA: ScoreRange(1, 100),
-        ProviderName.POLAR: ScoreRange(0, 10),  # SleepWise alertness grade
+        ProviderName.POLAR: ScoreRange(0, 10),
     },
     HealthScoreCategory.ACTIVITY: {
         ProviderName.OURA: ScoreRange(1, 100),
@@ -36,6 +36,6 @@ HEALTH_SCORE_RANGES: dict[HealthScoreCategory, dict[ProviderName, ScoreRange]] =
     },
     HealthScoreCategory.STRAIN: {
         ProviderName.WHOOP: ScoreRange(0, 21),
-        ProviderName.POLAR: ScoreRange(0, 300),  # TRIMP — no hard ceiling, 300 covers intense training days
+        ProviderName.POLAR: ScoreRange(0, float("inf")),
     },
 }

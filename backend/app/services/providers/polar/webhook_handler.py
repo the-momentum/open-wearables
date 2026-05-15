@@ -8,7 +8,7 @@ Signature scheme
 ----------------
   Header   : X-Polar-Webhook-Signature: <hex_digest>
   Message  : raw request body
-  Algorithm: HMAC-SHA256(polar_webhook_signature_secret, body)
+  Algorithm: HMAC-SHA256(webhook_secret from provider_settings, body)
 
 Ping verification
 -----------------
@@ -37,7 +37,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from celery import current_app as celery_app
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 from pydantic import ValidationError
 
 from app.database import DbSession, SessionLocal
@@ -56,18 +56,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
-_SIGNATURE_HEADER = "X-Polar-Webhook-Signature"
-
-_SUPPORTED_EVENTS = [
-    "EXERCISE",
-    "SLEEP",
-    "CONTINUOUS_HEART_RATE",
-    "ACTIVITY_SUMMARY",
-    "SLEEP_WISE_ALERTNESS",
-    "SLEEP_WISE_CIRCADIAN_BEDTIME",
-    "PHYSICAL_INFORMATION",
-    "PING",
-]
 
 
 class PolarWebhookHandler(BaseWebhookHandler):
@@ -92,20 +80,20 @@ class PolarWebhookHandler(BaseWebhookHandler):
             log_structured(logger, "warning", "Polar webhook signature secret not configured", provider="polar")
             return False
 
-        provided = request.headers.get(_SIGNATURE_HEADER, "")
-        if not provided:
+        provided_signature = request.headers.get("X-Polar-Webhook-Signature", "")
+        if not provided_signature:
             return False
 
-        return self._verify_hmac_sha256(secret, body, provided)
+        return self._verify_hmac_sha256(secret, body, provided_signature)
 
     def parse_payload(self, body: bytes) -> PolarWebhookEvent:
         try:
             data = json.loads(body)
             return PolarWebhookEvent(**data)
         except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body") from exc
         except (ValidationError, TypeError) as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid payload: {exc}") from exc
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid payload: {exc}") from exc
 
     def handle(self, request: Request, body: bytes, db: DbSession) -> dict[str, Any]:
         """Override to handle PING before signature verification."""
@@ -152,7 +140,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
         return {"status": "accepted"}
 
     def supported_event_types(self) -> list[str]:
-        return _SUPPORTED_EVENTS
+        return list(PolarWebhookEventType)
 
     # ------------------------------------------------------------------
     # Async processing

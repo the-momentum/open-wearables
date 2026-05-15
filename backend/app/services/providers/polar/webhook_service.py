@@ -19,24 +19,18 @@ re-enable it (Polar will ping the URL again before activating).
 from logging import getLogger
 from typing import Any
 
+from fastapi import status
 import httpx
 
 from app.config import settings
+from app.schemas.providers.polar import PolarWebhookEventType
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
 _POLAR_API_URL = "https://www.polaraccesslink.com"
 
-_ALL_EVENTS = [
-    "EXERCISE",
-    "SLEEP",
-    "CONTINUOUS_HEART_RATE",
-    "ACTIVITY_SUMMARY",
-    "SLEEP_WISE_ALERTNESS",
-    "SLEEP_WISE_CIRCADIAN_BEDTIME",
-    "PHYSICAL_INFORMATION",
-]
+_ALL_EVENTS = [e for e in PolarWebhookEventType if e is not PolarWebhookEventType.PING]
 
 
 class PolarWebhookService:
@@ -124,7 +118,7 @@ class PolarWebhookService:
                 json={"events": _ALL_EVENTS, "url": callback_url},
                 timeout=30.0,
             )
-            if resp.status_code == 409:
+            if resp.status_code == status.HTTP_409_CONFLICT:
                 return {"status": "skipped", "reason": "already_exists"}
             resp.raise_for_status()
             result = resp.json().get("data", resp.json())
@@ -145,7 +139,7 @@ class PolarWebhookService:
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/activate", auth=auth, timeout=30.0)
-            if resp.status_code == 204:
+            if resp.status_code == status.HTTP_204_NO_CONTENT:
                 return {"status": "not_found"}
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook activated", provider="polar")
@@ -156,7 +150,7 @@ class PolarWebhookService:
         auth = self._get_basic_auth()
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{_POLAR_API_URL}/v3/webhooks/deactivate", auth=auth, timeout=30.0)
-            if resp.status_code == 204:
+            if resp.status_code == status.HTTP_204_NO_CONTENT:
                 return {"status": "not_found"}
             resp.raise_for_status()
             log_structured(logger, "info", "Polar webhook deactivated", provider="polar")

@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
@@ -149,10 +149,10 @@ class Polar247Data(Base247DataTemplate):
             return result
         except HTTPException as e:
             # 404 = no data for this date / feature not available on this device
-            if e.status_code == 404:
+            if e.status_code == status.HTTP_404_NOT_FOUND:
                 return None
             # 204 No Content: api_client raises 500 wrapping a JSONDecodeError on empty body
-            if e.status_code == 500 and "Expecting value" in str(e.detail):
+            if e.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR and "Expecting value" in str(e.detail):
                 return None
             raise
 
