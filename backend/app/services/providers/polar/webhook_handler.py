@@ -1,8 +1,8 @@
 """Polar webhook handler.
 
 Polar sends notify-only webhooks: a lightweight payload containing the event
-type, Polar user ID, and entity ID. Full data must be fetched via the AccessLink
-API after receiving the notification.
+type, Polar user ID, entity ID, and a URL pointing to the specific entity.
+The handler fetches exactly that URL and saves the result.
 
 Signature scheme
 ----------------
@@ -32,7 +32,8 @@ See: https://www.polar.com/accesslink-api/#webhooks
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from celery import current_app as celery_app
@@ -43,36 +44,40 @@ from app.database import DbSession, SessionLocal
 from app.repositories import UserConnectionRepository
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.enums import ProviderName
-from app.schemas.providers.polar.webhook import PolarWebhookEvent
+from app.schemas.providers.polar import PolarWebhookEvent, PolarWebhookEventType
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
+
+if TYPE_CHECKING:
+    from app.services.providers.polar.data_247 import Polar247Data
+    from app.services.providers.polar.workouts import PolarWorkouts
 
 logger = logging.getLogger(__name__)
 
 _PROCESS_PUSH_TASK = "app.integrations.celery.tasks.webhook_push_task.process_webhook_push"
 _SIGNATURE_HEADER = "X-Polar-Webhook-Signature"
 
-# Maps Polar event types to sync task data_type values
-_EVENT_TO_DATA_TYPE: dict[str, str] = {
-    "EXERCISE": "exercises",
-    "SLEEP": "sleep",
-    "CONTINUOUS_HEART_RATE": "continuous_hr",
-    "ACTIVITY_SUMMARY": "daily_activity",
-    "SLEEP_WISE_ALERTNESS": "alertness",
-    "SLEEP_WISE_CIRCADIAN_BEDTIME": "circadian_bedtime",
-    "PHYSICAL_INFORMATION": "all",
-}
-
-_SYNC_TASK = "app.integrations.celery.tasks.sync_vendor_data_task.sync_vendor_data"
+_SUPPORTED_EVENTS = [
+    "EXERCISE",
+    "SLEEP",
+    "CONTINUOUS_HEART_RATE",
+    "ACTIVITY_SUMMARY",
+    "SLEEP_WISE_ALERTNESS",
+    "SLEEP_WISE_CIRCADIAN_BEDTIME",
+    "PHYSICAL_INFORMATION",
+    "PING",
+]
 
 
 class PolarWebhookHandler(BaseWebhookHandler):
     """Webhook handler for Polar AccessLink notify-only events."""
 
-    def __init__(self) -> None:
+    def __init__(self, workouts: "PolarWorkouts | None" = None, data_247: "Polar247Data | None" = None) -> None:
         super().__init__("polar")
         self.connection_repo = UserConnectionRepository()
+        self.workouts = workouts
+        self.data_247 = data_247
 
     # ------------------------------------------------------------------
     # BaseWebhookHandler interface
@@ -110,12 +115,10 @@ class PolarWebhookHandler(BaseWebhookHandler):
         except (json.JSONDecodeError, ValueError):
             event = ""
 
-        # ping received at first after endpoint creation
         if event == "PING":
             log_structured(logger, "info", "Polar webhook ping received", provider="polar")
             return {"status": "ok"}
 
-        # handle actual incoming event
         return super().handle(request, body, db)
 
     def dispatch(self, db: DbSession, payload: PolarWebhookEvent) -> dict[str, Any]:
@@ -149,24 +152,29 @@ class PolarWebhookHandler(BaseWebhookHandler):
         return {"status": "accepted"}
 
     def supported_event_types(self) -> list[str]:
-        return list(_EVENT_TO_DATA_TYPE.keys()) + ["PING"]
+        return _SUPPORTED_EVENTS
 
     # ------------------------------------------------------------------
     # Async processing
     # ------------------------------------------------------------------
 
     def process_payload(self, db: DbSession, payload: dict[str, Any], trace_id: str) -> dict[str, Any]:
-        """Process a Polar notify-only payload.
+        """Fetch the entity at the webhook URL and save it.
 
         Called by the ``process_webhook_push`` Celery task with its own DB session.
-        Looks up the user by Polar user ID and enqueues a targeted sync.
+        Uses ``event.url`` to make a targeted single-entity request instead of a
+        broad range sync.
         """
         try:
             event = PolarWebhookEvent(**payload)
         except (ValidationError, TypeError) as exc:
             log_structured(
-                logger, "error", "Invalid Polar webhook payload",
-                provider="polar", trace_id=trace_id, error=str(exc),
+                logger,
+                "error",
+                "Invalid Polar webhook payload",
+                provider="polar",
+                trace_id=trace_id,
+                error=str(exc),
             )
             return {"status": "error", "error": f"Invalid payload: {exc}"}
 
@@ -175,37 +183,59 @@ class PolarWebhookHandler(BaseWebhookHandler):
 
         if not event.user_id:
             log_structured(
-                logger, "warning", "Polar webhook event missing user_id",
-                provider="polar", trace_id=trace_id, event=event.event,
+                logger,
+                "warning",
+                "Polar webhook event missing user_id",
+                provider="polar",
+                trace_id=trace_id,
+                event=event.event,
             )
             return {"status": "error", "error": "missing user_id"}
 
         connection = self.connection_repo.get_by_provider_user_id(db, "polar", event.user_id)
         if not connection:
             log_structured(
-                logger, "warning", "No connection found for Polar user",
-                provider="polar", trace_id=trace_id, polar_user_id=event.user_id,
+                logger,
+                "warning",
+                "No connection found for Polar user",
+                provider="polar",
+                trace_id=trace_id,
+                polar_user_id=event.user_id,
             )
             return {"status": "user_not_found", "polar_user_id": event.user_id}
 
-        data_type = _EVENT_TO_DATA_TYPE.get(event.event, "all")
-        user_id = str(connection.user_id)
+        if not event.url:
+            log_structured(
+                logger,
+                "warning",
+                "Polar webhook event missing url",
+                provider="polar",
+                trace_id=trace_id,
+                event=event.event,
+            )
+            return {"status": "error", "error": "missing url"}
+
+        path = urlparse(event.url).path
+        user_id = connection.user_id
 
         log_structured(
             logger,
             "info",
-            "Triggering Polar sync from webhook",
+            "Fetching Polar entity from webhook URL",
             provider="polar",
             trace_id=trace_id,
-            user_id=user_id,
             event=event.event,
-            data_type=data_type,
+            path=path,
+            user_id=str(user_id),
         )
 
-        celery_app.send_task(
-            _SYNC_TASK,
-            kwargs={"user_id": user_id, "provider": "polar", "data_type": data_type},
-            queue="sync",
-        )
+        if event.event == PolarWebhookEventType.EXERCISE:
+            if not self.workouts:
+                return {"status": "error", "error": "workouts service not initialised"}
+            saved = self.workouts.fetch_and_save_exercise(db, user_id, path)
+            return {"status": "accepted", "user_id": str(user_id), "saved": {"exercises": saved}}
 
-        return {"status": "accepted", "user_id": user_id, "data_type": data_type}
+        if not self.data_247:
+            return {"status": "error", "error": "data_247 service not initialised"}
+        saved = self.data_247.fetch_and_save_from_webhook(db, user_id, event.event, path)
+        return {"status": "accepted", "user_id": str(user_id), "saved": saved}

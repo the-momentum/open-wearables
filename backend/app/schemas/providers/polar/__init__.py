@@ -18,6 +18,7 @@ from .exercise_import import (
 )
 from .nightly_recharge import NightlyRechargeJSON, NightlyRechargeResponseJSON
 from .sleep import SleepJSON, SleepResponseJSON
+from .webhook import PolarWebhookEvent, PolarWebhookEventType
 
 __all__ = [
     # Cardio load
@@ -46,4 +47,7 @@ __all__ = [
     # Sleep
     "SleepJSON",
     "SleepResponseJSON",
+    # Webhook
+    "PolarWebhookEvent",
+    "PolarWebhookEventType",
 ]

@@ -32,7 +32,7 @@ class PolarStrategy(BaseProviderStrategy):
             api_base_url=self.api_base_url,
             oauth=self.oauth,
         )
-        self.webhooks = PolarWebhookHandler()
+        self.webhooks = PolarWebhookHandler(workouts=self.workouts, data_247=self.data_247)
 
     @property
     def name(self) -> str:

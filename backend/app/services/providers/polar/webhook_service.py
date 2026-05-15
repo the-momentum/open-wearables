@@ -81,8 +81,11 @@ class PolarWebhookService:
 
             if existing_url == callback_url:
                 log_structured(
-                    logger, "info", "Polar webhook already registered",
-                    provider="polar", action="polar_webhook_skipped",
+                    logger,
+                    "info",
+                    "Polar webhook already registered",
+                    provider="polar",
+                    action="polar_webhook_skipped",
                     webhook_id=webhook_id,
                 )
                 return {"status": "skipped", "webhook_id": webhook_id}
@@ -104,8 +107,11 @@ class PolarWebhookService:
             data = resp.json().get("data", [])
             result = data[0] if data else {}
             log_structured(
-                logger, "info", "Patched Polar webhook URL",
-                provider="polar", action="polar_webhook_patched",
+                logger,
+                "info",
+                "Patched Polar webhook URL",
+                provider="polar",
+                action="polar_webhook_patched",
                 webhook_id=webhook_id,
             )
             return {"status": "patched", "webhook_id": webhook_id, "response": result}
@@ -123,14 +129,12 @@ class PolarWebhookService:
             resp.raise_for_status()
             result = resp.json().get("data", resp.json())
             log_structured(
-                logger, "info", "Polar webhook created",
-                provider="polar", action="polar_webhook_created",
-                webhook_id=result.get("id"),
-            )
-            log_structured(
-                logger, "warning",
-                "IMPORTANT: Save the Polar webhook signature_secret_key to POLAR_WEBHOOK_SIGNATURE_SECRET — it is shown only once",
+                logger,
+                "info",
+                "Polar webhook created",
                 provider="polar",
+                action="polar_webhook_created",
+                webhook_id=result.get("id"),
             )
             return {"status": "created", "response": result}
 

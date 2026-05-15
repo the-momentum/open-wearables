@@ -25,6 +25,7 @@ from app.schemas.providers.polar import (
     ContinuousHeartRateJSON,
     DailyActivityJSON,
     NightlyRechargeJSON,
+    PolarWebhookEventType,
     SleepJSON,
 )
 from app.schemas.providers.polar.elixir import (
@@ -917,6 +918,57 @@ class Polar247Data(Base247DataTemplate):
         if scores:
             health_score_service.bulk_create(db, scores)
         return len(scores)
+
+    def fetch_and_save_from_webhook(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        event_type: PolarWebhookEventType | str,
+        path: str,
+    ) -> dict[str, int]:
+        """Fetch a single entity from the webhook URL path and save it. Used by webhook handler."""
+        raw = self._make_api_request(db, user_id, path)
+        if not raw:
+            return {}
+
+        match event_type:
+            case PolarWebhookEventType.SLEEP:
+                count = 0
+                for record, detail, score, hr_samples in self.normalize_sleep([raw], user_id):
+                    event_record_service.create_or_merge_sleep(
+                        db, user_id, record, detail, settings.sleep_end_gap_minutes
+                    )
+                    count += 1
+                    if score:
+                        health_score_service.bulk_create(db, [score])
+                    if hr_samples:
+                        timeseries_service.bulk_create_samples(db, hr_samples)
+                return {"sleep": count}
+
+            case PolarWebhookEventType.ACTIVITY_SUMMARY:
+                return {"daily_activity": self._save_timeseries(db, self.normalize_daily_activity(raw, user_id))}
+
+            case PolarWebhookEventType.CONTINUOUS_HEART_RATE:
+                return {
+                    "continuous_hr": self._save_timeseries(
+                        db, self.normalize_continuous_hr(raw.get("heart_rates", []), user_id)
+                    )
+                }
+
+            case PolarWebhookEventType.SLEEP_WISE_ALERTNESS:
+                return {"alertness": self._save_scores(db, self.normalize_alertness(raw, user_id))}
+
+            case PolarWebhookEventType.SLEEP_WISE_CIRCADIAN_BEDTIME:
+                return {"circadian_bedtime": self._save_scores(db, self.normalize_circadian_bedtime(raw, user_id))}
+
+            case _:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Targeted webhook fetch not implemented for event type: {event_type}",
+                    provider="polar",
+                )
+                return {}
 
     def _save_sleep(
         self,
