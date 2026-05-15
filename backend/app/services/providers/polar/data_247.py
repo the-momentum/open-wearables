@@ -8,7 +8,16 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel, ValidationError
 
 from app.config import settings
-from app.constants.sleep import SleepStageType
+from app.constants.series_types.polar import (
+    ANS_CHARGE_STATUS_LABELS,
+    BODY_TEMP_SERIES_TYPE,
+    CIRCADIAN_QUALITY_LABELS,
+    CIRCADIAN_QUALITY_VALUES,
+    GRADE_CLASSIFICATION_LABELS,
+    HYPNOGRAM_STAGE_MAP,
+    NIGHTLY_RECHARGE_STATUS_LABELS,
+    SLEEP_INERTIA_LABELS,
+)
 from app.database import DbSession
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
@@ -33,12 +42,15 @@ from app.schemas.providers.polar.elixir import (
     EcgTestResultJSON,
     SkinTemperatureJSON,
     Spo2TestResultJSON,
+    Spo2TestStatus,
 )
-from app.schemas.providers.polar.elixir.body_temperature import TemperatureMeasurementType
-from app.schemas.providers.polar.elixir.spo2 import Spo2TestStatus
-from app.schemas.providers.polar.sleepwise import AlertnessJSON, CircadianBedtimeJSON
-from app.schemas.providers.polar.sleepwise.alertness import GradeClassification, GradeType, SleepInertia
-from app.schemas.providers.polar.sleepwise.circadian_bedtime import CircadianBedtimeQuality, CircadianBedtimeResultType
+from app.schemas.providers.polar.sleepwise import (
+    AlertnessJSON,
+    CircadianBedtimeJSON,
+    CircadianBedtimeQuality,
+    CircadianBedtimeResultType,
+    GradeType,
+)
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
@@ -52,63 +64,6 @@ _T = TypeVar("_T", bound=BaseModel)
 
 
 class Polar247Data(Base247DataTemplate):
-    _NIGHTLY_RECHARGE_STATUS_LABELS: dict[int, str] = {
-        1: "very poor",
-        2: "poor",
-        3: "compromised",
-        4: "ok",
-        5: "good",
-        6: "very good",
-    }
-
-    _ANS_CHARGE_STATUS_LABELS: dict[int, str] = {
-        1: "much below usual",
-        2: "below usual",
-        3: "usual",
-        4: "above usual",
-        5: "much above usual",
-    }
-
-    _GRADE_CLASSIFICATION_LABELS: dict[GradeClassification, str] = {
-        GradeClassification.WEAK: "weak",
-        GradeClassification.FAIR: "fair",
-        GradeClassification.STRONG: "strong",
-        GradeClassification.EXCELLENT: "excellent",
-    }
-
-    _SLEEP_INERTIA_LABELS: dict[SleepInertia, str] = {
-        SleepInertia.NO_INERTIA: "no inertia",
-        SleepInertia.MILD: "mild",
-        SleepInertia.MODERATE: "moderate",
-        SleepInertia.HEAVY: "heavy",
-    }
-
-    _CIRCADIAN_QUALITY_VALUES: dict[CircadianBedtimeQuality, int] = {
-        CircadianBedtimeQuality.WEAK: 1,
-        CircadianBedtimeQuality.COMPROMISED: 2,
-        CircadianBedtimeQuality.CLEARLY_RECOGNIZABLE: 3,
-    }
-
-    _CIRCADIAN_QUALITY_LABELS: dict[CircadianBedtimeQuality, str] = {
-        CircadianBedtimeQuality.WEAK: "weak",
-        CircadianBedtimeQuality.COMPROMISED: "compromised",
-        CircadianBedtimeQuality.CLEARLY_RECOGNIZABLE: "clearly recognizable",
-    }
-
-    _BODY_TEMP_SERIES_TYPE: dict[TemperatureMeasurementType, SeriesType] = {
-        TemperatureMeasurementType.SKIN_TEMPERATURE: SeriesType.skin_temperature,
-        TemperatureMeasurementType.CORE_TEMPERATURE: SeriesType.body_temperature,
-    }
-
-    _HYPNOGRAM_STAGE_MAP: dict[int, SleepStageType] = {
-        0: SleepStageType.AWAKE,
-        1: SleepStageType.REM,
-        2: SleepStageType.LIGHT,
-        3: SleepStageType.LIGHT,
-        4: SleepStageType.DEEP,
-        5: SleepStageType.UNKNOWN,
-    }
-
     def __init__(
         self,
         provider_name: str,
@@ -231,13 +186,13 @@ class Polar247Data(Base247DataTemplate):
 
         for dt, stage_val in entries[1:]:
             if stage_val != current_val:
-                stage_type = self._HYPNOGRAM_STAGE_MAP.get(current_val)
+                stage_type = HYPNOGRAM_STAGE_MAP.get(current_val)
                 if stage_type is not None:
                     stages.append(SleepStage(stage=stage_type, start_time=group_start, end_time=dt))
                 group_start = dt
                 current_val = stage_val
 
-        stage_type = self._HYPNOGRAM_STAGE_MAP.get(current_val)
+        stage_type = HYPNOGRAM_STAGE_MAP.get(current_val)
         if stage_type is not None:
             stages.append(SleepStage(stage=stage_type, start_time=group_start, end_time=sleep_end))
         return stages
@@ -576,7 +531,7 @@ class Polar247Data(Base247DataTemplate):
             if parsed.ans_charge_status is not None:
                 components["ans_charge_status"] = ScoreComponent(
                     value=parsed.ans_charge_status,
-                    qualifier=self._ANS_CHARGE_STATUS_LABELS.get(parsed.ans_charge_status),
+                    qualifier=ANS_CHARGE_STATUS_LABELS.get(parsed.ans_charge_status),
                 )
             scores.append(
                 HealthScoreCreate(
@@ -585,7 +540,7 @@ class Polar247Data(Base247DataTemplate):
                     provider=ProviderName.POLAR,
                     category=HealthScoreCategory.RECOVERY,
                     value=parsed.nightly_recharge_status,
-                    qualifier=self._NIGHTLY_RECHARGE_STATUS_LABELS.get(parsed.nightly_recharge_status),
+                    qualifier=NIGHTLY_RECHARGE_STATUS_LABELS.get(parsed.nightly_recharge_status),
                     recorded_at=datetime.fromisoformat(parsed.date),
                     components=components or None,
                 )
@@ -630,7 +585,7 @@ class Polar247Data(Base247DataTemplate):
             if parsed.sleep_inertia is not None:
                 components["sleep_inertia"] = ScoreComponent(
                     value=None,
-                    qualifier=self._SLEEP_INERTIA_LABELS.get(parsed.sleep_inertia),
+                    qualifier=SLEEP_INERTIA_LABELS.get(parsed.sleep_inertia),
                 )
             if parsed.sleep_type is not None:
                 components["sleep_type"] = ScoreComponent(value=None, qualifier=parsed.sleep_type.value)
@@ -641,7 +596,7 @@ class Polar247Data(Base247DataTemplate):
                     provider=ProviderName.POLAR,
                     category=HealthScoreCategory.READINESS,
                     value=parsed.grade,
-                    qualifier=self._GRADE_CLASSIFICATION_LABELS.get(parsed.grade_classification)
+                    qualifier=GRADE_CLASSIFICATION_LABELS.get(parsed.grade_classification)
                     if parsed.grade_classification
                     else None,
                     recorded_at=datetime.fromisoformat(parsed.period_start_time),
@@ -693,8 +648,8 @@ class Polar247Data(Base247DataTemplate):
                     user_id=user_id,
                     provider=ProviderName.POLAR,
                     category=HealthScoreCategory.SLEEP,
-                    value=self._CIRCADIAN_QUALITY_VALUES.get(parsed.quality),
-                    qualifier=self._CIRCADIAN_QUALITY_LABELS.get(parsed.quality),
+                    value=CIRCADIAN_QUALITY_VALUES.get(parsed.quality),
+                    qualifier=CIRCADIAN_QUALITY_LABELS.get(parsed.quality),
                     recorded_at=datetime.fromisoformat(parsed.period_start_time),
                     components=components or None,
                 )
@@ -727,7 +682,7 @@ class Polar247Data(Base247DataTemplate):
                 continue
             if not parsed.samples or not parsed.start_time or not parsed.measurement_type:
                 continue
-            series_type = self._BODY_TEMP_SERIES_TYPE.get(parsed.measurement_type)
+            series_type = BODY_TEMP_SERIES_TYPE.get(parsed.measurement_type)
             if series_type is None:
                 continue
             anchor = datetime.fromisoformat(parsed.start_time)

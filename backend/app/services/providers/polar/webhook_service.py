@@ -19,8 +19,8 @@ re-enable it (Polar will ping the URL again before activating).
 from logging import getLogger
 from typing import Any
 
-from fastapi import status
 import httpx
+from fastapi import status
 
 from app.config import settings
 from app.schemas.providers.polar import PolarWebhookEventType

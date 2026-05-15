@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     polar_client_secret: SecretStr | None = None
     polar_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
     polar_default_scope: str = "accesslink.read_all"
+
     # WHOOP OAUTH SETTINGS
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
