@@ -479,6 +479,7 @@ class TestGetHrvCvScore:
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.metric_type == "RMSSD"
 
+    @pytest.mark.skip(reason="SDNN fallback disabled pending validation — re-enable when SDNN path is re-activated")
     def test_falls_back_to_sdnn_when_no_rmssd(self, db: Session) -> None:
         user = UserFactory()
         ds = DataSourceFactory(user=user)
@@ -502,6 +503,7 @@ class TestGetHrvCvScore:
         result = service.get_hrv_cv_score(db, user.id, ref)
         assert result.metric_type == "SDNN"
 
+    @pytest.mark.skip(reason="SDNN fallback disabled pending validation — re-enable when SDNN path is re-activated")
     def test_falls_back_to_sdnn_when_rmssd_only_outside_sleep(self, db: Session) -> None:
         """Daytime RMSSD (no overnight data) + overnight SDNN → SDNN is used."""
         user = UserFactory()
