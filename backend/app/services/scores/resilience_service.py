@@ -212,11 +212,12 @@ class ResilienceScoreService:
         filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
         metric_type: str = "RMSSD"
 
-        if not filtered_hrv:
-            sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
-            sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
-            filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
-            metric_type = "SDNN"
+        # NOTE: SDNN fallback is disabled pending validation — only RMSSD is used for now.
+        # if not filtered_hrv:
+        #     sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
+        #     sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
+        #     filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
+        #     metric_type = "SDNN"
 
         if not filtered_hrv:
             return HrvCvScoreResult(
@@ -393,11 +394,12 @@ class ResilienceScoreService:
         filtered_hrv = self._filter_points_to_windows(hrv_pts, windows)
         metric_type: str = "RMSSD"
 
-        if not filtered_hrv:
-            sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
-            sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
-            filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
-            metric_type = "SDNN"
+        # NOTE: SDNN fallback is disabled pending validation — only RMSSD is used for now.
+        # if not filtered_hrv:
+        #     sdnn_type_id = get_series_type_id(SeriesType.heart_rate_variability_sdnn)
+        #     sdnn_pts = self._query_data_series(db_session, user_id, sdnn_type_id, start_dt, end_dt)
+        #     filtered_hrv = self._filter_points_to_windows(sdnn_pts, windows)
+        #     metric_type = "SDNN"
 
         # Group all filtered points by UTC date once; reused for every reference_date.
         by_day = self._group_by_day(filtered_hrv)
