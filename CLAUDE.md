@@ -22,26 +22,28 @@ On a besoin de **patcher localement** des choses qu'on ne peut pas faire upstrea
 ## Place dans l'écosystème Bazard.run
 
 ```
-app.bazard.run (Vercel)         api.bazard.run (Coolify, Go)        ow.bazard.run (Coolify, OW Python)
-┌──────────────────┐            ┌──────────────────────────┐         ┌──────────────────────────────┐
-│ Next.js + AlignUI│  REST/JWT  │  Go hexagonal            │ webhook │  FastAPI + Celery + Postgres │
-│ TanStack Query   │ ─────────► │  - adapter/openwearables │ ◄────── │  + Redis + Svix + Flower     │
-└──────────────────┘            │  - webhook receiver      │ REST    │                              │
-                                │  - tables activities,    │ ──────► │  Providers : Garmin, Strava, │
-                                │    biometric_entries,    │         │  Oura, Whoop, Fitbit, Polar, │
-                                │    wearable_connections  │         │  Suunto, Ultrahuman,         │
-                                └──────────────────────────┘         │  Apple Health, GHC           │
-                                                                     └──────────────────────────────┘
-                                                                                 │
-                                                                                 ▼
-                                                                        Wearable providers (OAuth)
+bazard.run (Astro, Coolify)     app.bazard.run (Next.js, Vercel)    api.bazard.run (Coolify, Go)        ow.bazard.run (Coolify, OW Python)
+┌──────────────────┐            ┌──────────────────┐                ┌──────────────────────────┐         ┌──────────────────────────────┐
+│ Landing statique │   liens    │ Next.js + AlignUI│  REST/JWT      │  Go hexagonal            │ webhook │  FastAPI + Celery + Postgres │
+│ Vitrine + dons   │  externes  │ TanStack Query   │ ─────────────► │  - adapter/openwearables │ ◄────── │  + Redis + Svix + Flower     │
+│ Patch notes      │   /sign-in │ Auth + App       │                │  - webhook receiver      │ REST    │                              │
+└──────────────────┘            └──────────────────┘                │  - tables activities,    │ ──────► │  Providers : Garmin, Strava, │
+                                                                    │    biometric_entries,    │         │  Oura, Whoop, Fitbit, Polar, │
+                                                                    │    wearable_connections  │         │  Suunto, Ultrahuman,         │
+                                                                    └──────────────────────────┘         │  Apple Health, GHC           │
+                                                                                                         └──────────────────────────────┘
+                                                                                                                     │
+                                                                                                                     ▼
+                                                                                                            Wearable providers (OAuth)
 ```
 
+- `bazard.run` est la **landing statique** (Astro, Coolify). Pas de logique
+  metier, pas d'appel a l'API. Les CTAs pointent vers `app.bazard.run`.
 - `ow.bazard.run` est **invisible** pour les athlètes/coachs. Seul `api.bazard.run` lui parle (REST + webhook signé).
 - L'OAuth provider (athlete connecte son Garmin) est initié depuis `app.bazard.run`, callbacké via `ow.bazard.run`, et la confirmation est webhookée vers `api.bazard.run`.
 - **Aucune donnée wearable** n'est lue par le frontend directement — toujours via `api.bazard.run`.
 
-Voir : `app.bazard.run/CLAUDE.md` et `api.bazard.run/CLAUDE.md` pour la perspective côté consommateurs.
+Voir : `bazard.run/CLAUDE.md` (landing), `app.bazard.run/CLAUDE.md` et `api.bazard.run/CLAUDE.md` pour la perspective côté consommateurs.
 
 ---
 
