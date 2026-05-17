@@ -276,6 +276,11 @@ class TestProcessWorkoutPayloadShapes:
 
         result = handler._process_workout(MagicMock(), uuid4(), webhook_payload, TRACE_ID)
 
+        handler.suunto_workouts.get_workout_detail.assert_called_once()
+        requested_extensions = handler.suunto_workouts.get_workout_detail.call_args.kwargs["extensions"]
+        assert "PauseMarkerExtension" in requested_extensions
+        assert "SummaryExtension" in requested_extensions
+
         handler.suunto_workouts._process_single_workout.assert_called_once()
         passed = handler.suunto_workouts._process_single_workout.call_args.args[2]
         assert passed == live_workout_payload

@@ -1,6 +1,8 @@
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import AliasChoices, BaseModel, Discriminator, Field, Tag
+
+_UNKNOWN_EXTENSION_TAG = "unknown"
 
 
 class PauseMarker(BaseModel):
@@ -73,23 +75,25 @@ class UnknownExtension(BaseModel):
 def _extension_discriminator(value: Any) -> str:
     """Return the discriminator tag for an extension dict or model instance."""
     raw_type = value.get("type") if isinstance(value, dict) else getattr(value, "type", None)
-    if raw_type in {"PauseMarkerExtension", "SummaryExtension"}:
+    if raw_type in {PauseMarkerExtension.__name__, SummaryExtension.__name__}:
         return raw_type
-    return "unknown"
+    return _UNKNOWN_EXTENSION_TAG
 
 
 WorkoutExtension = Annotated[
-    Annotated[PauseMarkerExtension, Tag("PauseMarkerExtension")]
-    | Annotated[SummaryExtension, Tag("SummaryExtension")]
-    | Annotated[UnknownExtension, Tag("unknown")],
+    Annotated[PauseMarkerExtension, Tag(PauseMarkerExtension.__name__)]
+    | Annotated[SummaryExtension, Tag(SummaryExtension.__name__)]
+    | Annotated[UnknownExtension, Tag(_UNKNOWN_EXTENSION_TAG)],
     Discriminator(_extension_discriminator),
 ]
 
 
 REQUESTED_WORKOUT_EXTENSIONS: tuple[str, ...] = (
-    "PauseMarkerExtension",
-    "SummaryExtension",
+    PauseMarkerExtension.__name__,
+    SummaryExtension.__name__,
 )
+
+_ExtensionT = TypeVar("_ExtensionT", PauseMarkerExtension, SummaryExtension)
 
 
 class WorkoutJSON(BaseModel):
@@ -144,19 +148,21 @@ class WorkoutJSON(BaseModel):
     # never rejects unexpected payloads from Suunto.
     extensions: list[WorkoutExtension] | None = None
 
+    def _find_extension(self, extension_type: type[_ExtensionT]) -> _ExtensionT | None:
+        for ext in self.extensions or []:
+            if isinstance(ext, extension_type):
+                return ext
+        return None
+
     @property
     def pause_markers(self) -> list[PauseMarker]:
-        for ext in self.extensions or []:
-            if isinstance(ext, PauseMarkerExtension):
-                return ext.pauseMarkers or []
-        return []
+        ext = self._find_extension(PauseMarkerExtension)
+        return ext.pauseMarkers or [] if ext else []
 
     @property
     def gear_from_summary_extension(self) -> DeviceJSON | None:
-        for ext in self.extensions or []:
-            if isinstance(ext, SummaryExtension):
-                return ext.gear
-        return None
+        ext = self._find_extension(SummaryExtension)
+        return ext.gear if ext else None
 
 
 class RootJSON(BaseModel):
