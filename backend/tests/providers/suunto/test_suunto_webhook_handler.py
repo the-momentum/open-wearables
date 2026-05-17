@@ -18,10 +18,16 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.models import EventRecord
+from app.repositories.event_record_repository import EventRecordRepository
+from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.providers.suunto.workout_import import WorkoutJSON as SuuntoWorkoutJSON
+from app.services.providers.suunto.oauth import SuuntoOAuth
 from app.services.providers.suunto.webhook_handler import SuuntoWebhookHandler
+from app.services.providers.suunto.workouts import SuuntoWorkouts
 
 WORKOUT_KEY = "test-workout-key-0001"
+PAUSED_WORKOUT_KEY = "test-paused-workout-0001"
 TRACE_ID = "trace-test"
 
 
@@ -129,6 +135,124 @@ def live_response(live_workout_payload: dict) -> dict:
     }
 
 
+@pytest.fixture
+def paused_workout_payload() -> dict:
+    """Live `/v3/workouts/{workoutKey}?extensions=...` capture (anonymized) for a workout with two manual pauses.
+
+    Active timer time: 210.56s. Pause durations: 69.92s + 20.77s = 90.69s.
+    Elapsed time including pauses: 301.25s. Gear is shipped via SummaryExtension (Race 2 pattern).
+    """
+    return {
+        "workoutId": 0,
+        "activityId": 0,
+        "startTime": 1700000000000,
+        "totalTime": 210.56,
+        "estimatedFloorsClimbed": 0,
+        "totalDistance": 37.0,
+        "totalAscent": 0.0,
+        "totalDescent": 0.0,
+        "startPosition": {"x": 0.0, "y": 0.0},
+        "stopPosition": {"x": 0.0, "y": 0.0},
+        "centerPosition": {"x": 0.0, "y": 0.0},
+        "maxSpeed": 2.03,
+        "stepCount": 46,
+        "recoveryTime": 0,
+        "cumulativeRecoveryTime": 0,
+        "rankings": {
+            "totalTimeOnRouteRanking": {"originalRanking": 2, "originalNumberOfWorkouts": 2},
+        },
+        "extensions": [
+            {
+                "type": "PauseMarkerExtension",
+                "pauseMarkers": [
+                    {"startTime": 1700000137500, "endTime": 1700000207420, "automatic": False},
+                    {"startTime": 1700000235740, "endTime": 1700000256510, "automatic": False},
+                ],
+            },
+            {
+                "type": "SummaryExtension",
+                "avgSpeed": 0.176,
+                "avgPower": None,
+                "maxPower": None,
+                "avgCadence": 1.037,
+                "maxCadence": 1.833,
+                "ascent": 0.0,
+                "descent": 0.0,
+                "ascentTime": 0.0,
+                "descentTime": 0.0,
+                "pte": 1.1,
+                "peakEpoc": 1.2,
+                "performanceLevel": None,
+                "recoveryTime": 0.0,
+                "weather": None,
+                "minTemperature": 302.6,
+                "avgTemperature": 302.8,
+                "maxTemperature": 302.9,
+                "workoutType": None,
+                "feeling": 5,
+                "gear": {
+                    "manufacturer": "Suunto",
+                    "name": "Suunto Race 2",
+                    "displayName": None,
+                    "serialNumber": "TEST-SERIAL-0001",
+                    "softwareVersion": "2.53.42",
+                    "hardwareVersion": "Sailfish_RevA1",
+                    "productType": "SPORT_WATCH",
+                },
+                "heartRateRecovery": {"comparisonLevel": "Invalid", "drop": 0, "level": "Invalid"},
+            },
+        ],
+        "extensionTypes": [
+            "ALTITUDESTREAM",
+            "BATTERYLEVELSTREAM",
+            "CADENCESTREAM",
+            "DISTANCEDELTA",
+            "FITNESS",
+            "HEARTRATE",
+            "HEARTRATESTREAM",
+            "INTENSITY",
+            "LOCATIONSTREAM",
+            "PAUSEMARKER",
+            "SEALEVELPRESSURESTREAM",
+            "SML",
+            "SPEEDSTREAM",
+            "SUMMARY",
+            "TEMPERATURESTREAM",
+            "VERTICALSPEEDSTREAM",
+            "WEATHER",
+        ],
+        "minAltitude": 920.0,
+        "maxAltitude": 932.0,
+        "isEdited": False,
+        "isManuallyAdded": False,
+        "tss": {
+            "calculationMethod": "HR",
+            "trainingStressScore": 1.75,
+            "intensityFactor": None,
+            "normalizedPower": None,
+            "averageGradeAdjustedPace": 0.17576045,
+        },
+        "avgSpeedInKmH": 0.6335999965667725,
+        "avgSpeed": 0.17599999904632568,
+        "viewCount": 0,
+        "pictureCount": 0,
+        "commentCount": 0,
+        "avgPace": 94.85,
+        "timeOffsetInMinutes": 120,
+        "energyConsumption": 17,
+        "hrdata": {
+            "workoutMaxHR": 92,
+            "workoutAvgHR": 80,
+            "userMaxHR": 190,
+            "avg": 80,
+            "hrmax": 92,
+            "max": 190,
+        },
+        "cadence": {"max": 110, "avg": 62},
+        "workoutKey": PAUSED_WORKOUT_KEY,
+    }
+
+
 class TestProcessWorkoutPayloadShapes:
     """Verify `_process_workout` handles both single-dict and list `payload` shapes."""
 
@@ -219,3 +343,105 @@ class TestLivePayloadParsing:
         assert workout.totalTime == live_workout_payload["totalTime"]
         assert workout.workoutId == live_workout_payload["workoutId"]
         assert workout.gear is None
+
+
+class TestPauseAwarePayload:
+    """Verify pause markers and gear are extracted from the `extensions` array."""
+
+    def test_pause_markers_parsed_from_extension(self, paused_workout_payload: dict) -> None:
+        workout = SuuntoWorkoutJSON(**paused_workout_payload)
+
+        markers = workout.pause_markers
+        assert len(markers) == 2
+        # Durations preserved from the live capture: 69.92s + 20.77s = 90.69s.
+        durations_ms = [m.duration_ms for m in markers]
+        assert durations_ms == [69920, 20770]
+        assert sum(durations_ms) == 90690
+
+    def test_gear_extracted_from_summary_extension(self, paused_workout_payload: dict) -> None:
+        """Race 2 ships gear inside SummaryExtension, not at the workout root."""
+        workout = SuuntoWorkoutJSON(**paused_workout_payload)
+
+        assert workout.gear is None
+        gear = workout.gear_from_summary_extension
+        assert gear is not None
+        assert gear.name == "Suunto Race 2"
+        assert gear.serialNumber == "TEST-SERIAL-0001"
+        # AliasChoices: SummaryExtension.gear ships `softwareVersion`/`hardwareVersion`,
+        # which must be exposed via the canonical `swVersion`/`hwVersion` attributes.
+        assert gear.swVersion == "2.53.42"
+        assert gear.hwVersion == "Sailfish_RevA1"
+
+    def test_no_extensions_returns_empty(self, live_workout_payload: dict) -> None:
+        """A payload without `extensions` yields no pause markers and no extension gear."""
+        workout = SuuntoWorkoutJSON(**live_workout_payload)
+
+        assert workout.pause_markers == []
+        assert workout.gear_from_summary_extension is None
+
+    def test_unknown_extension_type_does_not_raise(self) -> None:
+        """Forward-compat: unrecognized extension `type` routes to UnknownExtension instead of failing validation."""
+        payload = {
+            "workoutId": 0,
+            "activityId": 0,
+            "startTime": 1700000000000,
+            "totalTime": 1.0,
+            "extensions": [{"type": "FutureExtensionWeDontKnow", "foo": "bar"}],
+        }
+
+        workout = SuuntoWorkoutJSON(**payload)
+
+        assert workout.pause_markers == []
+        assert workout.gear_from_summary_extension is None
+
+
+class TestNormalizeWithPauses:
+    """End-to-end: `_normalize_workout` must produce a pause-aware `end_datetime`."""
+
+    @pytest.fixture
+    def suunto_workouts(self) -> SuuntoWorkouts:
+        connection_repo = UserConnectionRepository()
+        oauth = SuuntoOAuth(
+            user_repo=MagicMock(),
+            connection_repo=connection_repo,
+            provider_name="suunto",
+            api_base_url="https://cloudapi.suunto.com",
+        )
+        return SuuntoWorkouts(
+            workout_repo=EventRecordRepository(EventRecord),
+            connection_repo=connection_repo,
+            provider_name="suunto",
+            api_base_url="https://cloudapi.suunto.com",
+            oauth=oauth,
+        )
+
+    def test_end_datetime_includes_pauses(
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        paused_workout_payload: dict,
+    ) -> None:
+        """end_datetime = startTime + active_time + sum(pauses).
+
+        Live capture: 210.56s active + 69.92s + 20.77s pauses = 301.25s elapsed.
+        """
+        workout = SuuntoWorkoutJSON(**paused_workout_payload)
+
+        record, _ = suunto_workouts._normalize_workout(workout, uuid4())
+
+        elapsed_seconds = (record.end_datetime - record.start_datetime).total_seconds()
+        assert elapsed_seconds == pytest.approx(301.25, abs=0.01)
+        # duration_seconds keeps the active timer time, unchanged by pauses.
+        assert record.duration_seconds == 210
+
+    def test_gear_pulled_from_summary_extension(
+        self,
+        suunto_workouts: SuuntoWorkouts,
+        paused_workout_payload: dict,
+    ) -> None:
+        """When top-level gear is absent, the SummaryExtension copy populates source/device."""
+        workout = SuuntoWorkoutJSON(**paused_workout_payload)
+
+        record, _ = suunto_workouts._normalize_workout(workout, uuid4())
+
+        assert record.source_name == "Suunto Race 2"
+        assert record.device_model == "Suunto Race 2"
