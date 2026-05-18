@@ -6,7 +6,7 @@ The handler fetches exactly that URL and saves the result.
 
 Signature scheme
 ----------------
-  Header   : X-Polar-Webhook-Signature: <hex_digest>
+  Header   : Polar-Webhook-Signature: <hex_digest>
   Message  : raw request body
   Algorithm: HMAC-SHA256(webhook_secret from provider_settings, body)
 
@@ -74,7 +74,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
     # ------------------------------------------------------------------
 
     def verify_signature(self, request: Request, body: bytes) -> bool:
-        """Verify HMAC-SHA256 signature from X-Polar-Webhook-Signature header."""
+        """Verify HMAC-SHA256 signature from Polar-Webhook-Signature header."""
         with SessionLocal() as db:
             secret = self.provider_settings_repo.get_webhook_secret(db, ProviderName.POLAR)
 
@@ -82,7 +82,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             log_structured(logger, "warning", "Polar webhook signature secret not configured", provider="polar")
             return False
 
-        provided_signature = request.headers.get("X-Polar-Webhook-Signature", "")
+        provided_signature = request.headers.get("Polar-Webhook-Signature", "")
         if not provided_signature:
             return False
 
@@ -182,7 +182,7 @@ class PolarWebhookHandler(BaseWebhookHandler):
             )
             return {"status": "error", "error": "missing user_id"}
 
-        connection = self.connection_repo.get_by_provider_user_id(db, "polar", event.user_id)
+        connection = self.connection_repo.get_by_provider_user_id(db, "polar", str(event.user_id))
         if not connection:
             log_structured(
                 logger,
