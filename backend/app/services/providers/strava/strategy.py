@@ -63,3 +63,6 @@ class StravaStrategy(BaseProviderStrategy):
 
     async def register_webhooks(self, callback_url: str) -> list[dict]:
         return await strava_webhook_service.register_subscriptions(callback_url)
+
+    async def list_subscriptions(self) -> list[dict]:
+        return await strava_webhook_service.list_subscriptions()

@@ -225,7 +225,36 @@ class BaseProviderStrategy(ABC):
         Only meaningful when ``capabilities.webhook_registration_api`` is True.
         Concrete strategies that support programmatic registration should override this.
         """
-        raise NotImplementedError(f"Provider '{self.name}' does not support programmatic webhook registration")
+        raise NotImplementedError(
+            f"Provider '{self.name}' does not support programmatic webhook registration at '{callback_url}'"
+        )
+
+    async def list_subscriptions(self) -> Any:
+        """List active webhook subscriptions for this provider."""
+        raise NotImplementedError(f"Provider '{self.name}' does not support listing webhook subscriptions")
+
+    async def get_subscription(self, subscription_id: str) -> Any:
+        """Get a single webhook subscription by ID."""
+        raise NotImplementedError(
+            f"Provider '{self.name}' does not support fetching webhook subscription '{subscription_id}'"
+        )
+
+    async def renew_subscriptions(self) -> Any:
+        """Renew active webhook subscriptions for this provider."""
+        raise NotImplementedError(f"Provider '{self.name}' does not support renewing webhook subscriptions")
+
+    async def delete_subscription(self, subscription_id: str) -> Any:
+        """Delete a webhook subscription by ID."""
+        raise NotImplementedError(
+            f"Provider '{self.name}' does not support deleting webhook subscription '{subscription_id}'"
+        )
+
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> Any:
+        """Update the callback URL of an existing webhook subscription."""
+        raise NotImplementedError(
+            f"Provider '{self.name}' does not support updating webhook subscription"
+            f" '{subscription_id}' to '{callback_url}'"
+        )
 
     @property
     def icon_url(self) -> str:

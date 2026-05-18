@@ -28,13 +28,24 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.database import DbSession
+from app.models import Developer
+from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.utils.auth import get_current_developer
 
 router = APIRouter()
 logger = getLogger(__name__)
 
 _factory = ProviderFactory()
+
+
+def _get_strategy(provider: str) -> BaseProviderStrategy:
+    """Resolve and return the provider strategy, raising 404 for unknown providers."""
+    try:
+        return _factory.get_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Unknown provider: '{provider}'")
 
 
 def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
@@ -104,3 +115,97 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     """
     handler = _get_webhook_handler(provider)
     return handler.handle_challenge(request)
+
+
+# ---------------------------------------------------------------------------
+# Subscription management (internal / developer-only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/subscriptions")
+async def list_webhook_subscriptions(
+    provider: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+) -> dict:
+    """List active webhook subscriptions for a provider."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.list_subscriptions()
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"subscriptions": result}
+
+
+@router.post("/subscriptions")
+async def register_webhook_subscriptions(
+    provider: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+    callback_url: str,
+) -> dict:
+    """Register or update webhook subscriptions for a provider."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.register_webhooks(callback_url)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"subscriptions": result}
+
+
+@router.post("/subscriptions/renew")
+async def renew_webhook_subscriptions(
+    provider: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+) -> dict:
+    """Renew all active webhook subscriptions for a provider."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.renew_subscriptions()
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"renewed": result}
+
+
+@router.get("/subscriptions/{subscription_id}")
+async def get_webhook_subscription(
+    provider: str,
+    subscription_id: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+) -> dict:
+    """Get a single webhook subscription by ID."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.get_subscription(subscription_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"subscription": result}
+
+
+@router.delete("/subscriptions/{subscription_id}")
+async def delete_webhook_subscription(
+    provider: str,
+    subscription_id: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+) -> dict:
+    """Delete a webhook subscription by ID."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.delete_subscription(subscription_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"deleted": result}
+
+
+@router.put("/subscriptions/{subscription_id}")
+async def update_webhook_subscription(
+    provider: str,
+    subscription_id: str,
+    _dev: Annotated[Developer, Depends(get_current_developer)],
+    callback_url: str,
+) -> dict:
+    """Update the callback URL of a webhook subscription."""
+    strategy = _get_strategy(provider)
+    try:
+        result = await strategy.update_subscription(subscription_id, callback_url)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    return {"updated": result}

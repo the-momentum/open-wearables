@@ -57,3 +57,9 @@ class OuraStrategy(BaseProviderStrategy):
 
     async def register_webhooks(self, callback_url: str) -> list[dict]:
         return await oura_webhook_service.register_subscriptions(callback_url)
+
+    async def list_subscriptions(self) -> list[dict]:
+        return await oura_webhook_service.list_subscriptions()
+
+    async def renew_subscriptions(self) -> list[dict]:
+        return await oura_webhook_service.renew_subscriptions()
