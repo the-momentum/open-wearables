@@ -6,7 +6,7 @@ from logging import getLogger
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.constants.series_types.apple import (
+from app.constants.series_types.sdk import (
     SleepPhase,
     get_apple_sleep_phase,
 )

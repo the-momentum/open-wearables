@@ -5,7 +5,7 @@ from logging import Logger, getLogger
 from typing import Iterable
 from uuid import UUID, uuid4
 
-from app.constants.series_types.apple import (
+from app.constants.series_types.sdk import (
     WorkoutStatisticType,
     get_detail_field_from_workout_statistic_type,
     get_series_type_from_metric_type,

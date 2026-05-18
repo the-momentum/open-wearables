@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 from app.config import settings
-from app.constants.series_types.apple import SleepPhase, get_series_type_from_metric_type
+from app.constants.series_types.sdk import SleepPhase, get_series_type_from_metric_type
 from app.constants.workout_types import get_unified_apple_workout_type_xml
 from app.schemas.enums import SeriesType
 from app.schemas.model_crud.activities import (
