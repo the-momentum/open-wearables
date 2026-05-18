@@ -151,7 +151,10 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         workout_type = get_unified_workout_type(raw_workout.activityId)
 
-        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
+        # Fresh webhook payloads sometimes omit stopTime; approximate it from startTime + totalTime.
+        # This ignores pauses, but the periodic /v3/workouts sync overwrites with the canonical value.
+        stop_time_ms = raw_workout.stopTime or raw_workout.startTime + int(raw_workout.totalTime * 1000)
+        start_date, end_date = self._extract_dates(raw_workout.startTime, stop_time_ms)
         duration_seconds = int(raw_workout.totalTime)
 
         zone_offset = None
