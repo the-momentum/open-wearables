@@ -47,11 +47,11 @@ class PolarStrategy(BaseProviderStrategy):
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
 
-    async def register_webhooks(self, callback_url: str) -> dict:
+    async def register_webhooks(self, callback_url: str) -> list[dict]:
         result = await polar_webhook_service.register_subscriptions(callback_url)
         if result.get("status") == "created":
             secret = result.get("response", {}).get("signature_secret_key")
             if secret:
                 with SessionLocal() as db:
                     self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
-        return result
+        return [result]
