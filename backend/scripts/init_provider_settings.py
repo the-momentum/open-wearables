@@ -2,6 +2,7 @@
 
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.auth import LiveSyncMode
 from app.schemas.enums import ProviderName
 from app.services.providers.factory import ProviderFactory
 
@@ -22,6 +23,18 @@ def init_provider_settings() -> None:
         repo = ProviderSettingsRepository()
         repo.ensure_all_providers_exist(db, all_providers, default_modes)
         print(f"✓ Provider settings initialized: {', '.join(all_providers)}")
+
+        all_settings = repo.get_all(db)
+        for provider_name in all_providers:
+            try:
+                strategy = factory.get_provider(provider_name)
+            except ValueError:
+                continue
+            if not strategy.capabilities.webhook_inbound_secret:
+                continue
+            setting = all_settings.get(provider_name)
+            if setting and setting.live_sync_mode == LiveSyncMode.WEBHOOK and not setting.webhook_secret:
+                print(f"  ⚠ {provider_name}: webhook mode active but no inbound secret stored — re-register to fix")
 
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@ class ProviderCapabilities:
         Currently: Polar.
     max_historical_days:
         Hard upper limit on how far back the provider allows data to be
-        fetched. ``None`` means no known limit.
+        fetched. ``None`` means no known limit. Garmin: 30 days.
     """
 
     rest_pull: bool = False
