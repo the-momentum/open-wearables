@@ -15,7 +15,7 @@ class PolarWebhookEventType(StrEnum):
 
 
 class PolarWebhookEvent(BaseModel):
-    event: str
+    event: PolarWebhookEventType
     user_id: int | None = None
     entity_id: str | None = None
     timestamp: str | None = None

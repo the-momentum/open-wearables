@@ -53,7 +53,8 @@ class PolarStrategy(BaseProviderStrategy):
         result = await polar_webhook_service.register_subscriptions(callback_url)
         if result.get("status") == "created":
             secret = result.get("response", {}).get("signature_secret_key")
-            if secret:
-                with SessionLocal() as db:
-                    self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
+            if not secret:
+                raise ValueError("Polar webhook registration succeeded but no signature_secret_key was returned.")
+            with SessionLocal() as db:
+                self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
         return [result]
