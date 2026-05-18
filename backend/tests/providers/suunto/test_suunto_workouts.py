@@ -374,9 +374,14 @@ class TestSuuntoWorkouts:
         from tests.factories import UserFactory
 
         user = UserFactory()
+        expected_id = uuid4()
+        mock_create.return_value.id = expected_id
 
-        suunto_workouts.process_push_activity(db, user.id, sample_workout_data)
+        result = suunto_workouts.process_push_activity(db, user.id, sample_workout_data)
 
+        assert result == expected_id
         mock_create.assert_called_once()
         mock_create_detail.assert_called_once()
+        detail_arg = mock_create_detail.call_args.args[1]
+        assert detail_arg.record_id == expected_id
         mock_ensure_data_source.assert_called_once()
