@@ -45,7 +45,9 @@ class PolarStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
+        return ProviderCapabilities(
+            rest_pull=True, webhook_ping=True, webhook_registration_api=True, webhook_inbound_secret=True
+        )
 
     async def register_webhooks(self, callback_url: str) -> list[dict]:
         result = await polar_webhook_service.register_subscriptions(callback_url)
