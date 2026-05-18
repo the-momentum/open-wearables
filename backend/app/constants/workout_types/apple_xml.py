@@ -129,7 +129,7 @@ def get_unified_workout_type(healthkit_activity_type: str) -> WorkoutType:
         >>> get_unified_workout_type("HKWorkoutActivityTypeYoga")
         WorkoutType.YOGA
         >>> get_unified_workout_type("HKWorkoutActivityTypeOther")
-        WorkoutType.OTHER
+        WorkoutType.GENERIC
     Note:
         Some deprecated types are still supported for backward compatibility:
         - HKWorkoutActivityTypeDance

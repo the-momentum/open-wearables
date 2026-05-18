@@ -316,7 +316,7 @@ def get_unified_workout_type(sdk_activity_type: SDKWorkoutType | str) -> Workout
         >>> get_unified_workout_type("CYCLING_STATIONARY")
         WorkoutType.INDOOR_CYCLING
         >>> get_unified_workout_type("other")
-        WorkoutType.OTHER
+        WorkoutType.GENERIC
     Note:
         Some deprecated types are still supported for backward compatibility:
         - dance
