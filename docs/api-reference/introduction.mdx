@@ -184,6 +184,21 @@ GET /api/v1/users/{user_id}/timeseries?cursor=abc123&limit=50
 
 Use the `next_cursor` from the response to fetch the next page.
 
+## Date & Time Parameters
+
+Endpoints that accept date range parameters (`start_date`, `end_date`, `start_time`, `end_time`) support the following input formats:
+
+| Format | Example | Notes |
+|--------|---------|-------|
+| ISO 8601 datetime with timezone | `2023-11-07T05:31:56Z` | Recommended |
+| ISO 8601 datetime with offset | `2023-11-07T06:31:56+01:00` | |
+| Date-only | `2023-11-07` | Normalized to midnight UTC (`2023-11-07T00:00:00Z`) |
+| Unix timestamp (seconds) | `1699332716` | UTC |
+
+<Note>
+  When a date-only value (e.g. `2023-11-07`) is provided as an **end date**, it is treated as midnight UTC at the start of that day. Depending on the endpoint, this may be extended to include the full day — use an explicit time component (e.g. `2023-11-07T23:59:59Z`) to avoid ambiguity.
+</Note>
+
 ## Filtering & Sorting
 
 Many endpoints support filtering and sorting. Check individual endpoint documentation for available options.
