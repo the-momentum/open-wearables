@@ -137,10 +137,27 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
 
         return all_activities
 
+    @staticmethod
+    def _coerce_to_datetime(value: Any, fallback: datetime) -> datetime:
+        """Accept either a datetime or an ISO 8601 string and return a datetime.
+
+        ``sync_vendor_data`` forwards ``start_date`` / ``end_date`` as raw ISO
+        strings (that's the on-wire format from periodic_sync / sync_data API),
+        but the Fitbit ``get_workouts`` path expects ``datetime`` for
+        ``.strftime``.  Without this coercion the hourly cron task crashes on
+        every Fitbit user with ``AttributeError: 'str' object has no attribute
+        'strftime'``.
+        """
+        if value is None:
+            return fallback
+        if isinstance(value, datetime):
+            return value
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+
     def get_workouts_from_api(self, db: DbSession, user_id: UUID, **kwargs: Any) -> Any:
         """Fetch workouts from Fitbit API with optional date range."""
-        start_date = kwargs.get("start_date") or (datetime.now(timezone.utc) - timedelta(days=30))
-        end_date = kwargs.get("end_date") or datetime.now(timezone.utc)
+        start_date = self._coerce_to_datetime(kwargs.get("start_date"), datetime.now(timezone.utc) - timedelta(days=30))
+        end_date = self._coerce_to_datetime(kwargs.get("end_date"), datetime.now(timezone.utc))
         return self.get_workouts(db, user_id, start_date, end_date)
 
     def load_data(
@@ -150,8 +167,8 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         **kwargs: Any,
     ) -> bool:
         """Fetch activities since start_date and save to database."""
-        start_date = kwargs.get("start_date") or (datetime.now(timezone.utc) - timedelta(days=30))
-        end_date = kwargs.get("end_date") or datetime.now(timezone.utc)
+        start_date = self._coerce_to_datetime(kwargs.get("start_date"), datetime.now(timezone.utc) - timedelta(days=30))
+        end_date = self._coerce_to_datetime(kwargs.get("end_date"), datetime.now(timezone.utc))
 
         activities = self.get_workouts(db, user_id, start_date, end_date)
 
