@@ -19,6 +19,7 @@ from .summaries import (
     ActivitySummary,
     BloodPressure,
     BodyAveraged,
+    BodyDailySummary,
     BodyLatest,
     BodySlowChanging,
     BodySummary,
@@ -47,6 +48,7 @@ __all__ = [
     # Summaries
     "ActivitySummary",
     "BodySummary",
+    "BodyDailySummary",
     "BloodPressure",
     "BodyAveraged",
     "BodyLatest",

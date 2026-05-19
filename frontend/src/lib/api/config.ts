@@ -84,6 +84,8 @@ export const API_ENDPOINTS = {
   userSleepSummary: (userId: string) =>
     `/api/v1/users/${userId}/summaries/sleep`,
   userBodySummary: (userId: string) => `/api/v1/users/${userId}/summaries/body`,
+  userBodySummaryDaily: (userId: string) =>
+    `/api/v1/users/${userId}/summaries/body/daily`,
   userRecoverySummary: (userId: string) =>
     `/api/v1/users/${userId}/summaries/recovery`,
 

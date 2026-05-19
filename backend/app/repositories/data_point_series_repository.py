@@ -986,6 +986,75 @@ class DataPointSeriesRepository(
         value, recorded_at, provider_name, device_id = result
         return (float(value), recorded_at, provider_name, device_id)
 
+    def get_daily_latest_values_for_types(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        series_types: list[SeriesType],
+    ) -> list[dict]:
+        """Get the latest reading per (day, source, device, series_type) in a range.
+
+        Used to build day-by-day body summaries: one row per unique
+        (date, source, device, series_type) tuple with the most recent reading
+        recorded on that day.
+
+        Returns a list of dicts with keys:
+            body_date (date), source (str | None), device_model (str | None),
+            series_type_id (int), value (float), recorded_at (datetime)
+
+        Rows are ordered by body_date ascending.
+        """
+        if not series_types:
+            return []
+
+        type_ids = [get_series_type_id(t) for t in series_types]
+
+        results = (
+            db_session.query(
+                cast(self.model.recorded_at, Date).label("body_date"),
+                DataSource.source.label("source"),
+                DataSource.device_model.label("device_model"),
+                self.model.series_type_definition_id.label("series_type_id"),
+                self.model.value.label("value"),
+                self.model.recorded_at.label("recorded_at"),
+            )
+            .join(DataSource, self.model.data_source_id == DataSource.id)
+            .filter(
+                DataSource.user_id == user_id,
+                self.model.recorded_at >= start_date,
+                self.model.recorded_at < end_date,
+                self.model.series_type_definition_id.in_(type_ids),
+            )
+            .distinct(
+                cast(self.model.recorded_at, Date),
+                DataSource.source,
+                DataSource.device_model,
+                self.model.series_type_definition_id,
+            )
+            .order_by(
+                cast(self.model.recorded_at, Date),
+                DataSource.source,
+                DataSource.device_model,
+                self.model.series_type_definition_id,
+                self.model.recorded_at.desc(),
+            )
+            .all()
+        )
+
+        return [
+            {
+                "body_date": row.body_date,
+                "source": row.source,
+                "device_model": row.device_model,
+                "series_type_id": row.series_type_id,
+                "value": float(row.value),
+                "recorded_at": row.recorded_at,
+            }
+            for row in results
+        ]
+
     def query_series(
         self,
         db_session: DbSession,

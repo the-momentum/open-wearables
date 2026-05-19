@@ -92,6 +92,7 @@ function UserDetailPage() {
   const [activityDateRange, setActivityDateRange] =
     useState<DateRangeValue>(30);
   const [sleepDateRange, setSleepDateRange] = useState<DateRangeValue>(30);
+  const [bodyDateRange, setBodyDateRange] = useState<DateRangeValue>(30);
   const [scoresDateRange, setScoresDateRange] = useState<DateRangeValue>(30);
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
@@ -159,7 +160,13 @@ function UserDetailPage() {
         id: 'body',
         label: 'Body',
         icon: Scale,
-        content: <BodySection userId={userId} />,
+        content: (
+          <BodySection
+            userId={userId}
+            dateRange={bodyDateRange}
+            onDateRangeChange={setBodyDateRange}
+          />
+        ),
       },
       {
         id: 'scores',
@@ -179,6 +186,7 @@ function UserDetailPage() {
       workoutDateRange,
       activityDateRange,
       sleepDateRange,
+      bodyDateRange,
       scoresDateRange,
     ]
   );

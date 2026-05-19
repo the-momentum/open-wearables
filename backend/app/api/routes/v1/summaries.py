@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import DbSession
 from app.schemas.responses.activity import (
     ActivitySummary,
+    BodyDailySummary,
     BodySummary,
     RecoverySummary,
     SleepSummary,
@@ -77,23 +78,45 @@ def get_body_summary(
     db: DbSession,
     _api_key: ApiKeyDep,
     average_period: Annotated[int, Query(ge=1, le=7, description="Days to average vitals (1-7)")] = 7,
-    latest_window_hours: Annotated[
-        int, Query(ge=1, le=24, description="Hours for latest readings to be considered valid (1-24)")
-    ] = 4,
 ) -> BodySummary | None:
     """Returns comprehensive body metrics with semantic grouping.
 
     Response is organized into three categories:
-    - **static**: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
+    - **slow_changing**: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
       Returns the most recent recorded value for each field.
     - **averaged**: Vitals averaged over a period (resting HR, HRV)
       Period is configurable via `average_period` parameter (1-7 days).
-    - **latest**: Point-in-time readings (body temperature, blood pressure)
-      Only returned if measured within `latest_window_hours` (default 4 hours).
+    - **latest**: Most recent point-in-time readings (body temperature, blood pressure)
+      Each value is returned with its measurement timestamp so callers can decide how to
+      surface freshness.
 
     Returns null if no body data exists for the user.
     """
-    return summaries_service.get_body_summary(db, user_id, average_period, latest_window_hours)
+    return summaries_service.get_body_summary(db, user_id, average_period)
+
+
+@router.get("/users/{user_id}/summaries/body/daily")
+def get_body_summary_daily(
+    user_id: UUID,
+    start_date: str,
+    end_date: str,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=400)] = 50,
+    sort_order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
+) -> PaginatedResponse[BodyDailySummary]:
+    """Returns paginated per-day body rollups.
+
+    For each (date, source, device) the latest reading of the day is reported for
+    each tracked body series (weight, height, body fat, muscle mass, BMI, resting HR,
+    HRV, body/skin temperature, blood pressure). Days with no readings are omitted.
+    """
+    start_datetime = parse_query_datetime(start_date)
+    end_datetime = parse_query_datetime(end_date)
+    return summaries_service.get_body_summaries_daily(
+        db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
+    )
 
 
 @router.get("/users/{user_id}/summaries/data")

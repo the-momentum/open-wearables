@@ -212,6 +212,7 @@
               "GET /api/v1/users/{user_id}/summaries/activity",
               "GET /api/v1/users/{user_id}/summaries/sleep",
               "GET /api/v1/users/{user_id}/summaries/body",
+              "GET /api/v1/users/{user_id}/summaries/body/daily",
               "GET /api/v1/users/{user_id}/summaries/recovery",
               "GET /api/v1/users/{user_id}/summaries/data"
             ]

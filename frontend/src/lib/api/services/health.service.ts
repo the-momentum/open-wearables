@@ -15,6 +15,8 @@ import type {
   SleepSummary,
   BodySummary,
   BodySummaryParams,
+  BodyDailySummary,
+  BodyDailySummariesParams,
   RecoverySummary,
   SleepSession,
   SleepSessionsParams,
@@ -184,11 +186,7 @@ export const healthService = {
    * Returns body data organized into three categories:
    * - slow_changing: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
    * - averaged: Vitals averaged over a period (resting HR, HRV)
-   * - latest: Point-in-time readings only if recent (body temperature, blood pressure)
-   *
-   * @param params.average_period - Days to average vitals (1 or 7, default 7)
-   * @param params.latest_window_hours - Hours for latest readings (default 4)
-   * @returns BodySummary or null if no data exists
+   * - latest: Most recent point-in-time readings with timestamps (body temperature, blood pressure)
    */
   async getBodySummary(
     userId: string,
@@ -196,6 +194,20 @@ export const healthService = {
   ): Promise<BodySummary | null> {
     return apiClient.get<BodySummary | null>(
       API_ENDPOINTS.userBodySummary(userId),
+      { params }
+    );
+  },
+
+  /**
+   * Get paginated per-day body rollups (one row per day with the latest reading
+   * of each tracked series). Days with no readings are omitted.
+   */
+  async getBodySummariesDaily(
+    userId: string,
+    params: BodyDailySummariesParams
+  ): Promise<PaginatedResponse<BodyDailySummary>> {
+    return apiClient.get<PaginatedResponse<BodyDailySummary>>(
+      API_ENDPOINTS.userBodySummaryDaily(userId),
       { params }
     );
   },

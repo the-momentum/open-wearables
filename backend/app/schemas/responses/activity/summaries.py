@@ -110,27 +110,27 @@ class BodyAveraged(BaseModel):
 
 
 class BodyLatest(BaseModel):
-    """Point-in-time metrics that are only relevant when recent.
+    """Most recent point-in-time clinical readings with their timestamps.
 
-    These metrics are only returned if measured within a configurable time window.
-    Stale readings return null to avoid displaying outdated data.
+    Each value is the most recent recorded reading regardless of age, paired with
+    its `*_measured_at` timestamp so callers can surface freshness in the UI.
     """
 
     body_temperature_celsius: float | None = Field(
-        None, description="Body temperature if measured within time window", example=36.6
+        None, description="Most recent body temperature reading", example=36.6
     )
     body_temperature_measured_at: datetime | None = Field(
-        None, description="When body temperature was measured (null if no recent reading)"
+        None, description="When the most recent body temperature was measured"
     )
     skin_temperature_celsius: float | None = Field(
-        None, description="Skin temperature if measured within time window", example=36.6
+        None, description="Most recent skin temperature reading", example=36.6
     )
     skin_temperature_measured_at: datetime | None = Field(
-        None, description="When skin temperature was measured (null if no recent reading)"
+        None, description="When the most recent skin temperature was measured"
     )
-    blood_pressure: BloodPressure | None = Field(None, description="Blood pressure if measured within time window")
+    blood_pressure: BloodPressure | None = Field(None, description="Most recent paired blood pressure reading")
     blood_pressure_measured_at: datetime | None = Field(
-        None, description="When blood pressure was measured (null if no recent reading)"
+        None, description="When the most recent blood pressure was measured"
     )
 
 
@@ -140,13 +140,37 @@ class BodySummary(BaseModel):
     Metrics are grouped by their temporal characteristics:
     - slow_changing: Slow-changing values (latest measurement)
     - averaged: Vitals averaged over a period (1 or 7 days)
-    - latest: Point-in-time readings (only if recent)
+    - latest: Most recent point-in-time readings with timestamps
     """
 
     source: SourceMetadata
     slow_changing: BodySlowChanging
     averaged: BodyAveraged
     latest: BodyLatest
+
+
+class BodyDailySummary(BaseModel):
+    """Per-day rollup of body readings.
+
+    For each tracked series on a given day, the latest reading of that day is reported.
+    Days with no readings are omitted from the paginated response.
+    """
+
+    date: date
+    source: SourceMetadata | None = None
+    weight_kg: float | None = Field(None, example=72.5)
+    height_cm: float | None = Field(None, example=175.5)
+    body_fat_percent: float | None = Field(None, example=18.5)
+    muscle_mass_kg: float | None = Field(None, example=58.2)
+    bmi: float | None = Field(None, example=23.5)
+    resting_heart_rate_bpm: int | None = Field(None, example=62)
+    avg_hrv_sdnn_ms: float | None = Field(None, example=45.2)
+    body_temperature_celsius: float | None = Field(None, example=36.6)
+    body_temperature_measured_at: datetime | None = None
+    skin_temperature_celsius: float | None = Field(None, example=33.4)
+    skin_temperature_measured_at: datetime | None = None
+    blood_pressure: BloodPressure | None = None
+    blood_pressure_measured_at: datetime | None = None
 
 
 class RecoverySummary(BaseModel):

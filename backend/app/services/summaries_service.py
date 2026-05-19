@@ -21,6 +21,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.enums import (
     ProviderName,
     SeriesType,
+    get_series_type_from_id,
     get_series_type_id,
     infer_device_type_from_model,
 )
@@ -28,6 +29,7 @@ from app.schemas.responses.activity import (
     ActivitySummary,
     BloodPressure,
     BodyAveraged,
+    BodyDailySummary,
     BodyLatest,
     BodySlowChanging,
     BodySummary,
@@ -82,9 +84,15 @@ BODY_AVERAGED_SERIES = [
     SeriesType.heart_rate_variability_sdnn,
 ]
 
+BODY_LATEST_SERIES = [
+    SeriesType.body_temperature,
+    SeriesType.skin_temperature,
+    SeriesType.blood_pressure_systolic,
+    SeriesType.blood_pressure_diastolic,
+]
+
 # Default settings for body summary
 DEFAULT_AVERAGE_PERIOD_DAYS = 7
-DEFAULT_LATEST_WINDOW_HOURS = 4
 
 
 class SummariesService:
@@ -603,6 +611,173 @@ class SummariesService:
             ),
         )
 
+    @handle_exceptions
+    def get_body_summaries_daily(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        start_date: datetime,
+        end_date: datetime,
+        cursor: str | None,
+        limit: int,
+        sort_order: str = "desc",
+    ) -> PaginatedResponse[BodyDailySummary]:
+        """Get day-by-day body rollups for a user.
+
+        For each (date, source, device_model) the latest reading of the day is
+        reported for each tracked body series. Days with no readings are omitted.
+
+        Pagination uses the same compound (date, source, device_model) cursor as
+        the activity-summaries endpoint.
+        """
+        self.logger.debug(f"Fetching body summaries for user {user_id} from {start_date} to {end_date}")
+
+        tracked_series = list(BODY_SLOW_CHANGING_SERIES) + list(BODY_AVERAGED_SERIES) + list(BODY_LATEST_SERIES)
+
+        rows = self.data_point_repo.get_daily_latest_values_for_types(
+            db_session, user_id, start_date, end_date, tracked_series
+        )
+
+        # Group rows by (date, source, device_model)
+        grouped: dict[tuple[date, str | None, str | None], dict[SeriesType, tuple[float, datetime]]] = {}
+        for row in rows:
+            try:
+                series_type = get_series_type_from_id(row["series_type_id"])
+            except KeyError:
+                continue
+            key = (row["body_date"], row["source"], row["device_model"])
+            grouped.setdefault(key, {})[series_type] = (row["value"], row["recorded_at"])
+
+        # Flatten into priority-filterable result list
+        results = [
+            {
+                "body_date": dt,
+                "source": source,
+                "device_model": device,
+                "readings": readings,
+            }
+            for (dt, source, device), readings in grouped.items()
+        ]
+
+        # Sort ascending by date (priority filter expects either order; we re-sort after)
+        results.sort(key=lambda r: (r["body_date"], r["source"] or "", r["device_model"] or ""))
+
+        # Pick the best source per date
+        results = self._filter_by_priority(db_session, user_id, results, date_key="body_date")
+
+        # Apply sort_order
+        if sort_order == "desc":
+            results = list(reversed(results))
+
+        # Cursor pagination on compound key (date, source, device)
+        if cursor:
+            cursor_date, cursor_provider, cursor_device, direction = decode_activity_cursor(cursor)
+            cursor_key = (cursor_date, cursor_provider, cursor_device or "")
+
+            def _key(r: dict) -> tuple[date, str, str]:
+                return (r["body_date"], r["source"] or "", r["device_model"] or "")
+
+            if direction == "prev":
+                if sort_order == "desc":
+                    results = [r for r in results if _key(r) > cursor_key]
+                else:
+                    results = [r for r in results if _key(r) < cursor_key]
+                results = list(reversed(results))
+            else:
+                if sort_order == "desc":
+                    results = [r for r in results if _key(r) < cursor_key]
+                else:
+                    results = [r for r in results if _key(r) > cursor_key]
+
+        has_more = len(results) > limit
+        if has_more:
+            results = results[:limit]
+
+        next_cursor: str | None = None
+        previous_cursor: str | None = None
+        if results:
+            if has_more:
+                last = results[-1]
+                next_cursor = encode_activity_cursor(
+                    last["body_date"], last["source"] or "unknown", last["device_model"], "next"
+                )
+            if cursor:
+                first = results[0]
+                previous_cursor = encode_activity_cursor(
+                    first["body_date"], first["source"] or "unknown", first["device_model"], "prev"
+                )
+
+        data: list[BodyDailySummary] = []
+        for r in results:
+            readings = r["readings"]
+
+            def _val(stype: SeriesType) -> float | None:
+                v = readings.get(stype)
+                return v[0] if v else None
+
+            def _ts(stype: SeriesType) -> datetime | None:
+                v = readings.get(stype)
+                return v[1] if v else None
+
+            weight_kg = _val(SeriesType.weight)
+            height_cm = _val(SeriesType.height)
+            stored_bmi = _val(SeriesType.body_mass_index)
+            bmi = stored_bmi if stored_bmi is not None else self._calculate_bmi(weight_kg, height_cm)
+
+            # Pair systolic/diastolic if both present and recorded within tolerance
+            bp_sys = readings.get(SeriesType.blood_pressure_systolic)
+            bp_dia = readings.get(SeriesType.blood_pressure_diastolic)
+            blood_pressure: BloodPressure | None = None
+            bp_measured_at: datetime | None = None
+            if bp_sys and bp_dia and abs((bp_sys[1] - bp_dia[1]).total_seconds()) <= BP_TIMESTAMP_TOLERANCE_SECONDS:
+                blood_pressure = BloodPressure(
+                    avg_systolic_mmhg=int(round(bp_sys[0])),
+                    avg_diastolic_mmhg=int(round(bp_dia[0])),
+                    max_systolic_mmhg=None,
+                    max_diastolic_mmhg=None,
+                    min_systolic_mmhg=None,
+                    min_diastolic_mmhg=None,
+                    reading_count=1,
+                )
+                bp_measured_at = max(bp_sys[1], bp_dia[1])
+
+            rhr = _val(SeriesType.resting_heart_rate)
+            hrv = _val(SeriesType.heart_rate_variability_sdnn)
+
+            data.append(
+                BodyDailySummary(
+                    date=r["body_date"],
+                    source=SourceMetadata(provider=r["source"] or "unknown", device=r["device_model"]),
+                    weight_kg=weight_kg,
+                    height_cm=height_cm,
+                    body_fat_percent=_val(SeriesType.body_fat_percentage),
+                    muscle_mass_kg=_val(SeriesType.lean_body_mass),
+                    bmi=bmi,
+                    resting_heart_rate_bpm=int(round(rhr)) if rhr is not None else None,
+                    avg_hrv_sdnn_ms=round(hrv, 1) if hrv is not None else None,
+                    body_temperature_celsius=_val(SeriesType.body_temperature),
+                    body_temperature_measured_at=_ts(SeriesType.body_temperature),
+                    skin_temperature_celsius=_val(SeriesType.skin_temperature),
+                    skin_temperature_measured_at=_ts(SeriesType.skin_temperature),
+                    blood_pressure=blood_pressure,
+                    blood_pressure_measured_at=bp_measured_at,
+                )
+            )
+
+        return PaginatedResponse(
+            data=data,
+            pagination=Pagination(
+                has_more=has_more,
+                next_cursor=next_cursor,
+                previous_cursor=previous_cursor,
+            ),
+            metadata=TimeseriesMetadata(
+                sample_count=len(data),
+                start_time=start_date,
+                end_time=end_date,
+            ),
+        )
+
     def _calculate_age(self, birth_date: date, reference_date: date) -> int:
         """Calculate age in years from birth date to reference date."""
         age = reference_date.year - birth_date.year
@@ -628,18 +803,16 @@ class SummariesService:
         db_session: DbSession,
         user_id: UUID,
         average_period_days: int = DEFAULT_AVERAGE_PERIOD_DAYS,
-        latest_window_hours: int = DEFAULT_LATEST_WINDOW_HOURS,
     ) -> BodySummary | None:
         """Get comprehensive body metrics with semantic grouping.
 
         Returns body data organized into three categories:
         - slow_changing: Slow-changing values (weight, height, body fat, muscle mass, BMI, age)
         - averaged: Vitals averaged over a period (resting HR, HRV)
-        - latest: Point-in-time readings only if recent (body temperature, blood pressure)
+        - latest: Most recent point-in-time readings (body temperature, blood pressure) with timestamps
 
         Args:
             average_period_days: Days to average vitals over (1-7)
-            latest_window_hours: Hours for "latest" readings to be considered valid (1-24)
 
         Returns:
             BodySummary with structured data, or None if no data exists
@@ -649,12 +822,9 @@ class SummariesService:
         """
         if not 1 <= average_period_days <= 7:
             raise ValueError("average_period_days must be between 1 and 7")
-        if not 1 <= latest_window_hours <= 24:
-            raise ValueError("latest_window_hours must be between 1 and 24")
 
         self.logger.debug(
-            f"Fetching body summary for user {user_id} "
-            f"(avg_period={average_period_days}d, latest_window={latest_window_hours}h)"
+            f"Fetching body summary for user {user_id} (avg_period={average_period_days}d)"
         )
 
         now = datetime.now(timezone.utc)
@@ -729,26 +899,22 @@ class SummariesService:
             period_end=period_end,
         )
 
-        # --- LATEST: Get recent point-in-time readings ---
-        latest_window_start = now - timedelta(hours=latest_window_hours)
-
-        body_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.body_temperature, latest_window_start, now
-        )
-        skin_temp_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.skin_temperature, latest_window_start, now
-        )
-        # Get blood pressure readings within the window
-        bp_systolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_systolic, latest_window_start, now
-        )
-        bp_diastolic_reading = self.data_point_repo.get_latest_reading_within_window(
-            db_session, user_id, SeriesType.blood_pressure_diastolic, latest_window_start, now
+        # --- LATEST: Get most recent point-in-time readings (no freshness window) ---
+        # Clinical/scale readings (BP, body temp) are sporadic — show the latest ever
+        # and let the UI display the timestamp so users know how fresh it is.
+        latest_values = self.data_point_repo.get_latest_values_for_types(
+            db_session, user_id, now, BODY_LATEST_SERIES
         )
 
-        # ignore provider and device id
-        body_temp_celsius, body_temp_measured_at, _, _ = body_temp_reading or (None, None, None, None)
-        skin_temp_celsius, skin_temp_measured_at, _, _ = skin_temp_reading or (None, None, None, None)
+        body_temp_data = latest_values.get(SeriesType.body_temperature)
+        skin_temp_data = latest_values.get(SeriesType.skin_temperature)
+        bp_systolic_reading = latest_values.get(SeriesType.blood_pressure_systolic)
+        bp_diastolic_reading = latest_values.get(SeriesType.blood_pressure_diastolic)
+
+        body_temp_celsius = body_temp_data[0] if body_temp_data else None
+        body_temp_measured_at = body_temp_data[1] if body_temp_data else None
+        skin_temp_celsius = skin_temp_data[0] if skin_temp_data else None
+        skin_temp_measured_at = skin_temp_data[1] if skin_temp_data else None
 
         # Blood pressure readings are only meaningful as a pair recorded at the same time.
         # Validate that both readings exist and their timestamps match within tolerance.

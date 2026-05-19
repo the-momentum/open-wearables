@@ -1088,7 +1088,7 @@ class TestBodySummaryEndpoint:
             recorded_at=now - timedelta(days=1),
         )
 
-        # BP reading within 4-hour window (2 hours ago)
+        # BP reading 2 hours ago — paired systolic/diastolic with matching timestamps
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=bp_sys_type,
@@ -1106,7 +1106,6 @@ class TestBodySummaryEndpoint:
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
@@ -1120,8 +1119,15 @@ class TestBodySummaryEndpoint:
         assert bp["reading_count"] == 1
         assert data["latest"]["blood_pressure_measured_at"] is not None
 
-    def test_get_body_summary_latest_blood_pressure_stale(self, client: TestClient, db: Session) -> None:
-        """Test latest section returns null for blood pressure outside window."""
+    def test_get_body_summary_latest_blood_pressure_returned_even_when_old(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """Old BP readings should still be returned with their measurement timestamp.
+
+        Clinical readings (BP, body temp) are sporadic; the latest section returns
+        the most recent reading regardless of age and the caller decides how to
+        surface freshness from the measured_at timestamp.
+        """
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="withings")
 
@@ -1138,36 +1144,37 @@ class TestBodySummaryEndpoint:
             recorded_at=now - timedelta(days=1),
         )
 
-        # BP reading outside 4-hour window (6 hours ago)
+        # BP reading from 10 days ago (well outside any plausible "freshness" window)
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=bp_sys_type,
             value=Decimal("120"),
-            recorded_at=now - timedelta(hours=6),
+            recorded_at=now - timedelta(days=10),
         )
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=bp_dia_type,
             value=Decimal("80"),
-            recorded_at=now - timedelta(hours=6),
+            recorded_at=now - timedelta(days=10),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
         data = response.json()
 
-        # BP is stale, should be null
-        assert data["latest"]["blood_pressure"] is None
-        assert data["latest"]["blood_pressure_measured_at"] is None
+        bp = data["latest"]["blood_pressure"]
+        assert bp is not None
+        assert bp["avg_systolic_mmhg"] == 120
+        assert bp["avg_diastolic_mmhg"] == 80
+        assert data["latest"]["blood_pressure_measured_at"] is not None
 
     def test_get_body_summary_latest_body_temperature_recent(self, client: TestClient, db: Session) -> None:
-        """Test latest section returns temperature if measured within window."""
+        """Test latest section returns the most recent temperature reading."""
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="apple")
 
@@ -1183,7 +1190,6 @@ class TestBodySummaryEndpoint:
             recorded_at=now - timedelta(days=1),
         )
 
-        # Temperature within 4-hour window
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=temp_type,
@@ -1195,7 +1201,6 @@ class TestBodySummaryEndpoint:
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
@@ -1204,8 +1209,10 @@ class TestBodySummaryEndpoint:
         assert data["latest"]["body_temperature_celsius"] == 36.6
         assert data["latest"]["body_temperature_measured_at"] is not None
 
-    def test_get_body_summary_latest_body_temperature_stale(self, client: TestClient, db: Session) -> None:
-        """Test latest section returns null for temperature outside window."""
+    def test_get_body_summary_latest_body_temperature_returned_even_when_old(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """Old body-temperature readings should still be returned with their timestamp."""
         user = UserFactory()
         mapping = DataSourceFactory(user=user, source="apple")
 
@@ -1221,27 +1228,24 @@ class TestBodySummaryEndpoint:
             recorded_at=now - timedelta(days=1),
         )
 
-        # Temperature outside 4-hour window (6 hours ago)
         DataPointSeriesFactory(
             mapping=mapping,
             series_type=temp_type,
             value=Decimal("36.6"),
-            recorded_at=now - timedelta(hours=6),
+            recorded_at=now - timedelta(days=3),
         )
 
         api_key = ApiKeyFactory()
         response = client.get(
             f"/api/v1/users/{user.id}/summaries/body",
             headers=api_key_headers(api_key.id),
-            params={"latest_window_hours": 4},
         )
 
         assert response.status_code == 200
         data = response.json()
 
-        # Temperature is stale, should be null
-        assert data["latest"]["body_temperature_celsius"] is None
-        assert data["latest"]["body_temperature_measured_at"] is None
+        assert data["latest"]["body_temperature_celsius"] == 36.6
+        assert data["latest"]["body_temperature_measured_at"] is not None
 
     def test_get_body_summary_null_when_no_data(self, client: TestClient, db: Session) -> None:
         """Test body summary returns null when no body data exists."""
@@ -1295,3 +1299,159 @@ class TestBodySummaryEndpoint:
 
         # Should use the most recent value
         assert data["slow_changing"]["weight_kg"] == 72.5
+
+
+class TestBodyDailySummaryEndpoint:
+    """Test suite for /summaries/body/daily endpoint."""
+
+    def _range_params(self, start: datetime, end: datetime) -> dict[str, str]:
+        return {"start_date": start.isoformat(), "end_date": end.isoformat()}
+
+    def test_returns_one_row_per_day_with_latest_reading(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="withings")
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+
+        day1 = datetime(2026, 5, 10, 7, 0, 0, tzinfo=timezone.utc)
+        day2 = datetime(2026, 5, 11, 7, 0, 0, tzinfo=timezone.utc)
+
+        # Two readings on day1 — endpoint should report the later one
+        DataPointSeriesFactory(mapping=mapping, series_type=weight_type, value=Decimal("80.0"), recorded_at=day1)
+        DataPointSeriesFactory(
+            mapping=mapping,
+            series_type=weight_type,
+            value=Decimal("80.5"),
+            recorded_at=day1 + timedelta(hours=10),
+        )
+        DataPointSeriesFactory(mapping=mapping, series_type=weight_type, value=Decimal("80.7"), recorded_at=day2)
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(day1 - timedelta(days=1), day2 + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        rows = body["data"]
+        assert len(rows) == 2
+        # Default sort_order=desc → newest first
+        assert rows[0]["date"] == "2026-05-11"
+        assert rows[0]["weight_kg"] == 80.7
+        assert rows[1]["date"] == "2026-05-10"
+        assert rows[1]["weight_kg"] == 80.5
+
+    def test_pairs_blood_pressure_per_day(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="withings")
+        bp_sys = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_systolic()
+        bp_dia = SeriesTypeDefinitionFactory.get_or_create_blood_pressure_diastolic()
+
+        ts = datetime(2026, 5, 10, 8, 30, 0, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=mapping, series_type=bp_sys, value=Decimal("121"), recorded_at=ts)
+        DataPointSeriesFactory(
+            mapping=mapping, series_type=bp_dia, value=Decimal("79"), recorded_at=ts + timedelta(seconds=2)
+        )
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(ts - timedelta(days=1), ts + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert len(rows) == 1
+        bp = rows[0]["blood_pressure"]
+        assert bp is not None
+        assert bp["avg_systolic_mmhg"] == 121
+        assert bp["avg_diastolic_mmhg"] == 79
+        assert rows[0]["blood_pressure_measured_at"] is not None
+
+    def test_skips_days_without_readings(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="withings")
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+
+        day_a = datetime(2026, 5, 10, 7, 0, 0, tzinfo=timezone.utc)
+        day_c = datetime(2026, 5, 12, 7, 0, 0, tzinfo=timezone.utc)
+        DataPointSeriesFactory(mapping=mapping, series_type=weight_type, value=Decimal("80.0"), recorded_at=day_a)
+        DataPointSeriesFactory(mapping=mapping, series_type=weight_type, value=Decimal("80.4"), recorded_at=day_c)
+
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(day_a - timedelta(days=1), day_c + timedelta(days=1)),
+        )
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        # The empty day (May 11) is omitted
+        assert [r["date"] for r in rows] == ["2026-05-12", "2026-05-10"]
+
+    def test_pagination_with_limit_and_cursor(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, source="withings")
+        weight_type = SeriesTypeDefinitionFactory.get_or_create_weight()
+
+        base = datetime(2026, 5, 1, 7, 0, 0, tzinfo=timezone.utc)
+        for i in range(5):
+            DataPointSeriesFactory(
+                mapping=mapping,
+                series_type=weight_type,
+                value=Decimal("80.0") + Decimal(i) / Decimal(10),
+                recorded_at=base + timedelta(days=i),
+            )
+
+        api_key = ApiKeyFactory()
+        first = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params={
+                **self._range_params(base - timedelta(days=1), base + timedelta(days=10)),
+                "limit": "2",
+            },
+        )
+        assert first.status_code == 200
+        page1 = first.json()
+        assert len(page1["data"]) == 2
+        assert page1["pagination"]["has_more"] is True
+        assert page1["pagination"]["next_cursor"]
+
+        second = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params={
+                **self._range_params(base - timedelta(days=1), base + timedelta(days=10)),
+                "limit": "2",
+                "cursor": page1["pagination"]["next_cursor"],
+            },
+        )
+        assert second.status_code == 200
+        page2 = second.json()
+        assert len(page2["data"]) == 2
+        # Pages should not overlap
+        page1_dates = {r["date"] for r in page1["data"]}
+        page2_dates = {r["date"] for r in page2["data"]}
+        assert page1_dates.isdisjoint(page2_dates)
+
+    def test_returns_empty_when_no_data(self, client: TestClient, db: Session) -> None:
+        user = UserFactory()
+        DataSourceFactory(user=user, source="withings")
+
+        start = datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 5, 10, 0, 0, 0, tzinfo=timezone.utc)
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/body/daily",
+            headers=api_key_headers(api_key.id),
+            params=self._range_params(start, end),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["data"] == []
+        assert body["pagination"]["has_more"] is False

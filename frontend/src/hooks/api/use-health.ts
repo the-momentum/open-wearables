@@ -8,6 +8,7 @@ import type {
   TimeSeriesParams,
   SleepSessionsParams,
   BodySummaryParams,
+  BodyDailySummariesParams,
   HealthScoreParams,
 } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query/keys';
@@ -183,6 +184,21 @@ export function useBodySummary(userId: string, params?: BodySummaryParams) {
     queryKey: queryKeys.health.bodySummary(userId, params),
     queryFn: () => healthService.getBodySummary(userId, params),
     enabled: !!userId,
+  });
+}
+
+/**
+ * Get paginated per-day body rollups for a user.
+ * Uses GET /api/v1/users/{user_id}/summaries/body/daily
+ */
+export function useBodySummariesDaily(
+  userId: string,
+  params: BodyDailySummariesParams
+) {
+  return useQuery({
+    queryKey: queryKeys.health.bodySummariesDaily(userId, params),
+    queryFn: () => healthService.getBodySummariesDaily(userId, params),
+    enabled: !!userId && !!params.start_date && !!params.end_date,
   });
 }
 

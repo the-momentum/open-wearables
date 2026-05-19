@@ -333,7 +333,9 @@ export interface BodyAveraged {
 }
 
 /**
- * Point-in-time metrics only returned if measured within a time window.
+ * Most recent point-in-time clinical readings with timestamps.
+ * Each value is paired with its `*_measured_at` timestamp so the UI can
+ * surface freshness; values are not gated by a window.
  */
 export interface BodyLatest {
   body_temperature_celsius: number | null;
@@ -360,8 +362,40 @@ export interface BodySummary {
  */
 export interface BodySummaryParams {
   average_period?: 1 | 7;
-  latest_window_hours?: number;
   [key: string]: number | undefined;
+}
+
+/**
+ * Per-day body rollup row. Days with no readings are omitted by the API.
+ */
+export interface BodyDailySummary {
+  date: string;
+  source: DataSource | null;
+  weight_kg: number | null;
+  height_cm: number | null;
+  body_fat_percent: number | null;
+  muscle_mass_kg: number | null;
+  bmi: number | null;
+  resting_heart_rate_bpm: number | null;
+  avg_hrv_sdnn_ms: number | null;
+  body_temperature_celsius: number | null;
+  body_temperature_measured_at: string | null;
+  skin_temperature_celsius: number | null;
+  skin_temperature_measured_at: string | null;
+  blood_pressure: BloodPressure | null;
+  blood_pressure_measured_at: string | null;
+}
+
+/**
+ * Query parameters for /summaries/body/daily endpoint.
+ */
+export interface BodyDailySummariesParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  sort_order?: 'asc' | 'desc';
+  [key: string]: string | number | undefined;
 }
 
 export interface RecoverySummary {
