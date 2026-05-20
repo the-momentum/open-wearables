@@ -15,7 +15,9 @@ from app.services.providers.suunto.strategy import SuuntoStrategy
 
 @pytest.fixture
 def data_247() -> Suunto247Data:
-    return SuuntoStrategy().data_247
+    instance = SuuntoStrategy().data_247
+    assert isinstance(instance, Suunto247Data)
+    return instance
 
 
 @pytest.fixture
@@ -96,7 +98,10 @@ class TestSuuntoRestingHeartRatePersistence:
         base_sleep["is_nap"] = True
 
         data_247._persist_resting_heart_rate(
-            MagicMock(), base_sleep["user_id"], base_sleep, datetime.now(timezone.utc),
+            MagicMock(),
+            base_sleep["user_id"],
+            base_sleep,
+            datetime.now(timezone.utc),
         )
 
         timeseries_service_mock.bulk_create_samples.assert_not_called()
@@ -110,7 +115,10 @@ class TestSuuntoRestingHeartRatePersistence:
         base_sleep["min_heart_rate_bpm"] = None
 
         data_247._persist_resting_heart_rate(
-            MagicMock(), base_sleep["user_id"], base_sleep, datetime.now(timezone.utc),
+            MagicMock(),
+            base_sleep["user_id"],
+            base_sleep,
+            datetime.now(timezone.utc),
         )
 
         timeseries_service_mock.bulk_create_samples.assert_not_called()
@@ -125,7 +133,10 @@ class TestSuuntoRestingHeartRatePersistence:
         db = MagicMock()
 
         data_247._persist_resting_heart_rate(
-            db, base_sleep["user_id"], base_sleep, datetime.now(timezone.utc),
+            db,
+            base_sleep["user_id"],
+            base_sleep,
+            datetime.now(timezone.utc),
         )
 
         timeseries_service_mock.bulk_create_samples.assert_called_once()

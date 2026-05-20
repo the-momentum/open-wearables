@@ -323,9 +323,7 @@ class Suunto247Data(Base247DataTemplate):
             recorded_at=recorded_at,
             value=Decimal(str(rhr)),
             series_type=SeriesType.resting_heart_rate,
-            external_id=str(normalized_sleep["suunto_sleep_id"])
-            if normalized_sleep.get("suunto_sleep_id")
-            else None,
+            external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
         )
         try:
             timeseries_service.bulk_create_samples(db, [sample])
