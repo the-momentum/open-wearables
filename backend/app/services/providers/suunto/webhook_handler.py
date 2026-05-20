@@ -237,9 +237,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
             elif isinstance(payload_detail, dict):
                 workouts_list = [payload_detail]
             else:
-                raise ValueError(
-                    f"Unexpected Suunto workout payload shape: {type(payload_detail).__name__}"
-                )
+                raise ValueError(f"Unexpected Suunto workout payload shape: {type(payload_detail).__name__}")
             saved = 0
             for raw in workouts_list:
                 if self.suunto_workouts.process_push_activity(db, user_id, raw) is not None:
