@@ -28,10 +28,10 @@ from app.schemas.model_crud.activities import (
 )
 from app.services.event_record_service import event_record_service
 from app.services.health_score_service import health_score_service
-from app.services.timeseries_service import timeseries_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.timeseries_service import timeseries_service
 from app.utils.dates import parse_datetime_or_default, parse_iso_datetime
 from app.utils.structured_logging import log_structured
 
@@ -307,16 +307,8 @@ class Suunto247Data(Base247DataTemplate):
     ) -> None:
         """Emit a resting_heart_rate data point from the sleep session's HRMin.
 
-        Suunto does not expose a dedicated resting-HR endpoint; the lowest
-        sustained heart rate during a full sleep session is the sports-science
-        equivalent. Naps are excluded, too short for a representative RHR.
-
-        Backfill policy: no separate migration. `_persist_resting_heart_rate`
-        runs from `save_sleep_data`, so any historical sleep record reprocessed
-        by the standard `load_and_save_sleep` backfill (or a replayed Suunto
-        webhook) emits its RHR retroactively. `data_point_series` upserts on
-        `(data_source_id, series_type_definition_id, recorded_at)`, so reruns
-        are idempotent.
+        Suunto exposes no dedicated resting-HR endpoint; HRMin during a full
+        sleep session is the sports-science equivalent. Naps excluded.
         """
         if normalized_sleep.get("is_nap"):
             return

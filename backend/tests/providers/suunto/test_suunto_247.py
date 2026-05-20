@@ -1,5 +1,6 @@
 """Tests for Suunto247Data — focused on resting_heart_rate emission from sleep."""
 
+from collections.abc import Generator
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -30,7 +31,7 @@ def base_sleep() -> dict:
 
 
 @pytest.fixture
-def timeseries_service_mock():
+def timeseries_service_mock() -> Generator[MagicMock, None, None]:
     with patch(
         "app.services.providers.suunto.data_247.timeseries_service",
     ) as mock:
