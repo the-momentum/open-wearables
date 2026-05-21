@@ -3,13 +3,13 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord
+from app.models import DataPointSeries, EventRecord, MenstrualCycleDetails
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
@@ -1676,35 +1676,116 @@ class Garmin247Data(Base247DataTemplate):
     # Menstrual Cycle Tracking - /wellness-api/rest/mct
     # -------------------------------------------------------------------------
 
+    def _build_mct_record(
+        self,
+        user_id: UUID,
+        raw_mct: dict[str, Any],
+    ) -> tuple[EventRecordCreate, dict[str, Any]] | None:
+        """Build EventRecord + MCT fields dict for a cycle summary (no DB interaction)."""
+        summary_id = raw_mct.get("summaryId")
+        period_start = raw_mct.get("periodStartDate")
+        if not summary_id or not period_start:
+            return None
+
+        try:
+            start_dt = datetime.strptime(period_start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+        cycle_length = raw_mct.get("cycleLength") or raw_mct.get("predictedCycleLength")
+        end_dt = start_dt + timedelta(days=cycle_length) if cycle_length else start_dt
+        phase_type = (raw_mct.get("currentPhaseType") or "unknown").lower()
+
+        pregnancy_snapshot = raw_mct.get("pregnancySnapshot") or None
+
+        last_updated_ts = raw_mct.get("lastUpdatedTimeInSeconds")
+
+        record = EventRecordCreate(
+            id=uuid4(),
+            category="menstrual_cycle",
+            type=phase_type,
+            source_name="Garmin",
+            duration_seconds=cycle_length * 24 * 3600 if cycle_length else None,
+            start_datetime=start_dt,
+            end_datetime=end_dt,
+            external_id=summary_id,
+            source=self.provider_name,
+            provider=ProviderName.GARMIN,
+            user_id=user_id,
+        )
+
+        mct_fields: dict[str, Any] = {
+            "day_in_cycle": raw_mct.get("dayInCycle"),
+            "current_phase": raw_mct.get("currentPhase"),
+            "current_phase_type": raw_mct.get("currentPhaseType"),
+            "length_of_current_phase": raw_mct.get("lengthOfCurrentPhase"),
+            "days_until_next_phase": raw_mct.get("daysUntilNextPhase"),
+            "predicted_cycle_length": raw_mct.get("predictedCycleLength"),
+            "is_predicted_cycle": raw_mct.get("isPredictedCycle"),
+            "cycle_length": raw_mct.get("cycleLength"),
+            "last_updated_at": self._from_epoch_seconds(last_updated_ts) if last_updated_ts else None,
+            "has_specified_cycle_length": raw_mct.get("hasSpecifiedCycleLength"),
+            "has_specified_period_length": raw_mct.get("hasSpecifiedPeriodLength"),
+            "period_length": raw_mct.get("periodLength"),
+            "fertile_window_start": raw_mct.get("fertileWindowStart"),
+            "length_of_fertile_window": raw_mct.get("lengthOfFertileWindow"),
+            "pregnancy_snapshot": pregnancy_snapshot,
+        }
+
+        return record, mct_fields
+
     def save_mct_data(
         self,
         db: DbSession,
         user_id: UUID,
         raw_mct: dict[str, Any],
-    ) -> int:
-        """Save menstrual cycle tracking data.
+    ) -> EventRecord | None:
+        """Save menstrual cycle tracking data as EventRecord + MenstrualCycleDetails.
 
-        MCT data includes cycle day, phase, and symptoms.
-        Currently stored as log entry; expand as needed.
-
-        Args:
-            db: Database session
-            user_id: User ID
-            raw_mct: Raw MCT data from Garmin API
-
-        Returns:
-            0 (logging only for now)
+        Garmin sends daily updates for the active cycle using the same summaryId,
+        so this upserts by external_id rather than inserting blindly.
         """
-        # MCT data structure is complex and user-sensitive
-        # For now, just log that we received it; expand implementation as needed
-        calendar_date = raw_mct.get("calendarDate")
-        cycle_day = raw_mct.get("dayInCycle")
+        result = self._build_mct_record(user_id, raw_mct)
+        if not result:
+            return None
 
-        if calendar_date:
-            self.logger.debug(f"MCT data received for user {user_id}: date={calendar_date}, day={cycle_day}")
+        record, mct_fields = result
+        summary_id = record.external_id
 
-        # TODO: Implement proper MCT storage if needed
-        return 0
+        existing = self.event_record_repo.get_by_external_id(db, user_id, summary_id)  # ty:ignore[arg-type]
+
+        # update detail if new summary comes
+        if existing:
+            existing.end_datetime = record.end_datetime
+            existing.type = record.type
+            mcd = cast(
+                MenstrualCycleDetails | None,
+                event_record_service.event_record_detail_repo.get_by_record_id(db, existing.id),
+            )
+            if mcd:
+                for k, v in mct_fields.items():
+                    setattr(mcd, k, v)
+            else:
+                db.add(MenstrualCycleDetails(record_id=existing.id, **mct_fields))
+            db.flush()
+            return existing
+
+        try:
+            created = event_record_service.create(db, record)
+            db.add(MenstrualCycleDetails(record_id=created.id, **mct_fields))
+            db.flush()
+            db.commit()
+            return created
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "error",
+                f"Error saving MCT record {summary_id}: {e}",
+                provider="garmin",
+                task="save_mct_data",
+                user_id=str(user_id),
+            )
+            return None
 
     # -------------------------------------------------------------------------
     # Batch Processing (for webhook handlers)
@@ -1811,10 +1892,9 @@ class Garmin247Data(Base247DataTemplate):
                         record = self._build_moveiq_record(user_id, item)
                         if record:
                             all_records.append(record)
-
-                    # No-op types
                     case "mct":
-                        self.save_mct_data(db, user_id, item)
+                        if mct_record := self.save_mct_data(db, user_id, item):
+                            all_records.append(mct_record)
 
             except Exception as e:
                 log_structured(
