@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import DbSession
 from app.models import (
     EventRecordDetail,
+    MenstrualCycleDetails,
     SleepDetails,
     WorkoutDetails,
 )
@@ -19,7 +20,7 @@ from app.schemas.model_crud.activities import (
 from app.utils.duplicates import handle_duplicates
 from app.utils.exceptions import handle_exceptions
 
-DetailType = Literal["workout", "sleep"]
+DetailType = Literal["workout", "sleep", "menstrual_cycle"]
 
 
 class EventRecordDetailRepository(
@@ -31,15 +32,19 @@ class EventRecordDetailRepository(
     def _build_detail(self, creator: EventRecordDetailCreate, detail_type: DetailType) -> EventRecordDetail:
         """Construct the polymorphic ORM object without touching the session."""
         creation_data = creator.model_dump(exclude_none=True)
-        if detail_type == "workout":
-            return cast(EventRecordDetail, WorkoutDetails(**creation_data))
-        if detail_type == "sleep":
-            # sleep_stages contains datetime fields that JSONB cannot serialize directly;
-            # use Pydantic's JSON mode to convert datetimes to ISO strings.
-            if creator.sleep_stages:
-                creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
-            return cast(EventRecordDetail, SleepDetails(**creation_data))
-        raise ValueError(f"Unknown detail type: {detail_type}")
+        match detail_type:
+            case "workout":
+                return cast(EventRecordDetail, WorkoutDetails(**creation_data))
+            case "sleep":
+                # sleep_stages contains datetime fields that JSONB cannot serialize directly;
+                # use Pydantic's JSON mode to convert datetimes to ISO strings.
+                if creator.sleep_stages:
+                    creation_data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]
+                return cast(EventRecordDetail, SleepDetails(**creation_data))
+            case "menstrual_cycle":
+                return cast(EventRecordDetail, MenstrualCycleDetails(**creation_data))
+            case _:
+                raise ValueError(f"Unknown detail type: {detail_type}")
 
     @handle_exceptions
     @handle_duplicates
@@ -114,7 +119,15 @@ class EventRecordDetailRepository(
         db_session.execute(base_stmt)
 
         # Use appropriate model based on detail_type
-        model = WorkoutDetails if detail_type == "workout" else SleepDetails
+        match detail_type:
+            case "workout":
+                model = WorkoutDetails
+            case "sleep":
+                model = SleepDetails
+            case "menstrual_cycle":
+                model = MenstrualCycleDetails
+            case _:
+                raise ValueError(f"Unknown detail type: {detail_type}")
 
         # Get columns from the actual child TABLE (not mapper which includes inherited columns)
         child_table = cast(Table, model.__table__)

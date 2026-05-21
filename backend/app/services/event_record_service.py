@@ -31,6 +31,7 @@ from app.schemas.model_crud.activities import (
     EventRecordResponse,
     EventRecordUpdate,
     HealthScoreCreate,
+    MenstrualCycleDetailCreate,
     ScoreComponent,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
@@ -50,7 +51,7 @@ from app.schemas.utils import (
     SourceMetadata as DataSourceSchema,
 )
 from app.services.outgoing_webhooks import svix as svix_service
-from app.services.outgoing_webhooks.events import on_sleep_created, on_workout_created
+from app.services.outgoing_webhooks.events import on_menstrual_cycle_created, on_sleep_created, on_workout_created
 from app.services.scores.sleep_service import sleep_score_service
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -495,59 +496,76 @@ class EventRecordService(
         provider = str(data_source.provider)
         device = data_source.device_model
         zone_offset = record.zone_offset
-        if category == "sleep":
-            eff = detail.sleep_efficiency_score
-            has_stages = any(
-                [
-                    detail.sleep_awake_minutes,
-                    detail.sleep_light_minutes,
-                    detail.sleep_deep_minutes,
-                    detail.sleep_rem_minutes,
-                ]
-            )
-            on_sleep_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
-                efficiency_percent=float(eff) if eff is not None else None,
-                stages={
-                    "awake_minutes": detail.sleep_awake_minutes,
-                    "light_minutes": detail.sleep_light_minutes,
-                    "deep_minutes": detail.sleep_deep_minutes,
-                    "rem_minutes": detail.sleep_rem_minutes,
-                }
-                if has_stages
-                else None,
-                is_nap=detail.is_nap,
-            )
-        elif category == "workout":
-            avg_pace: int | None = None
-            if detail.average_speed and float(detail.average_speed) > 0:
-                avg_pace = int(1000 / float(detail.average_speed))
-            on_workout_created(
-                record_id=record.id,
-                user_id=data_source.user_id,
-                provider=provider,
-                device=device,
-                workout_type=record.type,
-                start_time=record.start_datetime.isoformat(),
-                end_time=record.end_datetime.isoformat(),
-                zone_offset=zone_offset,
-                duration_seconds=record.duration_seconds,
-                calories_kcal=float(detail.energy_burned) if detail.energy_burned is not None else None,
-                distance_meters=float(detail.distance) if detail.distance is not None else None,
-                avg_heart_rate_bpm=int(detail.heart_rate_avg) if detail.heart_rate_avg is not None else None,
-                max_heart_rate_bpm=int(detail.heart_rate_max) if detail.heart_rate_max is not None else None,
-                elevation_gain_meters=float(detail.total_elevation_gain)
-                if detail.total_elevation_gain is not None
-                else None,
-                avg_pace_sec_per_km=avg_pace,
-            )
+        match category:
+            case "sleep":
+                eff = detail.sleep_efficiency_score
+                has_stages = any(
+                    [
+                        detail.sleep_awake_minutes,
+                        detail.sleep_light_minutes,
+                        detail.sleep_deep_minutes,
+                        detail.sleep_rem_minutes,
+                    ]
+                )
+                on_sleep_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    duration_seconds=record.duration_seconds,
+                    efficiency_percent=float(eff) if eff is not None else None,
+                    stages={
+                        "awake_minutes": detail.sleep_awake_minutes,
+                        "light_minutes": detail.sleep_light_minutes,
+                        "deep_minutes": detail.sleep_deep_minutes,
+                        "rem_minutes": detail.sleep_rem_minutes,
+                    }
+                    if has_stages
+                    else None,
+                    is_nap=detail.is_nap,
+                )
+            case "menstrual_cycle":
+                mcd = detail if isinstance(detail, MenstrualCycleDetailCreate) else None
+                on_menstrual_cycle_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    current_phase_type=mcd.current_phase_type if mcd else None,
+                    day_in_cycle=mcd.day_in_cycle if mcd else None,
+                    cycle_length=mcd.cycle_length if mcd else None,
+                    is_predicted_cycle=mcd.is_predicted_cycle if mcd else None,
+                    pregnancy_snapshot=mcd.pregnancy_snapshot if mcd else None,
+                )
+            case "workout":
+                avg_pace: int | None = None
+                if detail.average_speed and float(detail.average_speed) > 0:
+                    avg_pace = int(1000 / float(detail.average_speed))
+                on_workout_created(
+                    record_id=record.id,
+                    user_id=data_source.user_id,
+                    provider=provider,
+                    device=device,
+                    workout_type=record.type,
+                    start_time=record.start_datetime.isoformat(),
+                    end_time=record.end_datetime.isoformat(),
+                    zone_offset=zone_offset,
+                    duration_seconds=record.duration_seconds,
+                    calories_kcal=float(detail.energy_burned) if detail.energy_burned is not None else None,
+                    distance_meters=float(detail.distance) if detail.distance is not None else None,
+                    avg_heart_rate_bpm=int(detail.heart_rate_avg) if detail.heart_rate_avg is not None else None,
+                    max_heart_rate_bpm=int(detail.heart_rate_max) if detail.heart_rate_max is not None else None,
+                    elevation_gain_meters=float(detail.total_elevation_gain)
+                    if detail.total_elevation_gain is not None
+                    else None,
+                    avg_pace_sec_per_km=avg_pace,
+                )
 
     def bulk_create(
         self,

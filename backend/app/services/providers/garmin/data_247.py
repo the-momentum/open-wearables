@@ -3,13 +3,13 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, MenstrualCycleDetails
+from app.models import DataPointSeries, EventRecord
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
@@ -17,6 +17,7 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     HealthScoreCreate,
+    MenstrualCycleDetailCreate,
     ScoreComponent,
     SleepStage,
     TimeSeriesSampleCreate,
@@ -1680,8 +1681,8 @@ class Garmin247Data(Base247DataTemplate):
         self,
         user_id: UUID,
         raw_mct: dict[str, Any],
-    ) -> tuple[EventRecordCreate, dict[str, Any]] | None:
-        """Build EventRecord + MCT fields dict for a cycle summary (no DB interaction)."""
+    ) -> tuple[EventRecordCreate, MenstrualCycleDetailCreate] | None:
+        """Build EventRecord + MenstrualCycleDetailCreate for a cycle summary (no DB interaction)."""
         summary_id = raw_mct.get("summaryId")
         period_start = raw_mct.get("periodStartDate")
         if not summary_id or not period_start:
@@ -1695,9 +1696,6 @@ class Garmin247Data(Base247DataTemplate):
         cycle_length = raw_mct.get("cycleLength") or raw_mct.get("predictedCycleLength")
         end_dt = start_dt + timedelta(days=cycle_length) if cycle_length else start_dt
         phase_type = (raw_mct.get("currentPhaseType") or "unknown").lower()
-
-        pregnancy_snapshot = raw_mct.get("pregnancySnapshot") or None
-
         last_updated_ts = raw_mct.get("lastUpdatedTimeInSeconds")
 
         record = EventRecordCreate(
@@ -1714,25 +1712,26 @@ class Garmin247Data(Base247DataTemplate):
             user_id=user_id,
         )
 
-        mct_fields: dict[str, Any] = {
-            "day_in_cycle": raw_mct.get("dayInCycle"),
-            "current_phase": raw_mct.get("currentPhase"),
-            "current_phase_type": raw_mct.get("currentPhaseType"),
-            "length_of_current_phase": raw_mct.get("lengthOfCurrentPhase"),
-            "days_until_next_phase": raw_mct.get("daysUntilNextPhase"),
-            "predicted_cycle_length": raw_mct.get("predictedCycleLength"),
-            "is_predicted_cycle": raw_mct.get("isPredictedCycle"),
-            "cycle_length": raw_mct.get("cycleLength"),
-            "last_updated_at": self._from_epoch_seconds(last_updated_ts) if last_updated_ts else None,
-            "has_specified_cycle_length": raw_mct.get("hasSpecifiedCycleLength"),
-            "has_specified_period_length": raw_mct.get("hasSpecifiedPeriodLength"),
-            "period_length": raw_mct.get("periodLength"),
-            "fertile_window_start": raw_mct.get("fertileWindowStart"),
-            "length_of_fertile_window": raw_mct.get("lengthOfFertileWindow"),
-            "pregnancy_snapshot": pregnancy_snapshot,
-        }
+        detail = MenstrualCycleDetailCreate(
+            record_id=record.id,
+            day_in_cycle=raw_mct.get("dayInCycle"),
+            current_phase=raw_mct.get("currentPhase"),
+            current_phase_type=raw_mct.get("currentPhaseType"),
+            length_of_current_phase=raw_mct.get("lengthOfCurrentPhase"),
+            days_until_next_phase=raw_mct.get("daysUntilNextPhase"),
+            predicted_cycle_length=raw_mct.get("predictedCycleLength"),
+            is_predicted_cycle=raw_mct.get("isPredictedCycle"),
+            cycle_length=raw_mct.get("cycleLength"),
+            last_updated_at=self._from_epoch_seconds(last_updated_ts) if last_updated_ts else None,
+            has_specified_cycle_length=raw_mct.get("hasSpecifiedCycleLength"),
+            has_specified_period_length=raw_mct.get("hasSpecifiedPeriodLength"),
+            period_length=raw_mct.get("periodLength"),
+            fertile_window_start=raw_mct.get("fertileWindowStart"),
+            length_of_fertile_window=raw_mct.get("lengthOfFertileWindow"),
+            pregnancy_snapshot=raw_mct.get("pregnancySnapshot") or None,
+        )
 
-        return record, mct_fields
+        return record, detail
 
     def save_mct_data(
         self,
@@ -1749,7 +1748,7 @@ class Garmin247Data(Base247DataTemplate):
         if not result:
             return None
 
-        record, mct_fields = result
+        record, detail = result
         summary_id = record.external_id
 
         existing = self.event_record_repo.get_by_external_id(db, user_id, summary_id)  # ty:ignore[arg-type]
@@ -1758,23 +1757,22 @@ class Garmin247Data(Base247DataTemplate):
         if existing:
             existing.end_datetime = record.end_datetime
             existing.type = record.type
-            mcd = cast(
-                MenstrualCycleDetails | None,
-                event_record_service.event_record_detail_repo.get_by_record_id(db, existing.id),
-            )
-            if mcd:
-                for k, v in mct_fields.items():
+            mcd = event_record_service.event_record_detail_repo.get_by_record_id(db, existing.id)
+            if mcd is not None:
+                for k, v in detail.model_dump(exclude={"record_id"}, exclude_none=True).items():
                     setattr(mcd, k, v)
             else:
-                db.add(MenstrualCycleDetails(record_id=existing.id, **mct_fields))
+                event_record_service.create_detail(
+                    db, detail.model_copy(update={"record_id": existing.id}), detail_type="menstrual_cycle"
+                )
             db.flush()
             return existing
 
         try:
             created = event_record_service.create(db, record)
-            db.add(MenstrualCycleDetails(record_id=created.id, **mct_fields))
-            db.flush()
-            db.commit()
+            event_record_service.create_detail(
+                db, detail.model_copy(update={"record_id": created.id}), detail_type="menstrual_cycle"
+            )
             return created
         except Exception as e:
             log_structured(
