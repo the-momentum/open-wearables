@@ -139,6 +139,13 @@ curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-44665544
   -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
 
+### Menstrual Cycles
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/users/550e8400-e29b-41d4-a716-446655440000/events/menstrual-cycles?start_date=2025-01-01T00:00:00Z&end_date=2025-01-31T00:00:00Z" \
+  -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
+```
+
 ## Complete JavaScript Example
 
 ```javascript
