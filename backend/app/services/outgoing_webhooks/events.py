@@ -115,7 +115,7 @@ def on_menstrual_cycle_created(
     day_in_cycle: int | None = None,
     cycle_length: int | None = None,
     is_predicted_cycle: bool | None = None,
-    pregnancy_snapshot: dict | None = None,
+    pregnancy_snapshot: list[dict] | None = None,
 ) -> None:
     _dispatch(
         WebhookEventType.MENSTRUAL_CYCLE_CREATED,

@@ -19,4 +19,4 @@ class MenstrualCycleDetailCreate(EventRecordDetailCreate):
     period_length: int | None = None
     fertile_window_start: int | None = None
     length_of_fertile_window: int | None = None
-    pregnancy_snapshot: dict[str, Any] | None = None
+    pregnancy_snapshot: list[dict[str, Any]] | None = None

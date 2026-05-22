@@ -1728,62 +1728,10 @@ class Garmin247Data(Base247DataTemplate):
             period_length=raw_mct.get("periodLength"),
             fertile_window_start=raw_mct.get("fertileWindowStart"),
             length_of_fertile_window=raw_mct.get("lengthOfFertileWindow"),
-            pregnancy_snapshot=raw_mct.get("pregnancySnapshot") or None,
+            pregnancy_snapshot=[s] if (s := raw_mct.get("pregnancySnapshot")) else None,
         )
 
         return record, detail
-
-    def save_mct_data(
-        self,
-        db: DbSession,
-        user_id: UUID,
-        raw_mct: dict[str, Any],
-    ) -> EventRecord | None:
-        """Save menstrual cycle tracking data as EventRecord + MenstrualCycleDetails.
-
-        Garmin sends daily updates for the active cycle using the same summaryId,
-        so this upserts by external_id rather than inserting blindly.
-        """
-        result = self._build_mct_record(user_id, raw_mct)
-        if not result:
-            return None
-
-        record, detail = result
-        summary_id = record.external_id
-
-        existing = self.event_record_repo.get_by_external_id(db, user_id, summary_id)  # ty:ignore[arg-type]
-
-        # update detail if new summary comes
-        if existing:
-            existing.end_datetime = record.end_datetime
-            existing.type = record.type
-            mcd = event_record_service.event_record_detail_repo.get_by_record_id(db, existing.id)
-            if mcd is not None:
-                for k, v in detail.model_dump(exclude={"record_id"}, exclude_none=True).items():
-                    setattr(mcd, k, v)
-            else:
-                event_record_service.create_detail(
-                    db, detail.model_copy(update={"record_id": existing.id}), detail_type="menstrual_cycle"
-                )
-            db.flush()
-            return existing
-
-        try:
-            created = event_record_service.create(db, record)
-            event_record_service.create_detail(
-                db, detail.model_copy(update={"record_id": created.id}), detail_type="menstrual_cycle"
-            )
-            return created
-        except Exception as e:
-            log_structured(
-                self.logger,
-                "error",
-                f"Error saving MCT record {summary_id}: {e}",
-                provider="garmin",
-                task="save_mct_data",
-                user_id=str(user_id),
-            )
-            return None
 
     # -------------------------------------------------------------------------
     # Batch Processing (for webhook handlers)
@@ -1814,6 +1762,7 @@ class Garmin247Data(Base247DataTemplate):
         all_records: list[EventRecordCreate] = []
         all_workout_details: list[EventRecordDetailCreate] = []
         all_sleep_details: list[EventRecordDetailCreate] = []
+        all_mct_details: list[MenstrualCycleDetailCreate] = []
         all_health_scores: list[HealthScoreCreate] = []
 
         for item in items:
@@ -1891,8 +1840,11 @@ class Garmin247Data(Base247DataTemplate):
                         if record:
                             all_records.append(record)
                     case "mct":
-                        if mct_record := self.save_mct_data(db, user_id, item):
-                            all_records.append(mct_record)
+                        result = self._build_mct_record(user_id, item)
+                        if result:
+                            record, detail = result
+                            all_records.append(record)
+                            all_mct_details.append(detail)
 
             except Exception as e:
                 log_structured(
@@ -1927,6 +1879,11 @@ class Garmin247Data(Base247DataTemplate):
             workout_details = [d for d in all_workout_details if d.record_id in inserted_set]
             if workout_details:
                 event_record_service.bulk_create_details(db, workout_details, detail_type="workout")
+
+            # Bulk create MCT details for actually inserted records
+            mct_details = [d for d in all_mct_details if d.record_id in inserted_set]
+            if mct_details:
+                event_record_service.bulk_create_details(db, mct_details, detail_type="menstrual_cycle")  # ty:ignore[invalid-argument-type]
 
             count += len(inserted_ids)
 

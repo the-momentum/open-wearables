@@ -92,4 +92,4 @@ class MenstrualCycleRecord(BaseModel):
     last_updated_at: datetime | None = None
     has_specified_cycle_length: bool | None = None
     has_specified_period_length: bool | None = None
-    pregnancy_snapshot: dict | None = None
+    pregnancy_snapshot: list[dict] | None = None

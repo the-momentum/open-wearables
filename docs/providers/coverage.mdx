@@ -24,6 +24,7 @@ This guide provides a comprehensive overview of data type support across all int
 | **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ |
 | **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **Women's Health** | 🔜 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Fully implemented and collecting data
@@ -261,6 +262,30 @@ Health scores are composite metrics that summarize a specific aspect of health i
 
 ---
 
+## Women's Health Coverage
+
+Menstrual cycle and reproductive health data. Implemented types are available via the `/events/menstrual-cycles` endpoint and the `menstrual_cycle.created` webhook event.
+
+| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
+|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
+| Menstrual flow / cycle records | 🔜 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Cycle phase & day in cycle | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Cycle length (logged + predicted) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Period length | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Fertile window | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Pregnancy tracking | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Basal body temperature | 🔜 | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ | ❌ |
+| Cervical mucus quality | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Ovulation test result | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Intermenstrual bleeding | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+<Note>
+  Garmin MCT data arrives via the `mct` webhook type as daily cycle summaries.
+  Apple HealthKit supports 15 reproductive health types; ingestion is not yet implemented.
+</Note>
+
+---
+
 ## Provider Quirks
 
 Key differences and limitations to be aware of when working with each provider:
@@ -288,6 +313,7 @@ Key differences and limitations to be aware of when working with each provider:
   - 135+ workout type mappings to unified taxonomy
   - Workout details include distance, calories, avg/max heart rate, elevation gain, and average speed
   - Backfill orchestration for historical data retrieval (up to 5 years)
+  - Menstrual cycle tracking (MCT): cycle phase, day in cycle, cycle/period length, fertile window, and pregnancy snapshot via the `mct` webhook type
 </Accordion>
 
 <Accordion title="Polar">
