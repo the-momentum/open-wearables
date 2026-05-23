@@ -126,8 +126,15 @@ logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wea
 
 
 def main() -> None:
-    """Entry point for the MCP server."""
-    mcp.run()
+    """Entry point for the MCP server.
+
+    show_banner=False is REQUIRED for Claude Code MCP integration.
+    FastMCP's decorative banner output uses print() → stdout, which
+    pollutes the JSON-RPC stream Claude Code expects on stdio.
+    With banner enabled, Claude Code silently fails to load the
+    MCP server (no error surfaced — just no tools available).
+    """
+    mcp.run(show_banner=False)
 
 
 if __name__ == "__main__":
