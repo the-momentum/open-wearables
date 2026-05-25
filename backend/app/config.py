@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
     whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
-    whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
+    whoop_default_scope: str = "offline read:profile read:cycles read:sleep read:recovery read:workout"
 
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None
@@ -291,8 +291,12 @@ class Settings(BaseSettings):
         elif self.redis_username:
             auth_part = f"{quote(self.redis_username, safe='')}@"
 
+        # Synaptik delta: field name is upstream's `redis_ssl` (deploy sets REDIS_SSL),
+        # but ssl_cert_reqs stays `none` for the Azure Redis Enterprise endpoint — the
+        # cert chain is not verified against the container trust store. Verify a `required`
+        # handshake works against Azure before dropping this delta. See FORK-DELTA.md.
         scheme = "rediss" if self.redis_ssl else "redis"
-        query = "?ssl_cert_reqs=required" if self.redis_ssl else ""
+        query = "?ssl_cert_reqs=none" if self.redis_ssl else ""
         return f"{scheme}://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{query}"
 
     # Decryptor for encrypted fields

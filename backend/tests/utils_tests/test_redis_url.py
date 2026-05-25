@@ -30,7 +30,8 @@ class TestRedisUrl:
             patch.object(settings, "redis_username", None),
             patch.object(settings, "redis_ssl", True),
         ):
-            assert settings.redis_url == "rediss://:secret@redis.example.com:6379/0?ssl_cert_reqs=required"
+            # Synaptik delta: ssl_cert_reqs=none for the Azure Redis Enterprise endpoint (see config.py).
+            assert settings.redis_url == "rediss://:secret@redis.example.com:6379/0?ssl_cert_reqs=none"
 
     def test_special_characters_in_credentials_are_url_encoded(self) -> None:
         # Managed AUTH tokens can contain reserved chars; '#' would truncate the
@@ -43,7 +44,7 @@ class TestRedisUrl:
             patch.object(settings, "redis_username", None),
             patch.object(settings, "redis_ssl", True),
         ):
+            # Synaptik delta: ssl_cert_reqs=none for the Azure Redis Enterprise endpoint (see config.py).
             assert (
-                settings.redis_url
-                == "rediss://:p%40ss%23wo%26rd%3D%2B%2F@redis.example.com:6379/1?ssl_cert_reqs=required"
+                settings.redis_url == "rediss://:p%40ss%23wo%26rd%3D%2B%2F@redis.example.com:6379/1?ssl_cert_reqs=none"
             )
