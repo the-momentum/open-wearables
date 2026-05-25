@@ -10,7 +10,7 @@ from app.schemas.utils import PaginatedResponse, Pagination
 from app.schemas.utils.metadata import TimeseriesMetadata
 from app.services import ApiKeyDep
 from app.services.health_score_service import health_score_service
-from app.utils.dates import parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime
 
 router = APIRouter()
 
@@ -20,8 +20,8 @@ def list_health_scores(
     user_id: UUID,
     db: DbSession,
     _api_key: ApiKeyDep,
-    start_date: str | None = None,
-    end_date: str | None = None,
+    start_date: DateTimeQueryParam | None = None,
+    end_date: DateTimeQueryParam | None = None,
     category: HealthScoreCategory | None = None,
     provider: ProviderName | None = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 50,

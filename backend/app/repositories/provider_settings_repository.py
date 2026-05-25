@@ -4,6 +4,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.schemas.auth import LiveSyncMode
+from app.schemas.enums.provider import ProviderName
 
 
 class ProviderSettingsRepository:
@@ -63,6 +64,22 @@ class ProviderSettingsRepository:
             elif existing[provider].live_sync_mode is None and default_mode is not None:
                 existing[provider].live_sync_mode = default_mode
 
+        db.commit()
+
+    def get_webhook_secret(self, db: DbSession, provider: ProviderName) -> str | None:
+        """Return the stored webhook signing secret for a provider, or None."""
+        stmt = select(ProviderSetting).where(ProviderSetting.provider == provider)
+        setting = db.execute(stmt).scalar_one_or_none()
+        return setting.webhook_secret if setting else None
+
+    def save_webhook_secret(self, db: DbSession, provider: ProviderName, secret: str) -> None:
+        """Persist a webhook signing secret for a provider (upsert — won't touch other fields)."""
+        stmt = (
+            insert(ProviderSetting)
+            .values(provider=provider, is_enabled=True, webhook_secret=secret)
+            .on_conflict_do_update(index_elements=["provider"], set_={"webhook_secret": secret})
+        )
+        db.execute(stmt)
         db.commit()
 
     def bulk_update(self, db: DbSession, updates: dict[str, bool]) -> None:

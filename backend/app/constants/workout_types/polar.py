@@ -49,7 +49,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     ("OTHER", "WATERSPORTS_KITESURFING", WorkoutType.KITESURFING),
     ("OTHER", "WATERSPORTS_WINDSURFING", WorkoutType.WINDSURFING),
     ("OTHER", "WATERSPORTS_SAILING", WorkoutType.SAILING),
-    ("OTHER", "WATERSPORTS_WATERSKI", WorkoutType.OTHER),
+    ("OTHER", "WATERSPORTS_WATERSKI", WorkoutType.WATER_SKIING),
     # Team Sports - sport="BASKETBALL", "SOCCER", etc. or "OTHER"
     ("BASKETBALL", None, WorkoutType.BASKETBALL),
     ("SOCCER", None, WorkoutType.SOCCER),
@@ -94,7 +94,7 @@ POLAR_WORKOUT_TYPE_MAPPINGS: list[tuple[str, str | None, WorkoutType]] = [
     # Dance
     ("OTHER", "DANCE", WorkoutType.DANCE),
     # Generic/Other
-    ("OTHER", None, WorkoutType.OTHER),
+    ("OTHER", None, WorkoutType.GENERIC),
 ]
 
 

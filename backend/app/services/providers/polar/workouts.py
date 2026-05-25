@@ -90,10 +90,8 @@ class PolarWorkouts(BaseWorkoutsTemplate):
         distance = Decimal(str(raw_workout.distance)) if raw_workout.distance is not None else None
 
         return {
-            "heart_rate_min": int(hr_avg) if hr_avg is not None else None,
             "heart_rate_max": int(hr_max) if hr_max is not None else None,
             "heart_rate_avg": hr_avg,
-            "steps_count": None,
             "energy_burned": energy_burned,
             "distance": distance,
         }
@@ -168,6 +166,18 @@ class PolarWorkouts(BaseWorkoutsTemplate):
             event_record_service.create_detail(db, detail_for_record)
             count += 1
 
+        return count
+
+    def fetch_and_save_exercise(self, db: DbSession, user_id: UUID, path: str) -> int:
+        """Fetch a single exercise by URL path and save it. Used by webhook handler."""
+        raw = self._make_api_request(db, user_id, path)
+        if not raw:
+            return 0
+        count = 0
+        for record, detail in self._build_bundles([PolarExerciseJSON(**raw)], user_id):
+            created = event_record_service.create(db, record)
+            event_record_service.create_detail(db, detail.model_copy(update={"record_id": created.id}))
+            count += 1
         return count
 
     def get_exercise_detail(

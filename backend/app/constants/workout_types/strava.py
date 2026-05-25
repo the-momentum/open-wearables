@@ -48,7 +48,7 @@ SPORT_TYPE_TO_UNIFIED: dict[str, WorkoutType] = {
     "HighIntensityIntervalTraining": WorkoutType.CARDIO_TRAINING,
     # Racket Sports
     "Pickleball": WorkoutType.PICKLEBALL,
-    "Racquetball": WorkoutType.OTHER,
+    "Racquetball": WorkoutType.RACQUETBALL,
     "Squash": WorkoutType.SQUASH,
     "Badminton": WorkoutType.BADMINTON,
     "TableTennis": WorkoutType.TABLE_TENNIS,
@@ -62,8 +62,8 @@ SPORT_TYPE_TO_UNIFIED: dict[str, WorkoutType] = {
     "InlineSkate": WorkoutType.INLINE_SKATING,
     "RollerSki": WorkoutType.CROSS_COUNTRY_SKIING,
     # Other
-    "Wheelchair": WorkoutType.OTHER,
-    "Workout": WorkoutType.OTHER,
+    "Wheelchair": WorkoutType.WHEELCHAIR,
+    "Workout": WorkoutType.GENERIC,
     "VirtualRow": WorkoutType.ROWING_MACHINE,
 }
 

@@ -9,7 +9,7 @@ from app.schemas.model_crud.activities import TimeSeriesQueryParams
 from app.schemas.responses.activity import TimeSeriesSample
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, timeseries_service
-from app.utils.dates import parse_query_datetime
+from app.utils.dates import DateTimeQueryParam, parse_query_datetime
 
 router = APIRouter()
 
@@ -17,8 +17,8 @@ router = APIRouter()
 @router.get("/users/{user_id}/timeseries")
 def get_timeseries(
     user_id: UUID,
-    start_time: str,
-    end_time: str,
+    start_time: DateTimeQueryParam,
+    end_time: DateTimeQueryParam,
     db: DbSession,
     _api_key: ApiKeyDep,
     types: Annotated[list[SeriesType], Query()] = [],

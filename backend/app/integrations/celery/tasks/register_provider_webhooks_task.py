@@ -9,6 +9,9 @@ from logging import getLogger
 
 from celery import Task, shared_task
 
+from app.database import SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.enums import ProviderName
 from app.services.providers.factory import ProviderFactory
 from app.utils.structured_logging import log_structured
 
@@ -44,6 +47,18 @@ def register_provider_webhooks(self: Task, provider: str, callback_url: str) -> 
             skipped=skipped,
             errors=errors,
         )
+        if skipped and strategy.capabilities.webhook_inbound_secret:
+            with SessionLocal() as db:
+                secret = ProviderSettingsRepository().get_webhook_secret(db, ProviderName(provider))
+            if not secret:
+                log_structured(
+                    logger,
+                    "warning",
+                    "Webhook skipped but no inbound secret stored — delete and re-register to obtain a new secret",
+                    provider=provider,
+                    action="webhook_inbound_secret_missing",
+                )
+
         return {"provider": provider, "created": created, "skipped": skipped, "errors": errors}
 
     except (ValueError, NotImplementedError) as exc:

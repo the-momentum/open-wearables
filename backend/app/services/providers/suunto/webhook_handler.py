@@ -227,8 +227,8 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
             workouts_list = raw_detail.get("payload", [raw_detail]) if isinstance(raw_detail, dict) else [raw_detail]
             saved = 0
             for raw in workouts_list:
-                self.suunto_workouts._process_single_workout(db, user_id, raw)
-                saved += 1
+                if self.suunto_workouts.process_push_activity(db, user_id, raw) is not None:
+                    saved += 1
             return {"status": "saved", "workout_key": str(workout_key), "saved_count": saved}
         except Exception as exc:
             log_structured(

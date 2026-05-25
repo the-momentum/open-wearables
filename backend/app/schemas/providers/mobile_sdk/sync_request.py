@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants.series_types.apple import SDKMetricType, SleepPhase, WorkoutStatisticType
+from app.constants.series_types.sdk import SDKMetricType, SleepPhase, WorkoutStatisticType
 from app.constants.workout_types import SDKWorkoutType
 
 

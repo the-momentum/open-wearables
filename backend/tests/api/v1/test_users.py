@@ -83,6 +83,27 @@ class TestListUsers:
         # Assert
         assert response.status_code == 401
 
+    def test_list_users_skips_invalid_email_rows(self, client: TestClient, api_v1_prefix: str) -> None:
+        """Test listing users skips rows with invalid emails instead of returning 500."""
+        # Arrange
+        developer = DeveloperFactory(email="test@example.com", password="test123")
+        api_key = ApiKeyFactory(developer=developer)
+        UserFactory(email="user1@ci.local", first_name="John", last_name="Doe")
+        user2 = UserFactory(email="user2@example.com", first_name="Jane", last_name="Smith")
+        headers = api_key_headers(api_key.id)
+
+        # Act
+        response = client.get(f"{api_v1_prefix}/users", headers=headers)
+
+        # Assert
+        assert response.status_code == 200
+        data = response.json()
+
+        # Find our test users
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == str(user2.id)
+        assert data["total"] == 1
+
 
 class TestGetUser:
     """Tests for GET /api/v1/users/{user_id}."""

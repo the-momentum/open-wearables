@@ -45,6 +45,9 @@ class WorkoutType(StrEnum):
     SNOWBOARDING = "snowboarding"
     SNOWSHOEING = "snowshoeing"
     ICE_SKATING = "ice_skating"
+    SNOWMOBILING = "snowmobiling"
+    WINTER_SPORTS = "winter_sports"
+    SNOW_SPORTS = "snow_sports"
     # Water Sports
     ROWING = "rowing"
     KAYAKING = "kayaking"
@@ -56,6 +59,10 @@ class WorkoutType(StrEnum):
     WINDSURFING = "windsurfing"
     SAILING = "sailing"
     WATER_POLO = "water_polo"
+    WAKEBOARDING = "wakeboarding"
+    WATER_SKIING = "water_skiing"
+    BOATING = "boating"
+    WATER_SPORTS = "water_sports"
     # Team Sports
     SOCCER = "soccer"
     BASKETBALL = "basketball"
@@ -76,11 +83,14 @@ class WorkoutType(StrEnum):
     TABLE_TENNIS = "table_tennis"
     PADEL = "padel"
     PICKLEBALL = "pickleball"
+    RACQUETBALL = "racquetball"
+    RACKET_SPORTS = "racket_sports"
 
     # Combat Sports
     BOXING = "boxing"
     MARTIAL_ARTS = "martial_arts"
     WRESTLING = "wrestling"
+    FENCING = "fencing"
 
     # Outdoor Activities
     ROCK_CLIMBING = "rock_climbing"
@@ -88,6 +98,11 @@ class WorkoutType(StrEnum):
     BOULDERING = "bouldering"
     TRAIL_HIKING = "trail_hiking"
     ORIENTEERING = "orienteering"
+    ARCHERY = "archery"
+    FISHING = "fishing"
+    HUNTING = "hunting"
+    PARAGLIDING = "paragliding"
+    PARKOUR = "parkour"
     # Other Sports
     GOLF = "golf"
     SKATING = "skating"
@@ -95,6 +110,9 @@ class WorkoutType(StrEnum):
     SKATEBOARDING = "skateboarding"
     HORSEBACK_RIDING = "horseback_riding"
     GYMNASTICS = "gymnastics"
+    BOWLING = "bowling"
+    CURLING = "curling"
+    DISC_SPORTS = "disc_sports"
 
     # Multisport
     TRIATHLON = "triathlon"
@@ -123,6 +141,20 @@ class WorkoutType(StrEnum):
 
     # Transition (for multisport events)
     TRANSITION = "transition"
+
+    # Generic sport categories — broad groupings used when a more specific type is unavailable
+    TEAM_SPORTS = "team_sports"
+    PARA_SPORTS = "para_sports"
+    PLAY = "play"
+    WHEELCHAIR = "wheelchair"
+
+    # Lifestyle & Wellness — non-sport activities tracked by some providers (e.g. WHOOP)
+    RECOVERY = "recovery"
+    GAMING = "gaming"
+    CHORES = "chores"
+    LIFESTYLE = "lifestyle"
+    WORK = "work"
+    OPERATIONS = "operations"
 
     # Generic/Other
     GENERIC = "generic"

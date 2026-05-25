@@ -56,6 +56,20 @@ class ProviderCapabilities:
         Provider sends a lightweight ping to our webhook.
         Actual data must be fetched via REST (``rest_pull`` must be
         ``True``). Oura, Strava, Fitbit, Polar.
+    webhook_registration_api:
+        Provider exposes an API to programmatically register and update
+        webhook subscriptions. When ``True``, switching to webhook live-sync
+        mode triggers the ``register_provider_webhooks`` Celery task.
+        Polar, Oura, Strava.
+    webhook_inbound_secret:
+        Provider signs inbound webhook payloads with HMAC; the signing
+        secret is returned by the registration API (not pre-configured in
+        env vars) and is stored in ``provider_settings.webhook_secret``.
+        Must be used together with ``webhook_registration_api=True``.
+        Currently: Polar.
+    max_historical_days:
+        Hard upper limit on how far back the provider allows data to be
+        fetched. ``None`` means no known limit. Garmin: 30 days.
     """
 
     rest_pull: bool = False
@@ -65,14 +79,16 @@ class ProviderCapabilities:
     webhook_stream: bool = False
     webhook_ping: bool = False
     webhook_registration_api: bool = False
+    webhook_inbound_secret: bool = False
     max_historical_days: int | None = None
-    """Hard limit on how many days of history the provider allows. None = no known limit."""
 
     def __post_init__(self) -> None:
         if self.webhook_stream and self.webhook_ping:
             raise ValueError("webhook_stream and webhook_ping are mutually exclusive")
         if self.webhook_ping and not self.rest_pull:
             raise ValueError("webhook_ping requires rest_pull=True (data must be fetched via REST after the ping)")
+        if self.webhook_inbound_secret and not self.webhook_registration_api:
+            raise ValueError("webhook_inbound_secret requires webhook_registration_api=True")
 
 
 class BaseProviderStrategy(ABC):
