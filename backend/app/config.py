@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+    redis_use_tls: bool = False
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
 
@@ -123,7 +124,7 @@ class Settings(BaseSettings):
     whoop_client_id: str | None = None
     whoop_client_secret: SecretStr | None = None
     whoop_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
-    whoop_default_scope: str = "offline read:cycles read:sleep read:recovery read:workout"
+    whoop_default_scope: str = "offline read:profile read:cycles read:sleep read:recovery read:workout"
 
     # FITBIT OAUTH SETTINGS
     fitbit_client_id: str | None = None
@@ -255,7 +256,9 @@ class Settings(BaseSettings):
         elif self.redis_username:
             auth_part = f"{self.redis_username}@"
 
-        return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        scheme = "rediss" if self.redis_use_tls else "redis"
+        tls_params = "?ssl_cert_reqs=none" if self.redis_use_tls else ""
+        return f"{scheme}://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{tls_params}"
 
     # Decryptor for encrypted fields
     @field_validator("*", mode="after")
