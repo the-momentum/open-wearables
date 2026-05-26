@@ -142,7 +142,7 @@ The platform's most powerful feature - define intelligent health insights using 
 Access health data through a consistent REST API regardless of the source device.
 
 ### Provider Support
-- ☁️ **Cloud-based**: Garmin, Suunto, Polar (more coming soon!)
+- ☁️ **Cloud-based**: Garmin, Oura, Whoop, Suunto, Polar, Ultrahuman, Strava, Fitbit
 - 📱 **SDK-based**: Apple HealthKit, Samsung Health, Google Health Connect
 
 ### OAuth Flow Management
