@@ -58,3 +58,12 @@ class PolarStrategy(BaseProviderStrategy):
             with SessionLocal() as db:
                 self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
         return [result]
+
+    async def list_subscriptions(self) -> list[dict]:
+        return await polar_webhook_service.list_subscriptions()
+
+    async def delete_subscription(self, subscription_id: str) -> dict:
+        return await polar_webhook_service.delete_webhook(subscription_id)
+
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> dict:
+        return await polar_webhook_service.update_webhook(subscription_id, callback_url)

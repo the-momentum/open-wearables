@@ -212,6 +212,120 @@ class OuraWebhookService:
             response.raise_for_status()
             return response.json()
 
+    async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
+        """Get a single Oura webhook subscription by ID."""
+        headers = self._get_client_headers()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    headers=headers,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to get Oura webhook subscription",
+                provider="oura",
+                action="oura_webhook_subscription_get_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            raise
+
+    async def delete_subscription(self, subscription_id: str) -> dict[str, Any]:
+        """Delete an Oura webhook subscription by ID."""
+        headers = self._get_client_headers()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    headers=headers,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to delete Oura webhook subscription",
+                provider="oura",
+                action="oura_webhook_subscription_delete_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            raise
+
+        log_structured(
+            logger,
+            "info",
+            "Oura webhook subscription deleted",
+            provider="oura",
+            action="oura_webhook_subscription_deleted",
+            subscription_id=subscription_id,
+        )
+        return {"subscription_id": subscription_id, "status": "deleted"}
+
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> dict[str, Any]:
+        """Update the callback URL of an Oura webhook subscription.
+
+        GETs the existing subscription to retain its data_type and event_type,
+        then PUTs the updated body.
+        """
+        if not settings.oura_webhook_verification_token:
+            raise ValueError("Oura webhook verification token is not configured")
+        verification_token = settings.oura_webhook_verification_token.get_secret_value()
+
+        existing = await self.get_subscription(subscription_id)
+        headers = self._get_client_headers()
+        headers["Content-Type"] = "application/json"
+
+        body = {
+            "callback_url": callback_url,
+            "verification_token": verification_token,
+            "event_type": existing["event_type"],
+            "data_type": existing["data_type"],
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.put(
+                    f"{OURA_WEBHOOK_API_URL}/{subscription_id}",
+                    headers=headers,
+                    json=body,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to update Oura webhook subscription",
+                provider="oura",
+                action="oura_webhook_subscription_update_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            raise
+
+        log_structured(
+            logger,
+            "info",
+            "Oura webhook subscription updated",
+            provider="oura",
+            action="oura_webhook_subscription_updated",
+            subscription_id=subscription_id,
+        )
+        return {"subscription_id": subscription_id, "status": "updated"}
+
     async def renew_subscriptions(self) -> list[dict[str, Any]]:
         """Renew all active Oura webhook subscriptions."""
         headers = self._get_client_headers()

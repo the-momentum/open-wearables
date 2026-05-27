@@ -66,3 +66,6 @@ class StravaStrategy(BaseProviderStrategy):
 
     async def list_subscriptions(self) -> list[dict]:
         return await strava_webhook_service.list_subscriptions()
+
+    async def delete_subscription(self, subscription_id: str) -> dict:
+        return await strava_webhook_service.delete_subscription(subscription_id)

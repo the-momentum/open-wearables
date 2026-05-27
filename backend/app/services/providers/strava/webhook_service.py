@@ -171,5 +171,40 @@ class StravaWebhookService:
             response.raise_for_status()
             return response.json()
 
+    async def delete_subscription(self, subscription_id: str) -> dict[str, Any]:
+        """Delete a Strava webhook subscription by ID."""
+        client_id, client_secret = self._get_strava_credentials()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{self.api_current_url}/push_subscriptions/{subscription_id}",
+                    params={"client_id": client_id, "client_secret": client_secret},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to delete Strava webhook subscription",
+                provider="strava",
+                action="strava_webhook_subscription_delete_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            raise
+
+        log_structured(
+            logger,
+            "info",
+            "Strava webhook subscription deleted",
+            provider="strava",
+            action="strava_webhook_subscription_deleted",
+            subscription_id=subscription_id,
+        )
+        return {"subscription_id": subscription_id, "status": "deleted"}
+
 
 strava_webhook_service = StravaWebhookService()

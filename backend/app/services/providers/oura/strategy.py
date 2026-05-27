@@ -61,5 +61,14 @@ class OuraStrategy(BaseProviderStrategy):
     async def list_subscriptions(self) -> list[dict]:
         return await oura_webhook_service.list_subscriptions()
 
+    async def get_subscription(self, subscription_id: str) -> dict:
+        return await oura_webhook_service.get_subscription(subscription_id)
+
+    async def delete_subscription(self, subscription_id: str) -> dict:
+        return await oura_webhook_service.delete_subscription(subscription_id)
+
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> dict:
+        return await oura_webhook_service.update_subscription(subscription_id, callback_url)
+
     async def renew_subscriptions(self) -> list[dict]:
         return await oura_webhook_service.renew_subscriptions()
