@@ -1796,6 +1796,7 @@ class Garmin247Data(Base247DataTemplate):
                             try:
                                 all_samples.extend(self._build_activity_samples(user_id, item))
                             except Exception as e:
+                                activity_id = item.get("activityId") or item.get("summary", {}).get("activityId")
                                 log_structured(
                                     self.logger,
                                     "warning",
@@ -1803,7 +1804,7 @@ class Garmin247Data(Base247DataTemplate):
                                     provider="garmin",
                                     task="process_items_batch",
                                     user_id=str(user_id),
-                                    activity_id=item.get("activityId"),
+                                    activity_id=activity_id,
                                     error=str(e),
                                 )
                     case "moveIQActivities":
