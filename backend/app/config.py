@@ -88,6 +88,11 @@ class Settings(BaseSettings):
     # Will default to false in a future release.
     historical_sync_on_connect: bool = True
 
+    # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
+    # data_point_series on workout webhook arrival. Significantly increases DB storage.
+    # Per-provider granularity will be added via ProviderSetting in a future release.
+    ingest_workout_samples: bool = False
+
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
     sleep_score_interval_seconds: int = 600  # How often to run the fill-missing-scores task (default: 10 min)

@@ -29,6 +29,16 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
+# activityDetails.samples[] field → SeriesType mapping.
+# Only includes types already seeded in series_type_definition.
+# GPS/elevation (elevation, latitude, longitude) excluded until #1074.
+_ACTIVITY_SAMPLE_FIELD_MAP: list[tuple[str, SeriesType]] = [
+    ("heartRate", SeriesType.heart_rate),
+    ("speedMetersPerSecond", SeriesType.speed),
+    ("stepsPerMinute", SeriesType.cadence),
+    ("powerInWatts", SeriesType.power),
+]
+
 
 class Garmin247Data(Base247DataTemplate):
     """Garmin implementation for 247 data (sleep, dailies, epochs, body composition).
@@ -958,6 +968,46 @@ class Garmin247Data(Base247DataTemplate):
 
         return record, detail
 
+    def _build_activity_samples(
+        self,
+        user_id: UUID,
+        raw_activity_details: dict[str, Any],
+    ) -> list[TimeSeriesSampleCreate]:
+        """Build per-second data_point_series rows from activityDetails.samples[].
+
+        Called only when settings.ingest_workout_samples is True.
+        Failures here must never reach the caller — wrap in try/except at call site.
+        """
+        samples = raw_activity_details.get("samples", [])
+        if not samples:
+            return []
+
+        summary = raw_activity_details.get("summary", {})
+        zone_offset = offset_to_iso(summary.get("startTimeOffsetInSeconds"))
+
+        result: list[TimeSeriesSampleCreate] = []
+        for sample in samples:
+            ts = sample.get("startTimeInSeconds")
+            if ts is None:
+                continue
+            recorded_at = datetime.fromtimestamp(ts, tz=timezone.utc)
+            for field, series_type in _ACTIVITY_SAMPLE_FIELD_MAP:
+                value = sample.get(field)
+                if value is None:
+                    continue
+                result.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=recorded_at,
+                        zone_offset=zone_offset,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
+        return result
+
     def save_activity_data(
         self,
         db: DbSession,
@@ -1729,12 +1779,33 @@ class Garmin247Data(Base247DataTemplate):
                             all_sleep_details.append(detail)
                         if health_score:
                             all_health_scores.append(health_score)
-                    case "activities" | "activityDetails":
+                    case "activities":
                         result = self._build_activity_record(user_id, item)
                         if result:
                             record, detail = result
                             all_records.append(record)
                             all_workout_details.append(detail)
+                    case "activityDetails":
+                        # activityDetails items nest summary data one level deeper
+                        result = self._build_activity_record(user_id, item.get("summary", {}))
+                        if result:
+                            record, detail = result
+                            all_records.append(record)
+                            all_workout_details.append(detail)
+                        if settings.ingest_workout_samples:
+                            try:
+                                all_samples.extend(self._build_activity_samples(user_id, item))
+                            except Exception as e:
+                                log_structured(
+                                    self.logger,
+                                    "warning",
+                                    "Failed to build activity samples, skipping",
+                                    provider="garmin",
+                                    task="process_items_batch",
+                                    user_id=str(user_id),
+                                    activity_id=item.get("activityId"),
+                                    error=str(e),
+                                )
                     case "moveIQActivities":
                         record = self._build_moveiq_record(user_id, item)
                         if record:
