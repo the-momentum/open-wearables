@@ -21,6 +21,7 @@ class EventRecordDetailBase(BaseModel):
     max_watts: Decimal | None = None
 
     average_speed: Decimal | None = None
+    average_cadence: Decimal | None = None
     average_watts: Decimal | None = None
 
     moving_time_seconds: int | None = None
