@@ -53,7 +53,7 @@ class GarminOAuth(BaseOAuthTemplate):
         # Fetch user ID (critical - fail returns all None)
         try:
             user_id_response = httpx.get(
-                f"{self.api_base_url}/wellness-api/rest/user/id",
+                f"{self.api_base_url}/partner-gateway/rest/user/id",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )
@@ -66,7 +66,7 @@ class GarminOAuth(BaseOAuthTemplate):
         scope: str | None = None
         try:
             permissions_response = httpx.get(
-                f"{self.api_base_url}/wellness-api/rest/user/permissions",
+                f"{self.api_base_url}/partner-gateway/rest/user/permissions",
                 headers={"Authorization": f"Bearer {token_response.access_token}"},
                 timeout=30.0,
             )
