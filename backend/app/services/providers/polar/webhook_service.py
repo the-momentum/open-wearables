@@ -165,23 +165,40 @@ class PolarWebhookService:
         return WebhookOperationResult(subscription_id=webhook_id, status=WebhookSubscriptionStatus.DELETED)
 
     async def _patch_webhook(self, auth: httpx.BasicAuth, webhook_id: str, callback_url: str) -> WebhookOperationResult:
-        async with httpx.AsyncClient() as client:
-            resp = await client.patch(
-                f"{_POLAR_API_URL}/v3/webhooks/{webhook_id}",
-                auth=auth,
-                json={"events": _ALL_EVENTS, "url": callback_url},
-                timeout=30.0,
-            )
-            resp.raise_for_status()
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.patch(
+                    f"{_POLAR_API_URL}/v3/webhooks/{webhook_id}",
+                    auth=auth,
+                    json={"events": _ALL_EVENTS, "url": callback_url},
+                    timeout=30.0,
+                )
+                resp.raise_for_status()
+        except httpx.HTTPError as e:
             log_structured(
                 logger,
-                "info",
-                "Patched Polar webhook URL",
+                "error",
+                "Failed to patch Polar webhook URL",
                 provider="polar",
-                action="polar_webhook_patched",
+                action="polar_webhook_patch_error",
                 webhook_id=webhook_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return WebhookOperationResult(subscription_id=webhook_id, status=WebhookSubscriptionStatus.PATCHED)
+            return WebhookOperationResult(
+                subscription_id=webhook_id,
+                status=WebhookSubscriptionStatus.ERROR,
+                error=str(e),
+            )
+        log_structured(
+            logger,
+            "info",
+            "Patched Polar webhook URL",
+            provider="polar",
+            action="polar_webhook_patched",
+            webhook_id=webhook_id,
+        )
+        return WebhookOperationResult(subscription_id=webhook_id, status=WebhookSubscriptionStatus.PATCHED)
 
     async def _create_webhook(self, auth: httpx.BasicAuth, callback_url: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:

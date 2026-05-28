@@ -7,7 +7,7 @@ inbound event processing.
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SerializeAsAny, model_serializer
 
 from app.schemas.providers.polar.webhook import PolarWebhookEventType
 
@@ -27,6 +27,13 @@ class WebhookOperationResult(BaseModel):
     subscription_id: str
     status: WebhookSubscriptionStatus
     error: str | None = None
+
+    @model_serializer
+    def _serialize(self) -> dict:
+        out: dict = {"subscription_id": self.subscription_id, "status": self.status}
+        if self.error is not None:
+            out["error"] = self.error
+        return out
 
 
 class ProviderWebhookSubscription(BaseModel):
@@ -65,13 +72,13 @@ class StravaWebhookSubscription(ProviderWebhookSubscription):
 class WebhookSubscriptionsResponse(BaseModel):
     """Response wrapper for listing webhook subscriptions (any provider)."""
 
-    subscriptions: list[ProviderWebhookSubscription]
+    subscriptions: list[SerializeAsAny[ProviderWebhookSubscription]]
 
 
 class WebhookSubscriptionResponse(BaseModel):
     """Response wrapper for fetching a single webhook subscription."""
 
-    subscription: ProviderWebhookSubscription | None = None
+    subscription: SerializeAsAny[ProviderWebhookSubscription] | None = None
 
 
 class WebhookDeletedResponse(BaseModel):
