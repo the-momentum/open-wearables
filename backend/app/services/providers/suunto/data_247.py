@@ -294,6 +294,50 @@ class Suunto247Data(Base247DataTemplate):
                 task="save_sleep_data",
                 user_id=str(user_id),
             )
+            return
+
+        self._persist_resting_heart_rate(db, user_id, normalized_sleep, end_dt)
+
+    def _persist_resting_heart_rate(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized_sleep: dict[str, Any],
+        recorded_at: datetime,
+    ) -> None:
+        """Emit a resting_heart_rate data point from the sleep session's HRMin.
+
+        Suunto exposes no dedicated resting-HR endpoint; HRMin during a full
+        sleep session is the sports-science equivalent. Naps excluded.
+        """
+        if normalized_sleep.get("is_nap"):
+            return
+        rhr = normalized_sleep.get("min_heart_rate_bpm")
+        if rhr is None:
+            return
+
+        sample = TimeSeriesSampleCreate(
+            id=uuid4(),
+            user_id=user_id,
+            source=self.provider_name,
+            recorded_at=recorded_at,
+            value=Decimal(str(rhr)),
+            series_type=SeriesType.resting_heart_rate,
+            external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
+        )
+        try:
+            timeseries_service.bulk_create_samples(db, [sample])
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to persist resting_heart_rate from sleep: {e}",
+                provider="suunto",
+                task="persist_resting_heart_rate",
+                user_id=str(user_id),
+            )
 
     # ------------------------------------------------------------------
     # Recovery Data — Suunto /247samples/recovery

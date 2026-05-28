@@ -939,6 +939,11 @@ class Garmin247Data(Base247DataTemplate):
         max_hr = raw_activity.get("maxHeartRateInBeatsPerMinute")
         elevation_gain = raw_activity.get("elevationGainInMeters")
         avg_speed = raw_activity.get("averageSpeedInMetersPerSecond")
+        avg_cadence = (
+            raw_activity.get("averageRunCadenceInStepsPerMinute")
+            or raw_activity.get("averageBikingCadenceInRevPerMinute")
+            or raw_activity.get("averageSwimCadenceInStrokesPerMinute")
+        )
 
         detail = EventRecordDetailCreate(
             record_id=record_id,
@@ -948,6 +953,7 @@ class Garmin247Data(Base247DataTemplate):
             heart_rate_max=max_hr,
             total_elevation_gain=Decimal(str(elevation_gain)) if elevation_gain is not None else None,
             average_speed=Decimal(str(avg_speed)) if avg_speed is not None else None,
+            average_cadence=Decimal(str(avg_cadence)) if avg_cadence is not None else None,
         )
 
         return record, detail
