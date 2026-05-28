@@ -208,13 +208,13 @@ def get_backfill_status(user_id: str | UUID) -> dict[str, Any]:
         ]
     )
 
-    lock_exists = status_vals[0] is not None  # ty:ignore[not-subscriptable]
-    cancel_flag = status_vals[1] == "1"  # ty:ignore[not-subscriptable]
-    retry_phase_active = status_vals[2] == "1"  # ty:ignore[not-subscriptable]
-    retry_type = status_vals[3]  # ty:ignore[not-subscriptable]
-    retry_window = int(status_vals[4]) if status_vals[4] else None  # ty:ignore[not-subscriptable]
-    attempt_count = int(status_vals[5]) if status_vals[5] else 0  # ty:ignore[not-subscriptable]
-    permanently_failed = status_vals[6] == "1"  # ty:ignore[not-subscriptable]
+    lock_exists = status_vals[0] is not None
+    cancel_flag = status_vals[1] == "1"
+    retry_phase_active = status_vals[2] == "1"
+    retry_type = status_vals[3]
+    retry_window = int(status_vals[4]) if status_vals[4] else None
+    attempt_count = int(status_vals[5]) if status_vals[5] else 0
+    permanently_failed = status_vals[6] == "1"
 
     if permanently_failed:
         overall_status = "permanently_failed"
