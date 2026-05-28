@@ -7,7 +7,7 @@ inbound event processing.
 
 from enum import StrEnum
 
-from pydantic import BaseModel, SerializeAsAny, model_serializer
+from pydantic import BaseModel, SerializeAsAny, model_serializer, model_validator
 
 from app.schemas.providers.polar.webhook import PolarWebhookEventType
 
@@ -28,10 +28,18 @@ class WebhookOperationResult(BaseModel):
     status: WebhookSubscriptionStatus
     error: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_error_contract(self) -> "WebhookOperationResult":
+        if self.status == WebhookSubscriptionStatus.ERROR and self.error is None:
+            raise ValueError("error must be set when status is ERROR")
+        if self.error is not None and self.status != WebhookSubscriptionStatus.ERROR:
+            raise ValueError("error must only be set when status is ERROR")
+        return self
+
     @model_serializer
     def _serialize(self) -> dict:
         out: dict = {"subscription_id": self.subscription_id, "status": self.status}
-        if self.error is not None:
+        if self.status == WebhookSubscriptionStatus.ERROR:
             out["error"] = self.error
         return out
 
