@@ -198,6 +198,7 @@ class TestSleepSummaryEndpoint:
         # Physiological metrics should be null when no data exists
         assert sleep_data["avg_heart_rate_bpm"] is None
         assert sleep_data["avg_hrv_sdnn_ms"] is None
+        assert sleep_data["avg_hrv_rmssd_ms"] is None
         assert sleep_data["avg_respiratory_rate"] is None
         assert sleep_data["avg_spo2_percent"] is None
 
