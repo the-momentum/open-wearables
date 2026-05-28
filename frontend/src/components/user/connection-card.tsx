@@ -363,6 +363,8 @@ export function ConnectionCard({
                       <TooltipContent
                         side="bottom"
                         align="start"
+                        sideOffset={6}
+                        hideArrow
                         className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
                       >
                         <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
