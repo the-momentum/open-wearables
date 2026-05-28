@@ -429,6 +429,59 @@ class DataPointSeriesRepository(
         rows = db_session.execute(sql, params).fetchall()
         return {UUID(str(record_id)): int(avg) for record_id, avg in rows}
 
+    def get_avg_hr_for_user_time_windows_batch(
+        self,
+        db_session: DbSession,
+        user_id: UUID,
+        windows: list[tuple[UUID, datetime, datetime]],
+    ) -> dict[UUID, int]:
+        """Batch average HR for multiple half-open windows, scoped to all of a user's sources.
+
+        Matches semantics of ``get_averages_for_time_range`` for ``SeriesType.heart_rate``:
+        averages heart-rate samples from every ``DataSource`` belonging to ``user_id`` that
+        fall in ``[start_time, end_time)`` for each window.
+
+        Args:
+            windows: List of ``(window_id, start_time, end_time)`` (e.g. sleep ``record_id``).
+
+        Returns:
+            Mapping from ``window_id`` to rounded average BPM; windows with no data omitted.
+        """
+        if not windows:
+            return {}
+
+        hr_type_id = get_series_type_id(SeriesType.heart_rate)
+
+        values_parts = []
+        params: dict[str, object] = {"user_id": str(user_id), "hr_type_id": hr_type_id}
+        for i, (window_id, start_time, end_time) in enumerate(windows):
+            values_parts.append(f"""(
+                CAST(:window_id_{i} AS uuid),
+                CAST(:start_{i} AS timestamptz),
+                CAST(:end_{i} AS timestamptz)
+            )""")
+            params[f"window_id_{i}"] = str(window_id)
+            params[f"start_{i}"] = start_time
+            params[f"end_{i}"] = end_time
+
+        sql = text(f"""
+            WITH sleep_windows(window_id, start_time, end_time) AS (
+                VALUES {", ".join(values_parts)}
+            )
+            SELECT sw.window_id, ROUND(AVG(dps.value))::int
+            FROM sleep_windows sw
+            JOIN data_sources ds ON ds.user_id = CAST(:user_id AS uuid)
+            JOIN data_point_series dps
+                ON dps.data_source_id = ds.id
+                AND dps.series_type_definition_id = :hr_type_id
+                AND dps.recorded_at >= sw.start_time
+                AND dps.recorded_at < sw.end_time
+            GROUP BY sw.window_id
+        """)
+
+        rows = db_session.execute(sql, params).fetchall()
+        return {UUID(str(wid)): int(avg) for wid, avg in rows}
+
     def get_averages_for_time_range(
         self,
         db_session: DbSession,
