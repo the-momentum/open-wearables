@@ -51,7 +51,7 @@ OW démarre sur :
    - Email : `admin@admin.com`
    - Password : `your-secure-password`
 3. Va dans **Settings → API Credentials** → génère une clé.
-4. Copie-la dans `api.bazard.run/.env.local` :
+4. Copie-la dans `api.bazard.run/.env` :
    ```
    OPENWEARABLES_API_KEY=<la clé générée>
    ```
@@ -69,7 +69,7 @@ OW pousse les events (`workout.created`, `connection.created`) vers
 1. Sur http://localhost:8071, crée un endpoint :
    - URL : `http://host.docker.internal:8080/api/v1/webhooks/openwearables`
    - Filter types : `connection.created`, `workout.created`
-2. Copie le `whsec_...` généré dans `api.bazard.run/.env.local` :
+2. Copie le `whsec_...` généré dans `api.bazard.run/.env` :
    ```
    OPENWEARABLES_WEBHOOK_SECRET=whsec_xxxxx
    ```
@@ -95,8 +95,8 @@ docker compose restart app celery-worker celery-beat svix-server
    ```bash
    docker compose stop frontend
    ```
-2. Lance `api.bazard.run` : `cd ../api.bazard.run && docker compose up -d`
-   (ou `task dev` pour le hot reload natif).
+2. Lance `api.bazard.run` : `cd ../api.bazard.run && task dev`
+   (mode natif recommandé, hot reload Air).
 3. Lance `app.bazard.run` : `cd ../app.bazard.run && pnpm dev`.
 4. Sur http://localhost:3000, crée un compte coach, va sur `/profile`,
    clique "Connecter Strava".
