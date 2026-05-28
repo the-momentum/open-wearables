@@ -63,7 +63,7 @@ class PolarWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return None
 
     async def register_subscriptions(self, callback_url: str) -> dict[str, Any]:
         """Create or verify the Polar webhook subscription.
@@ -131,7 +131,7 @@ class PolarWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return {"webhook_id": webhook_id, "status": "error", "error": str(e)}
         log_structured(
             logger,
             "info",

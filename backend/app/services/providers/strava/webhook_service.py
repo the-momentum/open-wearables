@@ -75,7 +75,7 @@ class StravaWebhookService:
                     action="strava_webhook_subscription_list_error",
                     error=str(e),
                 )
-                raise
+                return [{"status": "error", "error": str(e)}]
 
             if existing:
                 sub_id = existing.get("id")
@@ -194,7 +194,7 @@ class StravaWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return {"subscription_id": subscription_id, "status": "error", "error": str(e)}
 
         log_structured(
             logger,

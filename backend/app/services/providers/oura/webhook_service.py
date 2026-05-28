@@ -114,7 +114,7 @@ class OuraWebhookService:
                     action="oura_webhook_subscription_list_error",
                     error=str(e),
                 )
-                raise
+                return [{"status": "error", "error": str(e)}]
 
             for data_type, event_type in itertools.product(OURA_WEBHOOK_DATA_TYPES, OURA_WEBHOOK_EVENT_TYPES):
                 body = {
@@ -236,7 +236,7 @@ class OuraWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return {}
 
     async def delete_subscription(self, subscription_id: str) -> dict[str, Any]:
         """Delete an Oura webhook subscription by ID."""
@@ -261,7 +261,7 @@ class OuraWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return {"subscription_id": subscription_id, "status": "error", "error": str(e)}
 
         log_structured(
             logger,
@@ -314,7 +314,7 @@ class OuraWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            raise
+            return {"subscription_id": subscription_id, "status": "error", "error": str(e)}
 
         log_structured(
             logger,
