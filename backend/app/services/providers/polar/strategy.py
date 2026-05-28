@@ -1,6 +1,10 @@
 from app.database import SessionLocal
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
 from app.schemas.enums import ProviderName
+from app.schemas.responses.incoming_webhooks import (
+    ProviderWebhookSubscription,
+    WebhookOperationResult,
+)
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.polar.data_247 import Polar247Data
 from app.services.providers.polar.oauth import PolarOAuth
@@ -59,11 +63,11 @@ class PolarStrategy(BaseProviderStrategy):
                 self.provider_settings_repo.save_webhook_secret(db, ProviderName.POLAR, secret)
         return [result]
 
-    async def list_subscriptions(self) -> list[dict]:
+    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         return await polar_webhook_service.list_subscriptions()
 
-    async def delete_subscription(self, subscription_id: str) -> dict:
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
         return await polar_webhook_service.delete_webhook(subscription_id)
 
-    async def update_subscription(self, subscription_id: str, callback_url: str) -> dict:
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
         return await polar_webhook_service.update_webhook(subscription_id, callback_url)

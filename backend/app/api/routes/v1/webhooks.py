@@ -29,6 +29,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.database import DbSession
 from app.models import Developer
+from app.schemas.responses.incoming_webhooks import (
+    WebhookDeletedResponse,
+    WebhookSubscriptionResponse,
+    WebhookSubscriptionsResponse,
+    WebhookUpdatedResponse,
+)
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
@@ -126,14 +132,14 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
 async def list_webhook_subscriptions(
     provider: str,
     _dev: Annotated[Developer, Depends(get_current_developer)],
-) -> dict:
+) -> WebhookSubscriptionsResponse:
     """List active webhook subscriptions for a provider."""
     strategy = _get_strategy(provider)
     try:
         result = await strategy.list_subscriptions()
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
-    return {"subscriptions": result}
+    return WebhookSubscriptionsResponse(subscriptions=result)
 
 
 @router.post("/subscriptions")
@@ -170,14 +176,14 @@ async def get_webhook_subscription(
     provider: str,
     subscription_id: str,
     _dev: Annotated[Developer, Depends(get_current_developer)],
-) -> dict:
+) -> WebhookSubscriptionResponse:
     """Get a single webhook subscription by ID."""
     strategy = _get_strategy(provider)
     try:
         result = await strategy.get_subscription(subscription_id)
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
-    return {"subscription": result}
+    return WebhookSubscriptionResponse(subscription=result)
 
 
 @router.delete("/subscriptions/{subscription_id}")
@@ -185,14 +191,14 @@ async def delete_webhook_subscription(
     provider: str,
     subscription_id: str,
     _dev: Annotated[Developer, Depends(get_current_developer)],
-) -> dict:
+) -> WebhookDeletedResponse:
     """Delete a webhook subscription by ID."""
     strategy = _get_strategy(provider)
     try:
         result = await strategy.delete_subscription(subscription_id)
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
-    return {"deleted": result}
+    return WebhookDeletedResponse(deleted=result)
 
 
 @router.put("/subscriptions/{subscription_id}")
@@ -201,11 +207,11 @@ async def update_webhook_subscription(
     subscription_id: str,
     _dev: Annotated[Developer, Depends(get_current_developer)],
     callback_url: str,
-) -> dict:
+) -> WebhookUpdatedResponse:
     """Update the callback URL of a webhook subscription."""
     strategy = _get_strategy(provider)
     try:
         result = await strategy.update_subscription(subscription_id, callback_url)
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
-    return {"updated": result}
+    return WebhookUpdatedResponse(updated=result)

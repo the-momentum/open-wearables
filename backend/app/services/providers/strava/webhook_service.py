@@ -14,8 +14,15 @@ from logging import getLogger
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 
 from app.config import settings
+from app.schemas.responses.incoming_webhooks import (
+    ProviderWebhookSubscription,
+    StravaWebhookSubscription,
+    WebhookOperationResult,
+    WebhookSubscriptionStatus,
+)
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -158,7 +165,7 @@ class StravaWebhookService:
                 )
                 return [{"status": "error", "error": str(e)}]
 
-    async def list_subscriptions(self) -> list[dict[str, Any]]:
+    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         """List active Strava webhook subscriptions."""
         client_id, client_secret = self._get_strava_credentials()
 
@@ -169,9 +176,23 @@ class StravaWebhookService:
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            raw = response.json() or []
+            result: list[ProviderWebhookSubscription] = []
+            for item in raw if isinstance(raw, list) else []:
+                try:
+                    result.append(StravaWebhookSubscription.model_validate(item))
+                except ValidationError as ve:
+                    log_structured(
+                        logger,
+                        "error",
+                        "Failed to parse Strava webhook subscription",
+                        provider="strava",
+                        action="strava_webhook_subscription_parse_error",
+                        error=str(ve),
+                    )
+            return result
 
-    async def delete_subscription(self, subscription_id: str) -> dict[str, Any]:
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
         """Delete a Strava webhook subscription by ID."""
         client_id, client_secret = self._get_strava_credentials()
 
@@ -194,7 +215,11 @@ class StravaWebhookService:
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
-            return {"subscription_id": subscription_id, "status": "error", "error": str(e)}
+            return WebhookOperationResult(
+                subscription_id=subscription_id,
+                status=WebhookSubscriptionStatus.ERROR,
+                error=str(e),
+            )
 
         log_structured(
             logger,
@@ -204,7 +229,7 @@ class StravaWebhookService:
             action="strava_webhook_subscription_deleted",
             subscription_id=subscription_id,
         )
-        return {"subscription_id": subscription_id, "status": "deleted"}
+        return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.DELETED)
 
 
 strava_webhook_service = StravaWebhookService()

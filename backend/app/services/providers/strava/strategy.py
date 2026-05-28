@@ -1,3 +1,7 @@
+from app.schemas.responses.incoming_webhooks import (
+    ProviderWebhookSubscription,
+    WebhookOperationResult,
+)
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.webhook_handler import StravaWebhookHandler
@@ -64,8 +68,8 @@ class StravaStrategy(BaseProviderStrategy):
     async def register_webhooks(self, callback_url: str) -> list[dict]:
         return await strava_webhook_service.register_subscriptions(callback_url)
 
-    async def list_subscriptions(self) -> list[dict]:
+    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         return await strava_webhook_service.list_subscriptions()
 
-    async def delete_subscription(self, subscription_id: str) -> dict:
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
         return await strava_webhook_service.delete_subscription(subscription_id)

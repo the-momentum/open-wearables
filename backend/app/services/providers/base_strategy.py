@@ -11,6 +11,10 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LiveSyncMode
+from app.schemas.responses.incoming_webhooks import (
+    ProviderWebhookSubscription,
+    WebhookOperationResult,
+)
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
@@ -229,11 +233,11 @@ class BaseProviderStrategy(ABC):
             f"Provider '{self.name}' does not support programmatic webhook registration at '{callback_url}'"
         )
 
-    async def list_subscriptions(self) -> Any:
+    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         """List active webhook subscriptions for this provider."""
         raise NotImplementedError(f"Provider '{self.name}' does not support listing webhook subscriptions")
 
-    async def get_subscription(self, subscription_id: str) -> Any:
+    async def get_subscription(self, subscription_id: str) -> ProviderWebhookSubscription | None:
         """Get a single webhook subscription by ID."""
         raise NotImplementedError(
             f"Provider '{self.name}' does not support fetching webhook subscription '{subscription_id}'"
@@ -243,13 +247,13 @@ class BaseProviderStrategy(ABC):
         """Renew active webhook subscriptions for this provider."""
         raise NotImplementedError(f"Provider '{self.name}' does not support renewing webhook subscriptions")
 
-    async def delete_subscription(self, subscription_id: str) -> Any:
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
         """Delete a webhook subscription by ID."""
         raise NotImplementedError(
             f"Provider '{self.name}' does not support deleting webhook subscription '{subscription_id}'"
         )
 
-    async def update_subscription(self, subscription_id: str, callback_url: str) -> Any:
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
         """Update the callback URL of an existing webhook subscription."""
         raise NotImplementedError(
             f"Provider '{self.name}' does not support updating webhook subscription"
