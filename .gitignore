@@ -173,5 +173,8 @@ CLAUDE.local.md
 .claude/
 *.local.mdc
 
+# Docker Compose override local (autorise HTTP endpoints Svix en dev)
+docker-compose.override.yml
+
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
