@@ -52,7 +52,7 @@ class EventRecordDetailRepository(
         """Create a detail record using the appropriate polymorphic model."""
         detail = self._build_detail(creator, detail_type)
         db_session.add(detail)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(detail)
         return detail
 

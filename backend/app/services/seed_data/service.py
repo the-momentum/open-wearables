@@ -228,7 +228,7 @@ class SeedDataService:
                         health_score_service.bulk_create(db, scores)
                         summary["health_scores"] += len(scores)
 
-            db.commit()
+            db.flush()
             logger.info(
                 "Seed user %d/%d created (workouts=%d, sleeps=%d, ts=%d, health_scores=%d)",
                 user_num,

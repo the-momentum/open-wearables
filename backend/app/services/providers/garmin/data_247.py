@@ -530,7 +530,7 @@ class Garmin247Data(Base247DataTemplate):
             self.data_point_repo.bulk_create(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
         return len(samples)
 
     def _collect_heart_rate_samples(
@@ -1077,7 +1077,7 @@ class Garmin247Data(Base247DataTemplate):
             self.data_point_repo.bulk_create(db, samples)
         if score := self._normalize_body_battery_health_score(user_id, raw_stress):
             health_score_service.bulk_create(db, [score])
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1776,7 +1776,7 @@ class Garmin247Data(Base247DataTemplate):
 
         if all_health_scores:
             health_score_service.bulk_create(db, all_health_scores)
-            db.commit()
+            db.flush()
 
         return count
 

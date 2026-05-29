@@ -1033,7 +1033,7 @@ class Polar247Data(Base247DataTemplate):
         for data_type, fn in tasks.items():
             try:
                 results[data_type] = fn()
-                db.commit()
+                db.flush()
             except Exception as e:
                 db.rollback()
                 results[data_type] = 0

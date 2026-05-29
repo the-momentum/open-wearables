@@ -312,6 +312,7 @@ def sync_vendor_data(
                     if not is_historical:
                         user_connection_repo.update_last_synced_at(db, connection)
 
+                    db.commit()
                     result.providers_synced[provider_name] = provider_result
                     log_structured(
                         logger,

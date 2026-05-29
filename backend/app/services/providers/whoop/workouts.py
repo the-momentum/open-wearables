@@ -420,7 +420,7 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
         if strain_scores:
             try:
                 health_score_service.bulk_create(db, strain_scores)
-                db.commit()
+                db.flush()
             except Exception:
                 db.rollback()
                 raise

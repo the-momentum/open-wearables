@@ -267,7 +267,7 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -344,7 +344,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -492,7 +492,7 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -792,7 +792,7 @@ class Oura247Data(Base247DataTemplate):
         """Save daily sleep scores via health_score_service."""
         if normalized:
             health_score_service.bulk_create(db, normalized)
-            db.commit()
+            db.flush()
         return len(normalized)
 
     # -------------------------------------------------------------------------
@@ -880,7 +880,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -950,7 +950,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1041,7 +1041,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1100,7 +1100,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------

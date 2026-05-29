@@ -288,7 +288,7 @@ class EventRecordService(
                         self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset),
                     },
                 )
-                db_session.commit()
+                db_session.flush()
                 return adjacent, False, detail
 
             adj_detail: SleepDetails | None = adjacent.detail if isinstance(adjacent.detail, SleepDetails) else None
@@ -416,7 +416,7 @@ class EventRecordService(
                     user_id,
                     {self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset)},
                 )
-                db_session.commit()
+                db_session.flush()
                 return adjacent, False, detail
 
             record = record.model_copy(
@@ -443,7 +443,7 @@ class EventRecordService(
                     user_id,
                     {self._local_sleep_date(adjacent.start_datetime, adjacent.zone_offset)},
                 )
-                db_session.commit()
+                db_session.flush()
                 return adjacent, False, detail
 
             merged_final_detail = detail.model_copy(update={"record_id": created_record.id, **merged_detail_fields})
@@ -462,7 +462,7 @@ class EventRecordService(
                     self._local_sleep_date(created_record.start_datetime, created_record.zone_offset),
                 },
             )
-            db_session.commit()
+            db_session.flush()
             return created_record, True, merged_final_detail
 
         created_record = self.crud.create_and_flush(db_session, record)
@@ -472,7 +472,7 @@ class EventRecordService(
             new_detail,
             detail_type="sleep",
         )
-        db_session.commit()
+        db_session.flush()
         return created_record, True, new_detail
 
     @staticmethod

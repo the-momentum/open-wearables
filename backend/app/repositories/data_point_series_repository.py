@@ -182,14 +182,15 @@ class DataPointSeriesRepository(
             # NOTE: Caller should commit - allows batching multiple operations
 
     def try_commit(self, db_session: DbSession, creation: DataPointSeries) -> DataPointSeries:
+        nested = db_session.begin_nested()
         try:
-            db_session.commit()
+            db_session.flush()
+            nested.commit()
             db_session.refresh(creation)
             return creation
         except SQLAIntegrityError as e:
+            nested.rollback()
             if isinstance(e.orig, UniqueViolation):
-                db_session.rollback()
-
                 # Query for existing record using the unique constraint fields
                 existing = (
                     db_session.query(self.model)

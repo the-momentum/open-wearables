@@ -35,7 +35,7 @@ class ProviderSettingsRepository:
             .returning(ProviderSetting)
         )
         setting = db.execute(stmt).scalar_one()
-        db.commit()
+        db.flush()
         return setting
 
     def ensure_all_providers_exist(
@@ -64,7 +64,7 @@ class ProviderSettingsRepository:
             elif existing[provider].live_sync_mode is None and default_mode is not None:
                 existing[provider].live_sync_mode = default_mode
 
-        db.commit()
+        db.flush()
 
     def get_webhook_secret(self, db: DbSession, provider: ProviderName) -> str | None:
         """Return the stored webhook signing secret for a provider, or None."""
@@ -80,7 +80,7 @@ class ProviderSettingsRepository:
             .on_conflict_do_update(index_elements=["provider"], set_={"webhook_secret": secret})
         )
         db.execute(stmt)
-        db.commit()
+        db.flush()
 
     def bulk_update(self, db: DbSession, updates: dict[str, bool]) -> None:
         """Bulk update is_enabled for multiple providers."""
@@ -96,4 +96,4 @@ class ProviderSettingsRepository:
             )
             db.execute(stmt)
 
-        db.commit()
+        db.flush()

@@ -20,15 +20,17 @@ def handle_duplicates(func: Callable[..., T]) -> Callable[..., T | None]:
 
     @wraps(func)
     def wrapper(*args, **kwargs) -> T | None:
+        db_session = args[1]
+        nested = db_session.begin_nested()
         try:
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            nested.commit()
+            return result
         except SQLAIntegrityError as e:
+            nested.rollback()
             if isinstance(e.orig, UniqueViolation):
                 model = args[0].model
-                db_session = args[1]
                 creator = args[2]
-
-                db_session.rollback()
 
                 creator_data = creator.model_dump()
                 mapper = inspect(model)

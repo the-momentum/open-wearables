@@ -426,7 +426,7 @@ class Whoop247Data(Base247DataTemplate):
                 )
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
         return count
 
     def load_and_save_all(
@@ -636,7 +636,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if samples_to_create:
             timeseries_service.bulk_create_samples(db, samples_to_create)
-            db.commit()
+            db.flush()
 
         return len(samples_to_create)
 
@@ -852,7 +852,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if samples_to_create:
             timeseries_service.bulk_create_samples(db, samples_to_create)
-            db.commit()
+            db.flush()
 
         return len(samples_to_create)
 
@@ -936,7 +936,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
 
         return total_count
 

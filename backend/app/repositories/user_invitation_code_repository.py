@@ -28,7 +28,7 @@ class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvita
     def mark_redeemed(self, db_session: DbSession, invitation_code: UserInvitationCode) -> UserInvitationCode:
         """Mark an invitation code as redeemed."""
         invitation_code.redeemed_at = datetime.now(timezone.utc)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(invitation_code)
         return invitation_code
 
@@ -46,4 +46,4 @@ class UserInvitationCodeRepository(CrudRepository[UserInvitationCode, UserInvita
             .values(revoked_at=now)
         )
         db_session.execute(stmt)
-        db_session.commit()
+        db_session.flush()
