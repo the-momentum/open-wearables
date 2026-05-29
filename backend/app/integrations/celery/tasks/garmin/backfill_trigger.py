@@ -75,8 +75,8 @@ def trigger_backfill_for_type(user_id: str, data_type: str) -> dict[str, Any]:
     if is_retry_phase(user_id):
         retry_window_str = get_redis_client().get(_get_key(user_id, "retry_current_window"))
         if retry_window_str:
-            start_time, end_time = get_window_date_range_for_index(user_id, int(retry_window_str))  # ty:ignore[invalid-argument-type]
-            current_window = int(retry_window_str)  # ty:ignore[invalid-argument-type]
+            start_time, end_time = get_window_date_range_for_index(user_id, int(retry_window_str))
+            current_window = int(retry_window_str)
         else:
             start_time, end_time = get_window_date_range(user_id)
             current_window = get_current_window(user_id)

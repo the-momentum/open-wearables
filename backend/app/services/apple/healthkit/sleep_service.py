@@ -60,11 +60,11 @@ def load_sleep_state(user_id: str) -> SleepState | None:
     try:
         if isinstance(state, bytes):
             state = state.decode("utf-8")
-        return SleepState.model_validate_json(state)  # ty:ignore[invalid-argument-type]
+        return SleepState.model_validate_json(state)
     except Exception as e:
         logger.error(f"Failed to parse sleep state for user {user_id}: {e}")
         try:
-            raw = json.loads(state)  # ty:ignore[invalid-argument-type]
+            raw = json.loads(state)
             return SleepState.model_validate(raw)
         except Exception as fallback_e:
             logger.error(f"Legacy state migration failed for user {user_id}: {fallback_e}; session will be dropped")

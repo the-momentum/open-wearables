@@ -563,7 +563,7 @@ class DataPointSeriesRepository(
         )
 
         # Transform to list of dicts
-        aggregates = []
+        aggregates: list[ActivityAggregateResult] = []
         for row in results:
             aggregates.append(
                 {
@@ -664,7 +664,7 @@ class DataPointSeriesRepository(
             .all()
         )
 
-        aggregates = []
+        aggregates: list[ActiveMinutesResult] = []
         for row in results:
             active = int(row.active_minutes) if row.active_minutes else 0
             tracked = int(row.tracked_minutes) if row.tracked_minutes else 0
@@ -793,7 +793,7 @@ class DataPointSeriesRepository(
             .all()
         )
 
-        aggregates = []
+        aggregates: list[IntensityMinutesResult] = []
         for row in results:
             aggregates.append(
                 {

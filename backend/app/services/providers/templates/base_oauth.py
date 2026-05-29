@@ -359,7 +359,7 @@ class BaseOAuthTemplate(ABC):
         provider_user_id = user_info.get("user_id")
         provider_username = user_info.get("username")
 
-        scope = user_info.get("scope")
+        scope = user_info.get("scope") or token_response.scope
 
         token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_response.expires_in)
 

@@ -149,7 +149,7 @@ def check_triggered_timeout(user_id: str, data_type: str) -> dict[str, Any]:
         mark_type_failed(user_id_str, data_type, "Timed out during retry (escalated to failed)")
         retry_window_str = get_redis_client().get(_get_key(user_id_str, "retry_current_window"))
         if retry_window_str:
-            update_window_cell(user_id_str, int(retry_window_str), data_type, "failed")  # ty:ignore[invalid-argument-type]
+            update_window_cell(user_id_str, int(retry_window_str), data_type, "failed")
     else:
         record_timed_out_entry(user_id_str, data_type, get_current_window(user_id_str))
 

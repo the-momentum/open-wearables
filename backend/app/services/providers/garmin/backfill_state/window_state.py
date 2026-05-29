@@ -32,13 +32,13 @@ def init_window_state(user_id: str | UUID, total_windows: int = BACKFILL_WINDOW_
 def get_current_window(user_id: str | UUID) -> int:
     """Return the current window index (0-indexed)."""
     val = get_redis_client().get(_get_key(str(user_id), "window", "current"))
-    return int(val) if val else 0  # ty:ignore[invalid-argument-type]
+    return int(val) if val else 0
 
 
 def get_total_windows(user_id: str | UUID) -> int:
     """Return the total number of windows for this backfill."""
     val = get_redis_client().get(_get_key(str(user_id), "window", "total"))
-    return int(val) if val else BACKFILL_WINDOW_COUNT  # ty:ignore[invalid-argument-type]
+    return int(val) if val else BACKFILL_WINDOW_COUNT
 
 
 def get_anchor_timestamp(user_id: str | UUID) -> datetime:
@@ -75,7 +75,7 @@ def get_window_date_range_for_index(user_id: str | UUID, window_idx: int) -> tup
 def get_completed_window_count(user_id: str | UUID) -> int:
     """Return the number of completed windows."""
     val = get_redis_client().get(_get_key(str(user_id), "window", "completed_count"))
-    return int(val) if val else 0  # ty:ignore[invalid-argument-type]
+    return int(val) if val else 0
 
 
 def update_window_cell(user_id: str | UUID, window_idx: int, data_type: str, status: str) -> None:
@@ -99,8 +99,8 @@ def persist_window_results(user_id: str | UUID, window_idx: int) -> None:
     all_flat_statuses = get_redis_client().mget(keys)
     status_map = {"success": "done", "failed": "done", "timed_out": "timed_out"}
 
-    for data_type, flat_status in zip(BACKFILL_DATA_TYPES, all_flat_statuses):  # ty:ignore[invalid-argument-type, not-iterable]
-        matrix_status = status_map.get(flat_status, "pending")
+    for data_type, flat_status in zip(BACKFILL_DATA_TYPES, all_flat_statuses):
+        matrix_status = status_map.get(flat_status, "pending") if isinstance(flat_status, str) else "pending"
         window_key = f"{REDIS_PREFIX}:{uid}:w:{window_idx}:{data_type}:status"
         get_redis_client().setex(window_key, REDIS_TTL, matrix_status)
         results[data_type] = matrix_status
@@ -132,7 +132,7 @@ def advance_window(user_id: str | UUID) -> bool:
     get_redis_client().expire(current_key, REDIS_TTL)
 
     total = get_total_windows(uid)
-    if new_window >= total:  # ty:ignore[unsupported-operator]
+    if new_window >= total:
         return False
 
     for data_type in BACKFILL_DATA_TYPES:
