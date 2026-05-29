@@ -53,75 +53,76 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
             metadata={"filename": filename},
         )
 
-    with SessionLocal() as db:
-        try:
-            temp_dir = tempfile.gettempdir()
-            temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
+    db = SessionLocal()
+    try:
+        temp_dir = tempfile.gettempdir()
+        temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
 
-            with open(temp_xml_file, "wb") as f:
-                f.write(file_contents)
+        with open(temp_xml_file, "wb") as f:
+            f.write(file_contents)
 
-            stats = _import_xml_data(db, temp_xml_file, user_id)
+        stats = _import_xml_data(db, temp_xml_file, user_id)
 
-            if user_uuid is not None:
-                completed(
-                    user_uuid,
-                    "apple",
-                    SyncSource.XML_IMPORT,
-                    run_id=run_id,
-                    status=SyncStatus.SUCCESS,
-                    message="Apple Health XML import completed",
-                    items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
-                    metadata={"filename": filename},
-                )
-
-            return {
-                "user_id": user_id,
-                "status": "success",
-                "message": "Import completed successfully",
-                "stats": {
-                    "records_processed": stats.records.processed,
-                    "records_skipped": stats.records.skipped,
-                    "workouts_processed": stats.workouts.processed,
-                    "workouts_skipped": stats.workouts.skipped,
-                    "sleep_processed": stats.sleep.processed,
-                    "sleep_skipped": stats.sleep.skipped,
-                    "skip_reasons": stats.get_skip_summary(),
-                },
-            }
-
-        except Exception as e:
-            db.rollback()
-            if user_uuid is not None:
-                failed(
-                    user_uuid,
-                    "apple",
-                    SyncSource.XML_IMPORT,
-                    run_id=run_id,
-                    error=str(e),
-                    message=f"Apple Health XML import failed: {filename}",
-                    metadata={"filename": filename},
-                )
-            log_structured(
-                log,
-                "error",
-                "Failed to import XML file %s for user %s",
-                provider="apple_xml",
-                task="process_xml_upload",
-                filename=filename,
-                user_id=user_id,
+        if user_uuid is not None:
+            completed(
+                user_uuid,
+                "apple",
+                SyncSource.XML_IMPORT,
+                run_id=run_id,
+                status=SyncStatus.SUCCESS,
+                message="Apple Health XML import completed",
+                items_processed=stats.records.processed + stats.workouts.processed + stats.sleep.processed,
+                metadata={"filename": filename},
             )
-            log_and_capture_error(
-                e,
-                log,
-                "Failed to import XML file %s for user %s",
-                extra={"filename": filename, "user_id": user_id},
-            )
-            raise e
 
-        finally:
-            if temp_xml_file and os.path.exists(temp_xml_file):
-                os.remove(temp_xml_file)
+        return {
+            "user_id": user_id,
+            "status": "success",
+            "message": "Import completed successfully",
+            "stats": {
+                "records_processed": stats.records.processed,
+                "records_skipped": stats.records.skipped,
+                "workouts_processed": stats.workouts.processed,
+                "workouts_skipped": stats.workouts.skipped,
+                "sleep_processed": stats.sleep.processed,
+                "sleep_skipped": stats.sleep.skipped,
+                "skip_reasons": stats.get_skip_summary(),
+            },
+        }
+
+    except Exception as e:
+        db.rollback()
+        if user_uuid is not None:
+            failed(
+                user_uuid,
+                "apple",
+                SyncSource.XML_IMPORT,
+                run_id=run_id,
+                error=str(e),
+                message=f"Apple Health XML import failed: {filename}",
+                metadata={"filename": filename},
+            )
+        log_structured(
+            log,
+            "error",
+            "Failed to import XML file %s for user %s",
+            provider="apple_xml",
+            task="process_xml_upload",
+            filename=filename,
+            user_id=user_id,
+        )
+        log_and_capture_error(
+            e,
+            log,
+            "Failed to import XML file %s for user %s",
+            extra={"filename": filename, "user_id": user_id},
+        )
+        raise e
+
+    finally:
+        if temp_xml_file and os.path.exists(temp_xml_file):
+            os.remove(temp_xml_file)
+        db.close()
 
 
 def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
@@ -140,10 +141,11 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
         for record, detail in workouts:
+            workout_db = SessionLocal()
             try:
-                created_record = event_record_service.create(db, record)
+                created_record = event_record_service.create(workout_db, record)
                 detail_for_record = detail.model_copy(update={"record_id": created_record.id})
-                event_record_service.create_detail(db, detail_for_record)
+                event_record_service.create_detail(workout_db, detail_for_record)
             except Exception as e:
                 log_structured(
                     log,
@@ -161,6 +163,8 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                     extra={"record_type": record.type if hasattr(record, "type") else "unknown", "user_id": user_id},
                 )
                 xml_service.stats.workouts.skip(f"db_error:{type(e).__name__}")
+            finally:
+                workout_db.close()
 
         if time_series_records:
             timeseries_service.bulk_create_samples(db, time_series_records)
