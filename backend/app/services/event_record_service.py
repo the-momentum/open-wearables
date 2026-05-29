@@ -209,41 +209,45 @@ class EventRecordService(
         first, and the old record is deleted only after a successful insert — so a failure
         never loses the original data.
         """
-        result, inserted, final_detail = self._create_or_merge_sleep_inner(
+                result, inserted, final_detail = self._create_or_merge_sleep_inner(
             db_session, user_id, record, detail, threshold_minutes
         )
-        if inserted:
-            eff = final_detail.sleep_efficiency_score
-            has_stages = any(
-                [
-                    final_detail.sleep_awake_minutes,
-                    final_detail.sleep_light_minutes,
-                    final_detail.sleep_deep_minutes,
-                    final_detail.sleep_rem_minutes,
-                ]
-            )
-            on_sleep_created(
-                record_id=result.id,
-                user_id=user_id,
-                provider=record.provider or record.source_name,
-                device=record.device_model,
-                start_time=result.start_datetime.isoformat(),
-                end_time=result.end_datetime.isoformat(),
-                zone_offset=record.zone_offset,
-                duration_seconds=result.duration_seconds,
-                efficiency_percent=float(eff) if eff is not None else None,
-                stages={
-                    "awake_minutes": final_detail.sleep_awake_minutes,
-                    "light_minutes": final_detail.sleep_light_minutes,
-                    "deep_minutes": final_detail.sleep_deep_minutes,
-                    "rem_minutes": final_detail.sleep_rem_minutes,
-                }
-                if has_stages
-                else None,
-                is_nap=final_detail.is_nap,
-            )
+        eff = final_detail.sleep_efficiency_score
+        has_stages = any(
+            [
+                final_detail.sleep_awake_minutes,
+                final_detail.sleep_light_minutes,
+                final_detail.sleep_deep_minutes,
+                final_detail.sleep_rem_minutes,
+            ]
+        )
+        # Fire on every committed save (new or merged) per the SLEEP_CREATED
+        # docstring: "A new (or merged) sleep session was saved."
+        # Pre-fix: `if inserted:` gated the webhook, so the three merge-path
+        # returns (re-ingestion, same-window merge, constraint collision) saved
+        # detail changes silently without notifying subscribers.
+        on_sleep_created(
+            record_id=result.id,
+            user_id=user_id,
+            provider=record.provider or record.source_name,
+            device=record.device_model,
+            start_time=result.start_datetime.isoformat(),
+            end_time=result.end_datetime.isoformat(),
+            zone_offset=record.zone_offset,
+            duration_seconds=result.duration_seconds,
+            efficiency_percent=float(eff) if eff is not None else None,
+            stages={
+                "awake_minutes": final_detail.sleep_awake_minutes,
+                "light_minutes": final_detail.sleep_light_minutes,
+                "deep_minutes": final_detail.sleep_deep_minutes,
+                "rem_minutes": final_detail.sleep_rem_minutes,
+            }
+            if has_stages
+            else None,
+            is_nap=final_detail.is_nap,
+            is_merge=not inserted,
+        )
         return result
-
     def _create_or_merge_sleep_inner(
         self,
         db_session: DbSession,
