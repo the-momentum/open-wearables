@@ -167,10 +167,18 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
                 workout_db.close()
 
         if time_series_records:
-            timeseries_service.bulk_create_samples(db, time_series_records)
-            db.commit()
+            ts_db = SessionLocal()
+            try:
+                timeseries_service.bulk_create_samples(ts_db, time_series_records)
+                ts_db.commit()
+            finally:
+                ts_db.close()
 
         if sync_request and sync_request.data.sleep:
-            handle_sleep_data(db, sync_request, user_id)
+            sleep_db = SessionLocal()
+            try:
+                handle_sleep_data(sleep_db, sync_request, user_id)
+            finally:
+                sleep_db.close()
 
     return xml_service.stats
