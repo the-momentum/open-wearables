@@ -85,6 +85,7 @@ def _get_db_dependency() -> Iterator[Session]:
     db = SessionLocal()
     try:
         yield db
+        db.commit()
     except Exception as exc:
         db.rollback()
         raise exc

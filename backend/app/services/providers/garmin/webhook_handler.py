@@ -159,7 +159,7 @@ class GarminWebhookHandler(BaseWebhookHandler):
         well_result = self._process_wellness(db, payload, errors, synced_user_ids, users_with_new_success, trace_id)
 
         # --- commit + update last_synced_at ------------------------------
-        db.commit()
+        db.flush()
 
         for uid in synced_user_ids:
             with contextlib.suppress(Exception):

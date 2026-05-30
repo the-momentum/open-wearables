@@ -267,7 +267,8 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+        if samples or health_scores:
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -344,7 +345,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -492,7 +493,8 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+        if samples or health_scores:
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -671,11 +673,12 @@ class Oura247Data(Base247DataTemplate):
                 sleep_stages=normalized_sleep.get("stage_timestamps", []),
             )
 
+            savepoint = db.begin_nested()
             try:
                 event_record_service.create_or_merge_sleep(db, user_id, record, detail, settings.sleep_end_gap_minutes)
                 count += 1
             except Exception as e:
-                db.rollback()
+                savepoint.rollback()
                 log_structured(
                     self.logger,
                     "error",
@@ -792,7 +795,7 @@ class Oura247Data(Base247DataTemplate):
         """Save daily sleep scores via health_score_service."""
         if normalized:
             health_score_service.bulk_create(db, normalized)
-            db.commit()
+            db.flush()
         return len(normalized)
 
     # -------------------------------------------------------------------------
@@ -880,7 +883,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -950,7 +953,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1041,7 +1044,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1100,7 +1103,7 @@ class Oura247Data(Base247DataTemplate):
 
         if samples:
             timeseries_service.bulk_create_samples(db, samples)
-            db.commit()
+            db.flush()
         return len(samples)
 
     # -------------------------------------------------------------------------
@@ -1172,10 +1175,11 @@ class Oura247Data(Base247DataTemplate):
 
         results: dict[str, int] = {}
         for data_type, fn in tasks.items():
+            savepoint = db.begin_nested()
             try:
                 results[data_type] = fn()
             except Exception as e:
-                db.rollback()
+                savepoint.rollback()
                 results[data_type] = 0
                 log_structured(
                     self.logger,

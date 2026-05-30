@@ -25,7 +25,7 @@ class CrudRepository[
         creation_data = creator.model_dump()
         creation = self.model(**creation_data)
         db_session.add(creation)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(creation)
         return creation
 
@@ -63,13 +63,13 @@ class CrudRepository[
         for field_name, field_value in updater_data.items():
             setattr(originator, field_name, field_value)
         db_session.add(originator)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(originator)
         return originator
 
     def delete(self, db_session: DbSession, originator: ModelType) -> ModelType:
         db_session.delete(originator)
-        db_session.commit()
+        db_session.flush()
         return originator
 
     def delete_flush(self, db_session: DbSession, originator: ModelType) -> None:

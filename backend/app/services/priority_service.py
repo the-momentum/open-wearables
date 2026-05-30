@@ -42,7 +42,7 @@ class PriorityService:
         priority: int,
     ) -> ProviderPriorityResponse:
         result = self.priority_repo.upsert(db_session, provider, priority)
-        db_session.commit()
+        db_session.flush()
         return ProviderPriorityResponse.model_validate(result)
 
     @handle_exceptions
@@ -53,7 +53,7 @@ class PriorityService:
     ) -> ProviderPriorityListResponse:
         priorities_tuples = [(p.provider, p.priority) for p in update.priorities]
         results = self.priority_repo.bulk_update(db_session, priorities_tuples)
-        db_session.commit()
+        db_session.flush()
         return ProviderPriorityListResponse(items=[ProviderPriorityResponse.model_validate(p) for p in results])
 
     @handle_exceptions
@@ -96,7 +96,7 @@ class PriorityService:
         priority: int,
     ) -> DeviceTypePriorityResponse:
         result = self.device_type_priority_repo.upsert(db_session, device_type, priority)
-        db_session.commit()
+        db_session.flush()
         return DeviceTypePriorityResponse.model_validate(result)
 
     @handle_exceptions
@@ -107,7 +107,7 @@ class PriorityService:
     ) -> DeviceTypePriorityListResponse:
         priorities_tuples = [(p.device_type, p.priority) for p in update.priorities]
         results = self.device_type_priority_repo.bulk_update(db_session, priorities_tuples)
-        db_session.commit()
+        db_session.flush()
         return DeviceTypePriorityListResponse(items=[DeviceTypePriorityResponse.model_validate(p) for p in results])
 
     def get_priority_data_source_ids(

@@ -798,6 +798,6 @@ class Suunto247Data(Base247DataTemplate):
         # not committed within their individual save methods. Sleep and recovery
         # commit per-record via crud.create/try_commit, but bulk_create_samples
         # defers commit to the caller intentionally for batching efficiency.
-        db.commit()
+        db.flush()
 
         return results

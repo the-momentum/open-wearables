@@ -42,6 +42,7 @@ def finalize_stale_sleeps() -> None:
 
                     if now - end_time >= timedelta(minutes=settings.sleep_end_gap_minutes):
                         finish_sleep(db, user_id, state)
+                        db.commit()
                 finally:
                     with contextlib.suppress(Exception):
                         lock.release()

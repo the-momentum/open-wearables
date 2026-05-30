@@ -17,7 +17,7 @@ class RefreshTokenRepository:
     def create(self, db_session: DbSession, token: RefreshToken) -> RefreshToken:
         """Create a new refresh token."""
         db_session.add(token)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(token)
         return token
 
@@ -39,7 +39,7 @@ class RefreshTokenRepository:
     def revoke_token(self, db_session: DbSession, token: RefreshToken) -> RefreshToken:
         """Revoke a single refresh token."""
         token.revoked_at = datetime.now(timezone.utc)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(token)
         return token
 
@@ -52,7 +52,7 @@ class RefreshTokenRepository:
             .values(revoked_at=now)
         )
         result = cast(CursorResult[tuple[()]], db_session.execute(stmt))
-        db_session.commit()
+        db_session.flush()
         return result.rowcount or 0
 
     def revoke_all_for_developer(self, db_session: DbSession, developer_id: UUID) -> int:
@@ -64,13 +64,13 @@ class RefreshTokenRepository:
             .values(revoked_at=now)
         )
         result = cast(CursorResult[tuple[()]], db_session.execute(stmt))
-        db_session.commit()
+        db_session.flush()
         return result.rowcount or 0
 
     def update_last_used(self, db_session: DbSession, token: RefreshToken) -> RefreshToken:
         """Update the last_used_at timestamp of a token."""
         token.last_used_at = datetime.now(timezone.utc)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(token)
         return token
 

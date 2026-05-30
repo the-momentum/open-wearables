@@ -291,8 +291,8 @@ class ImportService:
             self.timeseries_service.bulk_create_samples(db_session, samples)
             records_saved += len(samples)
 
-        # Commit all workout and timeseries changes in one transaction
-        db_session.commit()
+        # Flush all workout and timeseries changes (caller commits)
+        db_session.flush()
 
         # Process sleep (count sleep segments from input)
         if request.data.sleep:

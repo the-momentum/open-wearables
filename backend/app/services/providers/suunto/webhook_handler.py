@@ -195,7 +195,7 @@ class SuuntoWebhookHandler(BaseWebhookHandler):
             result["status"] = "unknown_event_type"
 
         self.connection_repo.update_last_synced_at(db, connection)
-        db.commit()
+        db.flush()
 
         return result
 

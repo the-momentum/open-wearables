@@ -408,6 +408,7 @@ class Whoop247Data(Base247DataTemplate):
         count = 0
         health_scores: list[HealthScoreCreate] = []
         for item in raw_data:
+            savepoint = db.begin_nested()
             try:
                 normalized, health_score = self.normalize_sleep(item, user_id)
                 self.save_sleep_data(db, user_id, normalized)
@@ -415,7 +416,7 @@ class Whoop247Data(Base247DataTemplate):
                 if health_score:
                     health_scores.append(health_score)
             except Exception as e:
-                db.rollback()
+                savepoint.rollback()
                 log_structured(
                     self.logger,
                     "warning",
@@ -426,7 +427,8 @@ class Whoop247Data(Base247DataTemplate):
                 )
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+        if count or health_scores:
+            db.flush()
         return count
 
     def load_and_save_all(
@@ -464,10 +466,11 @@ class Whoop247Data(Base247DataTemplate):
             "body_measurement_samples_synced": 0,
         }
 
+        savepoint = db.begin_nested()
         try:
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
         except Exception as e:
-            db.rollback()
+            savepoint.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -477,10 +480,11 @@ class Whoop247Data(Base247DataTemplate):
                 user_id=str(user_id),
             )
 
+        savepoint = db.begin_nested()
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
         except Exception as e:
-            db.rollback()
+            savepoint.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -490,10 +494,11 @@ class Whoop247Data(Base247DataTemplate):
                 user_id=str(user_id),
             )
 
+        savepoint = db.begin_nested()
         try:
             results["body_measurement_samples_synced"] = self.load_and_save_body_measurement(db, user_id)
         except Exception as e:
-            db.rollback()
+            savepoint.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -636,7 +641,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if samples_to_create:
             timeseries_service.bulk_create_samples(db, samples_to_create)
-            db.commit()
+            db.flush()
 
         return len(samples_to_create)
 
@@ -852,7 +857,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if samples_to_create:
             timeseries_service.bulk_create_samples(db, samples_to_create)
-            db.commit()
+            db.flush()
 
         return len(samples_to_create)
 
@@ -917,6 +922,7 @@ class Whoop247Data(Base247DataTemplate):
         health_scores: list[HealthScoreCreate] = []
 
         for item in raw_data:
+            savepoint = db.begin_nested()
             try:
                 normalized, health_score = self.normalize_recovery(item, user_id)
                 if normalized:  # Skip unscored records
@@ -924,7 +930,7 @@ class Whoop247Data(Base247DataTemplate):
                     if health_score:
                         health_scores.append(health_score)
             except Exception as e:
-                db.rollback()
+                savepoint.rollback()
                 log_structured(
                     self.logger,
                     "warning",
@@ -936,7 +942,7 @@ class Whoop247Data(Base247DataTemplate):
 
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
-            db.commit()
+            db.flush()
 
         return total_count
 

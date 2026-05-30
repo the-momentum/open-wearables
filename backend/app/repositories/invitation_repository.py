@@ -57,7 +57,7 @@ class InvitationRepository(CrudRepository[Invitation, InvitationCreateInternal, 
     ) -> Invitation:
         """Update invitation status."""
         invitation.status = status
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(invitation)
         return invitation
 
@@ -70,6 +70,6 @@ class InvitationRepository(CrudRepository[Invitation, InvitationCreateInternal, 
         """Accept invitation and create developer in a single atomic transaction."""
         db_session.add(developer)
         invitation.status = InvitationStatus.ACCEPTED
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(developer)
         return developer

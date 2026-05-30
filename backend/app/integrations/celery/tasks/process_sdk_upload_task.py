@@ -114,6 +114,8 @@ def process_sdk_upload(
             db, content, content_type, user_id, batch_id=batch_id
         ).model_dump()
 
+        db.commit()
+
         # Log processing completion with results
         log_structured(
             logger,

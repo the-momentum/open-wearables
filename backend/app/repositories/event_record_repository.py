@@ -123,19 +123,21 @@ class EventRecordRepository(
             )
             .delete(synchronize_session=False)
         )
-        db_session.commit()
+        db_session.flush()
         return deleted
 
     @handle_exceptions
     def create(self, db_session: DbSession, creator: EventRecordCreate) -> EventRecord:
         data_source_id, creation = self._build_creation(db_session, creator)
+        nested = db_session.begin_nested()
         try:
             db_session.add(creation)
-            db_session.commit()
+            db_session.flush()
+            nested.commit()
             db_session.refresh(creation)
             return creation
         except IntegrityError:
-            db_session.rollback()
+            nested.rollback()
             if existing := self._fetch_existing(db_session, data_source_id, creation):
                 return existing
             raise

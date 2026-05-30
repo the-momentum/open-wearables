@@ -36,6 +36,7 @@ def run_daily_archival() -> dict:
     with SessionLocal() as db:
         try:
             summary = archival_service.run_daily_archival(db)
+            db.commit()
             logger.info("Daily archival completed: %s", summary)
             return summary
         except Exception:

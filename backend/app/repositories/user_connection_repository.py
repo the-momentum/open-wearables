@@ -247,7 +247,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 ),
             ),
         )
-        db_session.commit()
+        db_session.flush()
         return result.rowcount
 
     def mark_as_revoked(self, db_session: DbSession, connection: UserConnection) -> UserConnection:
@@ -255,7 +255,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         connection.status = ConnectionStatus.REVOKED
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection
 
@@ -264,7 +264,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         connection.scope = scope
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection
 
@@ -284,7 +284,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         connection.token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection
 
@@ -315,7 +315,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         connection.status = ConnectionStatus.ACTIVE
         connection.updated_at = datetime.now(timezone.utc)
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection
 
@@ -323,7 +323,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
         """Update the last synced timestamp."""
         connection.last_synced_at = datetime.now(timezone.utc)
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection
 
@@ -368,7 +368,7 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 existing.status = ConnectionStatus.ACTIVE
                 existing.updated_at = datetime.now(timezone.utc)
                 db_session.add(existing)
-                db_session.commit()
+                db_session.flush()
                 db_session.refresh(existing)
             return existing
 
@@ -385,6 +385,6 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
             updated_at=datetime.now(timezone.utc),
         )
         db_session.add(connection)
-        db_session.commit()
+        db_session.flush()
         db_session.refresh(connection)
         return connection

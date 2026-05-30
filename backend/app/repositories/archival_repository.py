@@ -36,7 +36,7 @@ class ArchivalSettingRepository:
         setting = self.get(db)
         setting.archive_after_days = archive_after_days
         setting.delete_after_days = delete_after_days
-        db.commit()
+        db.flush()
         db.refresh(setting)
         return setting
 
@@ -260,7 +260,7 @@ class DataPointSeriesArchiveRepository:
             )
             total_deleted += deleted_count
 
-            db.commit()
+            db.flush()
 
         return total_deleted
 
@@ -277,7 +277,7 @@ class DataPointSeriesArchiveRepository:
             )
             .delete(synchronize_session=False)
         )
-        db.commit()
+        db.flush()
         return deleted
 
     def delete_live_before(self, db: DbSession, cutoff_date: date) -> int:
@@ -318,7 +318,7 @@ class DataPointSeriesArchiveRepository:
                 break
 
             total_deleted += deleted
-            db.commit()
+            db.flush()
 
         return total_deleted
 

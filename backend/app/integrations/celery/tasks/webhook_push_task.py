@@ -41,7 +41,9 @@ def process_webhook_push(
         if strategy.webhooks is None:
             raise ValueError(f"Provider '{provider_name}' has no webhook handler")
         with SessionLocal() as db:
-            return strategy.webhooks.process_payload(db, payload, request_trace_id)
+            result = strategy.webhooks.process_payload(db, payload, request_trace_id)
+            db.commit()
+            return result
     except ValueError as exc:
         # Configuration error (unknown provider, missing handler) — retrying won't help.
         log_structured(

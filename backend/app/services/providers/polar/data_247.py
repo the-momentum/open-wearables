@@ -1031,11 +1031,12 @@ class Polar247Data(Base247DataTemplate):
 
         results: dict[str, int] = {}
         for data_type, fn in tasks.items():
+            savepoint = db.begin_nested()
             try:
                 results[data_type] = fn()
-                db.commit()
+                db.flush()
             except Exception as e:
-                db.rollback()
+                savepoint.rollback()
                 results[data_type] = 0
                 log_and_capture_error(
                     e,
