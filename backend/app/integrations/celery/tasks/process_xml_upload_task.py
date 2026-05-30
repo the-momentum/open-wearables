@@ -6,7 +6,6 @@ from typing import Any
 from uuid import UUID
 
 from celery import shared_task
-from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.schemas.providers.apple.apple_xml import XMLParseStats
@@ -53,7 +52,6 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
             metadata={"filename": filename},
         )
 
-    db = SessionLocal()
     try:
         temp_dir = tempfile.gettempdir()
         temp_xml_file = os.path.join(temp_dir, f"temp_import_{filename}")
@@ -61,7 +59,7 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         with open(temp_xml_file, "wb") as f:
             f.write(file_contents)
 
-        stats = _import_xml_data(db, temp_xml_file, user_id)
+        stats = _import_xml_data(temp_xml_file, user_id)
 
         if user_uuid is not None:
             completed(
@@ -91,7 +89,6 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
         }
 
     except Exception as e:
-        db.rollback()
         if user_uuid is not None:
             failed(
                 user_uuid,
@@ -122,10 +119,9 @@ def process_xml_upload(file_contents: bytes, filename: str, user_id: str) -> dic
     finally:
         if temp_xml_file and os.path.exists(temp_xml_file):
             os.remove(temp_xml_file)
-        db.close()
 
 
-def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
+def _import_xml_data(xml_path: str, user_id: str) -> XMLParseStats:
     """
     Parse XML file and import data to database using XMLService.
 
