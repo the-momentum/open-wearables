@@ -427,6 +427,7 @@ class Whoop247Data(Base247DataTemplate):
                 )
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
+        if count or health_scores:
             db.flush()
         return count
 

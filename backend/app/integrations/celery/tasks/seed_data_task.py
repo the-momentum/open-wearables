@@ -27,5 +27,6 @@ def generate_seed_data(request_data: dict) -> dict:
             logger.info("Seed data generation completed: %s", summary)
             return summary
         except Exception:
+            db.rollback()
             logger.exception("Seed data generation failed")
             raise

@@ -267,6 +267,7 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
+        if samples or health_scores:
             db.flush()
         return len(samples)
 
@@ -492,6 +493,7 @@ class Oura247Data(Base247DataTemplate):
             timeseries_service.bulk_create_samples(db, samples)
         if health_scores:
             health_score_service.bulk_create(db, health_scores)
+        if samples or health_scores:
             db.flush()
         return len(samples)
 
