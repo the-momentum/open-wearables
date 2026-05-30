@@ -418,11 +418,12 @@ class WhoopWorkouts(BaseWorkoutsTemplate):
                     strain_scores.append(strain_score)
 
         if strain_scores:
+            savepoint = db.begin_nested()
             try:
                 health_score_service.bulk_create(db, strain_scores)
                 db.flush()
             except Exception:
-                db.rollback()
+                savepoint.rollback()
                 raise
 
         return count
