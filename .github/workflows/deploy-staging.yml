@@ -245,7 +245,7 @@ jobs:
           # Whoop
           WHOOP_CLIENT_ID=${WHOOP_CLIENT_ID}
           WHOOP_CLIENT_SECRET=${WHOOP_CLIENT_SECRET}
-          WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout read:body_measurement
+          WHOOP_DEFAULT_SCOPE=offline read:cycles read:sleep read:recovery read:workout read:body_measurement read:profile
 
           # Suunto
           SUUNTO_CLIENT_ID=${SUUNTO_CLIENT_ID}
