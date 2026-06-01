@@ -23,6 +23,7 @@ from app.schemas.responses.incoming_webhooks import (
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -31,7 +32,7 @@ logger = getLogger(__name__)
 _STRAVA_API_URL = "https://www.strava.com/api/v3"
 
 
-class StravaWebhookService:
+class StravaWebhookService(BaseWebhookService):
     """App-level Strava webhook subscription management."""
 
     @property

@@ -24,6 +24,9 @@ from fastapi import status
 from pydantic import ValidationError
 
 from app.config import settings
+from app.database import SessionLocal
+from app.repositories.provider_settings_repository import ProviderSettingsRepository
+from app.schemas.enums import ProviderName
 from app.schemas.providers.polar import PolarWebhookEventType
 from app.schemas.responses.incoming_webhooks import (
     PolarWebhookSubscription,
@@ -31,6 +34,7 @@ from app.schemas.responses.incoming_webhooks import (
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -40,7 +44,7 @@ _POLAR_API_URL = "https://www.polaraccesslink.com"
 _ALL_EVENTS = [e for e in PolarWebhookEventType if e is not PolarWebhookEventType.PING]
 
 
-class PolarWebhookService:
+class PolarWebhookService(BaseWebhookService):
     """App-level Polar webhook subscription management."""
 
     def _get_basic_auth(self) -> httpx.BasicAuth:
@@ -104,7 +108,7 @@ class PolarWebhookService:
         existing = await self.get_webhook()
         if existing:
             existing_url = existing.url
-            webhook_id = existing.id
+            subscription_id = existing.id
 
             if existing_url == callback_url:
                 log_structured(
@@ -113,27 +117,34 @@ class PolarWebhookService:
                     "Polar webhook already registered",
                     provider="polar",
                     action="polar_webhook_skipped",
-                    webhook_id=webhook_id,
+                    subscription_id=subscription_id,
                 )
-                return {"status": "skipped", "webhook_id": webhook_id}
+                return {"status": "skipped", "subscription_id": subscription_id}
 
             # URL changed — patch in place
-            return (await self._patch_webhook(auth, webhook_id, callback_url)).model_dump()
+            return (await self._patch_webhook(auth, subscription_id, callback_url)).model_dump()
 
-        return await self._create_webhook(auth, callback_url)
+        result = await self._create_webhook(auth, callback_url)
+        if result.get("status") == "created":
+            secret = result.get("response", {}).get("signature_secret_key")
+            if not secret:
+                raise ValueError("Polar webhook registration succeeded but no signature_secret_key was returned.")
+            with SessionLocal() as db:
+                ProviderSettingsRepository().save_webhook_secret(db, ProviderName.POLAR, secret)
+        return result
 
-    async def update_webhook(self, webhook_id: str, callback_url: str) -> WebhookOperationResult:
+    async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
         """Update the URL of an existing Polar webhook (PATCH /v3/webhooks/{id})."""
         auth = self._get_basic_auth()
-        return await self._patch_webhook(auth, webhook_id, callback_url)
+        return await self._patch_webhook(auth, subscription_id, callback_url)
 
-    async def delete_webhook(self, webhook_id: str) -> WebhookOperationResult:
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
         """Delete the Polar webhook by ID (DELETE /v3/webhooks/{id})."""
         auth = self._get_basic_auth()
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.delete(
-                    f"{_POLAR_API_URL}/v3/webhooks/{webhook_id}",
+                    f"{_POLAR_API_URL}/v3/webhooks/{subscription_id}",
                     auth=auth,
                     timeout=30.0,
                 )
@@ -145,12 +156,12 @@ class PolarWebhookService:
                 "Failed to delete Polar webhook",
                 provider="polar",
                 action="polar_webhook_delete_error",
-                webhook_id=webhook_id,
+                subscription_id=subscription_id,
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
             return WebhookOperationResult(
-                subscription_id=webhook_id,
+                subscription_id=subscription_id,
                 status=WebhookSubscriptionStatus.ERROR,
                 error=str(e),
             )
@@ -160,15 +171,17 @@ class PolarWebhookService:
             "Polar webhook deleted",
             provider="polar",
             action="polar_webhook_deleted",
-            webhook_id=webhook_id,
+            subscription_id=subscription_id,
         )
-        return WebhookOperationResult(subscription_id=webhook_id, status=WebhookSubscriptionStatus.DELETED)
+        return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.DELETED)
 
-    async def _patch_webhook(self, auth: httpx.BasicAuth, webhook_id: str, callback_url: str) -> WebhookOperationResult:
+    async def _patch_webhook(
+        self, auth: httpx.BasicAuth, subscription_id: str, callback_url: str
+    ) -> WebhookOperationResult:
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.patch(
-                    f"{_POLAR_API_URL}/v3/webhooks/{webhook_id}",
+                    f"{_POLAR_API_URL}/v3/webhooks/{subscription_id}",
                     auth=auth,
                     json={"events": _ALL_EVENTS, "url": callback_url},
                     timeout=30.0,
@@ -181,12 +194,12 @@ class PolarWebhookService:
                 "Failed to patch Polar webhook URL",
                 provider="polar",
                 action="polar_webhook_patch_error",
-                webhook_id=webhook_id,
+                subscription_id=subscription_id,
                 error=str(e),
                 status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
             )
             return WebhookOperationResult(
-                subscription_id=webhook_id,
+                subscription_id=subscription_id,
                 status=WebhookSubscriptionStatus.ERROR,
                 error=str(e),
             )
@@ -196,9 +209,9 @@ class PolarWebhookService:
             "Patched Polar webhook URL",
             provider="polar",
             action="polar_webhook_patched",
-            webhook_id=webhook_id,
+            subscription_id=subscription_id,
         )
-        return WebhookOperationResult(subscription_id=webhook_id, status=WebhookSubscriptionStatus.PATCHED)
+        return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.PATCHED)
 
     async def _create_webhook(self, auth: httpx.BasicAuth, callback_url: str) -> dict[str, Any]:
         async with httpx.AsyncClient() as client:
@@ -227,7 +240,7 @@ class PolarWebhookService:
                 "Polar webhook created",
                 provider="polar",
                 action="polar_webhook_created",
-                webhook_id=result.get("id"),
+                subscription_id=result.get("id"),
             )
             return {"status": "created", "response": result}
 

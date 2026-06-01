@@ -21,6 +21,7 @@ from app.schemas.responses.incoming_webhooks import (
     WebhookOperationResult,
     WebhookSubscriptionStatus,
 )
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -62,7 +63,7 @@ OURA_WEBHOOK_DATA_TYPES = [
 OURA_WEBHOOK_EVENT_TYPES = ["create", "update"]
 
 
-class OuraWebhookService:
+class OuraWebhookService(BaseWebhookService):
     """App-level Oura webhook subscription management."""
 
     def _get_oura_credentials(self) -> tuple[str, str]:

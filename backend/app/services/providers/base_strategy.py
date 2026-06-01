@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from celery import current_app as celery_app
@@ -11,13 +11,10 @@ from app.repositories.event_record_repository import EventRecordRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LiveSyncMode
-from app.schemas.responses.incoming_webhooks import (
-    ProviderWebhookSubscription,
-    WebhookOperationResult,
-)
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.exceptions import UnsupportedProviderError
 
@@ -109,6 +106,7 @@ class BaseProviderStrategy(ABC):
         self.workouts: BaseWorkoutsTemplate | None = None
         self.data_247: Base247DataTemplate | None = None
         self.webhooks: BaseWebhookHandler | None = None
+        self.webhook_service: BaseWebhookService | None = None
 
     @property
     @abstractmethod
@@ -222,43 +220,6 @@ class BaseProviderStrategy(ABC):
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
-
-    async def register_webhooks(self, callback_url: str) -> Any:
-        """Register webhook subscriptions for this provider.
-
-        Only meaningful when ``capabilities.webhook_registration_api`` is True.
-        Concrete strategies that support programmatic registration should override this.
-        """
-        raise NotImplementedError(
-            f"Provider '{self.name}' does not support programmatic webhook registration at '{callback_url}'"
-        )
-
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
-        """List active webhook subscriptions for this provider."""
-        raise NotImplementedError(f"Provider '{self.name}' does not support listing webhook subscriptions")
-
-    async def get_subscription(self, subscription_id: str) -> ProviderWebhookSubscription | None:
-        """Get a single webhook subscription by ID."""
-        raise NotImplementedError(
-            f"Provider '{self.name}' does not support fetching webhook subscription '{subscription_id}'"
-        )
-
-    async def renew_subscriptions(self) -> Any:
-        """Renew active webhook subscriptions for this provider."""
-        raise NotImplementedError(f"Provider '{self.name}' does not support renewing webhook subscriptions")
-
-    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
-        """Delete a webhook subscription by ID."""
-        raise NotImplementedError(
-            f"Provider '{self.name}' does not support deleting webhook subscription '{subscription_id}'"
-        )
-
-    async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
-        """Update the callback URL of an existing webhook subscription."""
-        raise NotImplementedError(
-            f"Provider '{self.name}' does not support updating webhook subscription"
-            f" '{subscription_id}' to '{callback_url}'"
-        )
 
     @property
     def icon_url(self) -> str:

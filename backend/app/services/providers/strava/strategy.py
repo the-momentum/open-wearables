@@ -1,7 +1,3 @@
-from app.schemas.responses.incoming_webhooks import (
-    ProviderWebhookSubscription,
-    WebhookOperationResult,
-)
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.strava.oauth import StravaOAuth
 from app.services.providers.strava.webhook_handler import StravaWebhookHandler
@@ -36,6 +32,7 @@ class StravaStrategy(BaseProviderStrategy):
         self.data_247 = None
 
         self.webhooks = StravaWebhookHandler(workouts=self.workouts)
+        self.webhook_service = strava_webhook_service
 
     @property
     def name(self) -> str:
@@ -64,12 +61,3 @@ class StravaStrategy(BaseProviderStrategy):
         # Strava webhook events contain only the object_id and aspect_type;
         # the full activity must still be fetched via GET /activities/{id}.
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
-
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        return await strava_webhook_service.register_subscriptions(callback_url)
-
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
-        return await strava_webhook_service.list_subscriptions()
-
-    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
-        return await strava_webhook_service.delete_subscription(subscription_id)

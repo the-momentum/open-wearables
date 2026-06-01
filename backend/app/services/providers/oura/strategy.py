@@ -1,8 +1,3 @@
-from app.schemas.responses.incoming_webhooks import (
-    OuraWebhookSubscription,
-    ProviderWebhookSubscription,
-    WebhookOperationResult,
-)
 from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.oauth import OuraOAuth
@@ -45,6 +40,7 @@ class OuraStrategy(BaseProviderStrategy):
             data_247=self.data_247,
             workouts=self.workouts,
         )
+        self.webhook_service = oura_webhook_service
 
     @property
     def name(self) -> str:
@@ -59,21 +55,3 @@ class OuraStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
-
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        return await oura_webhook_service.register_subscriptions(callback_url)
-
-    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
-        return await oura_webhook_service.list_subscriptions()
-
-    async def get_subscription(self, subscription_id: str) -> OuraWebhookSubscription | None:
-        return await oura_webhook_service.get_subscription(subscription_id)
-
-    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
-        return await oura_webhook_service.delete_subscription(subscription_id)
-
-    async def update_subscription(self, subscription_id: str, callback_url: str) -> WebhookOperationResult:
-        return await oura_webhook_service.update_subscription(subscription_id, callback_url)
-
-    async def renew_subscriptions(self) -> list[dict]:
-        return await oura_webhook_service.renew_subscriptions()
