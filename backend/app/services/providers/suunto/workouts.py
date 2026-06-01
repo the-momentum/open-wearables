@@ -151,23 +151,28 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 
         workout_type = get_unified_workout_type(raw_workout.activityId)
 
-        start_date, end_date = self._extract_dates(raw_workout.startTime, raw_workout.stopTime)
+        # Fresh webhook payloads omit stopTime, so derive it from startTime + active time + pauses.
+        # Suunto's totalTime is the active timer time (FIT total_timer_time), pauses excluded.
+        # PauseMarkerExtension carries the gaps; sum them so end_datetime reflects real elapsed time.
+        active_time_ms = int(raw_workout.totalTime * 1000)
+        pause_total_ms = sum(p.duration_ms for p in raw_workout.pause_markers)
+        stop_time_ms = raw_workout.stopTime or raw_workout.startTime + active_time_ms + pause_total_ms
+        start_date, end_date = self._extract_dates(raw_workout.startTime, stop_time_ms)
         duration_seconds = int(raw_workout.totalTime)
 
         zone_offset = None
         if raw_workout.timeOffsetInMinutes is not None:
             zone_offset = offset_to_iso(raw_workout.timeOffsetInMinutes * 60)
 
-        # Source name: prefer displayName, then name, fallback to "Suunto"
-        if raw_workout.gear:
-            source_name = raw_workout.gear.displayName or raw_workout.gear.name or "Suunto"
+        # Newer Suunto watches (e.g. Race 2) deliver gear inside SummaryExtension instead of
+        # at the workout root; fall back to that if the top-level field is missing.
+        gear = raw_workout.gear or raw_workout.gear_from_summary_extension
+        if gear:
+            source_name = gear.displayName or gear.name or "Suunto"
+            device_model = gear.displayName or gear.name
         else:
             source_name = "Suunto"
-
-        # Device model: use display name or name from gear
-        device_model = None
-        if raw_workout.gear:
-            device_model = raw_workout.gear.displayName or raw_workout.gear.name
+            device_model = None
 
         metrics = self._build_metrics(raw_workout)
 
@@ -267,10 +272,18 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         db: DbSession,
         user_id: UUID,
         workout_key: str,
+        extensions: list[str] | None = None,
     ) -> dict:
-        """Get detailed workout data from Suunto API."""
+        """Get detailed workout data from Suunto API.
+
+        `extensions` maps to the `?extensions=Foo,Bar` query parameter; requested
+        blocks land in `payload.extensions[]`.
+        """
         headers = self._get_suunto_headers()
-        return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", headers=headers)
+        params: dict[str, str] | None = None
+        if extensions:
+            params = {"extensions": ",".join(extensions)}
+        return self._make_api_request(db, user_id, f"/v3/workouts/{workout_key}", params=params, headers=headers)
 
     def process_push_activity(self, db: DbSession, user_id: UUID, raw_workout: Any) -> UUID | None:
         """Save a single workout received via the live webhook push path.
@@ -285,14 +298,15 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
         if isinstance(raw_workout, dict):
             raw_workout = SuuntoWorkoutJSON(**raw_workout)
 
-        if raw_workout.gear:
-            device_name = raw_workout.gear.displayName or raw_workout.gear.name
+        gear = raw_workout.gear or raw_workout.gear_from_summary_extension
+        if gear:
+            device_name = gear.displayName or gear.name
             self.data_source_repo.ensure_data_source(
                 db,
                 user_id=user_id,
                 provider=ProviderName.SUUNTO,
                 device_model=device_name,
-                software_version=raw_workout.gear.swVersion,
+                software_version=gear.swVersion,
                 source=self.provider_name,
             )
 
