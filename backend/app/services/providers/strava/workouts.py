@@ -4,6 +4,7 @@ from typing import Any, Iterable
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.workout_segments import SegmentKind
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
 from app.schemas.enums import WorkoutType
@@ -11,6 +12,7 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
+    WorkoutSegment,
 )
 from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
 from app.services.event_record_service import event_record_service
@@ -224,10 +226,45 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         detail = EventRecordDetailCreate(
             record_id=workout_id,
+            segments=self._build_segments(raw_workout),
             **metrics,
         )
 
         return record, detail
+
+    def _build_segments(self, raw_workout: StravaActivityJSON) -> list[WorkoutSegment] | None:
+        """Build lap-kind segments — manual/device laps when set, else auto per-km splits (#1076)."""
+        laps = raw_workout.laps or []
+        splits = raw_workout.splits_metric or []
+        if len(laps) > 1 or (laps and not splits):
+            return [
+                WorkoutSegment(
+                    kind=SegmentKind.LAP,
+                    index=lap.lap_index,
+                    distance_meters=lap.distance,
+                    duration_seconds=lap.elapsed_time,
+                    moving_time_seconds=lap.moving_time,
+                    average_speed=lap.average_speed,
+                    average_heartrate=lap.average_heartrate,
+                    max_heartrate=int(lap.max_heartrate) if lap.max_heartrate is not None else None,
+                    average_cadence=lap.average_cadence,
+                    average_watts=lap.average_watts,
+                    total_elevation_gain=lap.total_elevation_gain,
+                )
+                for lap in laps
+            ]
+        return [
+            WorkoutSegment(
+                kind=SegmentKind.LAP,
+                index=split.split,
+                distance_meters=split.distance,
+                duration_seconds=split.elapsed_time,
+                moving_time_seconds=split.moving_time,
+                average_speed=split.average_speed,
+                average_heartrate=split.average_heartrate,
+            )
+            for split in splits
+        ] or None
 
     def _build_bundles(
         self,

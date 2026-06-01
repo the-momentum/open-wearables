@@ -31,11 +31,15 @@ Strava provides access to activity/workout data through their API. The integrati
 | Data Type | Support |
 |-----------|---------|
 | Workouts / Activities | Yes |
+| Workout segments (laps & km splits) | Yes |
+| Per-sample streams (HR, speed, cadence, power) | Yes |
 | Sleep | No |
 | Daily summaries (247 data) | No |
 | Body composition | No |
 
 Strava is an activity-focused platform — it does not provide continuous health monitoring data like sleep, HRV, or daily summaries.
+
+Workout **segments** are stored on `workout_details.segments` as `lap`-kind entries: the activity's manual/device laps when set (intervals), otherwise Strava's auto per-kilometre splits (`splits_metric`). Each segment carries distance, duration, average speed and heart rate (laps additionally carry cadence and power).
 
 ### Data delivery
 

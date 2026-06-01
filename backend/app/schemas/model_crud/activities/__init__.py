@@ -36,6 +36,7 @@ from .personal_record import (
     PersonalRecordUpdate,
 )
 from .sleep import SleepStage
+from .workout_segment import WorkoutSegment
 
 __all__ = [
     # DataPointSeries (rename from timeseries maybe)
@@ -65,6 +66,8 @@ __all__ = [
     "PersonalRecordResponse",
     # Sleep
     "SleepStage",
+    # WorkoutSegment
+    "WorkoutSegment",
     # HealthScore
     "ScoreComponent",
     "HealthScoreBase",

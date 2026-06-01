@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.model_crud.activities import SleepStage
+from app.schemas.model_crud.activities import SleepStage, WorkoutSegment
 from app.schemas.utils import SourceMetadata
 
 from .data_point_responses import TimeSeriesSample
@@ -26,6 +26,7 @@ class Workout(BaseModel):
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
+    segments: list[WorkoutSegment] | None = None
 
 
 class WorkoutDetailed(Workout):

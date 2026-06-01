@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from .sleep import SleepStage
+from .workout_segment import WorkoutSegment
 
 
 class EventRecordDetailBase(BaseModel):
@@ -29,6 +30,8 @@ class EventRecordDetailBase(BaseModel):
 
     elev_high: Decimal | None = None
     elev_low: Decimal | None = None
+
+    segments: list[WorkoutSegment] | None = None
 
     # Sleep-specific fields
     sleep_total_duration_minutes: int | None = None
