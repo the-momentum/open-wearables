@@ -161,6 +161,7 @@
             "pages": [
               "api-reference/guides/quick-integration",
               "api-reference/guides/webhooks",
+              "api-reference/guides/provider-webhook-subscriptions",
               "api-reference/guides/sync-status-stream",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",

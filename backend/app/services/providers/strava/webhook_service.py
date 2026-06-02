@@ -14,8 +14,16 @@ from logging import getLogger
 from typing import Any
 
 import httpx
+from pydantic import ValidationError
 
 from app.config import settings
+from app.schemas.responses.incoming_webhooks import (
+    ProviderWebhookSubscription,
+    StravaWebhookSubscription,
+    WebhookOperationResult,
+    WebhookSubscriptionStatus,
+)
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
@@ -24,7 +32,7 @@ logger = getLogger(__name__)
 _STRAVA_API_URL = "https://www.strava.com/api/v3"
 
 
-class StravaWebhookService:
+class StravaWebhookService(BaseWebhookService):
     """App-level Strava webhook subscription management."""
 
     @property
@@ -75,7 +83,7 @@ class StravaWebhookService:
                     action="strava_webhook_subscription_list_error",
                     error=str(e),
                 )
-                raise
+                return [{"status": "error", "error": str(e)}]
 
             if existing:
                 sub_id = existing.get("id")
@@ -158,7 +166,7 @@ class StravaWebhookService:
                 )
                 return [{"status": "error", "error": str(e)}]
 
-    async def list_subscriptions(self) -> list[dict[str, Any]]:
+    async def list_subscriptions(self) -> list[ProviderWebhookSubscription]:
         """List active Strava webhook subscriptions."""
         client_id, client_secret = self._get_strava_credentials()
 
@@ -169,7 +177,60 @@ class StravaWebhookService:
                 timeout=30.0,
             )
             response.raise_for_status()
-            return response.json()
+            raw = response.json() or []
+            result: list[ProviderWebhookSubscription] = []
+            for item in raw if isinstance(raw, list) else []:
+                try:
+                    result.append(StravaWebhookSubscription.model_validate(item))
+                except ValidationError as ve:
+                    log_structured(
+                        logger,
+                        "error",
+                        "Failed to parse Strava webhook subscription",
+                        provider="strava",
+                        action="strava_webhook_subscription_parse_error",
+                        error=str(ve),
+                    )
+            return result
+
+    async def delete_subscription(self, subscription_id: str) -> WebhookOperationResult:
+        """Delete a Strava webhook subscription by ID."""
+        client_id, client_secret = self._get_strava_credentials()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.delete(
+                    f"{self.api_current_url}/push_subscriptions/{subscription_id}",
+                    params={"client_id": client_id, "client_secret": client_secret},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as e:
+            log_structured(
+                logger,
+                "error",
+                "Failed to delete Strava webhook subscription",
+                provider="strava",
+                action="strava_webhook_subscription_delete_error",
+                subscription_id=subscription_id,
+                error=str(e),
+                status_code=e.response.status_code if isinstance(e, httpx.HTTPStatusError) else None,
+            )
+            return WebhookOperationResult(
+                subscription_id=subscription_id,
+                status=WebhookSubscriptionStatus.ERROR,
+                error=str(e),
+            )
+
+        log_structured(
+            logger,
+            "info",
+            "Strava webhook subscription deleted",
+            provider="strava",
+            action="strava_webhook_subscription_deleted",
+            subscription_id=subscription_id,
+        )
+        return WebhookOperationResult(subscription_id=subscription_id, status=WebhookSubscriptionStatus.DELETED)
 
 
 strava_webhook_service = StravaWebhookService()
