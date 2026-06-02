@@ -354,6 +354,40 @@ class Whoop247Data(Base247DataTemplate):
                 user_id=str(user_id),
             )
 
+        # WHOOP exposes respiratory rate as a sleep-score component, not a
+        # timeseries, so it never reaches data_point_series via the recovery path
+        # that handles RHR/HRV/SpO2/skin-temp. Write it here so it lands in the
+        # unified series and emits `series.respiratory_rate.created` like the
+        # other nightly metrics. Main sleep only: a nap must not overwrite the
+        # night's value. recorded_at uses the sleep end so it buckets to the
+        # correct day downstream.
+        respiratory_rate = normalized_sleep.get("respiratory_rate")
+        if respiratory_rate is not None and not normalized_sleep.get("is_nap", False):
+            try:
+                timeseries_service.bulk_create_samples(
+                    db,
+                    [
+                        TimeSeriesSampleCreate(
+                            id=uuid4(),
+                            user_id=user_id,
+                            source=self.provider_name,
+                            recorded_at=end_dt,
+                            value=Decimal(str(respiratory_rate)),
+                            series_type=SeriesType.respiratory_rate,
+                        )
+                    ],
+                )
+                db.commit()
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to save respiratory_rate sample for sleep {sleep_id}: {e}",
+                    provider="whoop",
+                    task="save_sleep_data",
+                    user_id=str(user_id),
+                )
+
     def get_sleep_record(
         self,
         db: DbSession,

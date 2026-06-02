@@ -14,6 +14,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         *RECOVERY_SERIES.values(),  # /v2/recovery
         SeriesType.height,  # /v2/user/measurement/body
         SeriesType.weight,  # /v2/user/measurement/body
+        SeriesType.respiratory_rate,  # Synaptik: respiratory_rate written in save_sleep_data (Thread 14f)
     }
 )
 
