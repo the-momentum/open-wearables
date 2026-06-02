@@ -53,9 +53,12 @@ from app.utils.pagination import (
 from app.utils.structured_logging import log_structured
 
 # Series types needed for sleep physiological metrics
-# TODO: Add HRV, respiratory rate, and SpO2 when ready
 SLEEP_PHYSIO_SERIES_TYPES = [
     SeriesType.heart_rate,
+    SeriesType.heart_rate_variability_sdnn,
+    SeriesType.heart_rate_variability_rmssd,
+    SeriesType.respiratory_rate,
+    SeriesType.oxygen_saturation,
 ]
 
 # Activity summary constants
@@ -311,9 +314,11 @@ class SummariesService:
                     awake_minutes=result.get("awake_minutes"),
                 )
 
-            # Fetch average heart rate during the sleep period
-            # TODO: Add HRV, respiratory rate, and SpO2 when ready
             avg_hr: int | None = None
+            avg_hrv_sdnn: float | None = None
+            avg_hrv_rmssd: float | None = None
+            avg_respiratory_rate: float | None = None
+            avg_spo2_percent: float | None = None
 
             sleep_start = result.get("min_start_time")
             sleep_end = result.get("max_end_time")
@@ -328,11 +333,15 @@ class SummariesService:
                     )
                     hr_avg = physio_averages.get(SeriesType.heart_rate)
                     avg_hr = int(round(hr_avg)) if hr_avg is not None else None
+                    avg_hrv_sdnn = physio_averages.get(SeriesType.heart_rate_variability_sdnn)
+                    avg_hrv_rmssd = physio_averages.get(SeriesType.heart_rate_variability_rmssd)
+                    avg_respiratory_rate = physio_averages.get(SeriesType.respiratory_rate)
+                    avg_spo2_percent = physio_averages.get(SeriesType.oxygen_saturation)
                 except Exception as e:
                     log_structured(
                         self.logger,
                         "warning",
-                        f"Failed to fetch heart rate metrics for sleep: {e}",
+                        f"Failed to fetch physiological metrics for sleep: {e}",
                         sleep_start=sleep_start,
                         sleep_end=sleep_end,
                     )
@@ -349,10 +358,10 @@ class SummariesService:
                 nap_count=result.get("nap_count"),
                 nap_duration_minutes=result.get("nap_duration_minutes"),
                 avg_heart_rate_bpm=avg_hr,
-                # TODO: Implement these when ready
-                avg_hrv_sdnn_ms=None,
-                avg_respiratory_rate=None,
-                avg_spo2_percent=None,
+                avg_hrv_sdnn_ms=avg_hrv_sdnn,
+                avg_hrv_rmssd_ms=avg_hrv_rmssd,
+                avg_respiratory_rate=avg_respiratory_rate,
+                avg_spo2_percent=avg_spo2_percent,
             )
             data.append(summary)
 

@@ -40,6 +40,7 @@ class OuraStrategy(BaseProviderStrategy):
             data_247=self.data_247,
             workouts=self.workouts,
         )
+        self.webhook_service = oura_webhook_service
 
     @property
     def name(self) -> str:
@@ -54,6 +55,3 @@ class OuraStrategy(BaseProviderStrategy):
     @property
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(rest_pull=True, webhook_ping=True, webhook_registration_api=True)
-
-    async def register_webhooks(self, callback_url: str) -> list[dict]:
-        return await oura_webhook_service.register_subscriptions(callback_url)

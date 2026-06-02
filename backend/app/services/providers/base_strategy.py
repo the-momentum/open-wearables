@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from celery import current_app as celery_app
@@ -14,6 +14,7 @@ from app.schemas.auth import LiveSyncMode
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.services.providers.templates.base_webhook_service import BaseWebhookService
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.exceptions import UnsupportedProviderError
 
@@ -105,6 +106,7 @@ class BaseProviderStrategy(ABC):
         self.workouts: BaseWorkoutsTemplate | None = None
         self.data_247: Base247DataTemplate | None = None
         self.webhooks: BaseWebhookHandler | None = None
+        self.webhook_service: BaseWebhookService | None = None
 
     @property
     @abstractmethod
@@ -218,14 +220,6 @@ class BaseProviderStrategy(ABC):
         if caps.webhook_ping or caps.webhook_stream:
             return LiveSyncMode.WEBHOOK
         return None
-
-    async def register_webhooks(self, callback_url: str) -> Any:
-        """Register webhook subscriptions for this provider.
-
-        Only meaningful when ``capabilities.webhook_registration_api`` is True.
-        Concrete strategies that support programmatic registration should override this.
-        """
-        raise NotImplementedError(f"Provider '{self.name}' does not support programmatic webhook registration")
 
     @property
     def icon_url(self) -> str:

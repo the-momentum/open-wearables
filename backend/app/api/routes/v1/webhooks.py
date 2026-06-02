@@ -25,16 +25,35 @@ into its strategy, traffic can be cut over to this router.
 from logging import getLogger
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.database import DbSession
+from app.schemas.responses.incoming_webhooks import (
+    WebhookDeletedResponse,
+    WebhookSubscriptionResponse,
+    WebhookSubscriptionsResponse,
+    WebhookUpdatedResponse,
+)
+from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.templates.base_webhook_handler import BaseWebhookHandler
+from app.utils.auth import DeveloperDep
 
 router = APIRouter()
 logger = getLogger(__name__)
 
 _factory = ProviderFactory()
+
+
+def _get_strategy(provider: str) -> BaseProviderStrategy:
+    """Resolve and return the provider strategy, raising 404 for unknown providers."""
+    try:
+        return _factory.get_provider(provider)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
+
+
+StrategyDep = Annotated[BaseProviderStrategy, Depends(_get_strategy)]
 
 
 def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
@@ -46,11 +65,11 @@ def _get_webhook_handler(provider: str) -> BaseWebhookHandler:
     try:
         strategy = _factory.get_provider(provider)
     except ValueError:
-        raise HTTPException(status_code=404, detail=f"Unknown provider: '{provider}'")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown provider: '{provider}'")
 
     if strategy.webhooks is None:
         raise HTTPException(
-            status_code=501,
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=(
                 f"Provider '{provider}' has not implemented a webhook handler yet. "
                 f"Capabilities: {strategy.capabilities}"
@@ -104,3 +123,121 @@ def verify_provider_webhook(provider: str, request: Request) -> dict:
     """
     handler = _get_webhook_handler(provider)
     return handler.handle_challenge(request)
+
+
+# ---------------------------------------------------------------------------
+# Subscription management (internal / developer-only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/subscriptions")
+async def list_webhook_subscriptions(
+    strategy: StrategyDep,
+    _dev: DeveloperDep,
+) -> WebhookSubscriptionsResponse:
+    """List active webhook subscriptions for a provider."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.list_subscriptions()
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return WebhookSubscriptionsResponse(subscriptions=result)
+
+
+@router.post("/subscriptions")
+async def register_webhook_subscriptions(
+    strategy: StrategyDep,
+    _dev: DeveloperDep,
+    callback_url: str,
+) -> dict:
+    """Register or update webhook subscriptions for a provider."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.register_subscriptions(callback_url)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return {"subscriptions": result}
+
+
+@router.post("/subscriptions/renew")
+async def renew_webhook_subscriptions(
+    strategy: StrategyDep,
+    _dev: DeveloperDep,
+) -> dict:
+    """Renew all active webhook subscriptions for a provider."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.renew_subscriptions()
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return {"renewed": result}
+
+
+@router.get("/subscriptions/{subscription_id}")
+async def get_webhook_subscription(
+    strategy: StrategyDep,
+    subscription_id: str,
+    _dev: DeveloperDep,
+) -> WebhookSubscriptionResponse:
+    """Get a single webhook subscription by ID."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.get_subscription(subscription_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return WebhookSubscriptionResponse(subscription=result)
+
+
+@router.delete("/subscriptions/{subscription_id}")
+async def delete_webhook_subscription(
+    strategy: StrategyDep,
+    subscription_id: str,
+    _dev: DeveloperDep,
+) -> WebhookDeletedResponse:
+    """Delete a webhook subscription by ID."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.delete_subscription(subscription_id)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return WebhookDeletedResponse(deleted=result)
+
+
+@router.put("/subscriptions/{subscription_id}")
+async def update_webhook_subscription(
+    strategy: StrategyDep,
+    subscription_id: str,
+    _dev: DeveloperDep,
+    callback_url: str,
+) -> WebhookUpdatedResponse:
+    """Update the callback URL of a webhook subscription."""
+    if strategy.webhook_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Provider does not support webhook subscription management",
+        )
+    try:
+        result = await strategy.webhook_service.update_subscription(subscription_id, callback_url)
+    except NotImplementedError as e:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
+    return WebhookUpdatedResponse(updated=result)

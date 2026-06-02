@@ -61,6 +61,7 @@ class SleepSummary(BaseModel):
     nap_duration_minutes: int | None = Field(None, description="Total nap duration", example=30)
     avg_heart_rate_bpm: int | None = None
     avg_hrv_sdnn_ms: float | None = Field(None, description="Average HRV (SDNN) during sleep")
+    avg_hrv_rmssd_ms: float | None = Field(None, description="Average HRV (RMSSD) during sleep")
     avg_respiratory_rate: float | None = None
     avg_spo2_percent: float | None = None
 
