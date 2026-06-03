@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.schemas.enums import HealthScoreCategory, ProviderName
 from app.services.providers.oura.data_247 import Oura247Data
 from app.services.providers.oura.strategy import OuraStrategy
 
@@ -168,3 +169,69 @@ class TestOura247ActivityNormalization:
         assert samples["steps"] == []
         assert samples["energy"] == []
         assert samples["distance"] == []
+
+
+class TestOura247StressNormalization:
+    """Test daily stress score normalization."""
+
+    @pytest.fixture
+    def data_247(self) -> Oura247Data:
+        strategy = OuraStrategy()
+        return strategy.data_247
+
+    def test_normalize_daily_stress_uses_score_when_present(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = [
+            {
+                "id": "stress-1",
+                "day": "2024-01-15",
+                "score": 72,
+                "day_summary": "stressful",
+                "stress_high": 3600,
+                "recovery_high": 1800,
+            }
+        ]
+
+        scores = data_247.normalize_daily_stress_scores(raw, user_id)
+
+        assert len(scores) == 1
+        assert scores[0].user_id == user_id
+        assert scores[0].provider == ProviderName.OURA
+        assert scores[0].category == HealthScoreCategory.STRESS
+        assert scores[0].value == 72
+        assert scores[0].qualifier == "stressful"
+        assert scores[0].components
+        assert scores[0].components["stress_high_seconds"].value == 3600
+        assert scores[0].components["recovery_high_seconds"].value == 1800
+
+    def test_normalize_daily_stress_derives_score_from_durations(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = [
+            {
+                "id": "stress-1",
+                "day": "2024-01-15",
+                "day_summary": "normal",
+                "stress_high": 1800,
+                "recovery_high": 5400,
+            }
+        ]
+
+        scores = data_247.normalize_daily_stress_scores(raw, user_id)
+
+        assert len(scores) == 1
+        assert scores[0].value == 25
+
+    def test_normalize_daily_stress_uses_summary_fallback(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = [
+            {
+                "id": "stress-1",
+                "day": "2024-01-15",
+                "day_summary": "restored",
+            }
+        ]
+
+        scores = data_247.normalize_daily_stress_scores(raw, user_id)
+
+        assert len(scores) == 1
+        assert scores[0].value == 20

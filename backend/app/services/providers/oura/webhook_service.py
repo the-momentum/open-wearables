@@ -35,6 +35,7 @@ OURA_WEBHOOK_DATA_TYPES = [
     "daily_readiness",
     "daily_activity",
     "daily_spo2",
+    "daily_stress",
     "daily_cardiovascular_age",
     "vo2_max",
     #
@@ -43,7 +44,6 @@ OURA_WEBHOOK_DATA_TYPES = [
     # "sleep_time",
     # "rest_mode_period",
     # "ring_configuration",
-    # "daily_stress",
     # "daily_cycle_phases",
     # "activation_status",
     # "daily_resilience",

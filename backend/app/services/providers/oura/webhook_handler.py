@@ -23,7 +23,7 @@ the actual API fetch and DB write, called by the task.
 
 Supported data types
 ---------------------
-  workout / daily_sleep / sleep / daily_readiness / daily_activity / daily_spo2
+  workout / daily_sleep / sleep / daily_readiness / daily_activity / daily_spo2 / daily_stress
 
 See: https://cloud.ouraring.com/v2/docs#tag/Webhook-Subscription-Routes
 """
@@ -58,6 +58,7 @@ SUPPORTED_DATA_TYPES = [
     "daily_readiness",
     "daily_activity",
     "daily_spo2",
+    "daily_stress",
     "daily_cardiovascular_age",
     "vo2_max",
 ]
@@ -301,6 +302,10 @@ class OuraWebhookHandler(BaseWebhookHandler):
                 )
             case "daily_spo2":
                 return self.data_247.save_spo2_data(db, user_id, docs)
+            case "daily_stress":
+                return self.data_247.save_daily_stress_scores(
+                    db, user_id, self.data_247.normalize_daily_stress_scores(docs, user_id)
+                )
             case "daily_cardiovascular_age":
                 return self.data_247.save_cardiovascular_age_data(
                     db, user_id, self.data_247.normalize_cardiovascular_age_samples(docs, user_id)

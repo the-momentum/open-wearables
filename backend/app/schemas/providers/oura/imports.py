@@ -145,6 +145,29 @@ class OuraActivityCollectionJSON(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Daily Stress
+# ---------------------------------------------------------------------------
+
+
+class OuraDailyStressJSON(BaseModel):
+    """Single daily stress record from Oura API v2 /usercollection/daily_stress."""
+
+    id: str
+    day: str | None = None  # YYYY-MM-DD
+    score: int | None = None  # Optional in Oura docs examples, absent from current OpenAPI schema
+    day_summary: str | None = None  # restored / normal / stressful
+    recovery_high: int | None = None  # seconds
+    stress_high: int | None = None  # seconds
+
+
+class OuraDailyStressCollectionJSON(BaseModel):
+    """Paginated daily stress collection response."""
+
+    data: list[OuraDailyStressJSON] = []
+    next_token: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Heart Rate
 # ---------------------------------------------------------------------------
 
