@@ -7,6 +7,7 @@ happens in the worker process.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from typing import Any
@@ -115,7 +116,15 @@ def on_sleep_created(
     efficiency_percent: float | None = None,
     stages: dict[str, int | None] | None = None,
     is_nap: bool | None = None,
+    is_merge: bool = False,
 ) -> None:
+    # Hash mutable fields into the idempotency_key so successive merged saves
+    # of the same record produce distinct Svix events (per SLEEP_CREATED
+    # description: "A new (or merged) sleep session was saved.") while
+    # genuine retries of the same payload still dedupe.
+    rev = hashlib.md5(
+        f"{start_time}|{end_time}|{duration_seconds}|{efficiency_percent}|{stages}|{is_nap}".encode()
+    ).hexdigest()[:12]
     _dispatch(
         WebhookEventType.SLEEP_CREATED,
         {
@@ -131,12 +140,12 @@ def on_sleep_created(
                 "efficiency_percent": efficiency_percent,
                 "stages": stages,
                 "is_nap": is_nap,
+                "is_merge": is_merge,
             },
         },
-        idempotency_key=f"sleep.created.{record_id}",
+        idempotency_key=f"sleep.created.{record_id}.{rev}",
         channels=[f"user.{user_id}"],
     )
-
 
 def on_timeseries_batch_saved(
     *,
