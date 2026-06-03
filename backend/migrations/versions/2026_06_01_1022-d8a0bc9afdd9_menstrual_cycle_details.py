@@ -1,7 +1,7 @@
 """menstrual cycle details
 
 Revision ID: d8a0bc9afdd9
-Revises: 6b11080054a0
+Revises: 2d316787b998
 
 """
 
