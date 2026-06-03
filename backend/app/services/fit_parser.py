@@ -50,8 +50,8 @@ _RECORD_FIELD_MAP: tuple[_FieldMapping, ...] = (
     # FIT stores vertical_oscillation in mm, SeriesType unit is cm
     _FieldMapping(("vertical_oscillation",), SeriesType.running_vertical_oscillation, _scale(0.1)),
     _FieldMapping(("stance_time",), SeriesType.running_ground_contact_time),
-    # FIT stores stride_length in mm, SeriesType unit is cm
-    _FieldMapping(("stride_length",), SeriesType.running_stride_length, _scale(0.1)),
+    # FIT stores step_length in mm, SeriesType unit is cm
+    _FieldMapping(("step_length",), SeriesType.running_stride_length, _scale(0.1)),
     # Pending #1074:
     # _FieldMapping(("enhanced_altitude", "altitude"), SeriesType.elevation),
     # _FieldMapping(("position_lat",), SeriesType.latitude, _scale(_SEMICIRCLES_TO_DEGREES)),
