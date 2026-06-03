@@ -5,12 +5,18 @@ Field numbers and base types follow the ANT+ FIT Protocol specification.
 
 Record message (global_mesg_num=20) fields used here:
   253  timestamp            uint32  (FIT epoch seconds)
+    0  position_lat         sint32  (semicircles, no scale; parser converts to degrees)
+    1  position_long        sint32  (semicircles, no scale)
     3  heart_rate           uint8   (bpm)
     4  cadence              uint8   (rpm)
     6  speed                uint16  (raw = m/s * 1000, fitdecode divides by scale=1000)
     7  power                uint16  (watts)
+   13  temperature          sint8   (°C, no scale)
    39  vertical_oscillation uint16  (raw = mm * 10, fitdecode divides by scale=10 → mm)
    41  stance_time          uint16  (raw = ms * 10, fitdecode divides by scale=10 → ms)
+   78  enhanced_altitude    uint32  (raw = (meters + 500) * 5, fitdecode → meters)
+   83  vertical_ratio       uint16  (raw = % * 100, fitdecode divides by scale=100)
+   84  stance_time_balance  uint16  (raw = % * 100, fitdecode divides by scale=100)
 """
 
 import struct
@@ -21,9 +27,14 @@ from typing import NamedTuple
 _FIT_EPOCH_UNIX: int = 631065600
 
 # Base type byte values used in definition messages
+_SINT8: int = 0x01
 _UINT8: int = 0x02
 _UINT16: int = 0x84
 _UINT32: int = 0x86
+_SINT32: int = 0x85
+
+# GPS: degrees × (2^31 / 180) = semicircles
+_DEG_TO_SEMICIRCLES: float = 2**31 / 180
 
 # FIT CRC table (from ANT+ FIT SDK)
 _CRC_TABLE: tuple[int, ...] = (
@@ -82,12 +93,13 @@ def _data_msg(fields: list[_Field], values: list[int]) -> bytes:
     header = 0x00  # data, local_mesg_type=0
     body = b""
     for f, v in zip(fields, values):
+        signed = f.base_type in (_SINT8, _SINT32)
         if f.size == 1:
-            body += struct.pack("<B", v)
+            body += struct.pack("<b" if signed else "<B", v)
         elif f.size == 2:
             body += struct.pack("<H", v)
         elif f.size == 4:
-            body += struct.pack("<I", v)
+            body += struct.pack("<i" if signed else "<I", v)
     return bytes([header]) + body
 
 
@@ -106,31 +118,44 @@ def _fit_file(messages: bytes) -> bytes:
 
 
 def make_running_fit(n_records: int = 20) -> bytes:
-    """Synthetic running activity: HR + speed + cadence + power + running dynamics."""
+    """Synthetic running activity: full sensor set including GPS and running dynamics."""
+    _LAT = int(50.0 * _DEG_TO_SEMICIRCLES)   # 50°N
+    _LON = int(20.0 * _DEG_TO_SEMICIRCLES)   # 20°E
+    _ALT_RAW = int((200.0 + 500) * 5)        # 200 m → raw enhanced_altitude
+
     fields = [
-        _Field(253, _UINT32, 4),  # timestamp
-        _Field(3, _UINT8, 1),  # heart_rate
-        _Field(4, _UINT8, 1),  # cadence
-        _Field(6, _UINT16, 2),  # speed (raw = m/s * 1000)
-        _Field(7, _UINT16, 2),  # power
-        _Field(39, _UINT16, 2),  # vertical_oscillation (raw = mm * 10)
-        _Field(41, _UINT16, 2),  # stance_time (raw = ms * 10)
+        _Field(253, _UINT32, 4),   # timestamp
+        _Field(0, _SINT32, 4),     # position_lat (semicircles)
+        _Field(1, _SINT32, 4),     # position_long (semicircles)
+        _Field(3, _UINT8, 1),      # heart_rate
+        _Field(4, _UINT8, 1),      # cadence
+        _Field(6, _UINT16, 2),     # speed (raw = m/s * 1000)
+        _Field(7, _UINT16, 2),     # power
+        _Field(13, _SINT8, 1),     # temperature (°C)
+        _Field(39, _UINT16, 2),    # vertical_oscillation (raw = mm * 10)
+        _Field(41, _UINT16, 2),    # stance_time (raw = ms * 10)
+        _Field(78, _UINT32, 4),    # enhanced_altitude (raw = (m + 500) * 5)
+        _Field(83, _UINT16, 2),    # vertical_ratio (raw = % * 100)
+        _Field(84, _UINT16, 2),    # stance_time_balance (raw = % * 100)
     ]
     start_ts = _fit_ts(datetime(2025, 6, 1, 8, 0, 0, tzinfo=timezone.utc))
     messages = _definition_msg(fields)
     for i in range(n_records):
-        messages += _data_msg(
-            fields,
-            [
-                start_ts + i,  # timestamp: 1 second apart
-                150 + i % 10,  # heart_rate: 150-159 bpm
-                85,  # cadence: 85 rpm
-                3200,  # speed: 3.2 m/s
-                250,  # power: 250 W
-                850,  # vertical_oscillation: 850/10 = 85 mm = 8.5 cm
-                2400,  # stance_time: 2400/10 = 240 ms
-            ],
-        )
+        messages += _data_msg(fields, [
+            start_ts + i,
+            _LAT,
+            _LON,
+            150 + i % 10,  # heart_rate: 150-159 bpm
+            85,             # cadence: 85 rpm
+            3200,           # speed: 3.2 m/s
+            250,            # power: 250 W
+            18,             # temperature: 18°C
+            850,            # vertical_oscillation: 8.5 cm
+            2400,           # stance_time: 240 ms
+            _ALT_RAW,       # enhanced_altitude: 200 m
+            850,            # vertical_ratio: 8.5%
+            4950,           # stance_time_balance: 49.5%
+        ])
     return _fit_file(messages)
 
 

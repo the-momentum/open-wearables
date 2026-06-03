@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
+import httpx
+
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
@@ -22,6 +24,7 @@ from app.schemas.model_crud.activities import (
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
+from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -30,13 +33,16 @@ from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
 # activityDetails.samples[] field → SeriesType mapping.
-# Only includes types already seeded in series_type_definition.
-# GPS/elevation (elevation, latitude, longitude) excluded until #1074.
 _ACTIVITY_SAMPLE_FIELD_MAP: list[tuple[str, SeriesType]] = [
     ("heartRate", SeriesType.heart_rate),
     ("speedMetersPerSecond", SeriesType.speed),
     ("stepsPerMinute", SeriesType.cadence),
     ("powerInWatts", SeriesType.power),
+    ("elevationInMeters", SeriesType.elevation),
+    ("latitudeInDegree", SeriesType.latitude),
+    ("longitudeInDegree", SeriesType.longitude),
+    # Note: Garmin API uses "Celcius" (sic) — matches the actual JSON field name
+    ("airTemperatureCelcius", SeriesType.air_temperature),
 ]
 
 

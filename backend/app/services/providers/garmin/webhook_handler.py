@@ -55,6 +55,7 @@ WELLNESS_TYPES: list[str] = [
     "userMetrics",
     "bloodPressures",
     "activityDetails",
+    "activityFiles",
 ]
 
 # Celery task paths — used with send_task() to avoid circular imports

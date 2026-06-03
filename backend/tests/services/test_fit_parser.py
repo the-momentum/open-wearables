@@ -39,6 +39,12 @@ class TestRunning:
         assert SeriesType.power in types
         assert SeriesType.running_vertical_oscillation in types
         assert SeriesType.running_ground_contact_time in types
+        assert SeriesType.latitude in types
+        assert SeriesType.longitude in types
+        assert SeriesType.elevation in types
+        assert SeriesType.air_temperature in types
+        assert SeriesType.running_vertical_ratio in types
+        assert SeriesType.running_stance_time_balance in types
 
     def test_granularity_one_second(self, running: FitParseResult) -> None:
         hr = sorted(s.recorded_at for s in running.samples if s.series_type == SeriesType.heart_rate)
@@ -66,10 +72,28 @@ class TestRunning:
         assert s.recorded_at is not None
         assert s.recorded_at.tzinfo is not None
 
-    def test_no_gps_series_types(self, running: FitParseResult) -> None:
-        types = {t.value for t in {s.series_type for s in running.samples}}
-        assert "elevation" not in types
-        assert "latitude" not in types
+    def test_gps_values_in_degree_range(self, running: FitParseResult) -> None:
+        lats = [s.value for s in running.samples if s.series_type == SeriesType.latitude]
+        lons = [s.value for s in running.samples if s.series_type == SeriesType.longitude]
+        assert all(Decimal(-90) <= v <= Decimal(90) for v in lats)
+        assert all(Decimal(-180) <= v <= Decimal(180) for v in lons)
+
+    def test_elevation_in_meters(self, running: FitParseResult) -> None:
+        vals = [s.value for s in running.samples if s.series_type == SeriesType.elevation]
+        # synthetic: 200 m
+        assert all(Decimal(0) <= v <= Decimal(9000) for v in vals)
+
+    def test_temperature_in_celsius_range(self, running: FitParseResult) -> None:
+        vals = [s.value for s in running.samples if s.series_type == SeriesType.air_temperature]
+        # synthetic: 18°C
+        assert all(Decimal(-50) <= v <= Decimal(60) for v in vals)
+
+    def test_running_dynamics_in_range(self, running: FitParseResult) -> None:
+        vr = [s.value for s in running.samples if s.series_type == SeriesType.running_vertical_ratio]
+        stb = [s.value for s in running.samples if s.series_type == SeriesType.running_stance_time_balance]
+        # synthetic: vertical_ratio=8.5%, stance_time_balance=49.5%
+        assert all(Decimal(0) <= v <= Decimal(100) for v in vr)
+        assert all(Decimal(0) <= v <= Decimal(100) for v in stb)
 
 
 class TestCycling:

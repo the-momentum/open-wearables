@@ -70,8 +70,9 @@ def process_wellness_items(
 
         user_id = connection.user_id
 
-        if "callbackURL" in notification:
+        if "callbackURL" in notification and summary_type != "activityFiles":
             # PING not supported; Garmin must be configured for PUSH-only delivery.
+            # Exception: activityFiles always carries a callbackURL for FIT download.
             continue
         # PUSH: inline data
         user_items.setdefault(user_id, []).append(notification)

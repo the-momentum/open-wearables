@@ -52,11 +52,14 @@ _RECORD_FIELD_MAP: tuple[_FieldMapping, ...] = (
     _FieldMapping(("stance_time",), SeriesType.running_ground_contact_time),
     # FIT stores step_length in mm, SeriesType unit is cm
     _FieldMapping(("step_length",), SeriesType.running_stride_length, _scale(0.1)),
-    # Pending #1074:
-    # _FieldMapping(("enhanced_altitude", "altitude"), SeriesType.elevation),
-    # _FieldMapping(("position_lat",), SeriesType.latitude, _scale(_SEMICIRCLES_TO_DEGREES)),
-    # _FieldMapping(("position_long",), SeriesType.longitude, _scale(_SEMICIRCLES_TO_DEGREES)),
-    # _FieldMapping(("temperature",), SeriesType.air_temperature),
+    _FieldMapping(("enhanced_altitude", "altitude"), SeriesType.elevation),
+    _FieldMapping(("position_lat",), SeriesType.latitude, _scale(_SEMICIRCLES_TO_DEGREES)),
+    _FieldMapping(("position_long",), SeriesType.longitude, _scale(_SEMICIRCLES_TO_DEGREES)),
+    _FieldMapping(("temperature",), SeriesType.air_temperature),
+    # FIT stores vertical_ratio as %, scale=100 (raw/100 = physical %)
+    _FieldMapping(("vertical_ratio",), SeriesType.running_vertical_ratio),
+    # FIT stores stance_time_balance as %, scale=100 (raw/100 = physical %)
+    _FieldMapping(("stance_time_balance",), SeriesType.running_stance_time_balance),
 )
 
 # ---------------------------------------------------------------------------
@@ -74,7 +77,7 @@ class FitParseResult:
 def parse_fit_file(
     data: bytes,
     user_id: UUID,
-    data_source_id: UUID,
+    data_source_id: UUID | None = None,
     source: str | None = None,
 ) -> FitParseResult:
     result = FitParseResult()
