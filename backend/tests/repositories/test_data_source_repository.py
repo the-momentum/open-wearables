@@ -6,7 +6,7 @@ HealthKit tags on-device data with a source bundle identifier of the form
 ``com.apple.health.<UUID>`` (53 chars). This overflowed the previous
 ``VARCHAR(50)`` and aborted the entire SDK import batch with
 ``StringDataRightTruncation``, so no Apple sleep/records were ever saved.
-The column is now ``VARCHAR(255)``.
+The column is now ``VARCHAR(100)``.
 """
 
 from sqlalchemy.orm import Session
