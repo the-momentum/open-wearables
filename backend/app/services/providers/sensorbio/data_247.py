@@ -356,6 +356,7 @@ class SensorBio247Data(Base247DataTemplate):
             "spo2_percentage": biometrics.spo2 if biometrics else None,
             "raw": raw_recovery,
         }
+
     def save_recovery_data(self, db: DbSession, user_id: UUID, normalized_recovery: dict[str, Any]) -> int:
         """Persist normalized recovery data: biometric timeseries + health score.
 
@@ -694,9 +695,7 @@ class SensorBio247Data(Base247DataTemplate):
             "raw": raw_stats,
         }
 
-    def save_daily_activity(
-        self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]
-    ) -> int:
+    def save_daily_activity(self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]) -> int:
         """Persist steps/energy/distance_walking_running as timeseries.
 
         Mirrors polar/data_247.py ~347-382.

@@ -1,14 +1,14 @@
 ---
 title: "Wearable API Coverage Matrix"
 sidebarTitle: "Coverage Matrix"
-description: "Data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, and Sensor Bio. OAuth, workouts, sleep, and timeseries support."
+description: "Data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, and Sensor Bio. OAuth, workouts, sleep, and timeseries support."
 keywords: ["wearable api coverage", "health data types by provider", "wearable data types", "provider data support"]
 "og:title": "Wearable API Coverage Matrix | Open Wearables"
-"og:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, Sensor Bio."
+"og:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Sensor Bio."
 "og:url": "https://docs.openwearables.io/providers/coverage"
 "og:type": "article"
 "twitter:title": "Wearable API Coverage Matrix | Open Wearables"
-"twitter:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, Sensor Bio."
+"twitter:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Sensor Bio."
 "twitter:card": "summary_large_image"
 ---
 
@@ -168,25 +168,25 @@ These metrics are unique to specific providers and don't have a universal equiva
 
 Sleep tracking varies significantly across providers. Here's what each provider offers:
 
-| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
-|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| Sleep sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Total duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Time in bed | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Sleep efficiency | 🔜 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Sleep Stages** | | | | | | | | |
-| Stage timestamps | ✅ | ✅ | ✅ | ❌ | ✅ | 🔜 | 🔜 | ❌ |
-| Deep sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Light sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| REM sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Awake time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Biometrics During Sleep** | | | | | | | | |
-| Average heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ |
-| Min heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ |
-| Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ |
-| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Sensor Bio |
+|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:----------:|
+| Sleep sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Total duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Time in bed | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Sleep efficiency | 🔜 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Sleep Stages** | | | | | | | | | |
+| Stage timestamps | ✅ | ✅ | ✅ | ❌ | ✅ | 🔜 | 🔜 | ❌ | ❌ |
+| Deep sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Light sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| REM sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Awake time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Biometrics During Sleep** | | | | | | | | | |
+| Average heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
+| Min heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
+| Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ |
+| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 
 <Info>
   🔜 = Data available from provider API/SDK but processing not yet implemented in Open Wearables.
@@ -198,33 +198,33 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 
 All providers that support workouts provide these common fields:
 
-| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
-|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| Workout sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Start/end time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| **Heart Rate** | | | | | | | | |
-| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Max heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Activity Metrics** | | | | | | | | |
-| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ | ❌ | ✅ |
-| **Speed & Power** | | | | | | | | |
-| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| **Elevation** | | | | | | | | |
-| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ |
-| **Other** | | | | | | | | |
-| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ |
+| Feature | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Sensor Bio |
+|---------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:----------:|
+| Workout sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Start/end time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Heart Rate** | | | | | | | | | |
+| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Max heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Activity Metrics** | | | | | | | | | |
+| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| **Speed & Power** | | | | | | | | | |
+| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Elevation** | | | | | | | | | |
+| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ |
+| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Other** | | | | | | | | | |
+| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <Accordion title="Apple Workout Data Note">
   Most workout metrics are supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation). Moving time and max watts are not yet implemented.
@@ -240,16 +240,16 @@ All providers that support workouts provide these common fields:
 
 Health scores are composite metrics that summarize a specific aspect of health into a single number. Open Wearables persists scores natively reported by providers and additionally calculates its own provider-independent scores from raw data.
 
-| Score | Internal | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
-|-------|:--------:|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| Sleep score | 🔜 | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Readiness score | ❌ | ❌ | ❌ | ◐ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Activity score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| Recovery score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Resilience score | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Stress score | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Body battery | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Strain score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Score | Internal | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Sensor Bio |
+|-------|:--------:|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:----------:|
+| Sleep score | 🔜 | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Readiness score | ❌ | ❌ | ❌ | ◐ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Activity score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Recovery score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Resilience score | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Stress score | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Body battery | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Strain score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 <Note>
   **Internal scores** are calculated by Open Wearables from raw data, independent of any provider. They are available for any provider that reports the required underlying data.
@@ -372,6 +372,19 @@ Key differences and limitations to be aware of when working with each provider:
   - Calories fall back to kilojoules when calorie data is not available from the API
   - Only one webhook subscription allowed per application
   - Webhook must respond with HTTP 200 within 2 seconds; retries up to 3 times on failure
+</Accordion>
+
+<Accordion title="Sensor Bio">
+  **Integration Method:** OAuth 2.0 (REST pull, HTTP/2 required)
+
+  - All API requests must use HTTP/2; the integration enforces this via the `http2=True` flag on the underlying httpx client
+  - Continuous 24/7 timeseries: heart rate (RMSSD HRV), SpO2, and respiratory rate sampled at irregular intervals — data is epoch-seconds based but the API returns millisecond timestamps in some endpoints; normalisation handles both
+  - Daily activity: steps, energy, and distance fetched via `/v1/step/details` with cursor-based pagination using `WorkoutStats.timestamp` (milliseconds)
+  - Workouts fetched from `/v1/activities` with cursor pagination; `likely_name` field is used to infer workout type (no dedicated type field)
+  - Sleep data: full stage breakdown (deep, light, REM, awake) and efficiency score; sleep biometrics (HR, HRV during sleep) are not yet extracted
+  - Health scores from `/v1/scores`: sleep score, activity score, and recovery score (RMSSD-based) all persisted as `HealthScore` records
+  - Nap detection heuristic: sessions shorter than 3 hours are tagged as naps
+  - No webhook support — sync is pull-only; schedule periodic sync jobs for continuous data freshness
 </Accordion>
 
 ---
