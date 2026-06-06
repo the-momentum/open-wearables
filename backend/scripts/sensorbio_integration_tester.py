@@ -814,8 +814,36 @@ _HTML = """\
     <div id="oauth-content"></div>
   </div>
 
+  <!-- Token inject panel: always visible in live mode so Anton can paste a handoff token without running OAuth -->
+  {inject_panel_html}
+
   <div class="live-section" id="live-section" style="display:none">
     <h2>&#127881; LIVE Data <span class="live-label">connected</span></h2>
+    <!-- Token display panel -->
+    <div id="token-panel" style="background:#0d1f0d;border:1px solid #1b3a1b;border-radius:8px;padding:14px;margin-bottom:14px;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:0.82rem;color:#a5d6a7;font-weight:bold">&#128273; Token loaded</span>
+        <button onclick="document.getElementById('token-reveal-area').style.display=document.getElementById('token-reveal-area').style.display==='none'?'block':'none'" style="background:transparent;border:1px solid #2e7d32;color:#66bb6a;padding:3px 10px;border-radius:4px;font-size:0.78rem;cursor:pointer">Show / Hide Token</button>
+      </div>
+      <div id="token-reveal-area" style="display:none">
+        <p style="font-size:0.75rem;color:#777;margin-bottom:8px">Access token (tap Copy to clipboard):</p>
+        <textarea id="live-token-display" readonly style="width:100%;box-sizing:border-box;background:#111;color:#a5d6a7;border:1px solid #333;border-radius:6px;padding:10px;font-size:0.72rem;font-family:monospace;resize:vertical;height:72px"></textarea>
+        <button onclick="copyLiveToken(this)" style="margin-top:6px;background:#1565c0;color:#fff;border:none;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:0.8rem">Copy</button>
+      </div>
+      <p id="token-panel-meta" style="font-size:0.72rem;color:#555;margin-top:6px;margin-bottom:0"></p>
+    </div>
+    <!-- Token inject panel (for Anton / hand-off use) -->
+    <details id="token-inject-details" style="margin-bottom:14px;background:#0d1a2a;border:1px solid #1a3050;border-radius:8px;padding:12px">
+      <summary style="cursor:pointer;font-size:0.82rem;color:#90caf9;font-weight:bold">&#128274; Inject token (skip OAuth — for hand-off testing)</summary>
+      <div style="margin-top:12px">
+        <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px">Access token <span style="color:#f44336">*</span></label>
+        <textarea id="inject-access-token" placeholder="Paste full access_token here" style="width:100%;box-sizing:border-box;background:#111;color:#a5d6a7;border:1px solid #333;border-radius:6px;padding:8px;font-size:0.72rem;font-family:monospace;resize:vertical;height:60px;margin-bottom:8px"></textarea>
+        <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px">Refresh token (optional)</label>
+        <input id="inject-refresh-token" type="text" placeholder="Optional" style="width:100%;box-sizing:border-box;background:#111;color:#90caf9;border:1px solid #333;border-radius:6px;padding:7px;font-size:0.72rem;font-family:monospace;margin-bottom:10px">
+        <button onclick="injectToken()" style="background:#1565c0;color:#fff;border:none;padding:7px 18px;border-radius:5px;cursor:pointer;font-size:0.82rem;font-weight:bold">&#128274; Inject Token</button>
+        <span id="inject-status" style="font-size:0.78rem;color:#777;margin-left:10px"></span>
+      </div>
+    </details>
     <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px">Fetch real data from your connected Sensor Bio account:</p>
     <div class="range-controls">
       <label>Start date <input id="range-start" type="date"></label>
@@ -1004,8 +1032,113 @@ _HTML = """\
         if (data.authenticated) {{
           document.getElementById('live-section').style.display = 'block';
           document.getElementById('dashboard-section').style.display = 'block';
+          // Populate token panel (full token fetched separately from /api/token-full)
+          _updateTokenPanel(data);
         }}
       }} catch(e) {{}}
+    }}
+
+    // Fetch and display the full live token in the token panel
+    async function _updateTokenPanel(statusData) {{
+      const panel = document.getElementById('token-panel');
+      if (!statusData || !statusData.authenticated) {{ panel.style.display = 'none'; return; }}
+      // Fetch the actual full token from backend (requires a separate privileged call)
+      try {{
+        const r = await fetch('/api/token-full?provider=' + encodeURIComponent(_selectedProvider));
+        if (r.ok) {{
+          const d = await r.json();
+          if (d.access_token) {{
+            document.getElementById('live-token-display').value = d.access_token;
+            const meta = document.getElementById('token-panel-meta');
+            meta.textContent = 'acquired: ' + (statusData.acquired_at || '?') + '  |  preview: ' + (statusData.token_hint || '?');
+            panel.style.display = 'block';
+          }}
+        }}
+      }} catch(e) {{}}
+    }}
+
+    function copyLiveToken(btn) {{
+      const el = document.getElementById('live-token-display');
+      navigator.clipboard.writeText(el.value || el.textContent).then(function() {{
+        btn.textContent = '✓ Copied!'; btn.style.background = '#2e7d32';
+        setTimeout(function() {{ btn.textContent = 'Copy'; btn.style.background = '#1565c0'; }}, 2000);
+      }});
+    }}
+
+    async function injectToken() {{
+      const at = (document.getElementById('inject-access-token').value || '').trim();
+      const rt = (document.getElementById('inject-refresh-token').value || '').trim();
+      const status = document.getElementById('inject-status');
+      if (!at) {{ status.textContent = '⚠ access_token required'; status.style.color = '#f44336'; return; }}
+      status.textContent = 'Injecting…'; status.style.color = '#90caf9';
+      try {{
+        const body = {{ access_token: at, provider: _selectedProvider }};
+        if (rt) body.refresh_token = rt;
+        const r = await fetch('/api/set-token', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify(body)
+        }});
+        const d = await r.json();
+        if (d.ok) {{
+          status.textContent = '✓ Injected! preview: ' + (d.token_preview || '?');
+          status.style.color = '#66bb6a';
+          // Show live section and dashboard
+          document.getElementById('live-section').style.display = 'block';
+          document.getElementById('dashboard-section').style.display = 'block';
+          // Update token panel
+          document.getElementById('live-token-display').value = at;
+          document.getElementById('token-panel-meta').textContent = 'injected via /api/set-token  |  preview: ' + d.token_preview;
+          document.getElementById('token-panel').style.display = 'block';
+          document.getElementById('inject-access-token').value = '';
+          document.getElementById('inject-refresh-token').value = '';
+        }} else {{
+          status.textContent = '✗ ' + (d.error || JSON.stringify(d));
+          status.style.color = '#f44336';
+        }}
+      }} catch(e) {{
+        status.textContent = '✗ ' + e.message; status.style.color = '#f44336';
+      }}
+    }}
+
+    // Standalone inject panel handler (always-visible in live mode)
+    async function saInjectToken() {{
+      const at = (document.getElementById('sa-inject-at').value || '').trim();
+      const rt = (document.getElementById('sa-inject-rt').value || '').trim();
+      const status = document.getElementById('sa-inject-status');
+      if (!at) {{ status.textContent = '⚠ access_token required'; status.style.color = '#f44336'; return; }}
+      status.textContent = 'Injecting…'; status.style.color = '#90caf9';
+      try {{
+        const body = {{ access_token: at, provider: _selectedProvider }};
+        if (rt) body.refresh_token = rt;
+        const r = await fetch('/api/set-token', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify(body)
+        }});
+        const d = await r.json();
+        if (d.ok) {{
+          status.textContent = '✓ Injected  preview: ' + (d.token_preview || '?');
+          status.style.color = '#66bb6a';
+          document.getElementById('live-section').style.display = 'block';
+          document.getElementById('dashboard-section').style.display = 'block';
+          // Update token panel inside live-section too
+          const liveDisplay = document.getElementById('live-token-display');
+          if (liveDisplay) liveDisplay.value = at;
+          const tokenPanel = document.getElementById('token-panel');
+          if (tokenPanel) {{
+            document.getElementById('token-panel-meta').textContent = 'injected via /api/set-token  |  preview: ' + d.token_preview;
+            tokenPanel.style.display = 'block';
+          }}
+          document.getElementById('sa-inject-at').value = '';
+          document.getElementById('sa-inject-rt').value = '';
+        }} else {{
+          status.textContent = '✗ ' + (d.error || JSON.stringify(d));
+          status.style.color = '#f44336';
+        }}
+      }} catch(e) {{
+        status.textContent = '✗ ' + e.message; status.style.color = '#f44336';
+      }}
     }}
 
     // ---- Provider Selector ----
@@ -1385,11 +1518,29 @@ async def index() -> HTMLResponse:
             "No credentials required. Set <code>SENSORBIO_LIVE=1</code> with real creds for live API testing."
             "</div>"
         )
+    # Standalone inject panel — always visible in live mode so a token can be loaded without OAuth
+    if LIVE_MODE:
+        inject_panel_html = (
+            '<div id="standalone-inject-panel" style="background:#0a1628;border:1px solid #1a3050;border-radius:8px;padding:16px;margin-bottom:16px">'
+            '<h2 style="margin-bottom:4px;font-size:0.95rem;color:#90caf9">&#128274; Token Inject <span style="font-size:0.72rem;font-weight:normal;color:#555;margin-left:6px">(skip OAuth — paste handoff token directly)</span></h2>'
+            '<p style="font-size:0.75rem;color:var(--muted);margin-bottom:10px">After OAuth on another device, paste the full access token here so this instance can call /api/dashboard and live endpoints.</p>'
+            '<label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px">Access token <span style="color:#f44336">*</span></label>'
+            '<textarea id="sa-inject-at" placeholder="Paste full access_token here" style="width:100%;box-sizing:border-box;background:#111;color:#a5d6a7;border:1px solid #333;border-radius:6px;padding:8px;font-size:0.72rem;font-family:monospace;resize:vertical;height:56px;margin-bottom:8px"></textarea>'
+            '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+            '<input id="sa-inject-rt" type="text" placeholder="Refresh token (optional)" style="flex:1;min-width:160px;background:#111;color:#90caf9;border:1px solid #333;border-radius:6px;padding:7px;font-size:0.72rem;font-family:monospace">'
+            '<button onclick="saInjectToken()" style="background:#1565c0;color:#fff;border:none;padding:7px 18px;border-radius:5px;cursor:pointer;font-size:0.82rem;font-weight:bold;white-space:nowrap">&#128274; Inject Token</button>'
+            '<span id="sa-inject-status" style="font-size:0.78rem;color:#777"></span>'
+            '</div>'
+            '</div>'
+        )
+    else:
+        inject_panel_html = ""
     html = _HTML.format(
         mode_badge=mode_badge,
         mode_label=mode_label,
         mode_note=mode_note,
         is_live_json=is_live_json,
+        inject_panel_html=inject_panel_html,
     )
     return HTMLResponse(content=html)
 
@@ -1531,28 +1682,70 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "", provi
                     )
                 else:
                     access_token = token_json.get("access_token", "")
+                    refresh_token_val = token_json.get("refresh_token", "")
+                    expires_in = token_json.get("expires_in")
                     if access_token:
                         _set_sess("access_token", access_token, p)
                         _set_sess("token_type", token_json.get("token_type", "Bearer"), p)
                         _set_sess("acquired_at", datetime.now(timezone.utc).isoformat(), p)
-                    # Show token summary (not the raw secret) — mask all but last 4 chars
-                    display = {
-                        k: (v[:4] + "…" + v[-4:] if isinstance(v, str) and len(v) > 12 and k == "access_token" else v)
-                        for k, v in token_json.items()
-                        if k != "refresh_token"
-                    }
-                    escaped = json.dumps(display, indent=2).replace("<", "&lt;").replace(">", "&gt;")
+                        if refresh_token_val:
+                            _set_sess("refresh_token", refresh_token_val, p)
+                        if expires_in is not None:
+                            expires_at_ts = (datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))).isoformat()
+                            _set_sess("expires_at", expires_at_ts, p)
+                    # --- Build full-token display page (user-requested: show raw token for handoff) ---
                     stored_msg = (
                         f"&#10003; Access token stored for {meta['label']} — use LIVE data buttons below."
                         if access_token
                         else "&#9888; No access_token in response."
                     )
+                    # Escape for safe HTML embedding (the token itself may contain + / = chars but no HTML specials)
+                    at_escaped = access_token.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+                    rt_escaped = refresh_token_val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;") if refresh_token_val else ""
+                    # Other fields summary (sans the two token values)
+                    other = {k: v for k, v in token_json.items() if k not in ("access_token", "refresh_token")}
+                    other_escaped = json.dumps(other, indent=2).replace("<", "&lt;").replace(">", "&gt;")
+                    copy_js = (
+                        "function copyText(id,btn){"
+                        "var el=document.getElementById(id);"
+                        "navigator.clipboard.writeText(el.value||el.textContent).then(function(){"
+                        "btn.textContent='✓ Copied!';btn.style.background='#2e7d32';"
+                        "setTimeout(function(){btn.textContent='Copy';btn.style.background='#1565c0';},2000);"
+                        "})}"
+                    )
+                    token_section = ""
+                    if access_token:
+                        token_section += (
+                            '<div style="margin-bottom:18px">'
+                            '<h3 style="color:#f57c00;margin-bottom:6px;font-size:0.9rem">&#128273; Access Token (full — for handoff)</h3>'
+                            f'<textarea id="at-box" readonly style="width:100%;box-sizing:border-box;background:#111;color:#a5d6a7;border:1px solid #333;border-radius:6px;padding:10px;font-size:0.72rem;font-family:monospace;resize:vertical;height:80px">{at_escaped}</textarea>'
+                            '<button onclick="copyText(\'at-box\',this)" style="margin-top:6px;background:#1565c0;color:#fff;border:none;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.82rem">Copy</button>'
+                            '</div>'
+                        )
+                    if refresh_token_val:
+                        token_section += (
+                            '<div style="margin-bottom:18px">'
+                            '<h3 style="color:#90caf9;margin-bottom:6px;font-size:0.9rem">&#128257; Refresh Token</h3>'
+                            f'<textarea id="rt-box" readonly style="width:100%;box-sizing:border-box;background:#111;color:#90caf9;border:1px solid #333;border-radius:6px;padding:10px;font-size:0.72rem;font-family:monospace;resize:vertical;height:80px">{rt_escaped}</textarea>'
+                            '<button onclick="copyText(\'rt-box\',this)" style="margin-top:6px;background:#1565c0;color:#fff;border:none;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.82rem">Copy</button>'
+                            '</div>'
+                        )
+                    if expires_in is not None:
+                        token_section += f'<p style="color:#777;font-size:0.8rem;margin-bottom:12px">expires_in: {expires_in}s (~{int(expires_in)//3600}h {(int(expires_in)%3600)//60}m)</p>'
+                    if other:
+                        token_section += (
+                            '<details style="margin-bottom:12px">'
+                            '<summary style="cursor:pointer;font-size:0.8rem;color:var(--muted)">Other fields</summary>'
+                            f'<pre style="background:#111;padding:10px;border-radius:6px;font-size:0.72rem;margin-top:6px">{other_escaped}</pre>'
+                            '</details>'
+                        )
                     html = (
-                        '<html><body style="font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px">'
+                        f'<html><head><style>body{{font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px;max-width:760px;margin:0 auto}}</style>'
+                        f'<script>{copy_js}</script></head><body>'
                         f'<h2 style="color:#4caf50">&#10003; Token exchanged ({meta["label"]})</h2>'
-                        f'<p style="color:#a5d6a7;margin-bottom:12px">{stored_msg}</p>'
-                        f'<pre style="background:#111;padding:12px;border-radius:6px">{escaped}</pre>'
-                        '<p style="margin-top:12px;font-size:0.8rem;color:#777">refresh_token omitted from display</p>'
+                        f'<p style="color:#a5d6a7;margin-bottom:16px">{stored_msg}</p>'
+                        f'{token_section}'
+                        '<p style="margin-top:20px;font-size:0.8rem;color:#555">&#9888; Treat these tokens like passwords. Only share with trusted collaborators over secure channels.</p>'
                         '<a href="/" style="color:#f57c00">&#8592; Back to tester</a></body></html>'
                     )
         except Exception as exc:  # noqa: BLE001
@@ -1572,6 +1765,111 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "", provi
             '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
         )
     return HTMLResponse(content=html)
+
+
+@app.post("/api/set-token")
+async def api_set_token(request: Request) -> JSONResponse:
+    """Inject a known-good token without running browser OAuth.
+
+    Body (JSON): {
+        access_token: str,          # required
+        refresh_token?: str,        # optional
+        expires_at?: str,           # optional ISO timestamp or epoch seconds
+        provider?: str              # optional; defaults to selected provider
+    }
+    Stores token in the same in-memory slot that the OAuth callback uses.
+    Returns 200 + token_status (last4 preview only, no secret values).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Request body must be valid JSON"}, status_code=400)
+
+    access_token = (body.get("access_token") or "").strip()
+    if not access_token:
+        return JSONResponse({"error": "access_token is required"}, status_code=422)
+
+    p = (body.get("provider") or "").strip().lower() or _SELECTED_PROVIDER
+    refresh_token = (body.get("refresh_token") or "").strip() or None
+    expires_at = body.get("expires_at")
+
+    _set_sess("access_token", access_token, p)
+    _set_sess("token_type", "Bearer", p)
+    _set_sess("acquired_at", datetime.now(timezone.utc).isoformat(), p)
+    if refresh_token:
+        _set_sess("refresh_token", refresh_token, p)
+    if expires_at is not None:
+        _set_sess("expires_at", str(expires_at), p)
+
+    tok = access_token
+    preview = (tok[:4] + "…" + tok[-4:]) if len(tok) >= 8 else "****"
+    return JSONResponse(
+        {
+            "ok": True,
+            "provider": p,
+            "has_token": True,
+            "token_preview": preview,
+            "has_refresh_token": refresh_token is not None,
+            "expires_at": str(expires_at) if expires_at is not None else None,
+            "acquired_at": _sess(p).get("acquired_at"),
+            "message": f"Token injected for provider '{p}'. Call /api/dashboard or use live buttons.",
+        }
+    )
+
+
+@app.get("/api/token-status")
+async def api_token_status(provider: str = "") -> JSONResponse:
+    """Return token load status WITHOUT exposing the secret.
+
+    Response: {
+        has_token: bool,
+        provider: str,
+        token_preview: str | null,   # first4…last4 only
+        has_refresh_token: bool,
+        expires_at: str | null,
+        acquired_at: str | null,
+        live_mode: bool
+    }
+    """
+    p = provider or _SELECTED_PROVIDER
+    sess = _sess(p)
+    tok = sess.get("access_token", "")
+    has_token = bool(tok)
+    preview = (tok[:4] + "…" + tok[-4:]) if has_token and len(tok) >= 8 else ("****" if has_token else None)
+    return JSONResponse(
+        {
+            "has_token": has_token,
+            "provider": p,
+            "token_preview": preview,
+            "has_refresh_token": bool(sess.get("refresh_token")),
+            "expires_at": sess.get("expires_at"),
+            "acquired_at": sess.get("acquired_at"),
+            "live_mode": LIVE_MODE,
+        }
+    )
+
+
+@app.get("/api/token-full")
+async def api_token_full(provider: str = "") -> JSONResponse:
+    """Return the FULL access token for the in-browser token display panel.
+
+    This endpoint is intentionally accessible — the user requested the ability
+    to copy the full token from the browser UI for handoff testing.
+    It does NOT log the token; it simply exposes it to the browser session
+    that already has network access to the local tester.
+    """
+    p = provider or _SELECTED_PROVIDER
+    sess = _sess(p)
+    tok = sess.get("access_token", "")
+    if not tok:
+        return JSONResponse({"error": "No token stored for this provider"}, status_code=404)
+    return JSONResponse(
+        {
+            "access_token": tok,
+            "provider": p,
+            "acquired_at": sess.get("acquired_at"),
+        }
+    )
 
 
 @app.get("/api/mock-data/{endpoint}")
@@ -2020,6 +2318,9 @@ async def api_dashboard(request: Request) -> JSONResponse:
                         total = rec.get("total_sleep_mins") or 0
                         deep = rec.get("deep_sleep_mins") or 0
                         light = rec.get("light_sleep_mins") or 0
+                        # If total not provided but deep+light are, derive it
+                        if not total and (deep or light):
+                            total = deep + light
                         sleep_score: int | None = None
                         score_field = rec.get("score")
                         if isinstance(score_field, dict):
