@@ -24,6 +24,7 @@ from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_oauth() -> MagicMock:
     return MagicMock()
@@ -68,7 +69,7 @@ DB = MagicMock()
 # ---------------------------------------------------------------------------
 
 # Timestamps in ms (spec)
-_TS_WS1_MS = 1_700_000_000_000   # WorkoutStats.timestamp
+_TS_WS1_MS = 1_700_000_000_000  # WorkoutStats.timestamp
 _TS_ACT_START_MS = 1_699_999_800_000
 _TS_ACT_END_MS = 1_700_000_000_000
 
@@ -165,6 +166,7 @@ def test_get_workouts_empty_activities_list_skipped(workouts: SensorBioWorkouts)
 # 3.  Activity.likely_name used for workout type
 # ---------------------------------------------------------------------------
 
+
 def test_normalize_workout_uses_likely_name(workouts: SensorBioWorkouts) -> None:
     """_normalize_workout must map Activity.likely_name to workout type."""
     raw: dict[str, Any] = {
@@ -247,7 +249,8 @@ def test_get_daily_activity_statistics_no_data_wrapper(data_247: SensorBio247Dat
     StepDetailsResponseBody (no 'data' key wrapping it)."""
     with patch.object(data_247, "_make_api_request", return_value=_STEP_DETAILS_RESPONSE):
         result = data_247.get_daily_activity_statistics(
-            DB, USER_ID,
+            DB,
+            USER_ID,
             start_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
             end_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
         )
@@ -261,7 +264,8 @@ def test_get_daily_activity_statistics_ignores_non_metrics_response(data_247: Se
     old_shape = {"data": {"steps": 100, "distance": 1.0}}
     with patch.object(data_247, "_make_api_request", return_value=old_shape):
         result = data_247.get_daily_activity_statistics(
-            DB, USER_ID,
+            DB,
+            USER_ID,
             start_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
             end_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
         )
@@ -271,6 +275,7 @@ def test_get_daily_activity_statistics_ignores_non_metrics_response(data_247: Se
 # ---------------------------------------------------------------------------
 # 5.  HTTP/2 – make_authenticated_request called with http2=True
 # ---------------------------------------------------------------------------
+
 
 def test_workouts_make_api_request_uses_http2(workouts: SensorBioWorkouts) -> None:
     """SensorBioWorkouts._make_api_request must pass http2=True."""

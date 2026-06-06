@@ -181,9 +181,7 @@ class TestSensorBio247RecoveryNormalization:
         raw = {
             "date": "2024-01-15",
             "recovery": {"value": 72, "stage": "good"},
-            "sleep": {
-                "biometrics": {"resting_bpm": 52.0, "resting_hrv": 48.0, "hrv": 50.0, "spo2": 97.0}
-            },
+            "sleep": {"biometrics": {"resting_bpm": 52.0, "resting_hrv": 48.0, "hrv": 50.0, "spo2": 97.0}},
         }
         result = data_247.normalize_recovery(raw, USER_ID)
         assert result is not None
@@ -244,6 +242,7 @@ class TestSensorBio247SaveRecoveryData:
         # Verify category passed to health_score_service.create
         hs_arg = mock_hs.create.call_args[0][1]  # positional (db, score_create)
         from app.schemas.enums import HealthScoreCategory
+
         assert hs_arg.category == HealthScoreCategory.RECOVERY
         assert hs_arg.value == 72
         assert hs_arg.qualifier == "good"
@@ -622,8 +621,14 @@ class TestSensorBio247ScoresActivitySleepNormalization:
             "date": "2026-03-14",
             "activity": {"avg": 75, "goal": 80, "processing": False, "value": 97},
             "recovery": {"avg": 60, "message": "take it easy", "processing": False, "stage": "go_easy", "value": 48},
-            "sleep": {"avg": 85, "duration_secs": 28800, "goal": 90, "processing": False, "value": 99,
-                      "biometrics": {"resting_bpm": 52.0, "resting_hrv": 48.0, "hrv": 50.0, "spo2": 97.0}},
+            "sleep": {
+                "avg": 85,
+                "duration_secs": 28800,
+                "goal": 90,
+                "processing": False,
+                "value": 99,
+                "biometrics": {"resting_bpm": 52.0, "resting_hrv": 48.0, "hrv": 50.0, "spo2": 97.0},
+            },
         }
         result = data_247.normalize_recovery(raw, USER_ID)
         assert result is not None
@@ -633,6 +638,7 @@ class TestSensorBio247ScoresActivitySleepNormalization:
         assert result["sleep_score"] == 99
         assert result["resting_heart_rate"] == 52.0
         from datetime import datetime, timezone
+
         assert result["timestamp"] == datetime(2026, 3, 14, 0, 0, 0, tzinfo=timezone.utc)
 
 
@@ -666,6 +672,7 @@ class TestSensorBio247SaveRecoveryDataScores:
         assert count == 2
         assert mock_hs.create.call_count == 2
         from app.schemas.enums import HealthScoreCategory
+
         categories = {call[0][1].category for call in mock_hs.create.call_args_list}
         assert HealthScoreCategory.RECOVERY in categories
         assert HealthScoreCategory.ACTIVITY in categories
@@ -692,6 +699,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
         assert count == 2  # RECOVERY + SLEEP
         from app.schemas.enums import HealthScoreCategory
+
         categories = {call[0][1].category for call in mock_hs.create.call_args_list}
         assert HealthScoreCategory.SLEEP in categories
         sleep_call = next(c for c in mock_hs.create.call_args_list if c[0][1].category == HealthScoreCategory.SLEEP)
@@ -720,6 +728,7 @@ class TestSensorBio247SaveRecoveryDataScores:
         assert count == 6
         assert mock_hs.create.call_count == 3
         from app.schemas.enums import HealthScoreCategory
+
         categories = {call[0][1].category for call in mock_hs.create.call_args_list}
         assert categories == {HealthScoreCategory.RECOVERY, HealthScoreCategory.ACTIVITY, HealthScoreCategory.SLEEP}
 
@@ -740,6 +749,7 @@ class TestSensorBio247SaveRecoveryDataScores:
 
         assert count == 1  # only RECOVERY
         from app.schemas.enums import HealthScoreCategory
+
         assert mock_hs.create.call_count == 1
         assert mock_hs.create.call_args[0][1].category == HealthScoreCategory.RECOVERY
 
