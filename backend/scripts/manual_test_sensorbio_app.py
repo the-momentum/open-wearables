@@ -45,22 +45,22 @@ Covered scenarios
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
-import sys
-import textwrap
-import traceback
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any
-from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
 
 # ---------------------------------------------------------------------------
 # Bootstrap – make sure the backend package is importable when running from
 # the scripts/ directory or from any sub-path inside backend/.
 # ---------------------------------------------------------------------------
 import pathlib
+import sys
+import textwrap
+import traceback
+from datetime import datetime, timezone
+from typing import Any
+from unittest.mock import MagicMock, patch
+from uuid import UUID
 
 _BACKEND_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_BACKEND_ROOT) not in sys.path:
@@ -329,8 +329,8 @@ def test_oauth_url_generation() -> None:
 def test_token_stub() -> None:
     _section("2 · Token-Exchange Stub (callback simulation)")
 
-    from app.services.providers.sensorbio.oauth import SensorBioOAuth
     from app.schemas.model_crud.credentials import OAuthTokenResponse
+    from app.services.providers.sensorbio.oauth import SensorBioOAuth
 
     oauth = SensorBioOAuth(
         user_repo=MagicMock(),
@@ -348,7 +348,8 @@ def test_token_stub() -> None:
     )
 
     # Stub the user-profile call that follows token exchange
-    with patch.object(oauth, "_get_provider_user_info", return_value={"user_id": "sb-user-42", "username": "athlete_sam"}):
+    stub_profile = {"user_id": "sb-user-42", "username": "athlete_sam"}
+    with patch.object(oauth, "_get_provider_user_info", return_value=stub_profile):
         user_info = oauth._get_provider_user_info(stub_token, str(_USER_ID))
 
     _check("user_id extracted from profile response",
@@ -511,8 +512,6 @@ def test_workout_sync() -> None:
 def test_http2_flag() -> None:
     _section("6 · HTTP/2 Flag Propagation")
 
-    from app.services.providers.sensorbio.workouts import SensorBioWorkouts
-    from app.services.providers.sensorbio.data_247 import SensorBio247Data
     from app.services.providers import api_client as api_client_mod
 
     workouts = _make_workouts_instance()
@@ -524,11 +523,11 @@ def test_http2_flag() -> None:
         calls.append(kwargs)
         return {"data": [], "links": {}}
 
-    with patch.object(api_client_mod, "make_authenticated_request", side_effect=_capture):
-        try:
-            workouts._make_api_request(_DB_MOCK, _USER_ID, "/v1/activities", method="GET", params={})
-        except Exception:
-            pass
+    with (
+        patch.object(api_client_mod, "make_authenticated_request", side_effect=_capture),
+        contextlib.suppress(Exception),
+    ):
+        workouts._make_api_request(_DB_MOCK, _USER_ID, "/v1/activities", method="GET", params={})
 
     if calls:
         _check("workouts._make_api_request passes http2=True", calls[-1].get("http2") is True)
@@ -536,11 +535,11 @@ def test_http2_flag() -> None:
         _check("workouts._make_api_request passes http2=True (call intercepted at lower level)", True)
 
     calls.clear()
-    with patch.object(api_client_mod, "make_authenticated_request", side_effect=_capture):
-        try:
-            data247._make_api_request(_DB_MOCK, _USER_ID, "/v1/sleep", params={})
-        except Exception:
-            pass
+    with (
+        patch.object(api_client_mod, "make_authenticated_request", side_effect=_capture),
+        contextlib.suppress(Exception),
+    ):
+        data247._make_api_request(_DB_MOCK, _USER_ID, "/v1/sleep", params={})
 
     if calls:
         _check("data_247._make_api_request passes http2=True", calls[-1].get("http2") is True)
@@ -750,8 +749,8 @@ def main() -> int:
     print(f"\n{BOLD}{'═' * 60}")
     print("  SensorBio E2E Test Harness")
     print(f"{'═' * 60}{RESET}")
-    print(f"  Repo:   /tmp/open-wearables-sensr")
-    print(f"  Branch: sensr-provider-stub")
+    print("  Repo:   /tmp/open-wearables-sensr")
+    print("  Branch: sensr-provider-stub")
     print(f"  Mode:   {'LIVE' if os.getenv('SENSORBIO_LIVE') else 'MOCKED (offline)'}")
 
     sections = [
@@ -771,7 +770,7 @@ def main() -> int:
     for fn in sections:
         try:
             fn()
-        except Exception as exc:
+        except Exception:
             name = fn.__name__
             tb = traceback.format_exc()
             errors.append((name, tb))
@@ -808,9 +807,8 @@ def main() -> int:
     if success:
         print(f"{GREEN}{BOLD}All checks passed. SensorBio integration is working correctly.{RESET}\n")
         return 0
-    else:
-        print(f"{RED}{BOLD}Some checks failed — see above.{RESET}\n")
-        return 1
+    print(f"{RED}{BOLD}Some checks failed — see above.{RESET}\n")
+    return 1
 
 
 if __name__ == "__main__":
