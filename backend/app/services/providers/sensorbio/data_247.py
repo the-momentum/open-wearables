@@ -368,16 +368,16 @@ class SensorBio247Data(Base247DataTemplate):
             "spo2": [],
             "respiratory_rate": [],
         }
+        field_map = {
+            "bpm": "heart_rate",
+            "hrv": "heart_rate_variability",
+            "spo2": "spo2",
+            "brpm": "respiratory_rate",
+        }
         for sample in raw_samples:
             timestamp = self._from_epoch_millis(sample.get("timestamp"))
             if not timestamp:
                 continue
-            field_map = {
-                "bpm": "heart_rate",
-                "hrv": "heart_rate_variability",
-                "spo2": "spo2",
-                "brpm": "respiratory_rate",
-            }
             for source_field, target_key in field_map.items():
                 value = sample.get(source_field)
                 if value is not None:
