@@ -442,7 +442,7 @@ def test_workout_sync() -> None:
     call_count = [0]
     page_responses = [MOCK_ACTIVITIES_PAGE1, MOCK_ACTIVITIES_PAGE2, MOCK_ACTIVITIES_EMPTY]
 
-    def _mock_api(db, user_id, endpoint, **kwargs):
+    def _mock_api(db: Any, user_id: Any, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         idx = min(call_count[0], len(page_responses) - 1)
         call_count[0] += 1
         return page_responses[idx]
@@ -493,7 +493,7 @@ def test_workout_sync() -> None:
     # Verify pagination cursor uses WorkoutStats.timestamp (ms) directly
     cursor_used = []
 
-    def _capture_cursor(db, user_id, endpoint, **kwargs):
+    def _capture_cursor(db: Any, user_id: Any, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         params = kwargs.get("params", {})
         cursor_used.append(params.get("last-timestamp"))
         return MOCK_ACTIVITIES_EMPTY  # immediate stop
@@ -520,7 +520,7 @@ def test_http2_flag() -> None:
 
     calls: list[dict] = []
 
-    def _capture(**kwargs):
+    def _capture(**kwargs: Any) -> dict[str, Any]:
         calls.append(kwargs)
         return {"data": [], "links": {}}
 
@@ -553,7 +553,7 @@ def test_sleep_sync() -> None:
 
     data247 = _make_data247_instance()
 
-    def _mock_sleep(db, user_id, endpoint, **kwargs):
+    def _mock_sleep(db: Any, user_id: Any, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         if "/v1/sleep" in endpoint:
             return MOCK_SLEEP_RESPONSE
         return {"data": []}
@@ -611,7 +611,7 @@ def test_recovery_sync() -> None:
 
     data247 = _make_data247_instance()
 
-    def _mock_scores(db, user_id, endpoint, **kwargs):
+    def _mock_scores(db: Any, user_id: Any, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         return MOCK_SCORES_RESPONSE
 
     start = datetime(2023, 11, 15, tzinfo=timezone.utc)
@@ -652,7 +652,7 @@ def test_step_details_sync() -> None:
 
     data247 = _make_data247_instance()
 
-    def _mock_steps(db, user_id, endpoint, **kwargs):
+    def _mock_steps(db: Any, user_id: Any, endpoint: str, **kwargs: Any) -> dict[str, Any]:
         # Spec: StepDetailsResponseBody returned directly — no {"data": ...} wrapper
         return MOCK_STEP_DETAILS_RESPONSE
 

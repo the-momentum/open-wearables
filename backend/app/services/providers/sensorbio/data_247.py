@@ -20,6 +20,14 @@ from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
 
+_ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
+    "heart_rate": SeriesType.heart_rate,
+    "heart_rate_variability": SeriesType.heart_rate_variability_rmssd,
+    "spo2": SeriesType.oxygen_saturation,
+    "respiratory_rate": SeriesType.respiratory_rate,
+}
+
+
 class SensorBio247Data(Base247DataTemplate):
     """Sensor Bio implementation for 247 data (sleep, recovery, biometrics)."""
 
@@ -377,13 +385,6 @@ class SensorBio247Data(Base247DataTemplate):
                     normalized[target_key].append({"user_id": user_id, "timestamp": timestamp, "value": value})
         return normalized
 
-    _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
-        "heart_rate": SeriesType.heart_rate,
-        "heart_rate_variability": SeriesType.heart_rate_variability_rmssd,
-        "spo2": SeriesType.oxygen_saturation,
-        "respiratory_rate": SeriesType.respiratory_rate,
-    }
-
     def save_activity_samples(
         self, db: DbSession, user_id: UUID, normalized_samples: dict[str, list[dict[str, Any]]]
     ) -> int:
@@ -393,7 +394,7 @@ class SensorBio247Data(Base247DataTemplate):
         """
         all_samples: list[TimeSeriesSampleCreate] = []
         for key, samples in normalized_samples.items():
-            series_type = self._ACTIVITY_SERIES_MAP.get(key)
+            series_type = _ACTIVITY_SERIES_MAP.get(key)
             if not series_type:
                 continue
             for sample in samples:
@@ -521,7 +522,6 @@ class SensorBio247Data(Base247DataTemplate):
             "sleep_sessions_synced": 0,
             "recovery_samples_synced": 0,
             "activity_samples_synced": 0,
-            "body_measurement_samples_synced": 0,
         }
         try:
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
@@ -536,6 +536,18 @@ class SensorBio247Data(Base247DataTemplate):
                 self.logger,
                 "error",
                 f"Failed to sync recovery data: {e}",
+                provider="sensorbio",
+                task="load_and_save_all",
+            )
+        try:
+            raw_activity = self.get_activity_samples(db, user_id, start_time, end_time)
+            normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
+            results["activity_samples_synced"] = self.save_activity_samples(db, user_id, normalized_activity)
+        except Exception as e:
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to sync activity samples: {e}",
                 provider="sensorbio",
                 task="load_and_save_all",
             )

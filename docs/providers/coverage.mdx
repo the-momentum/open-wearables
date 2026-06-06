@@ -1,14 +1,14 @@
 ---
 title: "Wearable API Coverage Matrix"
 sidebarTitle: "Coverage Matrix"
-description: "Data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, and Fitbit. OAuth, workouts, sleep, and timeseries support."
+description: "Data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, and Sensor Bio. OAuth, workouts, sleep, and timeseries support."
 keywords: ["wearable api coverage", "health data types by provider", "wearable data types", "provider data support"]
 "og:title": "Wearable API Coverage Matrix | Open Wearables"
-"og:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit."
+"og:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, Sensor Bio."
 "og:url": "https://docs.openwearables.io/providers/coverage"
 "og:type": "article"
 "twitter:title": "Wearable API Coverage Matrix | Open Wearables"
-"twitter:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit."
+"twitter:description": "Health data types by provider: Apple, Garmin, Polar, Suunto, Oura, Whoop, Ultrahuman, Strava, Fitbit, Sensor Bio."
 "twitter:card": "summary_large_image"
 ---
 
@@ -16,14 +16,14 @@ This guide provides a comprehensive overview of data type support across all int
 
 ## Quick Overview
 
-| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
-|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ |
-| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ |
+| Capability | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Sensor Bio |
+|------------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:----------:|
+| **OAuth** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Workouts** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| **Sleep** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **24/7 Data** | ✅ | ✅ | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | ✅ |
+| **Timeseries** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| **Health Scores** | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Fully implemented and collecting data
@@ -44,14 +44,14 @@ This guide provides a comprehensive overview of data type support across all int
 
 ### Heart & Cardiovascular
 
-| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava |
-|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|
-| `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
-| `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ |
-| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Sensor Bio |
+|-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:----------:|
+| `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ | ✅ |
+| `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| `heart_rate_recovery_one_minute` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `walking_heart_rate_average` | bpm | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 <Accordion title="Legend">
   - ✅ **Full support** — Available as time series data
