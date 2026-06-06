@@ -17,9 +17,9 @@ from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
+from app.services.providers.sensorbio.strategy import SensorBioStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.ultrahuman.strategy import UltrahumanStrategy
-from app.services.providers.sensorbio.strategy import SensorBioStrategy
 
 
 class TestProviderFactory:

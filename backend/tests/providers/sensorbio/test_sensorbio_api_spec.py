@@ -10,16 +10,15 @@ Covers:
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import MagicMock, call, patch
-from uuid import UUID, uuid4
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
-from app.services.providers.sensorbio.data_247 import SensorBio247Data
-from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 from app.schemas.enums import WorkoutType
 from app.services.providers.api_client import make_authenticated_request
-
+from app.services.providers.sensorbio.data_247 import SensorBio247Data
+from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -139,7 +138,9 @@ def test_get_workouts_cursor_uses_ms_timestamp_directly(workouts: SensorBioWorko
 
     mock_req = MagicMock(side_effect=[page1, page2])
     with patch.object(workouts, "_make_api_request", mock_req):
-        workouts.get_workouts(DB, USER_ID, datetime(2023, 11, 14, tzinfo=timezone.utc), datetime(2023, 11, 16, tzinfo=timezone.utc))
+        start = datetime(2023, 11, 14, tzinfo=timezone.utc)
+        end = datetime(2023, 11, 16, tzinfo=timezone.utc)
+        workouts.get_workouts(DB, USER_ID, start, end)
 
     assert mock_req.call_count == 2
     # Second call should send last-timestamp = _TS_WS1_MS (ms, not *1000)
@@ -154,7 +155,9 @@ def test_get_workouts_empty_activities_list_skipped(workouts: SensorBioWorkouts)
         "links": {},
     }
     with patch.object(workouts, "_make_api_request", return_value=response):
-        result = workouts.get_workouts(DB, USER_ID, datetime(2023, 11, 14, tzinfo=timezone.utc), datetime(2023, 11, 16, tzinfo=timezone.utc))
+        start = datetime(2023, 11, 14, tzinfo=timezone.utc)
+        end = datetime(2023, 11, 16, tzinfo=timezone.utc)
+        result = workouts.get_workouts(DB, USER_ID, start, end)
     assert result == []
 
 

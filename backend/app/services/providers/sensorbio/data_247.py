@@ -19,7 +19,6 @@ from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
-
 _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
     "heart_rate": SeriesType.heart_rate,
     "heart_rate_variability": SeriesType.heart_rate_variability_rmssd,

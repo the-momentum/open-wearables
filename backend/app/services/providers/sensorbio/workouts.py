@@ -149,7 +149,11 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError("Sensor Bio does not support API-based workout detail fetching")
 
-    def _extract_dates(self, start_timestamp: int | float | None, end_timestamp: int | float | None) -> tuple[datetime, datetime]:
+    def _extract_dates(
+        self,
+        start_timestamp: int | float | None,
+        end_timestamp: int | float | None,
+    ) -> tuple[datetime, datetime]:
         """Convert Activity.start_time / end_time (ms) to datetime."""
         start_date = self._from_epoch_millis(start_timestamp)
         end_date = self._from_epoch_millis(end_timestamp)
