@@ -2494,30 +2494,27 @@ async def api_dashboard(request: Request) -> JSONResponse:
                     if ts:
                         break
                 if ts is not None and start_ms <= ts <= end_ms:
-                    # Normalise to date
-                    rec_date = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-                    # Prefer resting values (daily summary) over instantaneous values.
-                    # Use 'is not None' — not 'or' — because 0.0 is a valid but useless HRV reading.
-                    hr = rec.get("resting_bpm")
-                    if hr is None:
-                        hr = rec.get("heart_rate")
-                    if hr is None:
-                        hr = rec.get("bpm")
-                    if hr is None:
-                        hr = rec.get("hr")
-                    hrv_val = rec.get("resting_hrv")
-                    if hrv_val is None:
-                        hrv_val = rec.get("heart_rate_variability")
-                    if hrv_val is None:
-                        hrv_val = rec.get("hrv")
-                    spo2_val = rec.get("spo2")
-                    if spo2_val is None:
-                        spo2_val = rec.get("blood_oxygen")
+                    # Normalise to date using the sample's OWN timestamp + tz_offset_mins
+                    tz_offset_s = (rec.get("tz_offset_mins") or 0) * 60
+                    rec_dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+                    rec_date = (rec_dt + timedelta(seconds=tz_offset_s)).strftime("%Y-%m-%d")
+                    # /v1/biometrics per-sample shape: bpm/hrv/spo2/brpm are the real values.
+                    # resting_bpm and resting_hrv are ALWAYS 0 in this endpoint (they are daily
+                    # resting summaries from /v1/scores, not per-sample values). Do NOT use
+                    # resting_bpm/resting_hrv here — reading them first and falling back on 'is None'
+                    # misses 0.0-valued per-sample fields.
+                    # Treat 0.0 as "not measured" (sensor gap) for HR, HRV, SpO2 so chart skips it.
+                    hr_raw = rec.get("bpm") or rec.get("heart_rate") or rec.get("hr")
+                    hrv_raw = rec.get("hrv") or rec.get("heart_rate_variability")
+                    spo2_raw = rec.get("spo2") or rec.get("blood_oxygen")
+                    hr_val = round(float(hr_raw), 2) if hr_raw else None
+                    hrv_val = round(float(hrv_raw), 2) if hrv_raw else None
+                    spo2_out = round(float(spo2_raw), 2) if spo2_raw else None
                     bio_cursor_records.append({
                         "date": rec_date,
-                        "resting_hr": round(float(hr), 1) if hr is not None else None,
-                        "hrv": round(float(hrv_val), 1) if hrv_val is not None else None,
-                        "spo2": round(float(spo2_val), 1) if spo2_val is not None else None,
+                        "_hr": hr_val,
+                        "_hrv": hrv_val,
+                        "_spo2": spo2_out,
                     })
                     in_range += 1
             page_info["in_range"] = in_range
@@ -2543,11 +2540,47 @@ async def api_dashboard(request: Request) -> JSONResponse:
 
         raw_diag["biometrics"] = {"status": 200, "pages": bio_pages, "count": len(bio_cursor_records)}
 
-        # Merge bio_cursor_records into bio_out (deduplicate by date, prefer scores-derived data)
+        # Downsample bio_cursor_records to daily means (per-sample biometrics are high-frequency;
+        # aggregate so chart is readable and per-sample 0.0 gaps don't flatten the daily average).
+        from collections import defaultdict
+        import statistics as _stats
+
+        _daily_hr: dict[str, list[float]] = defaultdict(list)
+        _daily_hrv: dict[str, list[float]] = defaultdict(list)
+        _daily_spo2: dict[str, list[float]] = defaultdict(list)
+        for _r in bio_cursor_records:
+            _d = _r["date"]
+            if _r["_hr"] is not None:
+                _daily_hr[_d].append(_r["_hr"])
+            if _r["_hrv"] is not None:
+                _daily_hrv[_d].append(_r["_hrv"])
+            if _r["_spo2"] is not None:
+                _daily_spo2[_d].append(_r["_spo2"])
+
+        _all_bio_dates = sorted(
+            set(list(_daily_hr.keys()) + list(_daily_hrv.keys()) + list(_daily_spo2.keys()))
+        )
+        bio_downsampled: list[dict[str, Any]] = []
+        for _d in _all_bio_dates:
+            _hr_s = _daily_hr.get(_d, [])
+            _hrv_s = _daily_hrv.get(_d, [])
+            _spo2_s = _daily_spo2.get(_d, [])
+            bio_downsampled.append({
+                "date": _d,
+                "resting_hr": round(_stats.mean(_hr_s), 1) if _hr_s else None,
+                "hrv": round(_stats.median(_hrv_s), 1) if _hrv_s else None,
+                "spo2": round(_stats.mean(_spo2_s), 1) if _spo2_s else None,
+                "_samples": len(_hr_s) or len(_hrv_s) or len(_spo2_s),
+            })
+
+        raw_diag["biometrics"]["samples_raw"] = len(bio_cursor_records)
+        raw_diag["biometrics"]["days_downsampled"] = len(bio_downsampled)
+
+        # Merge downsampled records into bio_out (prefer scores-derived daily resting data if present)
         existing_dates = {r["date"] for r in bio_out}
-        for r in bio_cursor_records:
-            if r["date"] not in existing_dates:
-                bio_out.append(r)
+        for _r in bio_downsampled:
+            if _r["date"] not in existing_dates:
+                bio_out.append(_r)
 
     # Sort all outputs by date
     steps_out.sort(key=lambda x: x["date"])
@@ -2576,8 +2609,8 @@ async def api_dashboard(request: Request) -> JSONResponse:
     if not bio_out:
         warnings.append(
             "biometrics: 0 records in date range. "
-            "Cursor-based fetch started from last-timestamp=0 and paginated through all records; "
-            "none fell in the selected range."
+            "Cursor-based fetch started at range-start timestamp (not 0) and paged forward; "
+            "none fell in the selected range. Check diagnostics pages[] for API responses."
         )
 
     return JSONResponse(
