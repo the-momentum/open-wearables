@@ -1,21 +1,32 @@
-"""Sensor Bio 247 data implementation for sleep, recovery, and biometrics."""
+"""Sensor Bio 247 data implementation for sleep, recovery, biometrics, and daily activity."""
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID, uuid4
+
+from pydantic import ValidationError
 
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas.enums.series_types import SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
+from app.schemas.model_crud.activities import HealthScoreCreate
 from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
 from app.schemas.model_crud.activities.event_record import EventRecordCreate
 from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
+from app.schemas.providers.sensorbio import (
+    BiometricsRecord,
+    ScoresRecord,
+    SleepRecord,
+    StepDetailsResponse,
+)
 from app.services.event_record_service import event_record_service
+from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
 from app.utils.structured_logging import log_structured
 
@@ -26,9 +37,11 @@ _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
     "respiratory_rate": SeriesType.respiratory_rate,
 }
 
+_SchemaT = TypeVar("_SchemaT")
+
 
 class SensorBio247Data(Base247DataTemplate):
-    """Sensor Bio implementation for 247 data (sleep, recovery, biometrics)."""
+    """Sensor Bio implementation for 247 data (sleep, recovery, biometrics, daily activity)."""
 
     def __init__(self, provider_name: str, api_base_url: str, oauth: BaseOAuthTemplate) -> None:
         super().__init__(provider_name, api_base_url, oauth)
@@ -43,14 +56,17 @@ class SensorBio247Data(Base247DataTemplate):
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
-        """Make an authenticated request using HTTP/2.
+        """Make an authenticated request using HTTP/2 and store the raw payload.
 
         Sensor Bio requires HTTP/2 (see API docs). We pass ``http2=True`` to the
         underlying httpx client via ``make_authenticated_request``.  This is a
         scoped override so other providers that use the shared api_client are
         unaffected.
+
+        All successful responses are stored via store_raw_payload() for
+        observability — mirrors polar/data_247.py ~98-103.
         """
-        return make_authenticated_request(
+        result = make_authenticated_request(
             db=db,
             user_id=user_id,
             connection_repo=self.connection_repo,
@@ -63,6 +79,33 @@ class SensorBio247Data(Base247DataTemplate):
             headers=headers,
             http2=True,
         )
+        store_raw_payload(
+            source="api_response",
+            provider="sensorbio",
+            payload=result,
+            user_id=str(user_id),
+            trace_id=endpoint,
+        )
+        return result
+
+    def _parse(self, raw: dict[str, Any], schema: type[_SchemaT], context: str, user_id: UUID) -> _SchemaT | None:
+        """Validate a raw API dict through a Pydantic schema.
+
+        On ValidationError, log + return None (mirrors polar/data_247.py ~138-145).
+        Callers skip None results rather than propagating bad data to DB writes.
+        """
+        try:
+            return schema.model_validate(raw)  # type: ignore[attr-defined]
+        except ValidationError as e:
+            log_structured(
+                self.logger,
+                "warning",
+                f"SensorBio {context} validation error — skipping record: {e}",
+                provider="sensorbio",
+                user_id=str(user_id),
+                context=context,
+            )
+            return None
 
     @staticmethod
     def _from_epoch_seconds(timestamp: int | float | None) -> datetime | None:
@@ -71,6 +114,10 @@ class SensorBio247Data(Base247DataTemplate):
     @staticmethod
     def _from_epoch_millis(timestamp: int | float | None) -> datetime | None:
         return datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc) if timestamp is not None else None
+
+    # -------------------------------------------------------------------------
+    # Sleep — GET /v1/sleep (per-day loop)
+    # -------------------------------------------------------------------------
 
     def get_sleep_data(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
@@ -97,18 +144,26 @@ class SensorBio247Data(Base247DataTemplate):
 
         return all_sleep_data
 
-    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any]:
-        biometrics = raw_sleep.get("biometrics", {}) or {}
-        score = raw_sleep.get("score", {}) or {}
-        # NOTE: The official API intro states timestamps are milliseconds, but the
-        # sleep endpoint examples in the docs show start_timestamp / end_timestamp
-        # as plain epoch *seconds* (e.g. 1625097600, not 1625097600000).
-        # We keep _from_epoch_seconds here to match observed response values.
-        # If Sensor Bio ever aligns the sleep endpoint to ms, switch to
-        # _from_epoch_millis and remove this comment.
-        start_dt = self._from_epoch_seconds(raw_sleep.get("start_timestamp"))
-        end_dt = self._from_epoch_seconds(raw_sleep.get("end_timestamp"))
-        duration_seconds = int((raw_sleep.get("total_sleep_mins") or 0) * 60)
+    def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+        """Validate + normalise a single /v1/sleep record.
+
+        Returns None if the record fails Pydantic validation so the caller can skip it.
+        NOTE: The official API intro states timestamps are milliseconds, but the
+        sleep endpoint examples in the docs show start_timestamp / end_timestamp
+        as plain epoch *seconds* (e.g. 1625097600, not 1625097600000).
+        We keep _from_epoch_seconds here to match observed response values.
+        If Sensor Bio ever aligns the sleep endpoint to ms, switch to
+        _from_epoch_millis and remove this comment.
+        """
+        parsed = self._parse(raw_sleep, SleepRecord, "sleep", user_id)
+        if parsed is None:
+            return None
+
+        biometrics = parsed.biometrics
+        score = parsed.score
+        start_dt = self._from_epoch_seconds(parsed.start_timestamp)
+        end_dt = self._from_epoch_seconds(parsed.end_timestamp)
+        duration_seconds = int((parsed.total_sleep_mins or 0) * 60)
 
         return {
             "id": uuid4(),
@@ -118,19 +173,19 @@ class SensorBio247Data(Base247DataTemplate):
             "start_time": start_dt,
             "end_time": end_dt,
             "duration_seconds": duration_seconds,
-            "efficiency_percent": score.get("value"),
+            "efficiency_percent": score.value if score else None,
             "is_nap": duration_seconds < 3 * 3600 if duration_seconds else False,
             "stages": {
-                "deep_seconds": int((raw_sleep.get("deep_sleep_mins") or 0) * 60),
-                "light_seconds": int((raw_sleep.get("light_sleep_mins") or 0) * 60),
-                "rem_seconds": int((raw_sleep.get("rem_sleep_mins") or 0) * 60),
-                "awake_seconds": int((raw_sleep.get("awake_time_mins") or 0) * 60),
+                "deep_seconds": int((parsed.deep_sleep_mins or 0) * 60),
+                "light_seconds": int((parsed.light_sleep_mins or 0) * 60),
+                "rem_seconds": int((parsed.rem_sleep_mins or 0) * 60),
+                "awake_seconds": int((parsed.awake_time_mins or 0) * 60),
             },
-            "average_heart_rate": biometrics.get("bpm") or raw_sleep.get("avg_heart_rate"),
-            "average_hrv": biometrics.get("hrv"),
-            "average_spo2": biometrics.get("spo2"),
-            "resting_heart_rate": biometrics.get("resting_bpm"),
-            "resting_hrv": biometrics.get("resting_hrv"),
+            "average_heart_rate": (biometrics.bpm if biometrics else None) or parsed.avg_heart_rate,
+            "average_hrv": biometrics.hrv if biometrics else None,
+            "average_spo2": biometrics.spo2 if biometrics else None,
+            "resting_heart_rate": biometrics.resting_bpm if biometrics else None,
+            "resting_hrv": biometrics.resting_hrv if biometrics else None,
             "sensorbio_sleep_id": raw_sleep.get("id") or raw_sleep.get("start_timestamp"),
             "raw": raw_sleep,
         }
@@ -206,6 +261,8 @@ class SensorBio247Data(Base247DataTemplate):
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
+                if normalized is None:
+                    continue
                 if self.save_sleep_data(db, user_id, normalized):
                     count += 1
             except Exception as e:
@@ -217,6 +274,10 @@ class SensorBio247Data(Base247DataTemplate):
                     task="load_and_save_sleep",
                 )
         return count
+
+    # -------------------------------------------------------------------------
+    # Recovery — GET /v1/scores (per-day loop)
+    # -------------------------------------------------------------------------
 
     def get_recovery_data(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
@@ -244,30 +305,56 @@ class SensorBio247Data(Base247DataTemplate):
 
         return all_scores
 
-    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any]:
-        recovery = raw_recovery.get("recovery", {}) or {}
-        sleep = raw_recovery.get("sleep", {}) or {}
-        biometrics = sleep.get("biometrics", {}) or recovery.get("biometrics", {}) or {}
-        date_str = raw_recovery.get("date")
+    def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+        """Validate + normalise a /v1/scores record.
+
+        Returns None on validation failure so the caller can skip cleanly.
+
+        Real /v1/scores shape (confirmed live, commit ae14746):
+            data.recovery.value  — 0-100 integer score
+            data.recovery.stage  — string qualifier ("good", "fair", etc.)
+        Legacy path data.recovery.score.value was a bug — always null on the
+        real API.  We use recovery.value with no legacy fallback.
+        """
+        parsed = self._parse(raw_recovery, ScoresRecord, "scores", user_id)
+        if parsed is None:
+            return None
+
+        recovery = parsed.recovery
+        sleep = parsed.sleep
+        biometrics = (sleep.biometrics if sleep else None) or (None)
+        date_str = parsed.date
         timestamp = datetime.fromisoformat(f"{date_str}T00:00:00+00:00") if date_str else None
-        score_obj = recovery.get("score") if isinstance(recovery.get("score"), dict) else recovery
+
+        # Primary: recovery.value (0-100). Legacy fallback removed — was always null on real API.
+        recovery_score = recovery.value if recovery else None
+
         return {
             "user_id": user_id,
             "provider": self.provider_name,
             "timestamp": timestamp,
-            "recovery_score": score_obj.get("value") if isinstance(score_obj, dict) else None,
-            "resting_heart_rate": biometrics.get("resting_bpm"),
-            "hrv_rmssd_milli": biometrics.get("resting_hrv") or biometrics.get("hrv"),
-            "spo2_percentage": biometrics.get("spo2"),
+            "recovery_score": recovery_score,
+            "recovery_stage": recovery.stage if recovery else None,
+            "resting_heart_rate": biometrics.resting_bpm if biometrics else None,
+            "hrv_rmssd_milli": (biometrics.resting_hrv if biometrics else None)
+            or (biometrics.hrv if biometrics else None),
+            "spo2_percentage": biometrics.spo2 if biometrics else None,
             "raw": raw_recovery,
         }
 
     def save_recovery_data(self, db: DbSession, user_id: UUID, normalized_recovery: dict[str, Any]) -> int:
+        """Persist normalized recovery data: biometric timeseries + health score.
+
+        Mirrors polar nightly_recharge (~538-542) and whoop recovery (~737-742)
+        for the HealthScore write.
+        """
         timestamp = normalized_recovery.get("timestamp")
         if not timestamp:
             return 0
 
         count = 0
+
+        # 1. Persist biometric timeseries (resting HR, HRV, SpO2)
         metrics = [
             ("resting_heart_rate", SeriesType.resting_heart_rate),
             ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
@@ -296,6 +383,32 @@ class SensorBio247Data(Base247DataTemplate):
                     provider="sensorbio",
                     task="save_recovery_data",
                 )
+
+        # 2. Persist recovery score as HealthScore (was dropped before this fix).
+        # Mirrors polar/data_247.py ~538-548 and whoop/data_247.py ~737-742.
+        recovery_score = normalized_recovery.get("recovery_score")
+        if recovery_score is not None:
+            try:
+                score_create = HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=ProviderName.SENSORBIO,
+                    category=HealthScoreCategory.RECOVERY,
+                    value=recovery_score,
+                    qualifier=normalized_recovery.get("recovery_stage"),
+                    recorded_at=timestamp,
+                )
+                health_score_service.create(db, score_create)
+                count += 1
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to save recovery health score: {e}",
+                    provider="sensorbio",
+                    task="save_recovery_data",
+                )
+
         return count
 
     def load_and_save_recovery(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
@@ -304,6 +417,8 @@ class SensorBio247Data(Base247DataTemplate):
         for item in raw_data:
             try:
                 normalized = self.normalize_recovery(item, user_id)
+                if normalized is None:
+                    continue
                 total_count += self.save_recovery_data(db, user_id, normalized)
             except Exception as e:
                 log_structured(
@@ -314,6 +429,10 @@ class SensorBio247Data(Base247DataTemplate):
                     task="load_and_save_recovery",
                 )
         return total_count
+
+    # -------------------------------------------------------------------------
+    # Biometric activity samples — GET /v1/biometrics (cursor-paginated)
+    # -------------------------------------------------------------------------
 
     def get_activity_samples(
         self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
@@ -374,12 +493,15 @@ class SensorBio247Data(Base247DataTemplate):
             "spo2": "spo2",
             "brpm": "respiratory_rate",
         }
-        for sample in raw_samples:
-            timestamp = self._from_epoch_millis(sample.get("timestamp"))
+        for raw in raw_samples:
+            parsed = self._parse(raw, BiometricsRecord, "biometrics", user_id)
+            if parsed is None:
+                continue
+            timestamp = self._from_epoch_millis(parsed.timestamp)
             if not timestamp:
                 continue
             for source_field, target_key in field_map.items():
-                value = sample.get(source_field)
+                value = getattr(parsed, source_field, None)
                 if value is not None:
                     normalized[target_key].append({"user_id": user_id, "timestamp": timestamp, "value": value})
         return normalized
@@ -425,6 +547,11 @@ class SensorBio247Data(Base247DataTemplate):
                 return 0
         return len(all_samples)
 
+    # -------------------------------------------------------------------------
+    # Daily activity (steps/energy/distance) — GET /v1/step/details (per-day loop)
+    # Previously fetched + normalized but NEVER persisted (gap #1 from t_38e552b2).
+    # -------------------------------------------------------------------------
+
     def get_daily_activity_statistics(
         self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
     ) -> list[dict[str, Any]]:
@@ -468,22 +595,26 @@ class SensorBio247Data(Base247DataTemplate):
             current_date += timedelta(days=1)
         return all_stats
 
-    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any]:
-        """Normalise a StepDetailsResponseBody into our internal shape.
+    def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
+        """Validate + normalise a StepDetailsResponseBody into our internal shape.
 
-        Reads metrics by name from the ``metrics`` array.  Possible names per
-        spec: Steps, Distance, Calories, Duration.  The ``date`` field is a
-        YYYY-MM-DD string; we parse it to a midnight-UTC datetime for the
-        timestamp.
+        Returns None on validation failure.  Reads metrics by name from the
+        ``metrics`` array.  Possible names per spec: Steps, Distance, Calories,
+        Duration.  The ``date`` field is a YYYY-MM-DD string; we parse it to a
+        midnight-UTC datetime for the timestamp.
         """
-        # Build a lookup: metric name -> StepDetailMetric dict
-        metrics_by_name: dict[str, dict[str, Any]] = {}
-        for metric in raw_stats.get("metrics") or []:
-            name = metric.get("name") or metric.get("type")
+        parsed = self._parse(raw_stats, StepDetailsResponse, "step_details", user_id)
+        if parsed is None:
+            return None
+
+        # Build a lookup: metric name -> StepDetailMetric
+        metrics_by_name: dict[str, Any] = {}
+        for metric in parsed.metrics:
+            name = metric.name or metric.type
             if name:
                 metrics_by_name[name] = metric
 
-        date_str = raw_stats.get("date")
+        date_str = parsed.date
         timestamp = datetime.fromisoformat(f"{date_str}T00:00:00+00:00") if date_str else None
 
         steps_metric = metrics_by_name.get("Steps")
@@ -494,11 +625,105 @@ class SensorBio247Data(Base247DataTemplate):
             "user_id": user_id,
             "provider": self.provider_name,
             "timestamp": timestamp,
-            "steps": int(steps_metric["value"]) if steps_metric and steps_metric.get("value") is not None else None,
-            "distance": distance_metric.get("value") if distance_metric else None,
-            "energy": calories_metric.get("value") if calories_metric else None,
+            "steps": int(steps_metric.value) if steps_metric and steps_metric.value is not None else None,
+            "distance": distance_metric.value if distance_metric else None,
+            "energy": calories_metric.value if calories_metric else None,
             "raw": raw_stats,
         }
+
+    def save_daily_activity(
+        self, db: DbSession, user_id: UUID, normalized_activity: dict[str, Any]
+    ) -> int:
+        """Persist steps/energy/distance_walking_running as timeseries.
+
+        Mirrors polar/data_247.py ~347-382.
+        Returns the number of samples written.
+        """
+        timestamp = normalized_activity.get("timestamp")
+        if not timestamp:
+            return 0
+
+        samples: list[TimeSeriesSampleCreate] = []
+
+        if normalized_activity.get("steps") is not None:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=timestamp,
+                    value=Decimal(str(normalized_activity["steps"])),
+                    series_type=SeriesType.steps,
+                )
+            )
+        if normalized_activity.get("energy") is not None:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=timestamp,
+                    value=Decimal(str(normalized_activity["energy"])),
+                    series_type=SeriesType.energy,
+                )
+            )
+        if normalized_activity.get("distance") is not None:
+            samples.append(
+                TimeSeriesSampleCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    source=self.provider_name,
+                    recorded_at=timestamp,
+                    value=Decimal(str(normalized_activity["distance"])),
+                    series_type=SeriesType.distance_walking_running,
+                )
+            )
+
+        if samples:
+            try:
+                timeseries_service.bulk_create_samples(db, samples)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "error",
+                    f"Failed to bulk-save {len(samples)} daily activity samples: {e}",
+                    provider="sensorbio",
+                    task="save_daily_activity",
+                )
+                return 0
+
+        return len(samples)
+
+    def load_and_save_daily_activity(
+        self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime
+    ) -> int:
+        """Fetch, normalize, and persist daily step/distance/energy data.
+
+        This was the missing wire-up (gap #1): get_daily_activity_statistics()
+        and normalize_daily_activity() existed but were never called from
+        load_and_save_all().
+        """
+        raw_data = self.get_daily_activity_statistics(db, user_id, start_time, end_time)
+        total_count = 0
+        for item in raw_data:
+            try:
+                normalized = self.normalize_daily_activity(item, user_id)
+                if normalized is None:
+                    continue
+                total_count += self.save_daily_activity(db, user_id, normalized)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to save daily activity data: {e}",
+                    provider="sensorbio",
+                    task="load_and_save_daily_activity",
+                )
+        return total_count
+
+    # -------------------------------------------------------------------------
+    # Orchestration — load_and_save_all with commit/rollback discipline (#5)
+    # -------------------------------------------------------------------------
 
     def load_and_save_all(
         self,
@@ -517,20 +742,32 @@ class SensorBio247Data(Base247DataTemplate):
         if not end_time:
             end_time = datetime.now(timezone.utc)
 
-        results = {
+        results: dict[str, int] = {
             "sleep_sessions_synced": 0,
             "recovery_samples_synced": 0,
             "activity_samples_synced": 0,
+            "daily_activity_synced": 0,
         }
+
+        # Each sub-sync is wrapped in try/except with explicit commit on success
+        # and rollback on failure — mirrors polar/data_247.py ~1032-1050.
+        # Note: we do NOT double-commit here; the strategy/caller does NOT commit
+        # after load_and_save_all() based on code inspection of strategy.py.
+
         try:
             results["sleep_sessions_synced"] = self.load_and_save_sleep(db, user_id, start_time, end_time)
+            db.commit()
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger, "error", f"Failed to sync sleep data: {e}", provider="sensorbio", task="load_and_save_all"
             )
+
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_time, end_time)
+            db.commit()
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -538,11 +775,14 @@ class SensorBio247Data(Base247DataTemplate):
                 provider="sensorbio",
                 task="load_and_save_all",
             )
+
         try:
             raw_activity = self.get_activity_samples(db, user_id, start_time, end_time)
             normalized_activity = self.normalize_activity_samples(raw_activity, user_id)
             results["activity_samples_synced"] = self.save_activity_samples(db, user_id, normalized_activity)
+            db.commit()
         except Exception as e:
+            db.rollback()
             log_structured(
                 self.logger,
                 "error",
@@ -550,4 +790,18 @@ class SensorBio247Data(Base247DataTemplate):
                 provider="sensorbio",
                 task="load_and_save_all",
             )
+
+        try:
+            results["daily_activity_synced"] = self.load_and_save_daily_activity(db, user_id, start_time, end_time)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            log_structured(
+                self.logger,
+                "error",
+                f"Failed to sync daily activity data: {e}",
+                provider="sensorbio",
+                task="load_and_save_all",
+            )
+
         return results

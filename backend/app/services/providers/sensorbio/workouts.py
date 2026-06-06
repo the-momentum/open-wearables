@@ -15,6 +15,7 @@ from app.schemas.model_crud.activities import (
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.raw_payload_storage import store_raw_payload
 from app.utils.structured_logging import log_structured
 
 
@@ -48,13 +49,16 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         headers: dict[str, str] | None = None,
         json_data: dict[str, Any] | None = None,
     ) -> Any:
-        """Make an authenticated request using HTTP/2.
+        """Make an authenticated request using HTTP/2 and store raw payload.
 
         Sensor Bio requires HTTP/2 (see API docs). Overrides the base
         implementation to pass ``http2=True``; other providers that use the
         shared api_client are unaffected.
+
+        All successful responses are stored via store_raw_payload() for
+        observability — mirrors polar/data_247.py ~98-103.
         """
-        return make_authenticated_request(
+        result = make_authenticated_request(
             db=db,
             user_id=user_id,
             connection_repo=self.connection_repo,
@@ -68,6 +72,14 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
             json_data=json_data,
             http2=True,
         )
+        store_raw_payload(
+            source="api_response",
+            provider="sensorbio",
+            payload=result,
+            user_id=str(user_id),
+            trace_id=endpoint,
+        )
+        return result
 
     @staticmethod
     def _from_epoch_millis(timestamp: int | float | None) -> datetime | None:
