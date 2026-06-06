@@ -1,9 +1,12 @@
 """Tests for SensorBio 247 data: normalize_sleep, normalize_recovery, save_recovery_data,
 normalize_daily_activity, save_daily_activity, normalize_activity_samples edge cases,
-pagination stop conditions, HTTP/2 204/404/timeout propagation, and recovery score persistence.
+pagination stop conditions, HTTP/2 204/404/timeout propagation, and recovery/activity/sleep
+score persistence.
 
 Mirrors Polar's per-data-type class structure (TestPolar247SleepNormalization, etc.)
 as recommended in gap-analysis card t_38e552b2 finding #8.
+
+t_5912f22f adds: ACTIVITY + SLEEP HealthScore extraction from /v1/scores (parity with Oura).
 """
 
 from datetime import datetime, timezone
@@ -551,3 +554,207 @@ class TestSensorBio247SaveDailyActivity:
             count = data_247.save_daily_activity(db, USER_ID, normalized)
         assert count == 0
         mock_ts.bulk_create_samples.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# 7. normalize_recovery — activity + sleep score extraction (t_5912f22f)
+# ---------------------------------------------------------------------------
+
+
+class TestSensorBio247ScoresActivitySleepNormalization:
+    """normalize_recovery() extracts activity_score and sleep_score from /v1/scores.
+
+    Added in t_5912f22f (parity with oura ACTIVITY/SLEEP HealthScores).
+    The full /v1/scores payload has three score blocks:
+        data.activity.value = 97  (was dropped; now extracted)
+        data.recovery.value = 48
+        data.sleep.value    = 99  (distinct from /v1/sleep efficiency_score)
+    """
+
+    def test_extracts_activity_score(self, data_247: SensorBio247Data) -> None:
+        """data.activity.value must be returned as activity_score in the normalized dict."""
+        raw = {
+            "date": "2026-03-14",
+            "recovery": {"value": 48, "stage": "go_easy"},
+            "activity": {"value": 97, "avg": 75},
+            "sleep": {"value": 99, "biometrics": {}},
+        }
+        result = data_247.normalize_recovery(raw, USER_ID)
+        assert result is not None
+        assert result["activity_score"] == 97
+        assert result["recovery_score"] == 48
+
+    def test_extracts_sleep_score_from_scores(self, data_247: SensorBio247Data) -> None:
+        """data.sleep.value from /v1/scores (not /v1/sleep efficiency) must be extracted."""
+        raw = {
+            "date": "2026-03-14",
+            "sleep": {"value": 99, "biometrics": {"resting_bpm": 52.0}},
+        }
+        result = data_247.normalize_recovery(raw, USER_ID)
+        assert result is not None
+        assert result["sleep_score"] == 99
+        # Biometrics still extracted alongside
+        assert result["resting_heart_rate"] == 52.0
+
+    def test_none_when_activity_block_missing(self, data_247: SensorBio247Data) -> None:
+        """Missing data.activity block → activity_score is None, no crash."""
+        raw = {
+            "date": "2026-03-14",
+            "recovery": {"value": 48, "stage": "go_easy"},
+        }
+        result = data_247.normalize_recovery(raw, USER_ID)
+        assert result is not None
+        assert result["activity_score"] is None
+
+    def test_none_when_sleep_value_missing(self, data_247: SensorBio247Data) -> None:
+        """data.sleep block present but no value field → sleep_score is None, no crash."""
+        raw = {
+            "date": "2026-03-14",
+            "sleep": {"biometrics": {"resting_bpm": 55.0}},
+        }
+        result = data_247.normalize_recovery(raw, USER_ID)
+        assert result is not None
+        assert result["sleep_score"] is None
+
+    def test_full_live_shape_2026_03_14(self, data_247: SensorBio247Data) -> None:
+        """Exercise the exact confirmed-live payload shape (t_5912f22f)."""
+        raw = {
+            "date": "2026-03-14",
+            "activity": {"avg": 75, "goal": 80, "processing": False, "value": 97},
+            "recovery": {"avg": 60, "message": "take it easy", "processing": False, "stage": "go_easy", "value": 48},
+            "sleep": {"avg": 85, "duration_secs": 28800, "goal": 90, "processing": False, "value": 99,
+                      "biometrics": {"resting_bpm": 52.0, "resting_hrv": 48.0, "hrv": 50.0, "spo2": 97.0}},
+        }
+        result = data_247.normalize_recovery(raw, USER_ID)
+        assert result is not None
+        assert result["recovery_score"] == 48
+        assert result["recovery_stage"] == "go_easy"
+        assert result["activity_score"] == 97
+        assert result["sleep_score"] == 99
+        assert result["resting_heart_rate"] == 52.0
+        from datetime import datetime, timezone
+        assert result["timestamp"] == datetime(2026, 3, 14, 0, 0, 0, tzinfo=timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# 8. save_recovery_data — ACTIVITY + SLEEP HealthScore writes (t_5912f22f)
+# ---------------------------------------------------------------------------
+
+
+class TestSensorBio247SaveRecoveryDataScores:
+    """save_recovery_data() now writes RECOVERY + ACTIVITY + SLEEP HealthScores.
+
+    Added in t_5912f22f. Mirrors oura/data_247.py ACTIVITY (line 184) and SLEEP (line 809).
+    """
+
+    def test_persists_activity_health_score(self, data_247: SensorBio247Data) -> None:
+        """activity_score present → HealthScore(ACTIVITY) written."""
+        db = MagicMock()
+        normalized = {
+            "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
+            "recovery_score": 48,
+            "recovery_stage": "go_easy",
+            "activity_score": 97,
+        }
+        with (
+            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
+            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+        ):
+            count = data_247.save_recovery_data(db, USER_ID, normalized)
+
+        # RECOVERY + ACTIVITY = 2 HealthScore writes; no timeseries (None fields)
+        assert count == 2
+        assert mock_hs.create.call_count == 2
+        from app.schemas.enums import HealthScoreCategory
+        categories = {call[0][1].category for call in mock_hs.create.call_args_list}
+        assert HealthScoreCategory.RECOVERY in categories
+        assert HealthScoreCategory.ACTIVITY in categories
+        # Verify activity value
+        activity_call = next(
+            c for c in mock_hs.create.call_args_list if c[0][1].category == HealthScoreCategory.ACTIVITY
+        )
+        assert activity_call[0][1].value == 97
+
+    def test_persists_sleep_health_score(self, data_247: SensorBio247Data) -> None:
+        """sleep_score present → HealthScore(SLEEP) written."""
+        db = MagicMock()
+        normalized = {
+            "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
+            "recovery_score": 48,
+            "recovery_stage": "go_easy",
+            "sleep_score": 99,
+        }
+        with (
+            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
+            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+        ):
+            count = data_247.save_recovery_data(db, USER_ID, normalized)
+
+        assert count == 2  # RECOVERY + SLEEP
+        from app.schemas.enums import HealthScoreCategory
+        categories = {call[0][1].category for call in mock_hs.create.call_args_list}
+        assert HealthScoreCategory.SLEEP in categories
+        sleep_call = next(c for c in mock_hs.create.call_args_list if c[0][1].category == HealthScoreCategory.SLEEP)
+        assert sleep_call[0][1].value == 99
+
+    def test_persists_all_three_health_scores(self, data_247: SensorBio247Data) -> None:
+        """All three scores present → RECOVERY + ACTIVITY + SLEEP all written."""
+        db = MagicMock()
+        normalized = {
+            "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
+            "recovery_score": 48,
+            "recovery_stage": "go_easy",
+            "activity_score": 97,
+            "sleep_score": 99,
+            "resting_heart_rate": 52.0,
+            "hrv_rmssd_milli": 48.0,
+            "spo2_percentage": 97.0,
+        }
+        with (
+            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
+            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+        ):
+            count = data_247.save_recovery_data(db, USER_ID, normalized)
+
+        # 3 timeseries + 3 HealthScores = 6
+        assert count == 6
+        assert mock_hs.create.call_count == 3
+        from app.schemas.enums import HealthScoreCategory
+        categories = {call[0][1].category for call in mock_hs.create.call_args_list}
+        assert categories == {HealthScoreCategory.RECOVERY, HealthScoreCategory.ACTIVITY, HealthScoreCategory.SLEEP}
+
+    def test_none_activity_score_no_write(self, data_247: SensorBio247Data) -> None:
+        """activity_score=None → no ACTIVITY HealthScore written, no crash."""
+        db = MagicMock()
+        normalized = {
+            "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
+            "recovery_score": 48,
+            "activity_score": None,
+            "sleep_score": None,
+        }
+        with (
+            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
+            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+        ):
+            count = data_247.save_recovery_data(db, USER_ID, normalized)
+
+        assert count == 1  # only RECOVERY
+        from app.schemas.enums import HealthScoreCategory
+        assert mock_hs.create.call_count == 1
+        assert mock_hs.create.call_args[0][1].category == HealthScoreCategory.RECOVERY
+
+    def test_missing_all_scores_no_crash(self, data_247: SensorBio247Data) -> None:
+        """Missing activity/sleep blocks in normalized dict → no write, no crash."""
+        db = MagicMock()
+        normalized = {
+            "timestamp": datetime(2026, 3, 14, tzinfo=timezone.utc),
+            # activity_score and sleep_score keys absent entirely
+        }
+        with (
+            patch("app.services.providers.sensorbio.data_247.timeseries_service"),
+            patch("app.services.providers.sensorbio.data_247.health_score_service") as mock_hs,
+        ):
+            count = data_247.save_recovery_data(db, USER_ID, normalized)
+
+        assert count == 0
+        mock_hs.create.assert_not_called()

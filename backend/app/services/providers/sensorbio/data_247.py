@@ -306,13 +306,16 @@ class SensorBio247Data(Base247DataTemplate):
         return all_scores
 
     def normalize_recovery(self, raw_recovery: dict[str, Any], user_id: UUID) -> dict[str, Any] | None:  # ty:ignore[invalid-method-override]
-        """Validate + normalise a /v1/scores record.
+        """Validate + normalise a /v1/scores record (recovery + activity + sleep scores).
 
         Returns None on validation failure so the caller can skip cleanly.
 
-        Real /v1/scores shape (confirmed live, commit ae14746):
+        Real /v1/scores shape (confirmed live, 2026-03-14 / t_5912f22f):
             data.recovery.value  — 0-100 integer score
             data.recovery.stage  — string qualifier ("good", "fair", etc.)
+            data.activity.value  — 0-100 integer score (was dropped; now extracted)
+            data.sleep.value     — 0-100 integer score (distinct from /v1/sleep
+                                   sleep_efficiency_score on EventRecordDetail)
         Legacy path data.recovery.score.value was a bug — always null on the
         real API.  We use recovery.value with no legacy fallback.
         """
@@ -329,19 +332,30 @@ class SensorBio247Data(Base247DataTemplate):
         # Primary: recovery.value (0-100). Legacy fallback removed — was always null on real API.
         recovery_score = recovery.value if recovery else None
 
+        # Activity score from /v1/scores data.activity.value (mirrors oura ACTIVITY, t_5912f22f).
+        # Was fetched but silently dropped before this fix.
+        activity = parsed.activity
+        activity_score = activity.value if activity else None
+
+        # Sleep score from /v1/scores data.sleep.value (NOT sleep_efficiency_score from /v1/sleep).
+        # /v1/sleep -> EventRecordDetail.sleep_efficiency_score (session field)
+        # /v1/scores -> HealthScore(SLEEP) — different store, no duplication.
+        sleep_score = sleep.value if sleep else None
+
         return {
             "user_id": user_id,
             "provider": self.provider_name,
             "timestamp": timestamp,
             "recovery_score": recovery_score,
             "recovery_stage": recovery.stage if recovery else None,
+            "activity_score": activity_score,
+            "sleep_score": sleep_score,
             "resting_heart_rate": biometrics.resting_bpm if biometrics else None,
             "hrv_rmssd_milli": (biometrics.resting_hrv if biometrics else None)
             or (biometrics.hrv if biometrics else None),
             "spo2_percentage": biometrics.spo2 if biometrics else None,
             "raw": raw_recovery,
         }
-
     def save_recovery_data(self, db: DbSession, user_id: UUID, normalized_recovery: dict[str, Any]) -> int:
         """Persist normalized recovery data: biometric timeseries + health score.
 
@@ -405,6 +419,55 @@ class SensorBio247Data(Base247DataTemplate):
                     self.logger,
                     "warning",
                     f"Failed to save recovery health score: {e}",
+                    provider="sensorbio",
+                    task="save_recovery_data",
+                )
+
+        # 3. Persist activity score as HealthScore (mirrors oura/data_247.py:184 ACTIVITY).
+        # Was fetched from /v1/scores data.activity.value but never persisted (t_5912f22f fix).
+        activity_score = normalized_recovery.get("activity_score")
+        if activity_score is not None:
+            try:
+                activity_hs = HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=ProviderName.SENSORBIO,
+                    category=HealthScoreCategory.ACTIVITY,
+                    value=activity_score,
+                    recorded_at=timestamp,
+                )
+                health_score_service.create(db, activity_hs)
+                count += 1
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to save activity health score: {e}",
+                    provider="sensorbio",
+                    task="save_recovery_data",
+                )
+
+        # 4. Persist sleep score from /v1/scores as HealthScore (mirrors oura/data_247.py:809 SLEEP).
+        # Distinct from save_sleep_data which writes sleep_efficiency_score on EventRecordDetail
+        # (session field, not a HealthScore row) — different stores, no duplication.
+        sleep_score = normalized_recovery.get("sleep_score")
+        if sleep_score is not None:
+            try:
+                sleep_hs = HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    provider=ProviderName.SENSORBIO,
+                    category=HealthScoreCategory.SLEEP,
+                    value=sleep_score,
+                    recorded_at=timestamp,
+                )
+                health_score_service.create(db, sleep_hs)
+                count += 1
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "warning",
+                    f"Failed to save sleep health score from /v1/scores: {e}",
                     provider="sensorbio",
                     task="save_recovery_data",
                 )
