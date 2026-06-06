@@ -29,6 +29,7 @@ Provider API shape references (from PR #1109)
   /v1/biometrics   -> {data:[BiometricSample]}
   /v1/user         -> {data:{id,name}} or flat {id,name}
 """
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,7 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 # ---------------------------------------------------------------------------
 # Bootstrap: make backend/ importable
@@ -185,7 +186,11 @@ MOCK_SCORES_RESPONSE: dict[str, Any] = {
         },
         "sleep": {
             "biometrics": {
-                "bpm": 59, "hrv": 41.0, "spo2": 97.5, "resting_bpm": 56, "resting_hrv": 43.5,
+                "bpm": 59,
+                "hrv": 41.0,
+                "spo2": 97.5,
+                "resting_bpm": 56,
+                "resting_hrv": 43.5,
             }
         },
     }
@@ -206,14 +211,17 @@ MOCK_STEP_DETAILS_RESPONSE: dict[str, Any] = {
 
 MOCK_BIOMETRICS_RESPONSE: dict[str, Any] = {
     "data": [
-        {"timestamp": _TS_ACT_START_MS, "heart_rate": 72, "heart_rate_variability": 45.0,
-         "spo2": 97.8, "respiratory_rate": 15.2},
+        {
+            "timestamp": _TS_ACT_START_MS,
+            "heart_rate": 72,
+            "heart_rate_variability": 45.0,
+            "spo2": 97.8,
+            "respiratory_rate": 15.2,
+        },
     ]
 }
 
-MOCK_USER_RESPONSE: dict[str, Any] = {
-    "data": {"id": "mock-user-001", "name": "Sameer Test"}
-}
+MOCK_USER_RESPONSE: dict[str, Any] = {"data": {"id": "mock-user-001", "name": "Sameer Test"}}
 
 MOCK_TOKEN_RESPONSE: dict[str, Any] = {
     "access_token": "mock_access_token_abc123",
@@ -226,6 +234,7 @@ MOCK_TOKEN_RESPONSE: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 # Test runners
 # ---------------------------------------------------------------------------
+
 
 def _run_test(name: str, fn: Any) -> dict[str, Any]:
     try:
@@ -285,7 +294,7 @@ def test_workout_type_mapping() -> dict[str, Any]:
         ("Yoga", "yoga"),
         ("Strength Training", "strength_training"),
         ("Cycling", "cycling"),
-        ("unknown_xyz", "other"),   # unrecognized input maps to 'other'
+        ("unknown_xyz", "other"),  # unrecognized input maps to 'other'
     ]
     results = []
     all_pass = True
@@ -294,8 +303,9 @@ def test_workout_type_mapping() -> dict[str, Any]:
         passed = expected_fragment in str(mapped).lower()
         if not passed:
             all_pass = False
-        results.append({"input": input_name, "expected_contains": expected_fragment,
-                         "got": str(mapped), "pass": passed})
+        results.append(
+            {"input": input_name, "expected_contains": expected_fragment, "got": str(mapped), "pass": passed}
+        )
     return {"cases": results, "all_pass": all_pass}
 
 
@@ -358,16 +368,18 @@ def test_sleep_sync() -> dict[str, Any]:
             return MOCK_BIOMETRICS_RESPONSE
         return {}
 
-    with patch.object(data247, "_make_api_request", side_effect=_mock_api):
-        with patch.object(data247, "save_sleep_data", return_value=True) as m_sleep:
-            with patch.object(data247, "save_recovery_data", return_value=1):
-                with patch.object(data247, "save_activity_samples", return_value=1):
-                    sync_result = data247.load_and_save_all(
-                        db=MagicMock(),
-                        user_id=uuid4(),
-                        start_time=datetime(2023, 11, 15, tzinfo=timezone.utc),
-                        end_time=datetime(2023, 11, 16, tzinfo=timezone.utc),
-                    )
+    with (
+        patch.object(data247, "_make_api_request", side_effect=_mock_api),
+        patch.object(data247, "save_sleep_data", return_value=True) as m_sleep,
+        patch.object(data247, "save_recovery_data", return_value=1),
+        patch.object(data247, "save_activity_samples", return_value=1),
+    ):
+        sync_result = data247.load_and_save_all(
+            db=MagicMock(),
+            user_id=uuid4(),
+            start_time=datetime(2023, 11, 15, tzinfo=timezone.utc),
+            end_time=datetime(2023, 11, 16, tzinfo=timezone.utc),
+        )
 
     sleep_rec = MOCK_SLEEP_RESPONSE["data"][0]
     return {
@@ -412,8 +424,8 @@ def test_recovery_sync() -> dict[str, Any]:
 
 def test_http2_flag() -> dict[str, Any]:
     """Verify workouts + 247-data both pass http2=True to make_authenticated_request."""
-    import app.services.providers.sensorbio.workouts as _workouts_mod
     import app.services.providers.sensorbio.data_247 as _data247_mod
+    import app.services.providers.sensorbio.workouts as _workouts_mod
 
     captured: list[dict[str, Any]] = []
 
@@ -435,10 +447,12 @@ def test_http2_flag() -> dict[str, Any]:
     )
 
     # Must patch the name as bound in each module (from X import Y binds a new name)
-    with patch.object(_workouts_mod, "make_authenticated_request", side_effect=_capture):
-        with patch.object(_data247_mod, "make_authenticated_request", side_effect=_capture):
-            workouts._make_api_request(db=MagicMock(), user_id=uuid4(), endpoint="/v1/activities")
-            data247._make_api_request(db=MagicMock(), user_id=uuid4(), endpoint="/v1/sleep")
+    with (
+        patch.object(_workouts_mod, "make_authenticated_request", side_effect=_capture),
+        patch.object(_data247_mod, "make_authenticated_request", side_effect=_capture),
+    ):
+        workouts._make_api_request(db=MagicMock(), user_id=uuid4(), endpoint="/v1/activities")
+        data247._make_api_request(db=MagicMock(), user_id=uuid4(), endpoint="/v1/sleep")
 
     return {
         "calls": captured,
@@ -684,11 +698,13 @@ async def index() -> HTMLResponse:
 async def api_run_tests() -> JSONResponse:
     results = [_run_test(name, fn) for name, fn in ALL_TESTS]
     pass_count = sum(1 for r in results if r["status"] == "pass")
-    return JSONResponse({
-        "tests": results,
-        "mode": "live" if LIVE_MODE else "mock",
-        "summary": {"total": len(results), "pass": pass_count, "fail": len(results) - pass_count},
-    })
+    return JSONResponse(
+        {
+            "tests": results,
+            "mode": "live" if LIVE_MODE else "mock",
+            "summary": {"total": len(results), "pass": pass_count, "fail": len(results) - pass_count},
+        }
+    )
 
 
 @app.get("/api/oauth/start")
@@ -712,16 +728,18 @@ async def api_oauth_start() -> JSONResponse:
 
 @app.get("/api/oauth/simulate-callback")
 async def api_oauth_simulate_callback() -> JSONResponse:
-    return JSONResponse({
-        "simulated": True,
-        "mock_token_response": MOCK_TOKEN_RESPONSE,
-        "mock_user_profile": MOCK_USER_RESPONSE["data"],
-        "note": (
-            "Real flow: auth.sensorbio.com redirects to /oauth/callback?code=AUTH_CODE&state=STATE. "
-            "Server POSTs to auth.sensorbio.com/token to exchange code for tokens, "
-            "then GETs /v1/user to fetch the user profile."
-        ),
-    })
+    return JSONResponse(
+        {
+            "simulated": True,
+            "mock_token_response": MOCK_TOKEN_RESPONSE,
+            "mock_user_profile": MOCK_USER_RESPONSE["data"],
+            "note": (
+                "Real flow: auth.sensorbio.com redirects to /oauth/callback?code=AUTH_CODE&state=STATE. "
+                "Server POSTs to auth.sensorbio.com/token to exchange code for tokens, "
+                "then GETs /v1/user to fetch the user profile."
+            ),
+        }
+    )
 
 
 @app.get("/oauth/callback")
@@ -749,8 +767,7 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
                     "code": code,
                     "client_id": settings.sensorbio_client_id or "",
                     "client_secret": (
-                        settings.sensorbio_client_secret.get_secret_value()
-                        if settings.sensorbio_client_secret else ""
+                        settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else ""
                     ),
                     "redirect_uri": settings.sensorbio_redirect_uri or "http://localhost:8765/oauth/callback",
                 },
