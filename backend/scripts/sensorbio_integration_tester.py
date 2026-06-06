@@ -2370,10 +2370,20 @@ async def api_dashboard(request: Request) -> JSONResponse:
                     hrv = bio_block.get("resting_hrv") or bio_block.get("hrv")
                     spo2 = bio_block.get("spo2")
                 elif isinstance(payload, dict) and "recovery" in payload:
-                    # Flat shape without 'data' wrapper
+                    # Flat shape without 'data' wrapper: {activity, recovery, sleep}
                     rec_block = payload.get("recovery") or {}
                     sc = rec_block.get("score") or {}
-                    recovery_score = sc.get("value") if isinstance(sc, dict) else None
+                    recovery_score = sc.get("value") if isinstance(sc, dict) else (
+                        int(sc) if isinstance(sc, (int, float)) else None
+                    )
+                    # Also try to extract biometrics even when score is null
+                    bio_block = rec_block.get("biometrics") or {}
+                    if not resting_bpm:
+                        resting_bpm = bio_block.get("resting_bpm")
+                    if not hrv:
+                        hrv = bio_block.get("resting_hrv") or bio_block.get("hrv")
+                    if not spo2:
+                        spo2 = bio_block.get("spo2")
 
                 if recovery_score is not None:
                     recovery_out.append({
@@ -2383,16 +2393,16 @@ async def api_dashboard(request: Request) -> JSONResponse:
                         "hrv": hrv,
                         "spo2": spo2,
                     })
-                    # Also fold into bio_out if we have hr/hrv
-                    if resting_bpm is not None or hrv is not None:
-                        bio_out.append({
-                            "date": day,
-                            "resting_hr": round(resting_bpm, 1) if resting_bpm is not None else None,
-                            "hrv": round(hrv, 1) if hrv is not None else None,
-                            "spo2": round(spo2, 1) if spo2 is not None else None,
-                        })
+                # Fold bio data into bio_out regardless of whether we got a recovery score
+                if resting_bpm is not None or hrv is not None:
+                    bio_out.append({
+                        "date": day,
+                        "resting_hr": round(resting_bpm, 1) if resting_bpm is not None else None,
+                        "hrv": round(hrv, 1) if hrv is not None else None,
+                        "spo2": round(spo2, 1) if spo2 is not None else None,
+                    })
                 call_info["sample_keys"] = _sample_keys(payload)
-                call_info["count"] = 1 if data_inner else 0
+                call_info["count"] = 1 if (data_inner or (isinstance(payload, dict) and "recovery" in payload)) else 0
                 call_info["recovery_score_found"] = recovery_score
             score_calls.append(call_info)
 
@@ -2413,7 +2423,9 @@ async def api_dashboard(request: Request) -> JSONResponse:
 
         bio_cursor_records: list[dict[str, Any]] = []
         bio_pages: list[dict[str, Any]] = []
-        last_ts = 0
+        # Start cursor at start_ms (not 0) so we don't page through years of old data.
+        # Subtract 1 so that the first record AT start_ms is included (API is >last-timestamp).
+        last_ts = max(0, start_ms - 1)
         bio_ep = provider_ep.get("biometrics")
         for page_num in range(20):
             if not bio_ep:
