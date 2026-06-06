@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""SensorBio PR #1109 Integration Tester — browser-based FastAPI webapp.
+"""Open Wearables Multi-Provider Integration Tester — browser-based FastAPI webapp.
 
-A lightweight web app for manually testing the Sensor Bio provider
+A lightweight web app for manually testing any supported wearable provider
 without a running database, Redis, or Celery.
 
 Modes
 -----
 MOCK (default, no secrets):
-    All SensorBio API calls answered with deterministic offline fixtures.
+    SensorBio API calls answered with deterministic offline fixtures.
     Start:  cd backend/ && uv run python scripts/sensorbio_integration_tester.py
     Open:   http://localhost:8765
 
 LIVE (real credentials):
     Set SENSORBIO_LIVE=1 + SENSORBIO_CLIENT_ID + SENSORBIO_CLIENT_SECRET.
     Optional: SENSORBIO_REDIRECT_URI (defaults to http://localhost:8765/oauth/callback)
-    Register the redirect URI in the Sensor Bio developer portal first.
+    Register the redirect URI in each provider's developer portal first.
     Start:
         SENSORBIO_LIVE=1 \\
         SENSORBIO_CLIENT_ID=xxx \\
@@ -22,8 +22,15 @@ LIVE (real credentials):
         uv run python scripts/sensorbio_integration_tester.py
     Redirect URI to allowlist: http://localhost:8765/oauth/callback
 
-Provider API shape references (from PR #1109)
----------------------------------------------
+To add credentials for other providers:
+    GARMIN_CLIENT_ID=xxx GARMIN_CLIENT_SECRET=yyy
+    WHOOP_CLIENT_ID=xxx WHOOP_CLIENT_SECRET=yyy
+    OURA_CLIENT_ID=xxx OURA_CLIENT_SECRET=yyy
+    FITBIT_CLIENT_ID=xxx FITBIT_CLIENT_SECRET=yyy
+    POLAR_CLIENT_ID=xxx POLAR_CLIENT_SECRET=yyy
+
+SensorBio Provider API shape references (from PR #1109)
+-------------------------------------------------------
   /v1/activities   -> {data:[WorkoutStats], links:{next?}}
   /v1/sleep        -> {data:[SleepRecord]}
   /v1/scores       -> {data:{date, recovery:{score,biometrics}, sleep:{biometrics}}}
@@ -65,9 +72,26 @@ os.environ.setdefault("SENSORBIO_REDIRECT_URI", "http://localhost:8765/oauth/cal
 
 LIVE_MODE = os.environ.get("SENSORBIO_LIVE", "").lower() in ("1", "true", "yes")
 
-# In-memory live session — stores access_token after successful OAuth exchange.
+# In-memory live sessions — keyed by provider name.
+# Stores access_token after successful OAuth exchange.
 # Never persisted to disk or committed. Cleared on server restart.
-_LIVE_SESSION: dict[str, Any] = {}
+# Structure: {provider_name: {"access_token": str, "token_type": str, "acquired_at": str}}
+_LIVE_SESSIONS: dict[str, dict[str, Any]] = {}
+
+# Default selected provider (sensorbio for backwards-compat)
+_SELECTED_PROVIDER: str = "sensorbio"
+
+
+def _sess(provider: str | None = None) -> dict[str, Any]:
+    """Return the live session dict for the given (or currently selected) provider."""
+    return _LIVE_SESSIONS.get(provider or _SELECTED_PROVIDER, {})
+
+
+def _set_sess(key: str, value: Any, provider: str | None = None) -> None:
+    """Write a key into the live session for the given provider."""
+    p = provider or _SELECTED_PROVIDER
+    _LIVE_SESSIONS.setdefault(p, {})[key] = value
+
 
 # Real creds override the defaults when in live mode
 if LIVE_MODE:
@@ -92,6 +116,165 @@ from app.services.providers.sensorbio.data_247 import SensorBio247Data  # noqa: 
 from app.services.providers.sensorbio.oauth import SensorBioOAuth  # noqa: E402
 from app.services.providers.sensorbio.strategy import SensorBioStrategy  # noqa: E402
 from app.services.providers.sensorbio.workouts import SensorBioWorkouts  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Provider Registry
+# All providers the platform knows about, with metadata for the tester.
+# "api_base_url" is the data API base; "token_url" is their OAuth token endpoint.
+# "has_classes" is set dynamically by import-probing ProviderFactory.
+# "status" = "ready" | "available-but-unconfigured" | "unsupported"
+# ---------------------------------------------------------------------------
+
+_PROVIDER_META: dict[str, dict[str, Any]] = {
+    "sensorbio": {
+        "label": "Sensor Bio",
+        "api_base_url": "https://api.sensorbio.com",
+        "token_url": "https://auth.sensorbio.com/token",
+        "cred_env": ("SENSORBIO_CLIENT_ID", "SENSORBIO_CLIENT_SECRET"),
+        "has_pkce": False,
+        "http2": True,
+        "endpoints": {
+            "user": "/v1/user",
+            "activities": "/v1/activities",
+            "sleep": "/v1/sleep",
+            "scores": "/v1/scores",
+            "step-details": "/v1/step/details",
+            "biometrics": "/v1/biometrics",
+        },
+    },
+    "whoop": {
+        "label": "Whoop",
+        "api_base_url": "https://api.prod.whoop.com/developer",
+        "token_url": "https://api.prod.whoop.com/oauth/oauth2/token",
+        "cred_env": ("WHOOP_CLIENT_ID", "WHOOP_CLIENT_SECRET"),
+        "has_pkce": False,
+        "http2": False,
+        "endpoints": {
+            "user": "/v2/user/profile/basic",
+            "cycles": "/v2/cycle",
+            "recovery": "/v2/recovery",
+            "sleep": "/v2/sleep",
+            "workout": "/v2/workout",
+        },
+    },
+    "oura": {
+        "label": "Oura Ring",
+        "api_base_url": "https://api.ouraring.com",
+        "token_url": "https://api.ouraring.com/oauth/token",
+        "cred_env": ("OURA_CLIENT_ID", "OURA_CLIENT_SECRET"),
+        "has_pkce": False,
+        "http2": False,
+        "endpoints": {
+            "user": "/v2/usercollection/personal_info",
+            "sleep": "/v2/usercollection/sleep",
+            "readiness": "/v2/usercollection/readiness",
+            "activity": "/v2/usercollection/daily_activity",
+        },
+    },
+    "fitbit": {
+        "label": "Fitbit",
+        "api_base_url": "https://api.fitbit.com",
+        "token_url": "https://api.fitbit.com/oauth2/token",
+        "cred_env": ("FITBIT_CLIENT_ID", "FITBIT_CLIENT_SECRET"),
+        "has_pkce": True,
+        "http2": False,
+        "endpoints": {
+            "user": "/1/user/-/profile.json",
+            "sleep": "/1.2/user/-/sleep/date/today.json",
+            "activities": "/1/user/-/activities/date/today.json",
+            "heart": "/1/user/-/activities/heart/date/today/1d.json",
+        },
+    },
+    "garmin": {
+        "label": "Garmin",
+        "api_base_url": "https://apis.garmin.com",
+        "token_url": "https://diauth.garmin.com/di-oauth2-service/oauth/token",
+        "cred_env": ("GARMIN_CLIENT_ID", "GARMIN_CLIENT_SECRET"),
+        "has_pkce": True,
+        "http2": False,
+        "endpoints": {
+            "user": "/partner-gateway/rest/user/id",
+            "activities": "/partner-gateway/rest/dailies",
+            "sleep": "/partner-gateway/rest/sleeps",
+        },
+    },
+    "polar": {
+        "label": "Polar",
+        "api_base_url": "https://www.polaraccesslink.com",
+        "token_url": "https://polarremote.com/v2/oauth2/token",
+        "cred_env": ("POLAR_CLIENT_ID", "POLAR_CLIENT_SECRET"),
+        "has_pkce": False,
+        "http2": False,
+        "endpoints": {
+            "user": "/v3/users",
+            "activity": "/v3/users/activity-transactions",
+            "sleep": "/v3/users/sleep",
+        },
+    },
+}
+
+# ProviderFactory class registry — which providers have strategy/oauth classes
+_FACTORY_SUPPORTED = {
+    "sensorbio", "garmin", "polar", "whoop", "fitbit", "oura",
+    "strava", "apple", "google", "samsung", "suunto", "ultrahuman",
+}
+
+
+def _provider_status(name: str) -> str:
+    """Return 'ready', 'available-but-unconfigured', or 'unsupported'."""
+    meta = _PROVIDER_META.get(name)
+    if meta is None:
+        return "unsupported" if name in _FACTORY_SUPPORTED else "unsupported"
+    id_env, secret_env = meta["cred_env"]
+    has_creds = bool(os.environ.get(id_env)) and bool(os.environ.get(secret_env))
+    if has_creds:
+        return "ready"
+    return "available-but-unconfigured"
+
+
+def _build_oauth_for_provider(name: str) -> Any:
+    """Instantiate the platform's OAuth class for the given provider via ProviderFactory.
+
+    Falls back to a duck-typed shim that reads credentials from env/config
+    so we can generate authorization URLs without importing each class.
+    The shim is enough for URL generation + token exchange in the tester.
+    """
+    from unittest.mock import MagicMock
+
+    meta = _PROVIDER_META.get(name)
+    if meta is None:
+        raise ValueError(f"Unsupported provider: {name}")
+
+    id_env, secret_env = meta["cred_env"]
+    client_id = os.environ.get(id_env, "")
+    client_secret = os.environ.get(secret_env, "")
+
+    try:
+        # Prefer the real OAuth class from the platform
+        match name:
+            case "sensorbio":
+                from app.services.providers.sensorbio.oauth import SensorBioOAuth as _Cls
+            case "whoop":
+                from app.services.providers.whoop.oauth import WhoopOAuth as _Cls  # type: ignore[assignment]
+            case "oura":
+                from app.services.providers.oura.oauth import OuraOAuth as _Cls  # type: ignore[assignment]
+            case "fitbit":
+                from app.services.providers.fitbit.oauth import FitbitOAuth as _Cls  # type: ignore[assignment]
+            case "garmin":
+                from app.services.providers.garmin.oauth import GarminOAuth as _Cls  # type: ignore[assignment]
+            case "polar":
+                from app.services.providers.polar.oauth import PolarOAuth as _Cls  # type: ignore[assignment]
+            case _:
+                raise ImportError(f"No class for {name}")
+        return _Cls(
+            user_repo=MagicMock(),
+            connection_repo=MagicMock(),
+            provider_name=name,
+            api_base_url=meta["api_base_url"],
+        )
+    except ImportError:
+        # Fallback minimal shim for providers without an OAuth class
+        return None
 
 # ---------------------------------------------------------------------------
 # Mock fixtures  (match official SensorBio API spec shapes used by PR #1109)
@@ -491,7 +674,7 @@ _HTML = """\
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sensor Bio Integration Tester — PR #1109</title>
+  <title>Open Wearables Multi-Provider Tester</title>
   <style>
     :root {{
       --bg: #0e0e0e; --surface: #1a1a1a; --border: #2a2a2a;
@@ -511,6 +694,21 @@ _HTML = """\
     .pr-link a {{ color: var(--accent); text-decoration: none; }}
     .mode-note {{ font-size: 0.82rem; color: var(--yellow); background: #1a1400;
                   border: 1px solid #3a3000; border-radius: 6px; padding: 8px 14px; margin-bottom: 18px; }}
+    /* Provider selector */
+    .provider-section {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                          padding: 16px; margin-bottom: 20px; }}
+    .provider-section h2 {{ font-size: 0.9rem; color: var(--accent); margin-bottom: 10px; }}
+    .provider-cards {{ display: flex; flex-wrap: wrap; gap: 10px; }}
+    .pcard {{ background: var(--code-bg); border: 2px solid var(--border); border-radius: 8px;
+               padding: 10px 16px; cursor: pointer; transition: border-color 0.15s; min-width: 120px; text-align: center; }}
+    .pcard:hover {{ border-color: var(--accent); }}
+    .pcard.selected {{ border-color: var(--accent); background: #1e1200; }}
+    .pcard.needs-creds {{ opacity: 0.55; cursor: not-allowed; }}
+    .pcard .pname {{ font-size: 0.82rem; font-weight: bold; }}
+    .pcard .pstatus {{ font-size: 0.65rem; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.05em; }}
+    .pstatus-ready {{ color: var(--green); }}
+    .pstatus-unconfigured {{ color: var(--yellow); }}
+    .pstatus-unsupported {{ color: var(--muted); }}
     .controls {{ display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }}
     button {{ background: var(--accent); color: #000; border: none; padding: 8px 20px;
               border-radius: 6px; font-size: 0.9rem; font-weight: bold; cursor: pointer; }}
@@ -583,12 +781,21 @@ _HTML = """\
 </head>
 <body>
   <header>
-    <h1>Sensor Bio Integration Tester</h1>
+    <h1>Open Wearables Multi-Provider Tester</h1>
     <span class="badge {mode_badge}">{mode_label}</span>
     <span class="pr-link"><a href="https://github.com/the-momentum/open-wearables/pull/1109" target="_blank">PR #1109</a></span>
   </header>
 
   {mode_note}
+
+  <!-- Provider Selector -->
+  <div class="provider-section">
+    <h2>&#127940; Wearable Provider</h2>
+    <div class="provider-cards" id="provider-cards">
+      <span style="color:var(--muted);font-size:0.8rem">Loading providers...</span>
+    </div>
+    <p id="selected-provider-note" style="font-size:0.75rem;color:var(--muted);margin-top:8px"></p>
+  </div>
 
   <div class="controls">
     <button id="run-btn" onclick="runTests()">&#9654; Run All Tests</button>
@@ -676,8 +883,7 @@ _HTML = """\
   </div>
 
   <footer>
-    SensorBio Integration Tester &bull; PR #1109 &bull; {mode_label} mode &bull;
-    Endpoints: /v1/activities, /v1/sleep, /v1/scores, /v1/step/details, /v1/biometrics
+    Open Wearables Multi-Provider Tester &bull; PR #1109 &bull; {mode_label} mode
   </footer>
 
   <script>
@@ -754,19 +960,24 @@ _HTML = """\
       const content = document.getElementById('oauth-content');
       content.innerHTML = '<span style="color:var(--muted)">Generating OAuth URL...</span>';
       try {{
-        const r = await fetch('/api/oauth/start');
+        const r = await fetch('/api/oauth/start?provider=' + encodeURIComponent(_selectedProvider));
         const data = await r.json();
         if (data.error) {{
-          content.innerHTML = '<pre style="color:var(--red)">' + esc(data.error) + '</pre>'; return;
+          if (data.status === 'needs-credentials') {{
+            content.innerHTML = '<pre style="color:var(--yellow)">&#9888; ' + esc(data.error) + '</pre>';
+          }} else {{
+            content.innerHTML = '<pre style="color:var(--red)">' + esc(data.error) + '</pre>';
+          }}
+          return;
         }}
         if (IS_LIVE) {{
-          content.innerHTML = `<p style="margin-bottom:8px;font-size:0.85rem">Live OAuth URL — open in browser to connect real Sensor Bio account:</p>
+          content.innerHTML = `<p style="margin-bottom:8px;font-size:0.85rem">Live OAuth URL — open in browser to connect your <b>${{esc(_selectedProvider)}}</b> account:</p>
             <div class="oauth-url"><a href="${{data.url}}" target="_blank" style="color:#90caf9">${{esc(data.url)}}</a></div>
-            <p style="margin-top:10px;font-size:0.78rem;color:var(--muted)">After authorizing, Sensor Bio redirects to /oauth/callback and the tester exchanges the code for tokens.</p>`;
+            <p style="margin-top:10px;font-size:0.78rem;color:var(--muted)">After authorizing, the provider redirects to /oauth/callback and the tester exchanges the code for tokens.</p>`;
         }} else {{
-          content.innerHTML = `<p style="margin-bottom:8px;font-size:0.85rem">Mock OAuth URL (would be sent to user in production):</p>
+          content.innerHTML = `<p style="margin-bottom:8px;font-size:0.85rem">Mock OAuth URL for <b>${{esc(_selectedProvider)}}</b> (would be sent to user in production):</p>
             <div class="oauth-url">${{esc(data.url)}}</div>
-            <p style="margin-top:10px;font-size:0.78rem;color:var(--muted)">Mock mode: redirect to auth.sensorbio.com won't work. Set SENSORBIO_LIVE=1 with real credentials for a live flow.</p>
+            <p style="margin-top:10px;font-size:0.78rem;color:var(--muted)">Mock mode: real redirect won't work. Set SENSORBIO_LIVE=1 with real credentials for a live flow.</p>
             <button style="margin-top:10px;font-size:0.8rem;padding:6px 14px" onclick="simulateCallback()">Simulate callback (mock token exchange)</button>`;
         }}
       }} catch(e) {{
@@ -788,7 +999,7 @@ _HTML = """\
     async function checkLiveStatus() {{
       if (!IS_LIVE) return;
       try {{
-        const r = await fetch('/api/live/status');
+        const r = await fetch('/api/live/status?provider=' + encodeURIComponent(_selectedProvider));
         const data = await r.json();
         if (data.authenticated) {{
           document.getElementById('live-section').style.display = 'block';
@@ -797,14 +1008,71 @@ _HTML = """\
       }} catch(e) {{}}
     }}
 
+    // ---- Provider Selector ----
+    let _selectedProvider = 'sensorbio';
+
+    async function loadProviders() {{
+      try {{
+        const r = await fetch('/api/providers');
+        const providers = await r.json();
+        const container = document.getElementById('provider-cards');
+        container.innerHTML = '';
+        for (const p of providers) {{
+          if (p.status === 'unsupported') continue;  // hide pure-unsupported entries
+          const card = document.createElement('div');
+          card.className = 'pcard' + (p.name === _selectedProvider ? ' selected' : '') + (p.status !== 'ready' ? ' needs-creds' : '');
+          card.dataset.provider = p.name;
+          const statusCls = p.status === 'ready' ? 'pstatus-ready' : 'pstatus-unconfigured';
+          const statusTxt = p.status === 'ready' ? '✓ ready' : 'needs creds';
+          card.innerHTML = '<div class="pname">' + esc(p.label) + '</div><div class="pstatus ' + statusCls + '">' + statusTxt + '</div>';
+          if (p.status === 'ready') {{
+            card.addEventListener('click', () => selectProvider(p.name, p.label));
+          }} else {{
+            const envs = p.cred_env_vars.join(', ');
+            card.title = 'Set: ' + envs;
+          }}
+          container.appendChild(card);
+        }}
+        updateSelectedNote();
+      }} catch(e) {{
+        document.getElementById('provider-cards').innerHTML = '<span style="color:var(--red)">Failed to load providers: ' + e.message + '</span>';
+      }}
+    }}
+
+    async function selectProvider(name, label) {{
+      try {{
+        const r = await fetch('/api/select-provider', {{
+          method: 'POST',
+          headers: {{'Content-Type': 'application/json'}},
+          body: JSON.stringify({{provider: name}})
+        }});
+        if (!r.ok) return;
+        _selectedProvider = name;
+        // Update card styles
+        document.querySelectorAll('.pcard').forEach(c => c.classList.remove('selected'));
+        document.querySelectorAll('.pcard[data-provider="' + name + '"]').forEach(c => c.classList.add('selected'));
+        // Reset live sections (switching provider clears connected state in UI)
+        document.getElementById('live-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'none';
+        document.getElementById('live-result').innerHTML = '';
+        updateSelectedNote();
+        checkLiveStatus();
+      }} catch(e) {{ console.error('selectProvider failed', e); }}
+    }}
+
+    function updateSelectedNote() {{
+      const note = document.getElementById('selected-provider-note');
+      note.textContent = 'Selected: ' + _selectedProvider + ' — OAuth and live data calls will use this provider.';
+    }}
+
     async function fetchLive(endpoint) {{
       const result = document.getElementById('live-result');
       result.innerHTML = '<span style="color:var(--muted)">Fetching ' + endpoint + '…</span>';
       try {{
-        const r = await fetch('/api/live/' + endpoint);
+        const r = await fetch('/api/live/' + endpoint + '?provider=' + encodeURIComponent(_selectedProvider));
         const data = await r.json();
         const label = '<span style="background:#1b3a1b;color:#a5d6a7;font-size:0.68rem;padding:2px 6px;border-radius:3px;font-weight:bold">LIVE</span>';
-        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> — HTTP ' + (data.status || r.status) + '</div>'
+        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> [' + esc(_selectedProvider) + '] — HTTP ' + (data.status || r.status) + '</div>'
           + '<pre>' + esc(JSON.stringify(data.data ?? data, null, 2)) + '</pre>';
       }} catch(e) {{
         result.innerHTML = '<pre style="color:var(--red)">Error: ' + e.message + '</pre>';
@@ -814,12 +1082,13 @@ _HTML = """\
     async function fetchLiveRange(endpoint) {{
       const result = document.getElementById('live-result');
       const params = rangeParams();
+      params.set('provider', _selectedProvider);
       result.innerHTML = '<span style="color:var(--muted)">Fetching ' + endpoint + ' range…</span>';
       try {{
         const r = await fetch('/api/live-range/' + endpoint + '?' + params.toString());
         const data = await r.json();
         const label = '<span style="background:#1b3a1b;color:#a5d6a7;font-size:0.68rem;padding:2px 6px;border-radius:3px;font-weight:bold">LIVE RANGE</span>';
-        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> — HTTP ' + r.status + '</div>'
+        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> [' + esc(_selectedProvider) + '] — HTTP ' + r.status + '</div>'
           + '<pre>' + esc(JSON.stringify(data, null, 2)) + '</pre>';
       }} catch(e) {{
         result.innerHTML = '<pre style="color:var(--red)">Error: ' + e.message + '</pre>';
@@ -922,7 +1191,7 @@ _HTML = """\
       }}
 
       try {{
-        const params = new URLSearchParams({{ start, end }});
+        const params = new URLSearchParams({{ start, end, provider: _selectedProvider }});
         const r = await fetch('/api/dashboard?' + params.toString());
         const d = await r.json();
 
@@ -1038,6 +1307,7 @@ _HTML = """\
     window.addEventListener('DOMContentLoaded', () => {{
       setLast3Months();
       dashSetLast3Months();
+      loadProviders();
       runTests();
       checkLiveStatus();
       if (IS_LIVE) setInterval(checkLiveStatus, 3000);
@@ -1050,7 +1320,56 @@ _HTML = """\
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
-app = FastAPI(title="SensorBio PR #1109 Integration Tester", docs_url=None, redoc_url=None)
+app = FastAPI(title="Open Wearables Multi-Provider Integration Tester", docs_url=None, redoc_url=None)
+
+
+@app.get("/api/providers")
+async def api_providers() -> JSONResponse:
+    """Return the provider capability matrix — which are ready, unconfigured, or unsupported.
+
+    Each entry contains:
+      name, label, status (ready|available-but-unconfigured|unsupported),
+      has_factory_class (bool), endpoints (list), cred_env_vars (list, without values).
+    No credentials or secrets are ever included in the response.
+    """
+    result = []
+    for name, meta in _PROVIDER_META.items():
+        status = _provider_status(name)
+        id_env, secret_env = meta["cred_env"]
+        result.append({
+            "name": name,
+            "label": meta["label"],
+            "status": status,
+            "has_factory_class": name in _FACTORY_SUPPORTED,
+            "endpoints": list(meta.get("endpoints", {}).keys()),
+            "cred_env_vars": [id_env, secret_env],
+        })
+    # Also include factory-supported providers not in our meta (informational)
+    meta_names = set(_PROVIDER_META.keys())
+    for name in sorted(_FACTORY_SUPPORTED - meta_names):
+        result.append({
+            "name": name,
+            "label": name.title(),
+            "status": "unsupported",
+            "has_factory_class": True,
+            "endpoints": [],
+            "cred_env_vars": [],
+        })
+    return JSONResponse(result)
+
+
+@app.post("/api/select-provider")
+async def api_select_provider(request: Request) -> JSONResponse:
+    """Switch the active provider for subsequent OAuth and live data calls."""
+    global _SELECTED_PROVIDER
+    body = await request.json()
+    name = (body.get("provider") or "").strip().lower()
+    if not name:
+        return JSONResponse({"error": "provider is required"}, status_code=400)
+    if name not in _PROVIDER_META:
+        return JSONResponse({"error": f"Unknown provider '{name}'. Valid: {list(_PROVIDER_META.keys())}"}, status_code=400)
+    _SELECTED_PROVIDER = name
+    return JSONResponse({"selected": name, "label": _PROVIDER_META[name]["label"]})
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1089,14 +1408,29 @@ async def api_run_tests() -> JSONResponse:
 
 
 @app.get("/api/oauth/start")
-async def api_oauth_start() -> JSONResponse:
-    try:
-        oauth = SensorBioOAuth(
-            user_repo=MagicMock(),
-            connection_repo=MagicMock(),
-            provider_name="sensorbio",
-            api_base_url="https://api.sensorbio.com",
+async def api_oauth_start(provider: str = "") -> JSONResponse:
+    """Generate an OAuth authorization URL for the selected (or specified) provider."""
+    p = provider or _SELECTED_PROVIDER
+    if p not in _PROVIDER_META:
+        return JSONResponse({"error": f"Unknown provider '{p}'"}, status_code=400)
+
+    status = _provider_status(p)
+    if status == "available-but-unconfigured":
+        meta = _PROVIDER_META[p]
+        id_env, secret_env = meta["cred_env"]
+        return JSONResponse(
+            {
+                "error": f"Provider '{p}' needs credentials. Set {id_env} and {secret_env} env vars.",
+                "status": "needs-credentials",
+                "provider": p,
+            },
+            status_code=422,
         )
+
+    try:
+        oauth = _build_oauth_for_provider(p)
+        if oauth is None:
+            return JSONResponse({"error": f"No OAuth class available for '{p}'"}, status_code=501)
         user_id = uuid4()
         mock_redis = MagicMock()
         with patch.object(type(oauth), "redis_client", new_callable=lambda: property(lambda self: mock_redis)):
@@ -1124,7 +1458,12 @@ async def api_oauth_simulate_callback() -> JSONResponse:
 
 
 @app.get("/oauth/callback")
-async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HTMLResponse:
+async def oauth_callback(code: str = "", state: str = "", error: str = "", provider: str = "") -> HTMLResponse:
+    # 'provider' query param lets us route multi-provider callbacks.
+    # Fallback to _SELECTED_PROVIDER if not supplied (e.g. SensorBio sets state but no explicit param).
+    p = (provider or _SELECTED_PROVIDER).lower()
+    meta = _PROVIDER_META.get(p)
+
     if error:
         return HTMLResponse(
             f'<html><body style="font-family:monospace;background:#0e0e0e;color:#f44336;padding:24px">'
@@ -1137,42 +1476,43 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
             '<h2 style="color:#f57c00">No code received</h2>'
             '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
         )
-    if LIVE_MODE:
+    if LIVE_MODE and meta is not None:
         import httpx as _httpx
 
+        id_env, secret_env = meta["cred_env"]
+        client_id = os.environ.get(id_env, "")
+        client_secret = os.environ.get(secret_env, "")
+        redirect_uri = (
+            os.environ.get(f"{p.upper()}_REDIRECT_URI")
+            or os.environ.get("SENSORBIO_REDIRECT_URI")
+            or f"http://localhost:8765/oauth/callback"
+        )
+        use_http2 = meta.get("http2", False)
+
         try:
-            # Sensor Bio rejects HTTP/1.x at the protocol layer with HTTP 464.
-            # Use HTTP/2 for token exchange, matching the API's protocol requirement.
-            async with _httpx.AsyncClient(http2=True, timeout=15) as client:
+            async with _httpx.AsyncClient(http2=use_http2, timeout=15) as client:
                 resp = await client.post(
-                    "https://auth.sensorbio.com/token",
+                    meta["token_url"],
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
-                        "client_id": settings.sensorbio_client_id or "",
-                        "client_secret": (
-                            settings.sensorbio_client_secret.get_secret_value()
-                            if settings.sensorbio_client_secret
-                            else ""
-                        ),
-                        "redirect_uri": settings.sensorbio_redirect_uri or "http://localhost:8765/oauth/callback",
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                        "redirect_uri": redirect_uri,
                     },
                 )
             content_type = resp.headers.get("content-type", "")
             body_text = resp.text or ""
             if resp.status_code >= 400:
-                safe_body = body_text.replace(
-                    settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else "",
-                    "[redacted]",
-                )
+                safe_body = body_text.replace(client_secret, "[redacted]")
                 escaped_body = safe_body[:1200].replace("<", "&lt;").replace(">", "&gt;") or "(empty response body)"
                 html = (
                     '<html><body style="font-family:monospace;background:#0e0e0e;color:#f44336;padding:24px">'
-                    "<h2>Token exchange failed</h2>"
+                    f"<h2>Token exchange failed ({p})</h2>"
                     f"<p>HTTP status: <b>{resp.status_code}</b></p>"
                     f"<p>Content-Type: <code>{content_type or '(none)'}</code></p>"
                     f'<pre style="white-space:pre-wrap;background:#111;padding:12px;border-radius:6px">{escaped_body}</pre>'
-                    '<p style="color:#ffb300">If status is 464 with an empty body, Sensor Bio rejected the authorization code/token request before returning JSON. Usually this means expired/reused code, redirect URI mismatch, or app credential mismatch.</p>'
+                    '<p style="color:#ffb300">Check: redirect URI matches portal registration, code not expired/reused, credentials are correct.</p>'
                     '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
                 )
             else:
@@ -1192,9 +1532,9 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
                 else:
                     access_token = token_json.get("access_token", "")
                     if access_token:
-                        _LIVE_SESSION["access_token"] = access_token
-                        _LIVE_SESSION["token_type"] = token_json.get("token_type", "Bearer")
-                        _LIVE_SESSION["acquired_at"] = datetime.now(timezone.utc).isoformat()
+                        _set_sess("access_token", access_token, p)
+                        _set_sess("token_type", token_json.get("token_type", "Bearer"), p)
+                        _set_sess("acquired_at", datetime.now(timezone.utc).isoformat(), p)
                     # Show token summary (not the raw secret) — mask all but last 4 chars
                     display = {
                         k: (v[:4] + "…" + v[-4:] if isinstance(v, str) and len(v) > 12 and k == "access_token" else v)
@@ -1203,13 +1543,13 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
                     }
                     escaped = json.dumps(display, indent=2).replace("<", "&lt;").replace(">", "&gt;")
                     stored_msg = (
-                        "&#10003; Access token stored in memory — use LIVE data buttons below."
+                        f"&#10003; Access token stored for {meta['label']} — use LIVE data buttons below."
                         if access_token
                         else "&#9888; No access_token in response."
                     )
                     html = (
                         '<html><body style="font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px">'
-                        '<h2 style="color:#4caf50">&#10003; Token exchanged (live)</h2>'
+                        f'<h2 style="color:#4caf50">&#10003; Token exchanged ({meta["label"]})</h2>'
                         f'<p style="color:#a5d6a7;margin-bottom:12px">{stored_msg}</p>'
                         f'<pre style="background:#111;padding:12px;border-radius:6px">{escaped}</pre>'
                         '<p style="margin-top:12px;font-size:0.8rem;color:#777">refresh_token omitted from display</p>'
@@ -1251,16 +1591,20 @@ async def api_mock_data(endpoint: str) -> JSONResponse:
 
 
 @app.get("/api/live/status")
-async def api_live_status() -> JSONResponse:
+async def api_live_status(provider: str = "") -> JSONResponse:
     """Return whether a live token is stored in memory."""
-    has_token = bool(_LIVE_SESSION.get("access_token"))
+    p = provider or _SELECTED_PROVIDER
+    sess = _sess(p)
+    has_token = bool(sess.get("access_token"))
+    tok = sess.get("access_token", "")
     return JSONResponse(
         {
             "live_mode": LIVE_MODE,
+            "provider": p,
             "authenticated": has_token,
-            "acquired_at": _LIVE_SESSION.get("acquired_at"),
+            "acquired_at": sess.get("acquired_at"),
             "token_hint": (
-                (_LIVE_SESSION["access_token"][:4] + "…" + _LIVE_SESSION["access_token"][-4:]) if has_token else None
+                (tok[:4] + "…" + tok[-4:]) if has_token else None
             ),
         }
     )
@@ -1299,7 +1643,8 @@ async def api_live_range(endpoint: str, request: Request) -> JSONResponse:
     """
     if not LIVE_MODE:
         return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
-    token = _LIVE_SESSION.get("access_token")
+    p = request.query_params.get("provider") or _SELECTED_PROVIDER
+    token = _sess(p).get("access_token")
     if not token:
         return JSONResponse(
             {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
@@ -1382,7 +1727,7 @@ async def api_live_range(endpoint: str, request: Request) -> JSONResponse:
                 if endpoint == "step-details":
                     params["granularity"] = granularity
                 resp = await client.get(
-                    f"https://api.sensorbio.com{daily_paths[endpoint]}",
+                    f"{_PROVIDER_META.get(p, _PROVIDER_META['sensorbio'])['api_base_url']}{daily_paths[endpoint]}",
                     headers={"Authorization": f"Bearer {token}"},
                     params=params,
                 )
@@ -1412,7 +1757,7 @@ async def api_live_range(endpoint: str, request: Request) -> JSONResponse:
         last_timestamp = int(query.get("last-timestamp", query.get("last_timestamp", "0")))
         for page in range(max_pages):
             resp = await client.get(
-                f"https://api.sensorbio.com{cursor_paths[endpoint]}",
+                f"{_PROVIDER_META.get(p, _PROVIDER_META['sensorbio'])['api_base_url']}{cursor_paths[endpoint]}",
                 headers={"Authorization": f"Bearer {token}"},
                 params={"last-timestamp": last_timestamp, "limit": limit},
             )
@@ -1443,41 +1788,49 @@ async def api_live_range(endpoint: str, request: Request) -> JSONResponse:
 
 @app.get("/api/live/{endpoint}")
 async def api_live_fetch(endpoint: str, request: Request) -> JSONResponse:
-    """Proxy a real SensorBio API call using the in-memory access token.
+    """Proxy a live API call for the selected provider using the in-memory access token.
 
-    Supported endpoints: user, activities, sleep, scores, step-details, biometrics
+    Supported endpoints vary by provider; see /api/providers for the list.
     """
     if not LIVE_MODE:
         return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
-    token = _LIVE_SESSION.get("access_token")
+    p = request.query_params.get("provider") or _SELECTED_PROVIDER
+    token = _sess(p).get("access_token")
     if not token:
         return JSONResponse(
-            {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
+            {"error": f"No access token for '{p}'. Complete OAuth flow first."},
             status_code=401,
         )
+    meta = _PROVIDER_META.get(p, _PROVIDER_META["sensorbio"])
     query = request.query_params
     today = datetime.now(timezone.utc).date().isoformat()
     date = query.get("date", today)
     last_timestamp = int(query.get("last-timestamp", query.get("last_timestamp", "0")))
     limit = min(int(query.get("limit", "50")), 50)
     granularity = query.get("granularity", "day")
-    endpoint_map: dict[str, tuple[str, dict[str, Any]]] = {
-        "user": ("/v1/user", {}),
-        "activities": ("/v1/activities", {"last-timestamp": last_timestamp, "limit": limit}),
-        "sleep": ("/v1/sleep", {"date": date}),
-        "scores": ("/v1/scores", {"date": date}),
-        "step-details": ("/v1/step/details", {"date": date, "granularity": granularity}),
-        "biometrics": ("/v1/biometrics", {"last-timestamp": last_timestamp, "limit": limit}),
-    }
+    # Build endpoint_map using provider's registered endpoint paths,
+    # adding common params for each shape we know about.
+    provider_endpoints = meta.get("endpoints", {})
+    endpoint_map: dict[str, tuple[str, dict[str, Any]]] = {}
+    for ep_name, ep_path in provider_endpoints.items():
+        if ep_name in ("activities", "biometrics", "cycles", "workout"):
+            endpoint_map[ep_name] = (ep_path, {"last-timestamp": last_timestamp, "limit": limit})
+        elif ep_name in ("sleep", "scores", "readiness", "activity", "heart"):
+            endpoint_map[ep_name] = (ep_path, {"date": date})
+        elif ep_name == "step-details":
+            endpoint_map[ep_name] = (ep_path, {"date": date, "granularity": granularity})
+        else:
+            endpoint_map[ep_name] = (ep_path, {})
     if endpoint not in endpoint_map:
-        return JSONResponse({"error": f"Unknown. Valid: {list(endpoint_map.keys())}"}, status_code=404)
+        return JSONResponse({"error": f"Unknown endpoint '{endpoint}' for provider '{p}'. Valid: {list(endpoint_map.keys())}"}, status_code=404)
 
     import httpx as _httpx
 
     try:
         path, params = endpoint_map[endpoint]
-        url = f"https://api.sensorbio.com{path}"
-        async with _httpx.AsyncClient(http2=True, timeout=20) as client:
+        url = f"{meta['api_base_url']}{path}"
+        use_http2 = meta.get("http2", False)
+        async with _httpx.AsyncClient(http2=use_http2, timeout=20) as client:
             resp = await client.get(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -1533,13 +1886,17 @@ async def api_dashboard(request: Request) -> JSONResponse:
     for each day in the range and normalises them into chart-ready arrays.
     Includes per-call diagnostics with response body samples so callers can
     diagnose '200 empty' issues.
+
+    Only SensorBio has the full endpoint set (step-details/scores/biometrics).
+    Other providers will return graceful not-provided for missing endpoints.
     """
     if not LIVE_MODE:
         return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
-    token = _LIVE_SESSION.get("access_token")
+    p = request.query_params.get("provider") or _SELECTED_PROVIDER
+    token = _sess(p).get("access_token")
     if not token:
         return JSONResponse(
-            {"error": "No access token. Complete OAuth flow first."},
+            {"error": f"No access token for '{p}'. Complete OAuth flow first."},
             status_code=401,
         )
 
@@ -1557,7 +1914,9 @@ async def api_dashboard(request: Request) -> JSONResponse:
     import httpx as _httpx
 
     headers = {"Authorization": f"Bearer {token}"}
-    api = "https://api.sensorbio.com"
+    provider_meta = _PROVIDER_META.get(p, _PROVIDER_META["sensorbio"])
+    api = provider_meta["api_base_url"]
+    provider_ep = provider_meta.get("endpoints", {})
 
     def _safe_json(resp: "_httpx.Response") -> "tuple[Any, str | None]":
         """Return (payload, error_note). payload is None on 204/empty/parse-fail."""
@@ -1591,20 +1950,29 @@ async def api_dashboard(request: Request) -> JSONResponse:
 
         # ------------------------------------------------------------------ #
         # Daily endpoints: step-details, sleep, scores                        #
-        # Each is one call per day.                                            #
+        # Each is one call per day. Skipped gracefully if provider lacks ep.  #
         # ------------------------------------------------------------------ #
         step_calls: list[dict[str, Any]] = []
         sleep_calls: list[dict[str, Any]] = []
         score_calls: list[dict[str, Any]] = []
 
+        step_path = provider_ep.get("step-details") or (None if p != "sensorbio" else "/v1/step/details")
+        sleep_path = provider_ep.get("sleep") or (None if p != "sensorbio" else "/v1/sleep")
+        scores_path = provider_ep.get("scores") or None
+
         for offset in range(day_count):
             day = (start_day + timedelta(days=offset)).isoformat()
 
             # --- step-details ---
-            resp = await client.get(f"{api}/v1/step/details", headers=headers,
-                                    params={"date": day, "granularity": "day"})
-            payload, err = _safe_json(resp)
-            call_info: dict[str, Any] = {"date": day, "status": resp.status_code}
+            _step_status = 0
+            if step_path:
+                resp = await client.get(f"{api}{step_path}", headers=headers,
+                                        params={"date": day, "granularity": "day"})
+                payload, err = _safe_json(resp)
+                _step_status = resp.status_code
+            else:
+                payload, err = None, "not-provided (provider lacks step endpoint)"
+            call_info: dict[str, Any] = {"date": day, "status": _step_status}
             if err:
                 call_info["error"] = err
             elif payload is not None:
@@ -1633,9 +2001,14 @@ async def api_dashboard(request: Request) -> JSONResponse:
             step_calls.append(call_info)
 
             # --- sleep ---
-            resp = await client.get(f"{api}/v1/sleep", headers=headers, params={"date": day})
-            payload, err = _safe_json(resp)
-            call_info = {"date": day, "status": resp.status_code}
+            _sleep_status = 0
+            if sleep_path:
+                resp = await client.get(f"{api}{sleep_path}", headers=headers, params={"date": day})
+                payload, err = _safe_json(resp)
+                _sleep_status = resp.status_code
+            else:
+                payload, err = None, "not-provided (provider lacks sleep endpoint)"
+            call_info = {"date": day, "status": _sleep_status}
             if err:
                 call_info["error"] = err
             elif payload is not None:
@@ -1669,9 +2042,14 @@ async def api_dashboard(request: Request) -> JSONResponse:
             sleep_calls.append(call_info)
 
             # --- scores (recovery) ---
-            resp = await client.get(f"{api}/v1/scores", headers=headers, params={"date": day})
-            payload, err = _safe_json(resp)
-            call_info = {"date": day, "status": resp.status_code}
+            _scores_status = 0
+            if scores_path:
+                resp = await client.get(f"{api}{scores_path}", headers=headers, params={"date": day})
+                payload, err = _safe_json(resp)
+                _scores_status = resp.status_code
+            else:
+                payload, err = None, "not-provided (provider lacks scores endpoint)"
+            call_info = {"date": day, "status": _scores_status}
             if err:
                 call_info["error"] = err
             elif payload is not None:
@@ -1735,9 +2113,13 @@ async def api_dashboard(request: Request) -> JSONResponse:
         bio_cursor_records: list[dict[str, Any]] = []
         bio_pages: list[dict[str, Any]] = []
         last_ts = 0
+        bio_ep = provider_ep.get("biometrics")
         for page_num in range(20):
+            if not bio_ep:
+                bio_pages.append({"page": 1, "status": 0, "error": "not-provided (provider lacks biometrics endpoint)"})
+                break
             resp = await client.get(
-                f"{api}/v1/biometrics",
+                f"{api}{bio_ep}",
                 headers=headers,
                 params={"last-timestamp": last_ts, "limit": 50},
             )
