@@ -556,7 +556,30 @@ _HTML = """\
     @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
     footer {{ margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border);
                font-size: 0.72rem; color: var(--muted); }}
+    /* ---- Health Dashboard ---- */
+    .dashboard-section {{ background: var(--surface); border: 1px solid #1a2a3a;
+                           border-radius: 8px; padding: 18px; margin-bottom: 20px; }}
+    .dashboard-section > h2 {{ font-size: 0.95rem; color: #90caf9; margin-bottom: 6px; }}
+    .metric-cards {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+                     gap: 12px; margin-bottom: 18px; }}
+    .metric-card {{ background: #111; border: 1px solid var(--border); border-radius: 10px;
+                    padding: 13px 14px; text-align: center; }}
+    .metric-card .mval {{ font-size: 1.4rem; font-weight: bold; color: var(--accent); }}
+    .metric-card .mlbl {{ font-size: 0.67rem; color: var(--muted); text-transform: uppercase; margin-top: 4px; letter-spacing: 0.04em; }}
+    .charts-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
+    @media (max-width: 760px) {{ .charts-grid {{ grid-template-columns: 1fr; }} }}
+    .chart-card {{ background: #111; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }}
+    .chart-card h3 {{ font-size: 0.75rem; color: var(--muted); text-transform: uppercase;
+                      letter-spacing: 0.05em; margin-bottom: 10px; }}
+    .chart-empty {{ color: var(--muted); font-size: 0.82rem; text-align: center;
+                    padding: 28px 0; border: 1px dashed var(--border); border-radius: 6px; }}
+    .dash-warn {{ font-size: 0.8rem; color: var(--yellow); background: #1a1400;
+                  border: 1px solid #3a3000; border-radius: 5px; padding: 7px 12px; margin-bottom: 12px; }}
+    .dash-ok {{ font-size: 0.8rem; color: var(--muted); margin-bottom: 10px; }}
+    .live-label {{ font-size: 0.68rem; padding: 2px 6px; border-radius: 3px; background: #1b3a1b;
+                   color: #a5d6a7; font-weight: bold; text-transform: uppercase; margin-left: 5px; }}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -603,6 +626,49 @@ _HTML = """\
       <button class="live-btn" onclick="fetchLiveRange('biometrics')">&#10084; Biometrics range</button>
     </div>
     <div id="live-result"></div>
+  </div>
+
+  <!-- Health Dashboard -->
+  <div class="dashboard-section" id="dashboard-section" style="display:none">
+    <h2>&#128200; Health Dashboard <span class="live-label">live</span></h2>
+    <p style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">Visual summary of your Sensor Bio data. Select date range and load.</p>
+    <div class="range-controls" style="margin-bottom:14px">
+      <label>Start date <input id="dash-start" type="date"></label>
+      <label>End date <input id="dash-end" type="date"></label>
+      <button class="live-btn" onclick="dashSetLast3Months()">Last 3 months</button>
+      <button id="dash-load-btn" style="background:#1565c0;color:#fff;border:1px solid #1976d2;padding:6px 16px;border-radius:5px;font-size:0.85rem;font-weight:bold;cursor:pointer" onclick="loadDashboard()">&#128196; Load Dashboard</button>
+    </div>
+    <div id="dash-status" class="dash-ok" style="display:none"></div>
+    <div id="dash-warn" class="dash-warn" style="display:none"></div>
+    <div class="metric-cards" id="dash-metric-cards" style="display:none"></div>
+    <div class="charts-grid" id="dash-charts-grid" style="display:none">
+      <div class="chart-card">
+        <h3>&#128115; Daily Steps</h3>
+        <div class="chart-empty" id="chart-steps-empty">No step data</div>
+        <canvas id="chart-steps" style="display:none;max-height:180px"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>&#128564; Sleep Duration (min)</h3>
+        <div class="chart-empty" id="chart-sleep-empty">No sleep data</div>
+        <canvas id="chart-sleep" style="display:none;max-height:180px"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>&#9989; Recovery Score</h3>
+        <div class="chart-empty" id="chart-recovery-empty">No recovery data</div>
+        <canvas id="chart-recovery" style="display:none;max-height:180px"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>&#10084;&#65039; Resting HR / HRV</h3>
+        <div class="chart-empty" id="chart-bio-empty">No biometric data</div>
+        <canvas id="chart-bio" style="display:none;max-height:180px"></canvas>
+      </div>
+    </div>
+    <div id="dash-diagnostics" style="margin-top:14px;display:none">
+      <details>
+        <summary style="cursor:pointer;font-size:0.8rem;color:var(--muted);user-select:none">&#128269; Raw API diagnostics (expand)</summary>
+        <pre id="dash-raw" style="margin-top:8px;font-size:0.72rem"></pre>
+      </details>
+    </div>
   </div>
 
   <div class="tests-grid" id="tests-grid">
@@ -726,6 +792,7 @@ _HTML = """\
         const data = await r.json();
         if (data.authenticated) {{
           document.getElementById('live-section').style.display = 'block';
+          document.getElementById('dashboard-section').style.display = 'block';
         }}
       }} catch(e) {{}}
     }}
@@ -759,8 +826,218 @@ _HTML = """\
       }}
     }}
 
+    // ---- Dashboard ----
+    const _dashCharts = {{}};
+
+    function dashSetLast3Months() {{
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - 90);
+      document.getElementById('dash-end').value = fmtDate(end);
+      document.getElementById('dash-start').value = fmtDate(start);
+    }}
+
+    function _chartCfg(type, labels, datasets, extra) {{
+      return {{
+        type,
+        data: {{ labels, datasets }},
+        options: {{
+          responsive: true,
+          animation: {{ duration: 400 }},
+          plugins: {{ legend: {{ labels: {{ color: '#aaa', font: {{ size: 11 }} }} }},
+                      tooltip: {{ mode: 'index', intersect: false }} }},
+          scales: {{
+            x: {{ ticks: {{ color: '#777', font: {{ size: 10 }} }}, grid: {{ color: '#1e1e1e' }} }},
+            y: {{ ticks: {{ color: '#777', font: {{ size: 10 }} }}, grid: {{ color: '#1e1e1e' }},
+                  beginAtZero: false, ...(extra?.y || {{}}) }},
+            ...(extra?.y2 ? {{ y2: extra.y2 }} : {{}})
+          }},
+        }},
+      }};
+    }}
+
+    function _drawOrEmpty(id, emptyId, labels, buildFn) {{
+      const canvas = document.getElementById(id);
+      const empty = document.getElementById(emptyId);
+      if (!labels || labels.length === 0) {{
+        canvas.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }}
+      empty.style.display = 'none';
+      canvas.style.display = 'block';
+      if (_dashCharts[id]) {{ _dashCharts[id].destroy(); }}
+      _dashCharts[id] = new Chart(canvas, buildFn(labels));
+    }}
+
+    function _renderMetricCards(cards) {{
+      const el = document.getElementById('dash-metric-cards');
+      el.innerHTML = cards.map(c =>
+        `<div class="metric-card"><div class="mval">${{esc(String(c.value ?? '—'))}}</div><div class="mlbl">${{esc(c.label)}}</div></div>`
+      ).join('');
+      el.style.display = 'grid';
+    }}
+
+    function _compactDiag(raw) {{
+      // Build compact per-endpoint summary
+      const out = {{}};
+      for (const [ep, d] of Object.entries(raw || {{}})) {{
+        if (!d) {{ out[ep] = 'no data'; continue; }}
+        const summary = {{ status: d.status, count: d.count }};
+        if (d.error) summary.error = d.error;
+        if (d.calls) {{
+          const nonEmpty = d.calls.filter(c => c.count > 0 || c.sample_keys);
+          summary.calls_total = d.calls.length;
+          summary.calls_with_data = nonEmpty.length;
+          // Show first call with data sample
+          const withSample = d.calls.find(c => c.sample_keys);
+          if (withSample) summary.sample_call = withSample;
+        }}
+        if (d.pages) {{
+          summary.pages_fetched = d.pages.length;
+        }}
+        out[ep] = summary;
+      }}
+      return out;
+    }}
+
+    async function loadDashboard() {{
+      const btn = document.getElementById('dash-load-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Loading…';
+      const status = document.getElementById('dash-status');
+      const warn = document.getElementById('dash-warn');
+      status.style.display = 'none';
+      warn.style.display = 'none';
+      document.getElementById('dash-diagnostics').style.display = 'none';
+      document.getElementById('dash-charts-grid').style.display = 'none';
+
+      const start = document.getElementById('dash-start').value;
+      const end = document.getElementById('dash-end').value;
+      if (!start || !end) {{
+        warn.textContent = 'Select a start and end date first.';
+        warn.style.display = 'block';
+        btn.disabled = false; btn.textContent = '📄 Load Dashboard';
+        return;
+      }}
+
+      try {{
+        const params = new URLSearchParams({{ start, end }});
+        const r = await fetch('/api/dashboard?' + params.toString());
+        const d = await r.json();
+
+        if (d.error) {{
+          warn.textContent = '⚠ ' + d.error;
+          warn.style.display = 'block';
+          btn.disabled = false; btn.textContent = '📄 Load Dashboard';
+          return;
+        }}
+
+        // Diagnostics panel
+        const diag = document.getElementById('dash-diagnostics');
+        document.getElementById('dash-raw').textContent = JSON.stringify(_compactDiag(d.raw), null, 2);
+        diag.style.display = 'block';
+
+        const warnings = d.warnings || [];
+        if (warnings.length) {{
+          warn.innerHTML = '⚠ ' + warnings.map(w => esc(w)).join('<br>⚠ ');
+          warn.style.display = 'block';
+        }}
+
+        // Summary cards
+        const steps_data = d.steps || [];
+        const sleep_data = d.sleep || [];
+        const recovery_data = d.recovery || [];
+        const bio_data = d.biometrics || [];
+
+        const latest_steps = steps_data.length ? steps_data[steps_data.length-1].steps : null;
+        const avg_sleep = sleep_data.length ? Math.round(sleep_data.reduce((s,x)=>s+x.total_mins,0)/sleep_data.length) : null;
+        const avg_recovery = recovery_data.length ? Math.round(recovery_data.reduce((s,x)=>s+x.score,0)/recovery_data.length) : null;
+        const latest_hr = bio_data.length ? bio_data[bio_data.length-1].resting_hr : null;
+        const latest_hrv = bio_data.length ? bio_data[bio_data.length-1].hrv : null;
+
+        _renderMetricCards([
+          {{ label: 'Days w/ steps', value: steps_data.length || '—' }},
+          {{ label: 'Latest steps', value: latest_steps != null ? latest_steps.toLocaleString() : '—' }},
+          {{ label: 'Avg sleep (min)', value: avg_sleep != null ? avg_sleep : '—' }},
+          {{ label: 'Avg recovery', value: avg_recovery != null ? avg_recovery : '—' }},
+          {{ label: 'Latest HR', value: latest_hr != null ? latest_hr + ' bpm' : '—' }},
+          {{ label: 'Latest HRV', value: latest_hrv != null ? latest_hrv : '—' }},
+        ]);
+
+        document.getElementById('dash-charts-grid').style.display = 'grid';
+
+        // Steps chart
+        _drawOrEmpty('chart-steps', 'chart-steps-empty',
+          steps_data.map(d => d.date),
+          labels => _chartCfg('bar', labels,
+            [{{ label: 'Steps', data: steps_data.map(d=>d.steps),
+               backgroundColor: 'rgba(245,124,0,0.7)', borderColor: '#f57c00', borderWidth: 1 }}],
+            {{ y: {{ beginAtZero: true }} }})
+        );
+
+        // Sleep chart
+        _drawOrEmpty('chart-sleep', 'chart-sleep-empty',
+          sleep_data.map(d => d.date),
+          labels => _chartCfg('bar', labels,
+            [
+              {{ label: 'Total (min)', data: sleep_data.map(d=>d.total_mins),
+                 backgroundColor: 'rgba(100,181,246,0.6)', borderColor: '#64b5f6', borderWidth: 1 }},
+              {{ label: 'Deep (min)', data: sleep_data.map(d=>d.deep_mins||0),
+                 backgroundColor: 'rgba(63,81,181,0.7)', borderColor: '#3f51b5', borderWidth: 1 }},
+            ],
+            {{ y: {{ beginAtZero: true }} }})
+        );
+
+        // Recovery chart
+        _drawOrEmpty('chart-recovery', 'chart-recovery-empty',
+          recovery_data.map(d => d.date),
+          labels => _chartCfg('line', labels,
+            [{{ label: 'Recovery Score', data: recovery_data.map(d=>d.score),
+               borderColor: '#66bb6a', backgroundColor: 'rgba(102,187,106,0.12)',
+               pointBackgroundColor: '#66bb6a', tension: 0.3, fill: true }}],
+            {{ y: {{ min: 0, max: 100 }} }})
+        );
+
+        // HR + HRV chart (dual axis)
+        _drawOrEmpty('chart-bio', 'chart-bio-empty',
+          bio_data.map(d => d.date),
+          labels => _chartCfg('line', labels,
+            [
+              {{ label: 'Resting HR (bpm)', data: bio_data.map(d=>d.resting_hr),
+                 borderColor: '#ef5350', backgroundColor: 'rgba(239,83,80,0.1)',
+                 pointBackgroundColor: '#ef5350', tension: 0.3, yAxisID: 'y' }},
+              {{ label: 'HRV', data: bio_data.map(d=>d.hrv),
+                 borderColor: '#26c6da', backgroundColor: 'rgba(38,198,218,0.1)',
+                 pointBackgroundColor: '#26c6da', tension: 0.3, yAxisID: 'y2' }},
+            ],
+            {{
+              y: {{ position: 'left', title: {{ display: true, text: 'HR bpm', color: '#777', font: {{ size: 10 }} }} }},
+              y2: {{ type: 'linear', position: 'right', grid: {{ drawOnChartArea: false }},
+                     ticks: {{ color: '#777', font: {{ size: 10 }} }},
+                     title: {{ display: true, text: 'HRV', color: '#777', font: {{ size: 10 }} }} }},
+            }})
+        );
+
+        const totalPts = steps_data.length + sleep_data.length + recovery_data.length + bio_data.length;
+        if (totalPts === 0) {{
+          status.textContent = 'All endpoints returned 200 but no data records for this range. See diagnostics below.';
+        }} else {{
+          status.textContent = `Loaded: ${{steps_data.length}} step days, ${{sleep_data.length}} sleep days, ${{recovery_data.length}} recovery days, ${{bio_data.length}} biometric days`;
+        }}
+        status.style.display = 'block';
+      }} catch(e) {{
+        warn.textContent = 'Dashboard fetch error: ' + e.message;
+        warn.style.display = 'block';
+      }} finally {{
+        btn.disabled = false;
+        btn.textContent = '📄 Load Dashboard';
+      }}
+    }}
+
     window.addEventListener('DOMContentLoaded', () => {{
       setLast3Months();
+      dashSetLast3Months();
       runTests();
       checkLiveStatus();
       if (IS_LIVE) setInterval(checkLiveStatus, 3000);
@@ -1246,6 +1523,341 @@ async def api_live_fetch(endpoint: str, request: Request) -> JSONResponse:
         )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/dashboard")
+async def api_dashboard(request: Request) -> JSONResponse:
+    """Aggregate health dashboard data for the given date range.
+
+    Fetches steps (step-details), sleep, scores (recovery), and biometrics
+    for each day in the range and normalises them into chart-ready arrays.
+    Includes per-call diagnostics with response body samples so callers can
+    diagnose '200 empty' issues.
+    """
+    if not LIVE_MODE:
+        return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
+    token = _LIVE_SESSION.get("access_token")
+    if not token:
+        return JSONResponse(
+            {"error": "No access token. Complete OAuth flow first."},
+            status_code=401,
+        )
+
+    query = request.query_params
+    end_day = datetime.fromisoformat(query.get("end") or datetime.now(timezone.utc).date().isoformat()).date()
+    start_day = datetime.fromisoformat(
+        query.get("start") or (end_day - timedelta(days=90)).isoformat()
+    ).date()
+    if start_day > end_day:
+        return JSONResponse({"error": "start must be <= end"}, status_code=400)
+    day_count = (end_day - start_day).days + 1
+    if day_count > 100:
+        return JSONResponse({"error": "Range too large; max 100 days."}, status_code=400)
+
+    import httpx as _httpx
+
+    headers = {"Authorization": f"Bearer {token}"}
+    api = "https://api.sensorbio.com"
+
+    def _safe_json(resp: "_httpx.Response") -> "tuple[Any, str | None]":
+        """Return (payload, error_note). payload is None on 204/empty/parse-fail."""
+        if resp.status_code == 204 or not (resp.text or "").strip():
+            return None, f"HTTP {resp.status_code} empty body"
+        try:
+            return resp.json(), None
+        except ValueError as exc:
+            return None, f"JSON parse error: {exc} — body: {resp.text[:200]!r}"
+
+    def _sample_keys(payload: "Any") -> "list[str] | None":
+        """Return top-level keys of the first record for diagnostics."""
+        if not isinstance(payload, dict):
+            return None
+        data = payload.get("data")
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return list(data[0].keys())
+        if isinstance(data, dict):
+            return list(data.keys())
+        # step-details: no 'data' wrapper
+        return list(payload.keys()) if payload else None
+
+    steps_out: list[dict[str, Any]] = []
+    sleep_out: list[dict[str, Any]] = []
+    recovery_out: list[dict[str, Any]] = []
+    bio_out: list[dict[str, Any]] = []
+    raw_diag: dict[str, Any] = {}
+    warnings: list[str] = []
+
+    async with _httpx.AsyncClient(http2=True, timeout=20) as client:
+
+        # ------------------------------------------------------------------ #
+        # Daily endpoints: step-details, sleep, scores                        #
+        # Each is one call per day.                                            #
+        # ------------------------------------------------------------------ #
+        step_calls: list[dict[str, Any]] = []
+        sleep_calls: list[dict[str, Any]] = []
+        score_calls: list[dict[str, Any]] = []
+
+        for offset in range(day_count):
+            day = (start_day + timedelta(days=offset)).isoformat()
+
+            # --- step-details ---
+            resp = await client.get(f"{api}/v1/step/details", headers=headers,
+                                    params={"date": day, "granularity": "day"})
+            payload, err = _safe_json(resp)
+            call_info: dict[str, Any] = {"date": day, "status": resp.status_code}
+            if err:
+                call_info["error"] = err
+            elif payload is not None:
+                # StepDetailsResponseBody: {date, granularity, metrics:[{name,value}], ...}
+                # Also accept {data:{steps, ...}} shape defensively
+                steps_val: int | None = None
+                if isinstance(payload, dict):
+                    metrics = payload.get("metrics", [])
+                    if isinstance(metrics, list):
+                        for m in metrics:
+                            if isinstance(m, dict) and str(m.get("name", "")).lower() in ("steps", "step count", "total steps"):
+                                steps_val = int(m.get("value", 0) or 0)
+                                break
+                    # Fallback: direct "steps" key
+                    if steps_val is None and "steps" in payload:
+                        steps_val = int(payload["steps"] or 0)
+                    # Fallback: nested data.steps
+                    if steps_val is None:
+                        data_inner = payload.get("data")
+                        if isinstance(data_inner, dict) and "steps" in data_inner:
+                            steps_val = int(data_inner["steps"] or 0)
+                if steps_val is not None and steps_val > 0:
+                    steps_out.append({"date": day, "steps": steps_val})
+                call_info["sample_keys"] = _sample_keys(payload)
+                call_info["steps_found"] = steps_val
+            step_calls.append(call_info)
+
+            # --- sleep ---
+            resp = await client.get(f"{api}/v1/sleep", headers=headers, params={"date": day})
+            payload, err = _safe_json(resp)
+            call_info = {"date": day, "status": resp.status_code}
+            if err:
+                call_info["error"] = err
+            elif payload is not None:
+                records = payload.get("data") if isinstance(payload, dict) else None
+                if isinstance(records, list) and records:
+                    for rec in records:
+                        if not isinstance(rec, dict):
+                            continue
+                        total = rec.get("total_sleep_mins") or 0
+                        deep = rec.get("deep_sleep_mins") or 0
+                        light = rec.get("light_sleep_mins") or 0
+                        sleep_score: int | None = None
+                        score_field = rec.get("score")
+                        if isinstance(score_field, dict):
+                            sleep_score = score_field.get("value")
+                        elif isinstance(score_field, (int, float)):
+                            sleep_score = int(score_field)
+                        bio = rec.get("biometrics") or {}
+                        if total or deep:
+                            sleep_out.append({
+                                "date": day,
+                                "total_mins": int(total),
+                                "deep_mins": int(deep),
+                                "light_mins": int(light),
+                                "sleep_score": sleep_score,
+                                "hrv": bio.get("hrv"),
+                                "resting_hr": bio.get("resting_bpm") or bio.get("bpm"),
+                            })
+                call_info["sample_keys"] = _sample_keys(payload)
+                call_info["count"] = len(records) if isinstance(records, list) else (1 if records else 0)
+            sleep_calls.append(call_info)
+
+            # --- scores (recovery) ---
+            resp = await client.get(f"{api}/v1/scores", headers=headers, params={"date": day})
+            payload, err = _safe_json(resp)
+            call_info = {"date": day, "status": resp.status_code}
+            if err:
+                call_info["error"] = err
+            elif payload is not None:
+                # Shape: {data: {date, recovery: {score:{value}, biometrics:{...}}, sleep:{biometrics:{...}}}}
+                data_inner = payload.get("data") if isinstance(payload, dict) else None
+                recovery_score: int | None = None
+                resting_bpm: float | None = None
+                hrv: float | None = None
+                spo2: float | None = None
+
+                if isinstance(data_inner, dict):
+                    rec_block = data_inner.get("recovery") or {}
+                    sc = rec_block.get("score") or {}
+                    recovery_score = sc.get("value") if isinstance(sc, dict) else (int(sc) if isinstance(sc, (int, float)) else None)
+                    bio_block = rec_block.get("biometrics") or {}
+                    resting_bpm = bio_block.get("resting_bpm")
+                    hrv = bio_block.get("resting_hrv") or bio_block.get("hrv")
+                    spo2 = bio_block.get("spo2")
+                elif isinstance(payload, dict) and "recovery" in payload:
+                    # Flat shape without 'data' wrapper
+                    rec_block = payload.get("recovery") or {}
+                    sc = rec_block.get("score") or {}
+                    recovery_score = sc.get("value") if isinstance(sc, dict) else None
+
+                if recovery_score is not None:
+                    recovery_out.append({
+                        "date": day,
+                        "score": int(recovery_score),
+                        "resting_hr": resting_bpm,
+                        "hrv": hrv,
+                        "spo2": spo2,
+                    })
+                    # Also fold into bio_out if we have hr/hrv
+                    if resting_bpm is not None or hrv is not None:
+                        bio_out.append({
+                            "date": day,
+                            "resting_hr": round(resting_bpm, 1) if resting_bpm is not None else None,
+                            "hrv": round(hrv, 1) if hrv is not None else None,
+                            "spo2": round(spo2, 1) if spo2 is not None else None,
+                        })
+                call_info["sample_keys"] = _sample_keys(payload)
+                call_info["count"] = 1 if data_inner else 0
+                call_info["recovery_score_found"] = recovery_score
+            score_calls.append(call_info)
+
+        raw_diag["step-details"] = {"status": 200, "calls": step_calls, "count": len(steps_out)}
+        raw_diag["sleep"] = {"status": 200, "calls": sleep_calls, "count": len(sleep_out)}
+        raw_diag["scores"] = {"status": 200, "calls": score_calls, "count": len(recovery_out)}
+
+        # ------------------------------------------------------------------ #
+        # Cursor endpoint: biometrics (last-timestamp pagination)             #
+        # Collect all records in the date range.                              #
+        # ------------------------------------------------------------------ #
+        start_ms = int(
+            datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000
+        )
+        end_ms = int(
+            datetime.combine(end_day + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000
+        ) - 1
+
+        bio_cursor_records: list[dict[str, Any]] = []
+        bio_pages: list[dict[str, Any]] = []
+        last_ts = 0
+        for page_num in range(20):
+            resp = await client.get(
+                f"{api}/v1/biometrics",
+                headers=headers,
+                params={"last-timestamp": last_ts, "limit": 50},
+            )
+            payload, err = _safe_json(resp)
+            page_info: dict[str, Any] = {"page": page_num + 1, "status": resp.status_code, "last_ts_sent": last_ts}
+            if err:
+                page_info["error"] = err
+                bio_pages.append(page_info)
+                break
+            if resp.status_code >= 400:
+                page_info["error"] = payload
+                bio_pages.append(page_info)
+                break
+            data_list = payload.get("data", []) if isinstance(payload, dict) else []
+            if not isinstance(data_list, list) or not data_list:
+                page_info["count"] = 0
+                bio_pages.append(page_info)
+                break
+
+            page_info["count"] = len(data_list)
+            page_info["sample_keys"] = list(data_list[0].keys()) if data_list and isinstance(data_list[0], dict) else None
+            bio_pages.append(page_info)
+
+            in_range = 0
+            for rec in data_list:
+                if not isinstance(rec, dict):
+                    continue
+                # Find timestamp
+                ts: int | None = None
+                for tk in ("timestamp", "start_timestamp", "start_time"):
+                    val = rec.get(tk)
+                    if val is None:
+                        continue
+                    ts = int(val) if isinstance(val, (int, float)) else None
+                    if ts:
+                        break
+                if ts is not None and start_ms <= ts <= end_ms:
+                    # Normalise to date
+                    rec_date = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+                    hr = rec.get("heart_rate") or rec.get("bpm") or rec.get("hr")
+                    hrv_val = rec.get("heart_rate_variability") or rec.get("hrv")
+                    spo2_val = rec.get("spo2") or rec.get("blood_oxygen")
+                    bio_cursor_records.append({
+                        "date": rec_date,
+                        "resting_hr": round(float(hr), 1) if hr is not None else None,
+                        "hrv": round(float(hrv_val), 1) if hrv_val is not None else None,
+                        "spo2": round(float(spo2_val), 1) if spo2_val is not None else None,
+                    })
+                    in_range += 1
+            page_info["in_range"] = in_range
+
+            # Advance cursor to last record's timestamp
+            last_rec = data_list[-1]
+            next_ts: int | None = None
+            for tk in ("timestamp", "start_timestamp", "start_time"):
+                val = last_rec.get(tk) if isinstance(last_rec, dict) else None
+                if val is not None:
+                    next_ts = int(val)
+                    break
+            # Stop if cursor didn't advance or pagination exhausted
+            if next_ts is None or next_ts <= last_ts:
+                break
+            # Stop if we've gone past our range
+            if next_ts > end_ms:
+                break
+            # Stop if API has no more pages
+            if not (payload.get("links") or {}).get("next"):
+                break
+            last_ts = next_ts
+
+        raw_diag["biometrics"] = {"status": 200, "pages": bio_pages, "count": len(bio_cursor_records)}
+
+        # Merge bio_cursor_records into bio_out (deduplicate by date, prefer scores-derived data)
+        existing_dates = {r["date"] for r in bio_out}
+        for r in bio_cursor_records:
+            if r["date"] not in existing_dates:
+                bio_out.append(r)
+
+    # Sort all outputs by date
+    steps_out.sort(key=lambda x: x["date"])
+    sleep_out.sort(key=lambda x: x["date"])
+    recovery_out.sort(key=lambda x: x["date"])
+    bio_out.sort(key=lambda x: x["date"])
+
+    # Generate warnings for empty endpoints
+    if not steps_out:
+        warnings.append(
+            f"step-details: 0 records with steps in {day_count} days. "
+            "This could mean: no wearable sync in range, or 'Steps' metric name differs. "
+            "Inspect diagnostics for sample_keys."
+        )
+    if not sleep_out:
+        warnings.append(
+            f"sleep: 0 records in {day_count} days. "
+            "All calls returned 200 but data=[] — no sleep data synced for this range."
+        )
+    if not recovery_out:
+        warnings.append(
+            f"scores: 0 recovery records in {day_count} days. "
+            "All calls returned 200 but no recovery block found. "
+            "Inspect diagnostics — likely no data uploaded for this range."
+        )
+    if not bio_out:
+        warnings.append(
+            "biometrics: 0 records in date range. "
+            "Cursor-based fetch started from last-timestamp=0 and paginated through all records; "
+            "none fell in the selected range."
+        )
+
+    return JSONResponse(
+        {
+            "range": {"start": start_day.isoformat(), "end": end_day.isoformat(), "days": day_count},
+            "steps": steps_out,
+            "sleep": sleep_out,
+            "recovery": recovery_out,
+            "biometrics": bio_out,
+            "warnings": warnings,
+            "raw": raw_diag,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
