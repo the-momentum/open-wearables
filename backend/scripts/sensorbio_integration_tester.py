@@ -82,7 +82,7 @@ if LIVE_MODE:
 # Imports (after env setup)
 # ---------------------------------------------------------------------------
 import uvicorn  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 
 from app.config import settings  # noqa: E402
@@ -944,8 +944,32 @@ async def api_live_status() -> JSONResponse:
     )
 
 
+@app.get("/api/live/requirements")
+async def api_live_requirements() -> JSONResponse:
+    """Return the live Sensor Bio endpoint requirements used by the tester."""
+    return JSONResponse(
+        {
+            "note": "OAuth bearer-token requests do not need user_id; user_id is only required for Organization API Key requests.",
+            "defaults": {
+                "date": datetime.now(timezone.utc).date().isoformat(),
+                "last-timestamp": 0,
+                "limit": 50,
+                "granularity": "day",
+            },
+            "endpoints": {
+                "user": {"path": "/v1/user", "required": []},
+                "activities": {"path": "/v1/activities", "required": ["last-timestamp", "limit"]},
+                "sleep": {"path": "/v1/sleep", "required": ["date"]},
+                "scores": {"path": "/v1/scores", "required": ["date"]},
+                "step-details": {"path": "/v1/step/details", "required": ["date", "granularity"]},
+                "biometrics": {"path": "/v1/biometrics", "required": ["last-timestamp", "limit"]},
+            },
+        }
+    )
+
+
 @app.get("/api/live/{endpoint}")
-async def api_live_fetch(endpoint: str) -> JSONResponse:
+async def api_live_fetch(endpoint: str, request: Request) -> JSONResponse:
     """Proxy a real SensorBio API call using the in-memory access token.
 
     Supported endpoints: user, activities, sleep, scores, step-details, biometrics
@@ -958,18 +982,19 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
             {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
             status_code=401,
         )
+    query = request.query_params
     today = datetime.now(timezone.utc).date().isoformat()
+    date = query.get("date", today)
+    last_timestamp = int(query.get("last-timestamp", query.get("last_timestamp", "0")))
+    limit = min(int(query.get("limit", "50")), 50)
+    granularity = query.get("granularity", "day")
     endpoint_map: dict[str, tuple[str, dict[str, Any]]] = {
         "user": ("/v1/user", {}),
-        # Sensor Bio collection endpoints require a pagination cursor even for the first page.
-        "activities": ("/v1/activities", {"last-timestamp": 0, "limit": 50}),
-        "sleep": ("/v1/sleep", {"last-timestamp": 0, "limit": 50, "date": today}),
-        "scores": ("/v1/scores", {"last-timestamp": 0, "limit": 50, "date": today}),
-        "step-details": (
-            "/v1/step/details",
-            {"last-timestamp": 0, "limit": 50, "date": today, "granularity": "day"},
-        ),
-        "biometrics": ("/v1/biometrics", {"last-timestamp": 0, "limit": 50}),
+        "activities": ("/v1/activities", {"last-timestamp": last_timestamp, "limit": limit}),
+        "sleep": ("/v1/sleep", {"date": date}),
+        "scores": ("/v1/scores", {"date": date}),
+        "step-details": ("/v1/step/details", {"date": date, "granularity": granularity}),
+        "biometrics": ("/v1/biometrics", {"last-timestamp": last_timestamp, "limit": limit}),
     }
     if endpoint not in endpoint_map:
         return JSONResponse({"error": f"Unknown. Valid: {list(endpoint_map.keys())}"}, status_code=404)
