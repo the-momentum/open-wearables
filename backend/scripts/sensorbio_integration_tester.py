@@ -39,7 +39,7 @@ import os
 import pathlib
 import sys
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -545,6 +545,11 @@ _HTML = """\
     .live-btn:hover {{ background: #388e3c; }}
     .live-label {{ font-size: 0.68rem; padding: 2px 6px; border-radius: 3px; background: #1b3a1b;
                    color: #a5d6a7; font-weight: bold; text-transform: uppercase; margin-left: 5px; }}
+    .range-controls {{ display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:10px 0 14px;
+                       background:#101a10; border:1px solid #1b3a1b; border-radius:6px; padding:10px; }}
+    .range-controls label {{ display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--muted); }}
+    .range-controls input {{ background:var(--code-bg); color:var(--text); border:1px solid var(--border);
+                             border-radius:5px; padding:6px 8px; font-family:monospace; }}
     .oauth-url {{ font-family: monospace; font-size: 0.78rem; background: var(--code-bg);
                   padding: 10px; border-radius: 6px; word-break: break-all; color: #90caf9; margin-top: 8px; }}
     .spinner {{ display: inline-block; animation: spin 1s linear infinite; }}
@@ -582,13 +587,20 @@ _HTML = """\
   <div class="live-section" id="live-section" style="display:none">
     <h2>&#127881; LIVE Data <span class="live-label">connected</span></h2>
     <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px">Fetch real data from your connected Sensor Bio account:</p>
+    <div class="range-controls">
+      <label>Start date <input id="range-start" type="date"></label>
+      <label>End date <input id="range-end" type="date"></label>
+      <label>Limit/page <input id="range-limit" type="number" min="1" max="50" value="50"></label>
+      <label>Max pages <input id="range-pages" type="number" min="1" max="50" value="20"></label>
+      <button class="live-btn" onclick="setLast3Months()">Last 3 months</button>
+    </div>
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
       <button class="live-btn" onclick="fetchLive('user')">&#128100; User Profile</button>
-      <button class="live-btn" onclick="fetchLive('activities')">&#127939; Activities</button>
-      <button class="live-btn" onclick="fetchLive('sleep')">&#128564; Sleep</button>
-      <button class="live-btn" onclick="fetchLive('scores')">&#128200; Scores</button>
-      <button class="live-btn" onclick="fetchLive('step-details')">&#128115; Step Details</button>
-      <button class="live-btn" onclick="fetchLive('biometrics')">&#10084; Biometrics</button>
+      <button class="live-btn" onclick="fetchLiveRange('activities')">&#127939; Activities range</button>
+      <button class="live-btn" onclick="fetchLiveRange('sleep')">&#128564; Sleep range</button>
+      <button class="live-btn" onclick="fetchLiveRange('scores')">&#128200; Scores range</button>
+      <button class="live-btn" onclick="fetchLiveRange('step-details')">&#128115; Step Details range</button>
+      <button class="live-btn" onclick="fetchLiveRange('biometrics')">&#10084; Biometrics range</button>
     </div>
     <div id="live-result"></div>
   </div>
@@ -653,6 +665,23 @@ _HTML = """\
     function toggle(i) {{ document.getElementById('body-'+i).classList.toggle('open'); }}
     function esc(s) {{ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
+    function fmtDate(d) {{ return d.toISOString().slice(0, 10); }}
+    function setLast3Months() {{
+      const end = new Date();
+      const start = new Date(end);
+      start.setDate(start.getDate() - 90);
+      document.getElementById('range-start').value = fmtDate(start);
+      document.getElementById('range-end').value = fmtDate(end);
+    }}
+    function rangeParams() {{
+      const params = new URLSearchParams();
+      params.set('start', document.getElementById('range-start').value);
+      params.set('end', document.getElementById('range-end').value);
+      params.set('limit', document.getElementById('range-limit').value || '50');
+      params.set('max_pages', document.getElementById('range-pages').value || '20');
+      return params;
+    }}
+
     async function startOAuth() {{
       const section = document.getElementById('oauth-section');
       section.style.display = 'block';
@@ -715,7 +744,23 @@ _HTML = """\
       }}
     }}
 
+    async function fetchLiveRange(endpoint) {{
+      const result = document.getElementById('live-result');
+      const params = rangeParams();
+      result.innerHTML = '<span style="color:var(--muted)">Fetching ' + endpoint + ' range…</span>';
+      try {{
+        const r = await fetch('/api/live-range/' + endpoint + '?' + params.toString());
+        const data = await r.json();
+        const label = '<span style="background:#1b3a1b;color:#a5d6a7;font-size:0.68rem;padding:2px 6px;border-radius:3px;font-weight:bold">LIVE RANGE</span>';
+        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> — HTTP ' + r.status + '</div>'
+          + '<pre>' + esc(JSON.stringify(data, null, 2)) + '</pre>';
+      }} catch(e) {{
+        result.innerHTML = '<pre style="color:var(--red)">Error: ' + e.message + '</pre>';
+      }}
+    }}
+
     window.addEventListener('DOMContentLoaded', () => {{
+      setLast3Months();
       runTests();
       checkLiveStatus();
       if (IS_LIVE) setInterval(checkLiveStatus, 3000);
@@ -966,6 +1011,157 @@ async def api_live_requirements() -> JSONResponse:
             },
         }
     )
+
+
+@app.get("/api/live-range/{endpoint}")
+async def api_live_range(endpoint: str, request: Request) -> JSONResponse:
+    """Fetch a date range for live Sensor Bio endpoints.
+
+    Defaults to the last 90 days. Daily endpoints are fetched once per day;
+    cursor endpoints page from last-timestamp=0 and filter returned records by timestamp.
+    """
+    if not LIVE_MODE:
+        return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
+    token = _LIVE_SESSION.get("access_token")
+    if not token:
+        return JSONResponse(
+            {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
+            status_code=401,
+        )
+
+    query = request.query_params
+    end_day = datetime.fromisoformat(query.get("end") or datetime.now(timezone.utc).date().isoformat()).date()
+    start_day = datetime.fromisoformat(query.get("start") or (end_day - timedelta(days=90)).isoformat()).date()
+    if start_day > end_day:
+        return JSONResponse({"error": "start must be <= end"}, status_code=400)
+    day_count = (end_day - start_day).days + 1
+    if day_count > 100:
+        return JSONResponse({"error": "Range too large for tester; max 100 days."}, status_code=400)
+
+    limit = min(max(int(query.get("limit", "50")), 1), 50)
+    max_pages = min(max(int(query.get("max_pages", "20")), 1), 50)
+    granularity = query.get("granularity", "day")
+    daily_paths = {"sleep": "/v1/sleep", "scores": "/v1/scores", "step-details": "/v1/step/details"}
+    cursor_paths = {"activities": "/v1/activities", "biometrics": "/v1/biometrics"}
+    if endpoint not in daily_paths and endpoint not in cursor_paths:
+        return JSONResponse(
+            {"error": "Range supported for activities, sleep, scores, step-details, biometrics."},
+            status_code=404,
+        )
+
+    import httpx as _httpx
+
+    def _json_or_error(resp: _httpx.Response) -> tuple[Any, dict[str, Any] | None]:
+        if resp.status_code == 204 or not (resp.text or "").strip():
+            return None, None
+        try:
+            return resp.json(), None
+        except ValueError as exc:
+            return None, {
+                "status": resp.status_code,
+                "url": str(resp.url),
+                "http_version": resp.http_version,
+                "content_type": resp.headers.get("content-type") or None,
+                "error": "Sensor Bio returned a non-JSON response.",
+                "json_error": str(exc),
+                "body_snippet": resp.text[:1200],
+            }
+
+    def _record_timestamp_ms(record: dict[str, Any]) -> int | None:
+        for key in ("timestamp", "start_timestamp", "start_time", "end_timestamp", "end_time"):
+            value = record.get(key)
+            if value is None:
+                continue
+            if isinstance(value, int | float):
+                return int(value)
+            if isinstance(value, str):
+                try:
+                    return int(value)
+                except ValueError:
+                    try:
+                        return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+                    except ValueError:
+                        continue
+        return None
+
+    start_ms = int(datetime.combine(start_day, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+    end_ms = (
+        int(datetime.combine(end_day + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+        - 1
+    )
+    out: dict[str, Any] = {
+        "endpoint": endpoint,
+        "range": {"start": start_day.isoformat(), "end": end_day.isoformat(), "days": day_count},
+        "http_version": "HTTP/2",
+    }
+
+    async with _httpx.AsyncClient(http2=True, timeout=20) as client:
+        if endpoint in daily_paths:
+            records: list[dict[str, Any]] = []
+            calls: list[dict[str, Any]] = []
+            for offset in range(day_count):
+                day = (start_day + timedelta(days=offset)).isoformat()
+                params = {"date": day}
+                if endpoint == "step-details":
+                    params["granularity"] = granularity
+                resp = await client.get(
+                    f"https://api.sensorbio.com{daily_paths[endpoint]}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    params=params,
+                )
+                payload, parse_error = _json_or_error(resp)
+                calls.append({"date": day, "status": resp.status_code, "url": str(resp.url)})
+                if parse_error:
+                    out.update({"calls": calls, "error": parse_error})
+                    return JSONResponse(out, status_code=502)
+                if resp.status_code >= 400:
+                    out.update({"calls": calls, "error": payload, "status": resp.status_code})
+                    return JSONResponse(out, status_code=resp.status_code)
+                if payload is None:
+                    continue
+                if endpoint == "step-details":
+                    records.append({"date": day, "data": payload})
+                else:
+                    data = payload.get("data") if isinstance(payload, dict) else payload
+                    if isinstance(data, list):
+                        records.extend(data)
+                    elif data is not None:
+                        records.append({"date": day, "data": data})
+            out.update({"count": len(records), "calls": calls, "data": records})
+            return JSONResponse(out)
+
+        records = []
+        pages = []
+        last_timestamp = int(query.get("last-timestamp", query.get("last_timestamp", "0")))
+        for page in range(max_pages):
+            resp = await client.get(
+                f"https://api.sensorbio.com{cursor_paths[endpoint]}",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"last-timestamp": last_timestamp, "limit": limit},
+            )
+            payload, parse_error = _json_or_error(resp)
+            pages.append({"page": page + 1, "status": resp.status_code, "url": str(resp.url)})
+            if parse_error:
+                out.update({"pages": pages, "error": parse_error})
+                return JSONResponse(out, status_code=502)
+            if resp.status_code >= 400:
+                out.update({"pages": pages, "error": payload, "status": resp.status_code})
+                return JSONResponse(out, status_code=resp.status_code)
+            data = payload.get("data", []) if isinstance(payload, dict) else []
+            if not isinstance(data, list) or not data:
+                break
+            for rec in data:
+                if not isinstance(rec, dict):
+                    continue
+                ts = _record_timestamp_ms(rec)
+                if ts is None or start_ms <= ts <= end_ms:
+                    records.append(rec)
+            next_ts = _record_timestamp_ms(data[-1]) if isinstance(data[-1], dict) else None
+            if next_ts is None or next_ts == last_timestamp or not (payload.get("links") or {}).get("next"):
+                break
+            last_timestamp = next_ts
+        out.update({"count": len(records), "pages": pages, "data": records})
+        return JSONResponse(out)
 
 
 @app.get("/api/live/{endpoint}")
