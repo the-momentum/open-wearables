@@ -13,12 +13,14 @@ MOCK (default, no secrets):
 
 LIVE (real credentials):
     Set SENSORBIO_LIVE=1 + SENSORBIO_CLIENT_ID + SENSORBIO_CLIENT_SECRET.
-    OAuth redirect URI must be: http://localhost:8765/oauth/callback
+    Optional: SENSORBIO_REDIRECT_URI (defaults to http://localhost:8765/oauth/callback)
+    Register the redirect URI in the Sensor Bio developer portal first.
     Start:
         SENSORBIO_LIVE=1 \\
         SENSORBIO_CLIENT_ID=xxx \\
         SENSORBIO_CLIENT_SECRET=*** \\
         uv run python scripts/sensorbio_integration_tester.py
+    Redirect URI to allowlist: http://localhost:8765/oauth/callback
 
 Provider API shape references (from PR #1109)
 ---------------------------------------------
@@ -58,8 +60,14 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("API_BASE_URL", "http://localhost:8765")
 os.environ.setdefault("SENSORBIO_CLIENT_ID", "test-client-id")
 os.environ.setdefault("SENSORBIO_CLIENT_SECRET", "test-client-secret")
+# Tester's callback route — must match what's registered in the Sensor Bio developer portal
+os.environ.setdefault("SENSORBIO_REDIRECT_URI", "http://localhost:8765/oauth/callback")
 
 LIVE_MODE = os.environ.get("SENSORBIO_LIVE", "").lower() in ("1", "true", "yes")
+
+# In-memory live session — stores access_token after successful OAuth exchange.
+# Never persisted to disk or committed. Cleared on server restart.
+_LIVE_SESSION: dict[str, Any] = {}
 
 # Real creds override the defaults when in live mode
 if LIVE_MODE:
@@ -529,6 +537,14 @@ _HTML = """\
     .oauth-section {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
                        padding: 18px; margin-bottom: 20px; }}
     .oauth-section h2 {{ font-size: 0.95rem; color: var(--accent); margin-bottom: 12px; }}
+    .live-section {{ background: var(--surface); border: 1px solid #1b3a1b; border-radius: 8px;
+                     padding: 18px; margin-bottom: 20px; }}
+    .live-section h2 {{ font-size: 0.95rem; color: #a5d6a7; margin-bottom: 12px; }}
+    .live-btn {{ background: #2e7d32; color: #e8f5e9; border: 1px solid #388e3c; padding: 6px 14px;
+                 border-radius: 5px; font-size: 0.82rem; font-weight: bold; cursor: pointer; margin: 3px; }}
+    .live-btn:hover {{ background: #388e3c; }}
+    .live-label {{ font-size: 0.68rem; padding: 2px 6px; border-radius: 3px; background: #1b3a1b;
+                   color: #a5d6a7; font-weight: bold; text-transform: uppercase; margin-left: 5px; }}
     .oauth-url {{ font-family: monospace; font-size: 0.78rem; background: var(--code-bg);
                   padding: 10px; border-radius: 6px; word-break: break-all; color: #90caf9; margin-top: 8px; }}
     .spinner {{ display: inline-block; animation: spin 1s linear infinite; }}
@@ -561,6 +577,20 @@ _HTML = """\
   <div class="oauth-section" id="oauth-section" style="display:none">
     <h2>OAuth Flow</h2>
     <div id="oauth-content"></div>
+  </div>
+
+  <div class="live-section" id="live-section" style="display:none">
+    <h2>&#127881; LIVE Data <span class="live-label">connected</span></h2>
+    <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px">Fetch real data from your connected Sensor Bio account:</p>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px">
+      <button class="live-btn" onclick="fetchLive('user')">&#128100; User Profile</button>
+      <button class="live-btn" onclick="fetchLive('activities')">&#127939; Activities</button>
+      <button class="live-btn" onclick="fetchLive('sleep')">&#128564; Sleep</button>
+      <button class="live-btn" onclick="fetchLive('scores')">&#128200; Scores</button>
+      <button class="live-btn" onclick="fetchLive('step-details')">&#128115; Step Details</button>
+      <button class="live-btn" onclick="fetchLive('biometrics')">&#10084; Biometrics</button>
+    </div>
+    <div id="live-result"></div>
   </div>
 
   <div class="tests-grid" id="tests-grid">
@@ -660,7 +690,36 @@ _HTML = """\
       }}
     }}
 
-    window.addEventListener('DOMContentLoaded', runTests);
+    async function checkLiveStatus() {{
+      if (!IS_LIVE) return;
+      try {{
+        const r = await fetch('/api/live/status');
+        const data = await r.json();
+        if (data.authenticated) {{
+          document.getElementById('live-section').style.display = 'block';
+        }}
+      }} catch(e) {{}}
+    }}
+
+    async function fetchLive(endpoint) {{
+      const result = document.getElementById('live-result');
+      result.innerHTML = '<span style="color:var(--muted)">Fetching ' + endpoint + '…</span>';
+      try {{
+        const r = await fetch('/api/live/' + endpoint);
+        const data = await r.json();
+        const label = '<span style="background:#1b3a1b;color:#a5d6a7;font-size:0.68rem;padding:2px 6px;border-radius:3px;font-weight:bold">LIVE</span>';
+        result.innerHTML = '<div style="margin-bottom:6px">' + label + ' <b>' + esc(endpoint) + '</b> — HTTP ' + (data.status || r.status) + '</div>'
+          + '<pre>' + esc(JSON.stringify(data.data ?? data, null, 2)) + '</pre>';
+      }} catch(e) {{
+        result.innerHTML = '<pre style="color:var(--red)">Error: ' + e.message + '</pre>';
+      }}
+    }}
+
+    window.addEventListener('DOMContentLoaded', () => {{
+      runTests();
+      checkLiveStatus();
+      if (IS_LIVE) setInterval(checkLiveStatus, 3000);
+    }});
   </script>
 </body>
 </html>"""
@@ -774,12 +833,23 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
                 timeout=15,
             )
             token_json = resp.json()
-            escaped = json.dumps(token_json, indent=2).replace("<", "&lt;").replace(">", "&gt;")
+            access_token = token_json.get("access_token", "")
+            if access_token:
+                _LIVE_SESSION["access_token"] = access_token
+                _LIVE_SESSION["token_type"] = token_json.get("token_type", "Bearer")
+                _LIVE_SESSION["acquired_at"] = datetime.now(timezone.utc).isoformat()
+            # Show token summary (not the raw secret) — mask all but last 4 chars
+            display = {k: (v[:4] + "…" + v[-4:] if isinstance(v, str) and len(v) > 12 and k == "access_token" else v)
+                       for k, v in token_json.items() if k != "refresh_token"}
+            escaped = json.dumps(display, indent=2).replace("<", "&lt;").replace(">", "&gt;")
+            stored_msg = "&#10003; Access token stored in memory — use LIVE data buttons below." if access_token else "&#9888; No access_token in response."
             html = (
                 '<html><body style="font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px">'
                 '<h2 style="color:#4caf50">&#10003; Token exchanged (live)</h2>'
+                f'<p style="color:#a5d6a7;margin-bottom:12px">{stored_msg}</p>'
                 f'<pre style="background:#111;padding:12px;border-radius:6px">{escaped}</pre>'
-                '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
+                '<p style="margin-top:12px;font-size:0.8rem;color:#777">refresh_token omitted from display</p>'
+                '<a href="/" style="color:#f57c00">&#8592; Back to tester</a></body></html>'
             )
         except Exception as exc:  # noqa: BLE001
             html = (
@@ -814,6 +884,63 @@ async def api_mock_data(endpoint: str) -> JSONResponse:
     if endpoint not in mapping:
         return JSONResponse({"error": f"Unknown. Valid: {list(mapping.keys())}"}, status_code=404)
     return JSONResponse(mapping[endpoint])
+
+
+@app.get("/api/live/status")
+async def api_live_status() -> JSONResponse:
+    """Return whether a live token is stored in memory."""
+    has_token = bool(_LIVE_SESSION.get("access_token"))
+    return JSONResponse(
+        {
+            "live_mode": LIVE_MODE,
+            "authenticated": has_token,
+            "acquired_at": _LIVE_SESSION.get("acquired_at"),
+            "token_hint": (
+                (_LIVE_SESSION["access_token"][:4] + "…" + _LIVE_SESSION["access_token"][-4:])
+                if has_token
+                else None
+            ),
+        }
+    )
+
+
+@app.get("/api/live/{endpoint}")
+async def api_live_fetch(endpoint: str) -> JSONResponse:
+    """Proxy a real SensorBio API call using the in-memory access token.
+
+    Supported endpoints: user, activities, sleep, scores, step-details, biometrics
+    """
+    if not LIVE_MODE:
+        return JSONResponse({"error": "Not in LIVE mode. Start with SENSORBIO_LIVE=1."}, status_code=400)
+    token = _LIVE_SESSION.get("access_token")
+    if not token:
+        return JSONResponse(
+            {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
+            status_code=401,
+        )
+    endpoint_map: dict[str, str] = {
+        "user": "/v1/user",
+        "activities": "/v1/activities",
+        "sleep": "/v1/sleep",
+        "scores": "/v1/scores",
+        "step-details": "/v1/step/details",
+        "biometrics": "/v1/biometrics",
+    }
+    if endpoint not in endpoint_map:
+        return JSONResponse({"error": f"Unknown. Valid: {list(endpoint_map.keys())}"}, status_code=404)
+
+    import httpx as _httpx
+
+    try:
+        url = f"https://api.sensorbio.com{endpoint_map[endpoint]}"
+        resp = _httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+        return JSONResponse({"status": resp.status_code, "url": url, "data": resp.json()})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 # ---------------------------------------------------------------------------
