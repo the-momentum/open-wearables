@@ -832,29 +832,67 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
                 },
                 timeout=15,
             )
-            token_json = resp.json()
-            access_token = token_json.get("access_token", "")
-            if access_token:
-                _LIVE_SESSION["access_token"] = access_token
-                _LIVE_SESSION["token_type"] = token_json.get("token_type", "Bearer")
-                _LIVE_SESSION["acquired_at"] = datetime.now(timezone.utc).isoformat()
-            # Show token summary (not the raw secret) — mask all but last 4 chars
-            display = {k: (v[:4] + "…" + v[-4:] if isinstance(v, str) and len(v) > 12 and k == "access_token" else v)
-                       for k, v in token_json.items() if k != "refresh_token"}
-            escaped = json.dumps(display, indent=2).replace("<", "&lt;").replace(">", "&gt;")
-            stored_msg = "&#10003; Access token stored in memory — use LIVE data buttons below." if access_token else "&#9888; No access_token in response."
-            html = (
-                '<html><body style="font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px">'
-                '<h2 style="color:#4caf50">&#10003; Token exchanged (live)</h2>'
-                f'<p style="color:#a5d6a7;margin-bottom:12px">{stored_msg}</p>'
-                f'<pre style="background:#111;padding:12px;border-radius:6px">{escaped}</pre>'
-                '<p style="margin-top:12px;font-size:0.8rem;color:#777">refresh_token omitted from display</p>'
-                '<a href="/" style="color:#f57c00">&#8592; Back to tester</a></body></html>'
-            )
+            content_type = resp.headers.get("content-type", "")
+            body_text = resp.text or ""
+            if resp.status_code >= 400:
+                safe_body = body_text.replace(
+                    settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else "",
+                    "[redacted]",
+                )
+                escaped_body = safe_body[:1200].replace("<", "&lt;").replace(">", "&gt;") or "(empty response body)"
+                html = (
+                    '<html><body style="font-family:monospace;background:#0e0e0e;color:#f44336;padding:24px">'
+                    "<h2>Token exchange failed</h2>"
+                    f"<p>HTTP status: <b>{resp.status_code}</b></p>"
+                    f"<p>Content-Type: <code>{content_type or '(none)'}</code></p>"
+                    f'<pre style="white-space:pre-wrap;background:#111;padding:12px;border-radius:6px">{escaped_body}</pre>'
+                    '<p style="color:#ffb300">If status is 464 with an empty body, Sensor Bio rejected the authorization code/token request before returning JSON. Usually this means expired/reused code, redirect URI mismatch, or app credential mismatch.</p>'
+                    '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
+                )
+            else:
+                try:
+                    token_json = resp.json()
+                except ValueError as exc:
+                    escaped_body = body_text[:1200].replace("<", "&lt;").replace(">", "&gt;") or "(empty response body)"
+                    html = (
+                        '<html><body style="font-family:monospace;background:#0e0e0e;color:#f44336;padding:24px">'
+                        "<h2>Token exchange returned non-JSON success response</h2>"
+                        f"<p>HTTP status: <b>{resp.status_code}</b></p>"
+                        f"<p>Content-Type: <code>{content_type or '(none)'}</code></p>"
+                        f"<p>JSON parse error: <code>{exc}</code></p>"
+                        f'<pre style="white-space:pre-wrap;background:#111;padding:12px;border-radius:6px">{escaped_body}</pre>'
+                        '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
+                    )
+                else:
+                    access_token = token_json.get("access_token", "")
+                    if access_token:
+                        _LIVE_SESSION["access_token"] = access_token
+                        _LIVE_SESSION["token_type"] = token_json.get("token_type", "Bearer")
+                        _LIVE_SESSION["acquired_at"] = datetime.now(timezone.utc).isoformat()
+                    # Show token summary (not the raw secret) — mask all but last 4 chars
+                    display = {
+                        k: (v[:4] + "…" + v[-4:] if isinstance(v, str) and len(v) > 12 and k == "access_token" else v)
+                        for k, v in token_json.items()
+                        if k != "refresh_token"
+                    }
+                    escaped = json.dumps(display, indent=2).replace("<", "&lt;").replace(">", "&gt;")
+                    stored_msg = (
+                        "&#10003; Access token stored in memory — use LIVE data buttons below."
+                        if access_token
+                        else "&#9888; No access_token in response."
+                    )
+                    html = (
+                        '<html><body style="font-family:monospace;background:#0e0e0e;color:#e0e0e0;padding:24px">'
+                        '<h2 style="color:#4caf50">&#10003; Token exchanged (live)</h2>'
+                        f'<p style="color:#a5d6a7;margin-bottom:12px">{stored_msg}</p>'
+                        f'<pre style="background:#111;padding:12px;border-radius:6px">{escaped}</pre>'
+                        '<p style="margin-top:12px;font-size:0.8rem;color:#777">refresh_token omitted from display</p>'
+                        '<a href="/" style="color:#f57c00">&#8592; Back to tester</a></body></html>'
+                    )
         except Exception as exc:  # noqa: BLE001
             html = (
                 '<html><body style="font-family:monospace;background:#0e0e0e;color:#f44336;padding:24px">'
-                f"<h2>Token exchange failed</h2><pre>{exc}</pre>"
+                f"<h2>Token exchange crashed before receiving a response</h2><pre>{exc}</pre>"
                 '<a href="/" style="color:#f57c00">Back to tester</a></body></html>'
             )
     else:
@@ -896,9 +934,7 @@ async def api_live_status() -> JSONResponse:
             "authenticated": has_token,
             "acquired_at": _LIVE_SESSION.get("acquired_at"),
             "token_hint": (
-                (_LIVE_SESSION["access_token"][:4] + "…" + _LIVE_SESSION["access_token"][-4:])
-                if has_token
-                else None
+                (_LIVE_SESSION["access_token"][:4] + "…" + _LIVE_SESSION["access_token"][-4:]) if has_token else None
             ),
         }
     )
