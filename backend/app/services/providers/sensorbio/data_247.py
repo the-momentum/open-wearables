@@ -36,6 +36,13 @@ class SensorBio247Data(Base247DataTemplate):
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
+        """Make an authenticated request using HTTP/2.
+
+        Sensor Bio requires HTTP/2 (see API docs). We pass ``http2=True`` to the
+        underlying httpx client via ``make_authenticated_request``.  This is a
+        scoped override so other providers that use the shared api_client are
+        unaffected.
+        """
         return make_authenticated_request(
             db=db,
             user_id=user_id,
@@ -47,6 +54,7 @@ class SensorBio247Data(Base247DataTemplate):
             method="GET",
             params=params,
             headers=headers,
+            http2=True,
         )
 
     @staticmethod
@@ -85,6 +93,12 @@ class SensorBio247Data(Base247DataTemplate):
     def normalize_sleep(self, raw_sleep: dict[str, Any], user_id: UUID) -> dict[str, Any]:
         biometrics = raw_sleep.get("biometrics", {}) or {}
         score = raw_sleep.get("score", {}) or {}
+        # NOTE: The official API intro states timestamps are milliseconds, but the
+        # sleep endpoint examples in the docs show start_timestamp / end_timestamp
+        # as plain epoch *seconds* (e.g. 1625097600, not 1625097600000).
+        # We keep _from_epoch_seconds here to match observed response values.
+        # If Sensor Bio ever aligns the sleep endpoint to ms, switch to
+        # _from_epoch_millis and remove this comment.
         start_dt = self._from_epoch_seconds(raw_sleep.get("start_timestamp"))
         end_dt = self._from_epoch_seconds(raw_sleep.get("end_timestamp"))
         duration_seconds = int((raw_sleep.get("total_sleep_mins") or 0) * 60)
@@ -363,6 +377,24 @@ class SensorBio247Data(Base247DataTemplate):
     def get_daily_activity_statistics(
         self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
     ) -> list[dict[str, Any]]:
+        """Fetch step details per day from /v1/step/details.
+
+        The endpoint returns a StepDetailsResponseBody directly (no ``data``
+        wrapper), e.g.::
+
+            {
+                "date": "2024-01-15",
+                "granularity": "day",
+                "metrics": [
+                    {"name": "Steps", "value": 8200, ...},
+                    {"name": "Distance", "value": 6.1, "unit": "km", ...},
+                    {"name": "Calories", "value": 312, ...},
+                    {"name": "Duration", "value": 74, ...}
+                ],
+                "daily_steps_goal": 10000,
+                "steps_goal_achieved_percentage": 82
+            }
+        """
         all_stats: list[dict[str, Any]] = []
         current_date = start_date.astimezone(timezone.utc).date()
         final_date = end_date.astimezone(timezone.utc).date()
@@ -371,11 +403,9 @@ class SensorBio247Data(Base247DataTemplate):
                 response = self._make_api_request(
                     db, user_id, "/v1/step/details", params={"date": current_date.isoformat(), "granularity": "day"}
                 )
-                data = response.get("data", response) if isinstance(response, dict) else None
-                if isinstance(data, list):
-                    all_stats.extend(data)
-                elif isinstance(data, dict):
-                    all_stats.append(data)
+                # Spec: response IS the StepDetailsResponseBody — no data wrapper.
+                if isinstance(response, dict) and "metrics" in response:
+                    all_stats.append(response)
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -388,13 +418,34 @@ class SensorBio247Data(Base247DataTemplate):
         return all_stats
 
     def normalize_daily_activity(self, raw_stats: dict[str, Any], user_id: UUID) -> dict[str, Any]:
+        """Normalise a StepDetailsResponseBody into our internal shape.
+
+        Reads metrics by name from the ``metrics`` array.  Possible names per
+        spec: Steps, Distance, Calories, Duration.  The ``date`` field is a
+        YYYY-MM-DD string; we parse it to a midnight-UTC datetime for the
+        timestamp.
+        """
+        # Build a lookup: metric name -> StepDetailMetric dict
+        metrics_by_name: dict[str, dict[str, Any]] = {}
+        for metric in raw_stats.get("metrics") or []:
+            name = metric.get("name") or metric.get("type")
+            if name:
+                metrics_by_name[name] = metric
+
+        date_str = raw_stats.get("date")
+        timestamp = datetime.fromisoformat(f"{date_str}T00:00:00+00:00") if date_str else None
+
+        steps_metric = metrics_by_name.get("Steps")
+        distance_metric = metrics_by_name.get("Distance")
+        calories_metric = metrics_by_name.get("Calories")
+
         return {
             "user_id": user_id,
             "provider": self.provider_name,
-            "timestamp": self._from_epoch_millis(raw_stats.get("timestamp")),
-            "steps": raw_stats.get("steps"),
-            "distance": raw_stats.get("distance"),
-            "energy": raw_stats.get("total_step_calories"),
+            "timestamp": timestamp,
+            "steps": int(steps_metric["value"]) if steps_metric and steps_metric.get("value") is not None else None,
+            "distance": distance_metric.get("value") if distance_metric else None,
+            "energy": calories_metric.get("value") if calories_metric else None,
             "raw": raw_stats,
         }
 
