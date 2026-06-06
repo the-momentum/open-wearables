@@ -90,9 +90,30 @@ class BiometricsInScores(BaseModel):
     spo2: float | None = None
 
 
-class SleepInScores(BaseModel):
-    """Sleep sub-object inside a /v1/scores response."""
+class ActivityInScores(BaseModel):
+    """Activity sub-object inside a /v1/scores response.
 
+    Real shape confirmed live (t_5912f22f): data.activity.value is the 0-100
+    activity score; avg, goal, processing are supplementary.
+    """
+
+    value: float | int | None = None
+    avg: float | int | None = None
+
+
+class SleepInScores(BaseModel):
+    """Sleep sub-object inside a /v1/scores response.
+
+    Carries both:
+    - ``value`` - the 0-100 sleep score (from /v1/scores sleep block)
+    - ``biometrics`` - resting HR/HRV/SpO2 averages
+
+    The sleep *score* (value) must not be confused with sleep_efficiency_score
+    stored on the /v1/sleep EventRecordDetail - these are different stores and
+    different sources; both can coexist without duplication.
+    """
+
+    value: float | int | None = None
     biometrics: BiometricsInScores | None = None
 
     @field_validator("biometrics", mode="before")
@@ -104,15 +125,21 @@ class SleepInScores(BaseModel):
 
 
 class ScoresRecord(BaseModel):
-    """Response shape for a single /v1/scores record (recovery + sleep biometrics).
+    """Response shape for a single /v1/scores record (recovery + activity + sleep).
 
-    The outer wrapper is ``{"data": ScoresRecord}`` — we validate the inner
+    The outer wrapper is ``{"data": ScoresRecord}`` - we validate the inner
     ``data`` dict, not the envelope.
+
+    Confirmed live shape (t_5912f22f, 2026-03-14):
+        data.activity = { avg, goal, processing, value: 97 }
+        data.recovery = { avg, message, processing, stage: 'go_easy', value: 48 }
+        data.sleep    = { avg, duration_secs, goal, processing, value: 99 }
     """
 
     date: str | None = None
     recovery: RecoveryInScores | None = None
     sleep: SleepInScores | None = None
+    activity: ActivityInScores | None = None
 
     @field_validator("recovery", mode="before")
     @classmethod
@@ -124,6 +151,13 @@ class ScoresRecord(BaseModel):
     @field_validator("sleep", mode="before")
     @classmethod
     def coerce_sleep(cls, v: Any) -> Any:
+        if v == {} or v is None:
+            return None
+        return v
+
+    @field_validator("activity", mode="before")
+    @classmethod
+    def coerce_activity(cls, v: Any) -> Any:
         if v == {} or v is None:
             return None
         return v
