@@ -8,9 +8,10 @@ from uuid import UUID, uuid4
 from app.database import DbSession
 from app.models import EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
-from app.schemas import EventRecordCreate, TimeSeriesSampleCreate
-from app.schemas.event_record_detail import EventRecordDetailCreate
-from app.schemas.series_types import SeriesType
+from app.schemas.enums.series_types import SeriesType
+from app.schemas.model_crud.activities.data_point_series import TimeSeriesSampleCreate
+from app.schemas.model_crud.activities.event_record import EventRecordCreate
+from app.schemas.model_crud.activities.event_record_detail import EventRecordDetailCreate
 from app.services.event_record_service import event_record_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
@@ -244,7 +245,6 @@ class SensorBio247Data(Base247DataTemplate):
 
         count = 0
         metrics = [
-            ("recovery_score", SeriesType.recovery_score),
             ("resting_heart_rate", SeriesType.resting_heart_rate),
             ("hrv_rmssd_milli", SeriesType.heart_rate_variability_rmssd),
             ("spo2_percentage", SeriesType.oxygen_saturation),

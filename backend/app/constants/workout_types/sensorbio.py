@@ -1,4 +1,4 @@
-from app.schemas.workout_types import WorkoutType
+from app.schemas.enums import WorkoutType
 
 SENSORBIO_NAME_TO_WORKOUT_TYPE: dict[str, WorkoutType] = {
     "run": WorkoutType.RUNNING,

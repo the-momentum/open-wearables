@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.schemas.oauth import ProviderName
+from app.schemas.enums import ProviderName
 from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from app.services.providers.templates.base_oauth import AuthenticationMethod
 
