@@ -1,4 +1,4 @@
-from app.services.providers.base_strategy import BaseProviderStrategy
+from app.services.providers.base_strategy import BaseProviderStrategy, ProviderCapabilities
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 from app.services.providers.sensorbio.oauth import SensorBioOAuth
 from app.services.providers.sensorbio.workouts import SensorBioWorkouts
@@ -39,3 +39,7 @@ class SensorBioStrategy(BaseProviderStrategy):
     @property
     def api_base_url(self) -> str:
         return "https://api.sensorbio.com"
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(rest_pull=True)
