@@ -1024,6 +1024,7 @@ _HTML = """\
       }}
     }}
 
+    let _dashAutoLoaded = false;  // auto-load dashboard once per page session when token arrives
     async function checkLiveStatus() {{
       if (!IS_LIVE) return;
       try {{
@@ -1034,6 +1035,11 @@ _HTML = """\
           document.getElementById('dashboard-section').style.display = 'block';
           // Populate token panel (full token fetched separately from /api/token-full)
           _updateTokenPanel(data);
+          // Auto-load dashboard once when we first confirm a valid token
+          if (!_dashAutoLoaded) {{
+            _dashAutoLoaded = true;
+            loadDashboard();
+          }}
         }}
       }} catch(e) {{}}
     }}
@@ -1181,6 +1187,7 @@ _HTML = """\
         }});
         if (!r.ok) return;
         _selectedProvider = name;
+        _dashAutoLoaded = false;  // allow auto-load for the newly selected provider
         // Update card styles
         document.querySelectorAll('.pcard').forEach(c => c.classList.remove('selected'));
         document.querySelectorAll('.pcard[data-provider="' + name + '"]').forEach(c => c.classList.add('selected'));
@@ -1328,8 +1335,8 @@ _HTML = """\
         const r = await fetch('/api/dashboard?' + params.toString());
         const d = await r.json();
 
-        if (d.error) {{
-          warn.textContent = '⚠ ' + d.error;
+        if (!r.ok || d.error) {{
+          warn.textContent = '⚠ ' + (d.error || `HTTP ${{r.status}} from /api/dashboard`);
           warn.style.display = 'block';
           btn.disabled = false; btn.textContent = '📄 Load Dashboard';
           return;
@@ -2361,34 +2368,45 @@ async def api_dashboard(request: Request) -> JSONResponse:
                 hrv: float | None = None
                 spo2: float | None = None
 
-                if isinstance(data_inner, dict):
-                    rec_block = data_inner.get("recovery") or {}
-                    sc = rec_block.get("score") or {}
-                    recovery_score = sc.get("value") if isinstance(sc, dict) else (int(sc) if isinstance(sc, (int, float)) else None)
+                def _extract_score_block(rec_block: "dict") -> "tuple[int | None, str | None, float | None, float | None, float | None]":
+                    """Extract (recovery_score, stage, resting_bpm, hrv, spo2) from a recovery block.
+
+                    Supports both shapes:
+                      - Old: {score: {value: N}, biometrics: {...}}
+                      - Current API: {value: N, stage: str, avg: N, ...}  (no nested score key)
+                    """
+                    # Try current API shape: value directly on rec_block
+                    val = rec_block.get("value")
+                    if val is not None:
+                        r_score = int(val) if isinstance(val, (int, float)) else None
+                    else:
+                        # Legacy fallback: {score: {value: N}}
+                        sc = rec_block.get("score") or {}
+                        val2 = sc.get("value") if isinstance(sc, dict) else sc
+                        r_score = int(val2) if isinstance(val2, (int, float)) else None
+                    r_stage = rec_block.get("stage")
                     bio_block = rec_block.get("biometrics") or {}
-                    resting_bpm = bio_block.get("resting_bpm")
-                    hrv = bio_block.get("resting_hrv") or bio_block.get("hrv")
-                    spo2 = bio_block.get("spo2")
+                    r_bpm = bio_block.get("resting_bpm") if bio_block.get("resting_bpm") is not None else None
+                    r_hrv = bio_block.get("resting_hrv") if bio_block.get("resting_hrv") is not None else bio_block.get("hrv") if bio_block.get("hrv") is not None else None
+                    r_spo2 = bio_block.get("spo2") if bio_block.get("spo2") is not None else None
+                    return r_score, r_stage, r_bpm, r_hrv, r_spo2
+
+                if isinstance(data_inner, dict):
+                    # Shape: {data: {date, recovery: {...}, sleep: {...}, activity: {...}}}
+                    rec_block = data_inner.get("recovery") or {}
+                    recovery_score, recovery_stage, resting_bpm, hrv, spo2 = _extract_score_block(rec_block)
                 elif isinstance(payload, dict) and "recovery" in payload:
                     # Flat shape without 'data' wrapper: {activity, recovery, sleep}
                     rec_block = payload.get("recovery") or {}
-                    sc = rec_block.get("score") or {}
-                    recovery_score = sc.get("value") if isinstance(sc, dict) else (
-                        int(sc) if isinstance(sc, (int, float)) else None
-                    )
-                    # Also try to extract biometrics even when score is null
-                    bio_block = rec_block.get("biometrics") or {}
-                    if not resting_bpm:
-                        resting_bpm = bio_block.get("resting_bpm")
-                    if not hrv:
-                        hrv = bio_block.get("resting_hrv") or bio_block.get("hrv")
-                    if not spo2:
-                        spo2 = bio_block.get("spo2")
+                    recovery_score, recovery_stage, resting_bpm, hrv, spo2 = _extract_score_block(rec_block)
+                else:
+                    recovery_stage = None
 
                 if recovery_score is not None:
                     recovery_out.append({
                         "date": day,
                         "score": int(recovery_score),
+                        "stage": recovery_stage,
                         "resting_hr": resting_bpm,
                         "hrv": hrv,
                         "spo2": spo2,
@@ -2401,7 +2419,13 @@ async def api_dashboard(request: Request) -> JSONResponse:
                         "hrv": round(hrv, 1) if hrv is not None else None,
                         "spo2": round(spo2, 1) if spo2 is not None else None,
                     })
-                call_info["sample_keys"] = _sample_keys(payload)
+                # Diagnostics: for scores endpoint the payload is {data: {activity, recovery, sleep}}
+                # _sample_keys returns payload top-level keys. We want the scores data keys instead.
+                scores_data = payload.get("data") if isinstance(payload, dict) else None
+                if isinstance(scores_data, dict):
+                    call_info["sample_keys"] = list(scores_data.keys())
+                else:
+                    call_info["sample_keys"] = _sample_keys(payload)
                 call_info["count"] = 1 if (data_inner or (isinstance(payload, dict) and "recovery" in payload)) else 0
                 call_info["recovery_score_found"] = recovery_score
             score_calls.append(call_info)
@@ -2472,9 +2496,23 @@ async def api_dashboard(request: Request) -> JSONResponse:
                 if ts is not None and start_ms <= ts <= end_ms:
                     # Normalise to date
                     rec_date = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
-                    hr = rec.get("heart_rate") or rec.get("bpm") or rec.get("hr")
-                    hrv_val = rec.get("heart_rate_variability") or rec.get("hrv")
-                    spo2_val = rec.get("spo2") or rec.get("blood_oxygen")
+                    # Prefer resting values (daily summary) over instantaneous values.
+                    # Use 'is not None' — not 'or' — because 0.0 is a valid but useless HRV reading.
+                    hr = rec.get("resting_bpm")
+                    if hr is None:
+                        hr = rec.get("heart_rate")
+                    if hr is None:
+                        hr = rec.get("bpm")
+                    if hr is None:
+                        hr = rec.get("hr")
+                    hrv_val = rec.get("resting_hrv")
+                    if hrv_val is None:
+                        hrv_val = rec.get("heart_rate_variability")
+                    if hrv_val is None:
+                        hrv_val = rec.get("hrv")
+                    spo2_val = rec.get("spo2")
+                    if spo2_val is None:
+                        spo2_val = rec.get("blood_oxygen")
                     bio_cursor_records.append({
                         "date": rec_date,
                         "resting_hr": round(float(hr), 1) if hr is not None else None,
