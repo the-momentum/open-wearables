@@ -45,6 +45,7 @@ dev = [
     "factory-boy>=3.3.0",
     "psycopg-binary>=3.3.4",
     "testcontainers[postgres,redis]>=4.14.2",
+    "h2>=4.3.0",
 ]
 
 [tool.ruff]
