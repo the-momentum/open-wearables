@@ -72,6 +72,7 @@ def make_authenticated_request(
     headers: dict[str, str] | None = None,
     json_data: dict[str, Any] | None = None,
     expect_json: bool = True,
+    http2: bool = False,
 ) -> Any:
     """Make authenticated request to provider API.
 
@@ -91,6 +92,9 @@ def make_authenticated_request(
         json_data: JSON body for POST/PUT requests
         expect_json: Whether to parse response as JSON (default True).
             Set to False for endpoints that return empty bodies (e.g., 202 Accepted).
+        http2: Enable HTTP/2 for this request (default False). Requires the h2
+            package (installed via httpx[http2]).  Use for providers that require
+            HTTP/2, e.g. Sensor Bio.  Other providers are unaffected.
 
     Returns:
         Any: API response JSON, or dict with status_code if expect_json=False
@@ -114,14 +118,15 @@ def make_authenticated_request(
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = httpx.request(
-                method=method,
-                url=url,
-                headers=request_headers,
-                params=params or {},
-                json=json_data,
-                timeout=30.0,
-            )
+            with httpx.Client(http2=http2) as client:
+                response = client.request(
+                    method=method,
+                    url=url,
+                    headers=request_headers,
+                    params=params or {},
+                    json=json_data,
+                    timeout=30.0,
+                )
 
             # Handle 429 rate limiting with retry
             if response.status_code == 429:

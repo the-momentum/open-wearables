@@ -13,18 +13,78 @@ from app.schemas.model_crud.activities import (
     EventRecordMetrics,
 )
 from app.services.event_record_service import event_record_service
+from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
 from app.utils.structured_logging import log_structured
 
 
 class SensorBioWorkouts(BaseWorkoutsTemplate):
-    """Sensor Bio implementation of workout syncing."""
+    """Sensor Bio implementation of workout syncing.
+
+    API response shape (GET /v1/activities):
+      {
+        "data": [WorkoutStats, ...],
+        "links": { "next": "..." }
+      }
+
+    WorkoutStats:
+      { "timestamp": <ms>, "name": "Run", "activities": [Activity, ...] }
+
+    Activity:
+      { "start_time": <ms>, "end_time": <ms>, "likely_name": "Run",
+        "calories": ..., "distance": ..., "active_time": ...,
+        "duration": ..., "cardio_metrics": {...}, ... }
+
+    Pagination cursor: WorkoutStats.timestamp (already milliseconds — used as-is).
+    """
+
+    def _make_api_request(  # type: ignore[override]
+        self,
+        db: DbSession,
+        user_id: UUID,
+        endpoint: str,
+        method: str = "GET",
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        json_data: dict[str, Any] | None = None,
+    ) -> Any:
+        """Make an authenticated request using HTTP/2.
+
+        Sensor Bio requires HTTP/2 (see API docs). Overrides the base
+        implementation to pass ``http2=True``; other providers that use the
+        shared api_client are unaffected.
+        """
+        return make_authenticated_request(
+            db=db,
+            user_id=user_id,
+            connection_repo=self.connection_repo,
+            oauth=self.oauth,
+            api_base_url=self.api_base_url,
+            provider_name=self.provider_name,
+            endpoint=endpoint,
+            method=method,
+            params=params,
+            headers=headers,
+            json_data=json_data,
+            http2=True,
+        )
 
     @staticmethod
-    def _from_epoch_seconds(timestamp: int | float | None) -> datetime | None:
-        return datetime.fromtimestamp(timestamp, tz=timezone.utc) if timestamp is not None else None
+    def _from_epoch_millis(timestamp: int | float | None) -> datetime | None:
+        """Convert Unix epoch milliseconds to UTC datetime."""
+        return datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc) if timestamp is not None else None
 
     def get_workouts(self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime) -> list[Any]:
+        """Fetch and flatten Activity records from /v1/activities within the date window.
+
+        The API returns pages of WorkoutStats, each containing a nested
+        ``activities`` list.  We iterate the nested activities and filter by
+        their start_time (ms).
+
+        Pagination cursor is WorkoutStats.timestamp (ms) — used directly as
+        ``last-timestamp``; no *1000 heuristic needed because the spec states
+        the field is already milliseconds.
+        """
         all_workouts: list[dict[str, Any]] = []
         last_timestamp = 0
         limit = 50
@@ -33,21 +93,30 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
                 response = self._make_api_request(
                     db, user_id, "/v1/activities", params={"last-timestamp": last_timestamp, "limit": limit}
                 )
+                # data: WorkoutStats[]
                 records = response.get("data", []) if isinstance(response, dict) else []
                 if not isinstance(records, list) or not records:
                     break
-                for record in records:
-                    start_dt = self._from_epoch_seconds(record.get("start_time"))
-                    if start_dt and start_date <= start_dt <= end_date:
-                        all_workouts.append(record)
-                next_timestamp = records[-1].get("end_time") or records[-1].get("start_time")
-                if next_timestamp is None:
+
+                for workout_stats in records:
+                    # Each WorkoutStats contains nested Activity objects
+                    activities = workout_stats.get("activities") or []
+                    for activity in activities:
+                        start_dt = self._from_epoch_millis(activity.get("start_time"))
+                        if start_dt and start_date <= start_dt <= end_date:
+                            # Attach workout-level name as context for type mapping
+                            activity.setdefault("_workout_name", workout_stats.get("name"))
+                            all_workouts.append(activity)
+
+                # Cursor: WorkoutStats.timestamp is already in milliseconds per spec.
+                next_cursor = records[-1].get("timestamp")
+                if next_cursor is None:
                     break
-                next_timestamp_int = int(next_timestamp)
-                updated_cursor = next_timestamp_int * 1000 if next_timestamp_int < 10**12 else next_timestamp_int
-                if updated_cursor == last_timestamp:
+                next_cursor_int = int(next_cursor)
+                if next_cursor_int == last_timestamp:
                     break
-                last_timestamp = updated_cursor
+                last_timestamp = next_cursor_int
+
                 if not (response.get("links") or {}).get("next"):
                     break
             except Exception as e:
@@ -81,8 +150,9 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         raise NotImplementedError("Sensor Bio does not support API-based workout detail fetching")
 
     def _extract_dates(self, start_timestamp: int | float, end_timestamp: int | float) -> tuple[datetime, datetime]:
-        start_date = self._from_epoch_seconds(start_timestamp)
-        end_date = self._from_epoch_seconds(end_timestamp)
+        """Convert Activity.start_time / end_time (ms) to datetime."""
+        start_date = self._from_epoch_millis(start_timestamp)
+        end_date = self._from_epoch_millis(end_timestamp)
         now = datetime.now(timezone.utc)
         return start_date or now, end_date or start_date or now
 
@@ -107,7 +177,11 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         self, raw_workout: dict[str, Any], user_id: UUID
     ) -> tuple[EventRecordCreate, EventRecordDetailCreate]:
         workout_id = uuid4()
-        workout_type = get_unified_workout_type(raw_workout.get("likely_name"), raw_workout.get("type"))
+        # Per spec, Activity.likely_name is the type field; no raw "type" field.
+        # Fall back to the parent WorkoutStats.name (stashed as _workout_name).
+        workout_type = get_unified_workout_type(
+            raw_workout.get("likely_name") or raw_workout.get("_workout_name")
+        )
         start_date, end_date = self._extract_dates(raw_workout.get("start_time"), raw_workout.get("end_time"))
         duration_seconds = int(raw_workout.get("duration") or max(int((end_date - start_date).total_seconds()), 0))
         metrics = self._build_metrics(raw_workout)
