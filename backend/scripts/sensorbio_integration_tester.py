@@ -973,12 +973,49 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
 
     try:
         url = f"https://api.sensorbio.com{endpoint_map[endpoint]}"
-        resp = _httpx.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=20,
+        async with _httpx.AsyncClient(http2=True, timeout=20) as client:
+            resp = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        content_type = resp.headers.get("content-type", "")
+        body_text = resp.text or ""
+        if resp.status_code == 204 or not body_text.strip():
+            return JSONResponse(
+                {
+                    "status": resp.status_code,
+                    "url": url,
+                    "http_version": resp.http_version,
+                    "content_type": content_type or None,
+                    "data": None,
+                    "note": "No content returned for this endpoint/query.",
+                }
+            )
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            return JSONResponse(
+                {
+                    "status": resp.status_code,
+                    "url": url,
+                    "http_version": resp.http_version,
+                    "content_type": content_type or None,
+                    "error": "Sensor Bio returned a non-JSON response.",
+                    "json_error": str(exc),
+                    "body_snippet": body_text[:1200],
+                },
+                status_code=502,
+            )
+        return JSONResponse(
+            {
+                "status": resp.status_code,
+                "url": url,
+                "http_version": resp.http_version,
+                "content_type": content_type or None,
+                "data": data,
+            },
+            status_code=200 if resp.status_code < 400 else resp.status_code,
         )
-        return JSONResponse({"status": resp.status_code, "url": url, "data": resp.json()})
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": str(exc)}, status_code=500)
 
