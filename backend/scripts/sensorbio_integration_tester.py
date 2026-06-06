@@ -958,13 +958,18 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
             {"error": "No access token in memory. Complete OAuth flow first (click 'Start OAuth Flow')."},
             status_code=401,
         )
-    endpoint_map: dict[str, str] = {
-        "user": "/v1/user",
-        "activities": "/v1/activities",
-        "sleep": "/v1/sleep",
-        "scores": "/v1/scores",
-        "step-details": "/v1/step/details",
-        "biometrics": "/v1/biometrics",
+    today = datetime.now(timezone.utc).date().isoformat()
+    endpoint_map: dict[str, tuple[str, dict[str, Any]]] = {
+        "user": ("/v1/user", {}),
+        # Sensor Bio collection endpoints require a pagination cursor even for the first page.
+        "activities": ("/v1/activities", {"last-timestamp": 0, "limit": 50}),
+        "sleep": ("/v1/sleep", {"last-timestamp": 0, "limit": 50, "date": today}),
+        "scores": ("/v1/scores", {"last-timestamp": 0, "limit": 50, "date": today}),
+        "step-details": (
+            "/v1/step/details",
+            {"last-timestamp": 0, "limit": 50, "date": today, "granularity": "day"},
+        ),
+        "biometrics": ("/v1/biometrics", {"last-timestamp": 0, "limit": 50}),
     }
     if endpoint not in endpoint_map:
         return JSONResponse({"error": f"Unknown. Valid: {list(endpoint_map.keys())}"}, status_code=404)
@@ -972,11 +977,13 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
     import httpx as _httpx
 
     try:
-        url = f"https://api.sensorbio.com{endpoint_map[endpoint]}"
+        path, params = endpoint_map[endpoint]
+        url = f"https://api.sensorbio.com{path}"
         async with _httpx.AsyncClient(http2=True, timeout=20) as client:
             resp = await client.get(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
+                params=params,
             )
         content_type = resp.headers.get("content-type", "")
         body_text = resp.text or ""
@@ -984,7 +991,7 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
             return JSONResponse(
                 {
                     "status": resp.status_code,
-                    "url": url,
+                    "url": str(resp.url),
                     "http_version": resp.http_version,
                     "content_type": content_type or None,
                     "data": None,
@@ -997,7 +1004,7 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
             return JSONResponse(
                 {
                     "status": resp.status_code,
-                    "url": url,
+                    "url": str(resp.url),
                     "http_version": resp.http_version,
                     "content_type": content_type or None,
                     "error": "Sensor Bio returned a non-JSON response.",
@@ -1009,7 +1016,7 @@ async def api_live_fetch(endpoint: str) -> JSONResponse:
         return JSONResponse(
             {
                 "status": resp.status_code,
-                "url": url,
+                "url": str(resp.url),
                 "http_version": resp.http_version,
                 "content_type": content_type or None,
                 "data": data,
