@@ -17,6 +17,8 @@ import pytest
 
 from app.services.providers.sensorbio.data_247 import SensorBio247Data
 from app.services.providers.sensorbio.workouts import SensorBioWorkouts
+from app.schemas.enums import WorkoutType
+from app.services.providers.api_client import make_authenticated_request
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +175,6 @@ def test_normalize_workout_uses_likely_name(workouts: SensorBioWorkouts) -> None
         "cardio_metrics": None,
     }
     record, _ = workouts._normalize_workout(raw, USER_ID)
-    from app.schemas.enums import WorkoutType
     assert record.type == WorkoutType.RUNNING.value
 
 
@@ -186,7 +187,6 @@ def test_normalize_workout_falls_back_to_workout_name(workouts: SensorBioWorkout
         "_workout_name": "cycling",
     }
     record, _ = workouts._normalize_workout(raw, USER_ID)
-    from app.schemas.enums import WorkoutType
     assert record.type == WorkoutType.CYCLING.value
 
 
@@ -291,7 +291,7 @@ def test_data_247_make_api_request_uses_http2(data_247: SensorBio247Data) -> Non
 
 def test_api_client_http2_flag_forwarded() -> None:
     """make_authenticated_request must forward http2 to the httpx.Client."""
-    from app.services.providers.api_client import make_authenticated_request as client_req
+    client_req = make_authenticated_request
 
     mock_repo = MagicMock()
     mock_conn = MagicMock()
