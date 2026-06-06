@@ -819,19 +819,23 @@ async def oauth_callback(code: str = "", state: str = "", error: str = "") -> HT
         import httpx as _httpx
 
         try:
-            resp = _httpx.post(
-                "https://auth.sensorbio.com/token",
-                data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "client_id": settings.sensorbio_client_id or "",
-                    "client_secret": (
-                        settings.sensorbio_client_secret.get_secret_value() if settings.sensorbio_client_secret else ""
-                    ),
-                    "redirect_uri": settings.sensorbio_redirect_uri or "http://localhost:8765/oauth/callback",
-                },
-                timeout=15,
-            )
+            # Sensor Bio rejects HTTP/1.x at the protocol layer with HTTP 464.
+            # Use HTTP/2 for token exchange, matching the API's protocol requirement.
+            async with _httpx.AsyncClient(http2=True, timeout=15) as client:
+                resp = await client.post(
+                    "https://auth.sensorbio.com/token",
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "client_id": settings.sensorbio_client_id or "",
+                        "client_secret": (
+                            settings.sensorbio_client_secret.get_secret_value()
+                            if settings.sensorbio_client_secret
+                            else ""
+                        ),
+                        "redirect_uri": settings.sensorbio_redirect_uri or "http://localhost:8765/oauth/callback",
+                    },
+                )
             content_type = resp.headers.get("content-type", "")
             body_text = resp.text or ""
             if resp.status_code >= 400:

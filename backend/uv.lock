@@ -1010,6 +1010,7 @@ code-quality = [
 dev = [
     { name = "factory-boy" },
     { name = "freezegun" },
+    { name = "h2" },
     { name = "psycopg-binary" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1055,6 +1056,7 @@ code-quality = [
 dev = [
     { name = "factory-boy", specifier = ">=3.3.0" },
     { name = "freezegun", specifier = ">=1.5.0" },
+    { name = "h2", specifier = ">=4.3.0" },
     { name = "psycopg-binary", specifier = ">=3.3.4" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
