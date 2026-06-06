@@ -7,7 +7,7 @@ from app.services.providers.sensorbio.workouts import SensorBioWorkouts
 class SensorBioStrategy(BaseProviderStrategy):
     """Sensor Bio provider implementation."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.oauth = SensorBioOAuth(
             user_repo=self.user_repo,

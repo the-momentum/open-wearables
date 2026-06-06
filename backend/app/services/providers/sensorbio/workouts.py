@@ -149,7 +149,7 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
     def get_workout_detail_from_api(self, db: DbSession, user_id: UUID, workout_id: str, **kwargs: Any) -> Any:
         raise NotImplementedError("Sensor Bio does not support API-based workout detail fetching")
 
-    def _extract_dates(self, start_timestamp: int | float, end_timestamp: int | float) -> tuple[datetime, datetime]:
+    def _extract_dates(self, start_timestamp: int | float | None, end_timestamp: int | float | None) -> tuple[datetime, datetime]:
         """Convert Activity.start_time / end_time (ms) to datetime."""
         start_date = self._from_epoch_millis(start_timestamp)
         end_date = self._from_epoch_millis(end_timestamp)
@@ -179,9 +179,7 @@ class SensorBioWorkouts(BaseWorkoutsTemplate):
         workout_id = uuid4()
         # Per spec, Activity.likely_name is the type field; no raw "type" field.
         # Fall back to the parent WorkoutStats.name (stashed as _workout_name).
-        workout_type = get_unified_workout_type(
-            raw_workout.get("likely_name") or raw_workout.get("_workout_name")
-        )
+        workout_type = get_unified_workout_type(raw_workout.get("likely_name") or raw_workout.get("_workout_name"))
         start_date, end_date = self._extract_dates(raw_workout.get("start_time"), raw_workout.get("end_time"))
         duration_seconds = int(raw_workout.get("duration") or max(int((end_date - start_date).total_seconds()), 0))
         metrics = self._build_metrics(raw_workout)

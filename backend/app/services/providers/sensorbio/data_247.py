@@ -128,7 +128,8 @@ class SensorBio247Data(Base247DataTemplate):
             "raw": raw_sleep,
         }
 
-    def save_sleep_data(self, db: DbSession, user_id: UUID, normalized_sleep: dict[str, Any]) -> None:
+    def save_sleep_data(self, db: DbSession, user_id: UUID, normalized_sleep: dict[str, Any]) -> bool:
+        """Persist a normalized sleep record.  Returns True on success, False when skipped or on error."""
         sleep_id = normalized_sleep["id"]
         start_dt = normalized_sleep.get("start_time")
         end_dt = normalized_sleep.get("end_time")
@@ -141,7 +142,7 @@ class SensorBio247Data(Base247DataTemplate):
                 task="save_sleep_data",
                 sleep_id=str(sleep_id),
             )
-            return
+            return False
 
         record = EventRecordCreate(
             id=sleep_id,
@@ -181,6 +182,7 @@ class SensorBio247Data(Base247DataTemplate):
             created_record = event_record_service.create(db, record)
             detail.record_id = created_record.id
             event_record_service.create_detail(db, detail, detail_type="sleep")
+            return True
         except Exception as e:
             log_structured(
                 self.logger,
@@ -189,6 +191,7 @@ class SensorBio247Data(Base247DataTemplate):
                 provider="sensorbio",
                 task="save_sleep_data",
             )
+            return False
 
     def load_and_save_sleep(self, db: DbSession, user_id: UUID, start_time: datetime, end_time: datetime) -> int:
         raw_data = self.get_sleep_data(db, user_id, start_time, end_time)
@@ -196,8 +199,8 @@ class SensorBio247Data(Base247DataTemplate):
         for item in raw_data:
             try:
                 normalized = self.normalize_sleep(item, user_id)
-                self.save_sleep_data(db, user_id, normalized)
-                count += 1
+                if self.save_sleep_data(db, user_id, normalized):
+                    count += 1
             except Exception as e:
                 log_structured(
                     self.logger,
@@ -373,6 +376,54 @@ class SensorBio247Data(Base247DataTemplate):
                 if value is not None:
                     normalized[target_key].append({"user_id": user_id, "timestamp": timestamp, "value": value})
         return normalized
+
+    _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
+        "heart_rate": SeriesType.heart_rate,
+        "heart_rate_variability": SeriesType.heart_rate_variability_rmssd,
+        "spo2": SeriesType.oxygen_saturation,
+        "respiratory_rate": SeriesType.respiratory_rate,
+    }
+
+    def save_activity_samples(
+        self, db: DbSession, user_id: UUID, normalized_samples: dict[str, list[dict[str, Any]]]
+    ) -> int:
+        """Persist normalized biometric activity samples as timeseries entries.
+
+        Returns the total number of samples written.
+        """
+        all_samples: list[TimeSeriesSampleCreate] = []
+        for key, samples in normalized_samples.items():
+            series_type = self._ACTIVITY_SERIES_MAP.get(key)
+            if not series_type:
+                continue
+            for sample in samples:
+                timestamp = sample.get("timestamp")
+                value = sample.get("value")
+                if timestamp is None or value is None:
+                    continue
+                all_samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source=self.provider_name,
+                        recorded_at=timestamp,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
+        if all_samples:
+            try:
+                timeseries_service.bulk_create_samples(db, all_samples)
+            except Exception as e:
+                log_structured(
+                    self.logger,
+                    "error",
+                    f"Failed to bulk-save {len(all_samples)} activity samples: {e}",
+                    provider="sensorbio",
+                    task="save_activity_samples",
+                )
+                return 0
+        return len(all_samples)
 
     def get_daily_activity_statistics(
         self, db: DbSession, user_id: UUID, start_date: datetime, end_date: datetime
