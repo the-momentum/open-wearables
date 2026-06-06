@@ -60,11 +60,33 @@ class SensorBioOAuth(BaseOAuthTemplate):
                 "user_id": str(data.get("id")) if data.get("id") is not None else None,
                 "username": data.get("name"),
             }
+        except httpx.HTTPStatusError as e:
+            log_structured(
+                logger,
+                "warning",
+                "Sensor Bio API HTTP error fetching user profile",
+                provider="sensorbio",
+                task="get_provider_user_info",
+                user_id=user_id,
+                status_code=e.response.status_code,
+            )
+            return {"user_id": None, "username": None}
+        except (httpx.TimeoutException, httpx.NetworkError) as e:
+            log_structured(
+                logger,
+                "error",
+                "Sensor Bio API connection error fetching user profile",
+                provider="sensorbio",
+                task="get_provider_user_info",
+                user_id=user_id,
+                error=str(e),
+            )
+            return {"user_id": None, "username": None}
         except Exception as e:
             log_structured(
                 logger,
                 "error",
-                f"Failed to fetch Sensor Bio user profile: {e}",
+                f"Unexpected error fetching Sensor Bio user profile: {e}",
                 provider="sensorbio",
                 task="get_provider_user_info",
                 user_id=user_id,
