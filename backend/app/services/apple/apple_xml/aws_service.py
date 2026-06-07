@@ -13,12 +13,15 @@ logger = getLogger(__name__)
 
 def get_s3_client():  # noqa: ANN201
     try:
-        return boto3.client(
-            "s3",
-            region_name=AWS_REGION,
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key.get_secret_value(),  # ty:ignore[unresolved-attribute]
-        )
+        kwargs: dict[str, str] = {
+            "region_name": AWS_REGION,
+            "aws_access_key_id": settings.aws_access_key_id,
+            "aws_secret_access_key": settings.aws_secret_access_key.get_secret_value(),  # ty:ignore[unresolved-attribute]
+        }
+        if settings.raw_payload_s3_endpoint_url:
+            kwargs["endpoint_url"] = settings.raw_payload_s3_endpoint_url
+
+        return boto3.client("s3", **kwargs)
     except (NoCredentialsError, AttributeError):
         log_structured(logger, "warning", "AWS credentials not configured")
         return None

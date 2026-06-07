@@ -189,7 +189,7 @@ class Settings(BaseSettings):
     raw_payload_max_size_bytes: int = 10 * 1024 * 1024  # 10 MB
     raw_payload_s3_bucket: str | None = None  # defaults to aws_bucket_name if not set
     raw_payload_s3_prefix: str = "raw-payloads"
-    raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
+    raw_payload_s3_endpoint_url: str | None = None  # S3-compatible endpoint (e.g. Railway Object Storage); also used for Apple XML uploads
 
     # SVIX WEBHOOK SETTINGS
     svix_server_url: str = "http://svix-server:8071"
