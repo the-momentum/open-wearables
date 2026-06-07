@@ -8,6 +8,8 @@ from app.integrations.celery.tasks.process_xml_upload_task import process_xml_up
 from app.schemas.providers.apple.apple_xml import (
     PresignedURLRequest,
     PresignedURLResponse,
+    ProcessS3XmlUploadRequest,
+    ProcessS3XmlUploadResponse,
     SNSNotification,
 )
 from app.schemas.responses.upload import UploadDataResponse
@@ -26,6 +28,23 @@ def import_xml_presigned_url(
 ) -> PresignedURLResponse:
     """Generate presigned URL for XML file upload and trigger processing task."""
     return presigned_url_service.create_presigned_url(user_id, request)
+
+
+@router.post(
+    "/users/{user_id}/import/apple/xml/s3/process",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def process_s3_xml_upload(
+    user_id: str,
+    request: ProcessS3XmlUploadRequest,
+    _api_key: ApiKeyDep,
+) -> ProcessS3XmlUploadResponse:
+    """Queue processing for an Apple Health XML file already uploaded to S3.
+
+    Use this after a presigned URL upload when S3 event notifications (SNS) are
+    unavailable, e.g. on S3-compatible storage providers.
+    """
+    return presigned_url_service.start_s3_xml_processing(user_id, request.file_key)
 
 
 @router.post("/users/{user_id}/import/apple/xml/direct")

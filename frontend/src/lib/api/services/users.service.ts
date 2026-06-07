@@ -1,6 +1,10 @@
 import { apiClient } from '../client';
 import { API_ENDPOINTS } from '../config';
 import { appendSearchParams } from '@/lib/utils/url';
+import {
+  uploadFormDataWithProgress,
+  type UploadProgressCallback,
+} from '@/lib/utils/upload-with-progress';
 import type {
   UserRead,
   UserCreate,
@@ -9,6 +13,8 @@ import type {
   PaginatedUsersResponse,
   PresignedURLRequest,
   PresignedURLResponse,
+  ProcessS3XmlUploadRequest,
+  ProcessS3XmlUploadResponse,
   InvitationCode,
 } from '../types';
 
@@ -52,12 +58,17 @@ export const usersService = {
     return apiClient.delete<void>(API_ENDPOINTS.userDetail(id));
   },
 
-  async uploadAppleXml(userId: string, file: File): Promise<void> {
+  async uploadAppleXml(
+    userId: string,
+    file: File,
+    onProgress?: UploadProgressCallback
+  ): Promise<void> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.postMultipart<void>(
+    await apiClient.postMultipartWithProgress<void>(
       API_ENDPOINTS.userAppleXmlImport(userId),
-      formData
+      formData,
+      { onProgress }
     );
   },
 
@@ -71,10 +82,21 @@ export const usersService = {
     );
   },
 
+  async processAppleXmlS3Upload(
+    userId: string,
+    request: ProcessS3XmlUploadRequest
+  ): Promise<ProcessS3XmlUploadResponse> {
+    return apiClient.post<ProcessS3XmlUploadResponse>(
+      API_ENDPOINTS.userAppleXmlS3Process(userId),
+      request
+    );
+  },
+
   async uploadToS3(
     uploadUrl: string,
     formFields: Record<string, string>,
-    file: File
+    file: File,
+    onProgress?: UploadProgressCallback
   ): Promise<void> {
     const formData = new FormData();
 
@@ -86,14 +108,14 @@ export const usersService = {
     // Add the file last
     formData.append('file', file);
 
-    // Upload directly to S3 (no auth needed, using presigned URL)
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-    });
+    const { status, responseText } = await uploadFormDataWithProgress(
+      uploadUrl,
+      formData,
+      { onProgress }
+    );
 
-    if (!response.ok) {
-      throw new Error(`S3 upload failed: ${response.statusText}`);
+    if (status < 200 || status >= 300) {
+      throw new Error(`S3 upload failed: ${responseText || `HTTP ${status}`}`);
     }
   },
 

@@ -11,6 +11,11 @@
 export const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB
 
 /**
+ * Presigned URL lifetime for S3 uploads (matches backend MAX_EXPIRATION_SECONDS)
+ */
+export const S3_PRESIGNED_URL_EXPIRATION_SECONDS = 3600; // 1 hour
+
+/**
  * Maximum file size allowed for uploads
  * Matches backend MAX_FILE_SIZE limit
  */

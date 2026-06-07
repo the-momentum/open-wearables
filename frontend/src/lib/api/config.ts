@@ -29,6 +29,8 @@ export const API_ENDPOINTS = {
     `/api/v1/users/${userId}/import/apple/xml/direct`,
   userAppleXmlPresignedUrl: (userId: string) =>
     `/api/v1/users/${userId}/import/apple/xml/s3`,
+  userAppleXmlS3Process: (userId: string) =>
+    `/api/v1/users/${userId}/import/apple/xml/s3/process`,
   userInvitationCode: (userId: string) =>
     `/api/v1/users/${userId}/invitation-code`,
 

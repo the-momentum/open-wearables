@@ -95,7 +95,11 @@ function UserDetailPage() {
   const [scoresDateRange, setScoresDateRange] = useState<DateRangeValue>(30);
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
-  const { handleUpload, isUploading: isUploadingFile } = useAppleXmlUpload();
+  const {
+    handleUpload,
+    isUploading: isUploadingFile,
+    uploadProgress,
+  } = useAppleXmlUpload();
   const {
     mutate: generateInvitationCode,
     data: invitationCodeData,
@@ -373,6 +377,36 @@ function UserDetailPage() {
           </AlertDialog>
         </div>
       </div>
+
+      {isUploading && (
+        <div className="rounded-lg border border-border/60 bg-muted/40 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <span className="font-medium">Uploading Apple Health XML</span>
+            </div>
+            <span className="tabular-nums text-muted-foreground">
+              {uploadProgress !== null
+                ? `${Math.round(uploadProgress * 100)}%`
+                : 'Preparing...'}
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className={`h-full rounded-full bg-primary ${
+                uploadProgress === null
+                  ? 'w-1/3 animate-pulse'
+                  : 'transition-all duration-300 ease-out'
+              }`}
+              style={
+                uploadProgress !== null
+                  ? { width: `${Math.round(uploadProgress * 100)}%` }
+                  : undefined
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -2,6 +2,10 @@ import { API_CONFIG } from './config';
 import { ApiError } from '../errors/api-error';
 import { getToken, clearSession } from '../auth/session';
 import { ROUTES } from '../constants/routes';
+import {
+  uploadFormDataWithProgress,
+  type UploadProgressCallback,
+} from '../utils/upload-with-progress';
 
 interface RequestOptions extends RequestInit {
   timeout?: number;
@@ -300,6 +304,52 @@ export const apiClient = {
 
     if (!response.ok) {
       throw ApiError.fromResponse(response, data);
+    }
+
+    return data as T;
+  },
+
+  async postMultipartWithProgress<T>(
+    endpoint: string,
+    formData: FormData,
+    options?: RequestOptions & { onProgress?: UploadProgressCallback }
+  ): Promise<T> {
+    const url = `${API_CONFIG.baseUrl}${endpoint}`;
+    const token = getToken();
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      ...(options?.headers as Record<string, string>),
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const { onProgress } = options ?? {};
+    const { status, responseText } = await uploadFormDataWithProgress(
+      url,
+      formData,
+      { headers, onProgress }
+    );
+
+    let data: unknown;
+    try {
+      data = responseText ? JSON.parse(responseText) : undefined;
+    } catch {
+      data = responseText;
+    }
+
+    if (status === 401) {
+      clearSession();
+      if (typeof window !== 'undefined') {
+        window.location.href = ROUTES.login;
+      }
+      throw ApiError.fromResponse(new Response(responseText, { status }), data);
+    }
+
+    if (status < 200 || status >= 300) {
+      throw ApiError.fromResponse(new Response(responseText, { status }), data);
     }
 
     return data as T;

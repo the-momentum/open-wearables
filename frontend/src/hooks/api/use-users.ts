@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { usersService } from '../../lib/api';
 import { queryKeys } from '../../lib/query/keys';
-import { S3_UPLOAD_THRESHOLD, MAX_FILE_SIZE } from '@/lib/constants/upload';
+import {
+  S3_UPLOAD_THRESHOLD,
+  S3_PRESIGNED_URL_EXPIRATION_SECONDS,
+  MAX_FILE_SIZE,
+} from '@/lib/constants/upload';
 import type {
   UserRead,
   UserCreate,
@@ -152,8 +156,15 @@ export function useUploadAppleXml() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ userId, file }: { userId: string; file: File }) =>
-      usersService.uploadAppleXml(userId, file),
+    mutationFn: ({
+      userId,
+      file,
+      onProgress,
+    }: {
+      userId: string;
+      file: File;
+      onProgress?: (progress: number) => void;
+    }) => usersService.uploadAppleXml(userId, file, onProgress),
     onSuccess: (_data, { userId }) => {
       // Invalidate user data to show new imported data
       queryClient.invalidateQueries({
@@ -177,21 +188,39 @@ export function useUploadAppleXmlViaS3() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ userId, file }: { userId: string; file: File }) => {
+    mutationFn: async ({
+      userId,
+      file,
+      onProgress,
+    }: {
+      userId: string;
+      file: File;
+      onProgress?: (progress: number) => void;
+    }) => {
       // Step 1: Get presigned URL from backend
       const presignedData = await usersService.getAppleXmlPresignedUrl(userId, {
         filename: file.name,
         max_file_size: file.size,
+        expiration_seconds: S3_PRESIGNED_URL_EXPIRATION_SECONDS,
       });
 
       // Step 2: Upload directly to S3
       await usersService.uploadToS3(
         presignedData.upload_url,
         presignedData.form_fields,
-        file
+        file,
+        onProgress
       );
 
-      return presignedData;
+      // Step 3: Queue processing when SNS auto-trigger is not configured
+      if (presignedData.requires_manual_processing) {
+        const processResult = await usersService.processAppleXmlS3Upload(userId, {
+          file_key: presignedData.file_key,
+        });
+        return { presignedData, processResult };
+      }
+
+      return { presignedData };
     },
     onSuccess: (_data, { userId }) => {
       // Invalidate user data (processing will happen asynchronously via SQS)
@@ -203,7 +232,7 @@ export function useUploadAppleXmlViaS3() {
         refetchType: 'active',
       });
       toast.success(
-        'XML file uploaded to S3 successfully. Processing will begin shortly.'
+        'XML file uploaded successfully. Import has been queued for processing.'
       );
     },
     onError: (error: unknown) => {
@@ -228,6 +257,7 @@ interface UseAppleXmlUploadOptions {
  */
 export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
   const [uploadingUserId, setUploadingUserId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const { mutate: uploadDirect } = useUploadAppleXml();
   const { mutate: uploadViaS3 } = useUploadAppleXmlViaS3();
@@ -269,13 +299,18 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
     }
 
     setUploadingUserId(userId);
+    setUploadProgress(null);
+
+    const handleProgress = (progress: number) => {
+      setUploadProgress(progress);
+    };
 
     // Choose upload method based on file size
     const uploadMutation =
       file.size > S3_UPLOAD_THRESHOLD ? uploadViaS3 : uploadDirect;
 
     uploadMutation(
-      { userId, file },
+      { userId, file, onProgress: handleProgress },
       {
         onSuccess: () => {
           if (options.onSuccess) {
@@ -289,6 +324,7 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
         },
         onSettled: () => {
           setUploadingUserId(null);
+          setUploadProgress(null);
         },
       }
     );
@@ -297,6 +333,7 @@ export function useAppleXmlUpload(options: UseAppleXmlUploadOptions = {}) {
   return {
     handleUpload,
     uploadingUserId,
+    uploadProgress,
     isUploading: (userId: string) => uploadingUserId === userId,
   };
 }

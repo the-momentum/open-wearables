@@ -7,6 +7,8 @@ from .aws import (
     MIN_FILE_SIZE,
     PresignedURLRequest,
     PresignedURLResponse,
+    ProcessS3XmlUploadRequest,
+    ProcessS3XmlUploadResponse,
     SNSNotification,
 )
 from .stats import (
@@ -17,6 +19,8 @@ __all__ = [
     # AWS
     "PresignedURLRequest",
     "PresignedURLResponse",
+    "ProcessS3XmlUploadRequest",
+    "ProcessS3XmlUploadResponse",
     "MIN_EXPIRATION_SECONDS",
     "MAX_EXPIRATION_SECONDS",
     "DEFAULT_EXPIRATION_SECONDS",

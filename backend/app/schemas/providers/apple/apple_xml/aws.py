@@ -31,6 +31,26 @@ class PresignedURLResponse(BaseModel):
     expires_in: int
     max_file_size: int
     bucket: str
+    requires_manual_processing: bool = Field(
+        description="When true, call the /s3/process endpoint after upload (no SNS auto-trigger)",
+    )
+
+
+class ProcessS3XmlUploadRequest(BaseModel):
+    file_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="S3 object key returned from the presigned URL step",
+    )
+
+
+class ProcessS3XmlUploadResponse(BaseModel):
+    status: str = Field("processing", description="Import task status")
+    task_id: str = Field(..., description="Celery task ID for the background import")
+    file_key: str
+    bucket: str
+    user_id: str
 
 
 class SNSNotification(BaseModel):

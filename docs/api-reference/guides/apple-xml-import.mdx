@@ -151,7 +151,8 @@ const presignedData = await response.json();
   "file_key": "apple-uploads/user-123/file-456.xml",
   "expires_in": 300,
   "max_file_size": 52428800,
-  "bucket": "my-bucket"
+  "bucket": "my-bucket",
+  "requires_manual_processing": true
 }
 ```
 
@@ -215,6 +216,49 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
 
 <Note>
   **Important:** When uploading to S3 with presigned POST, you must include all `form_fields` as form data, and the `file` field must be last.
+</Note>
+
+<Tip>
+  For large exports (multi-GB), set `expiration_seconds` to `3600` (the maximum) and `max_file_size` to the exact file size in bytes so the presigned URL stays valid for the full upload.
+</Tip>
+
+### Step 3: Start Processing
+
+After the file lands in S3, queue the background import. The Open Wearables dashboard does this automatically.
+
+Use this step when S3 event notifications (AWS SNS) are **not** configured — for example on S3-compatible storage such as Railway Object Storage.
+
+```bash
+curl -X POST "https://api.example.com/api/v1/users/{user_id}/import/apple/xml/s3/process" \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"file_key": "user-uuid/raw/export.xml"}'
+```
+
+<ParamField body="file_key" type="string" required>
+  The `file_key` returned from the presigned URL step. Must belong to the target user (`{user_id}/...`).
+</ParamField>
+
+<ResponseExample>
+```json 202 Accepted
+{
+  "status": "processing",
+  "task_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "file_key": "3fa85f64-5717-4562-b3fc-2c963f66afa6/raw/export.xml",
+  "bucket": "my-bucket",
+  "user_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+}
+```
+
+```json 404 Not Found
+{
+  "detail": "Uploaded file not found in S3"
+}
+```
+</ResponseExample>
+
+<Note>
+  When AWS SNS is configured, S3 upload events trigger processing automatically and this step is optional. Calling it twice queues two import tasks — only use it when SNS is unavailable or as a manual retry.
 </Note>
 
 ## Complete Example Workflow
@@ -283,12 +327,10 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
         ```
       </Step>
 
-      <Step title="Processing Happens Automatically">
-        The system automatically:
-        - Detects the S3 upload via S3 event notification → SNS
-        - SNS sends an HTTPS notification to the backend
-        - `process_aws_upload` Celery task downloads and processes the XML file
-        - Imports workouts and time series data to database
+      <Step title="Start Processing">
+        **With AWS SNS:** S3 upload events trigger `process_aws_upload` automatically.
+
+        **Without SNS (e.g. Railway Object Storage):** Call `POST /users/{user_id}/import/apple/xml/s3/process` with the `file_key` from step 1. The Open Wearables dashboard does this automatically after upload.
       </Step>
     </Steps>
 
@@ -337,13 +379,15 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
             "Authorization": f"Bearer {access_token}"
         }
         
+        file_size = file_path.stat().st_size
+
         response = requests.post(
             f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/s3",
             headers=headers,
             json={
                 "filename": file_path.name,
-                "expiration_seconds": 300,
-                "max_file_size": 52428800
+                "expiration_seconds": 3600,
+                "max_file_size": file_size,
             }
         )
         response.raise_for_status()
@@ -362,7 +406,16 @@ curl -X POST "https://s3.amazonaws.com/bucket/key" \
             upload_response.raise_for_status()
         
         print(f"✓ Upload complete! File key: {presigned_data['file_key']}")
-        print("Processing will happen in the background...")
+
+        # Step 4: Queue processing (required without AWS SNS)
+        process_response = requests.post(
+            f"{API_URL}/api/v1/users/{USER_ID}/import/apple/xml/s3/process",
+            headers=headers,
+            json={"file_key": presigned_data["file_key"]},
+        )
+        process_response.raise_for_status()
+        task_id = process_response.json()["task_id"]
+        print(f"✓ Import queued (task_id: {task_id})")
 
     if __name__ == "__main__":
         main()

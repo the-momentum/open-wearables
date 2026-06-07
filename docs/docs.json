@@ -250,6 +250,7 @@
             "group": "Apple Health Import",
             "pages": [
               "POST /api/v1/users/{user_id}/import/apple/xml/s3",
+              "POST /api/v1/users/{user_id}/import/apple/xml/s3/process",
               "POST /api/v1/users/{user_id}/import/apple/xml/direct"
             ]
           },

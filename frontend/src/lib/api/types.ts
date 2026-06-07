@@ -89,6 +89,19 @@ export interface PresignedURLResponse {
   expires_in: number;
   max_file_size: number;
   bucket: string;
+  requires_manual_processing: boolean;
+}
+
+export interface ProcessS3XmlUploadRequest {
+  file_key: string;
+}
+
+export interface ProcessS3XmlUploadResponse {
+  status: string;
+  task_id: string;
+  file_key: string;
+  bucket: string;
+  user_id: string;
 }
 
 export interface LoginRequest {
