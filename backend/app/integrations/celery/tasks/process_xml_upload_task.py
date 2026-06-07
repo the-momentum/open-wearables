@@ -180,6 +180,11 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
         if sync_request and sync_request.data.sleep:
             handle_sleep_data(db, sync_request, user_id)
 
+        # Clear SQLAlchemy's identity map to release all ORM objects from memory.
+        # Without this, the session holds references to all created objects,
+        # causing unbounded memory growth during large imports.
+        db.expunge_all()
+
         # Explicitly release chunk data so memory is reclaimed before the next
         # chunk is loaded. Without this, slow DB operations can cause multiple
         # large chunks to accumulate in memory simultaneously.
@@ -187,3 +192,4 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
         time_series_records, workouts, sync_request = [], [], None
 
     return xml_service.stats
+
