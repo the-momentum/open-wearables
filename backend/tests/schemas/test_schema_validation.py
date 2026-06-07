@@ -28,7 +28,7 @@ from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.schemas.providers.apple.apple_xml import MAX_FILE_SIZE, PresignedURLRequest
 
-APPLE_XML_MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024 * 1024
+APPLE_XML_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024 * 1024
 
 
 class TestEventRecordCreateValidation:
