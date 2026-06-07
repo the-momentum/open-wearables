@@ -182,7 +182,7 @@ class Settings(BaseSettings):
     # for topic ARN verification from SNS notification (signature is verified regardless)
     aws_sns_topic_arn: SecretStr | None = None
 
-    xml_chunk_size: int = 50_000
+    xml_chunk_size: int = 5_000
 
     # RAW PAYLOAD STORAGE
     raw_payload_storage: str = "disabled"  # disabled | log | s3

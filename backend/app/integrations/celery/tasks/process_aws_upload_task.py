@@ -95,6 +95,13 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
     xml_service = XMLService(Path(xml_path), getLogger(__name__))
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
+        logger.debug(
+            "Processing chunk: %d time series records, %d workouts, %d sleep records",
+            len(time_series_records),
+            len(workouts),
+            len(sync_request.data.sleep) if sync_request and sync_request.data.sleep else 0,
+        )
+
         for record, detail in workouts:
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
@@ -104,3 +111,9 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> None:
             db.commit()
         if sync_request and sync_request.data.sleep:
             handle_sleep_data(db, sync_request, user_id)
+
+        # Explicitly release chunk data so memory is reclaimed before the next
+        # chunk is loaded. Without this, slow DB operations can cause multiple
+        # large chunks to accumulate in memory simultaneously.
+        del time_series_records, workouts, sync_request
+        time_series_records, workouts, sync_request = [], [], None

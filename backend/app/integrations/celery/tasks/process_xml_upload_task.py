@@ -139,6 +139,17 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
     xml_service = XMLService(Path(xml_path), log)
 
     for time_series_records, workouts, sync_request in xml_service.parse_xml(user_id):
+        log_structured(
+            log,
+            "debug",
+            "Processing chunk",
+            provider="apple_xml",
+            task="process_xml_upload",
+            time_series_count=len(time_series_records),
+            workout_count=len(workouts),
+            sleep_count=len(sync_request.data.sleep) if sync_request and sync_request.data.sleep else 0,
+        )
+
         for record, detail in workouts:
             try:
                 created_record = event_record_service.create(db, record)
@@ -168,5 +179,11 @@ def _import_xml_data(db: Session, xml_path: str, user_id: str) -> XMLParseStats:
 
         if sync_request and sync_request.data.sleep:
             handle_sleep_data(db, sync_request, user_id)
+
+        # Explicitly release chunk data so memory is reclaimed before the next
+        # chunk is loaded. Without this, slow DB operations can cause multiple
+        # large chunks to accumulate in memory simultaneously.
+        del time_series_records, workouts, sync_request
+        time_series_records, workouts, sync_request = [], [], None
 
     return xml_service.stats
