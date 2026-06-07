@@ -26,6 +26,9 @@ from app.schemas.model_crud.activities import (
 )
 from app.schemas.model_crud.credentials import OAuthTokenResponse
 from app.schemas.model_crud.user_management import UserConnectionCreate
+from app.schemas.providers.apple.apple_xml import MAX_FILE_SIZE, PresignedURLRequest
+
+APPLE_XML_MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024 * 1024
 
 
 class TestEventRecordCreateValidation:
@@ -215,3 +218,27 @@ class TestUserConnectionCreateValidation:
 
         # Assert
         assert connection.status == ConnectionStatus.ACTIVE
+
+
+class TestAppleXmlPresignedUrlValidation:
+    """Test suite for Apple Health XML upload limits."""
+
+    def test_max_file_size_accepts_apple_xml_limit(self) -> None:
+        """Should accept requests up to the configured Apple XML max size."""
+        request = PresignedURLRequest(
+            filename="export.xml",
+            max_file_size=APPLE_XML_MAX_FILE_SIZE_BYTES,
+        )
+
+        assert MAX_FILE_SIZE == APPLE_XML_MAX_FILE_SIZE_BYTES
+        assert request.max_file_size == APPLE_XML_MAX_FILE_SIZE_BYTES
+
+    def test_max_file_size_rejects_values_above_apple_xml_limit(self) -> None:
+        """Should reject requests larger than the configured Apple XML max size."""
+        with pytest.raises(ValidationError) as exc_info:
+            PresignedURLRequest(
+                filename="export.xml",
+                max_file_size=APPLE_XML_MAX_FILE_SIZE_BYTES + 1,
+            )
+
+        assert "max_file_size" in str(exc_info.value)

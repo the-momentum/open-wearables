@@ -14,4 +14,4 @@ export const S3_UPLOAD_THRESHOLD = 10 * 1024 * 1024; // 10MB
  * Maximum file size allowed for uploads
  * Matches backend MAX_FILE_SIZE limit
  */
-export const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
+export const MAX_FILE_SIZE = 3 * 1024 * 1024 * 1024; // 3GB
