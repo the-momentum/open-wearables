@@ -1,7 +1,10 @@
 import { format } from 'date-fns';
 import { Heart, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useMenstrualCycles, useDeleteMenstrualCycle } from '@/hooks/api/use-health';
+import {
+  useMenstrualCycles,
+  useDeleteMenstrualCycle,
+} from '@/hooks/api/use-health';
 import { useCursorPagination } from '@/hooks/use-cursor-pagination';
 import { useDateRange } from '@/hooks/use-date-range';
 import type { DateRangeValue } from '@/components/ui/date-range-selector';
@@ -18,24 +21,56 @@ interface WomensHealthSectionProps {
   onDateRangeChange: (value: DateRangeValue) => void;
 }
 
-const PHASE_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  menstrual: { bg: 'bg-rose-500/20', text: 'text-rose-400', label: 'Menstrual' },
-  menstruation: { bg: 'bg-rose-500/20', text: 'text-rose-400', label: 'Menstruation' },
-  follicular: { bg: 'bg-violet-500/20', text: 'text-violet-400', label: 'Follicular' },
-  ovulation: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Ovulation' },
+const PHASE_STYLES: Record<
+  string,
+  { bg: string; text: string; label: string }
+> = {
+  menstrual: {
+    bg: 'bg-rose-500/20',
+    text: 'text-rose-400',
+    label: 'Menstrual',
+  },
+  menstruation: {
+    bg: 'bg-rose-500/20',
+    text: 'text-rose-400',
+    label: 'Menstruation',
+  },
+  follicular: {
+    bg: 'bg-violet-500/20',
+    text: 'text-violet-400',
+    label: 'Follicular',
+  },
+  ovulation: {
+    bg: 'bg-amber-500/20',
+    text: 'text-amber-400',
+    label: 'Ovulation',
+  },
   luteal: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Luteal' },
-  pregnancy: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Pregnancy' },
+  pregnancy: {
+    bg: 'bg-pink-500/20',
+    text: 'text-pink-400',
+    label: 'Pregnancy',
+  },
 };
 
 function phaseStyle(phaseType: string | null) {
-  if (!phaseType) return { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'Unknown' };
-  return PHASE_STYLES[phaseType.toLowerCase()] ?? { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: phaseType };
+  if (!phaseType)
+    return { bg: 'bg-zinc-500/20', text: 'text-zinc-400', label: 'Unknown' };
+  return (
+    PHASE_STYLES[phaseType.toLowerCase()] ?? {
+      bg: 'bg-zinc-500/20',
+      text: 'text-zinc-400',
+      label: phaseType,
+    }
+  );
 }
 
 function PhaseBadge({ phaseType }: { phaseType: string | null }) {
   const style = phaseStyle(phaseType);
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style.bg} ${style.text}`}>
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style.bg} ${style.text}`}
+    >
       {style.label}
     </span>
   );
@@ -68,44 +103,58 @@ function CycleRow({
         <div className="w-32 shrink-0">
           <PhaseBadge phaseType={record.current_phase_type} />
           {record.is_predicted_cycle && (
-            <span className="ml-1.5 text-xs text-muted-foreground">predicted</span>
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              predicted
+            </span>
           )}
         </div>
 
         {/* Cycle metrics */}
         <div className="flex gap-6 flex-1 text-sm">
-          {record.day_in_cycle != null && (
+          {record.day_in_cycle !== null && (
             <div>
               <p className="text-muted-foreground text-xs">Day</p>
-              <p className="text-foreground font-medium">{record.day_in_cycle}</p>
-            </div>
-          )}
-          {record.cycle_length != null && (
-            <div>
-              <p className="text-muted-foreground text-xs">Cycle length</p>
-              <p className="text-foreground font-medium">{record.cycle_length}d</p>
-            </div>
-          )}
-          {record.period_length != null && (
-            <div>
-              <p className="text-muted-foreground text-xs">Period</p>
-              <p className="text-foreground font-medium">{record.period_length}d</p>
-            </div>
-          )}
-          {record.days_until_next_phase != null && (
-            <div>
-              <p className="text-muted-foreground text-xs">Next phase</p>
-              <p className="text-foreground font-medium">in {record.days_until_next_phase}d</p>
-            </div>
-          )}
-          {record.fertile_window_start != null && record.length_of_fertile_window != null && (
-            <div>
-              <p className="text-muted-foreground text-xs">Fertile window</p>
               <p className="text-foreground font-medium">
-                day {record.fertile_window_start}–{record.fertile_window_start + record.length_of_fertile_window - 1}
+                {record.day_in_cycle}
               </p>
             </div>
           )}
+          {record.cycle_length !== null && (
+            <div>
+              <p className="text-muted-foreground text-xs">Cycle length</p>
+              <p className="text-foreground font-medium">
+                {record.cycle_length}d
+              </p>
+            </div>
+          )}
+          {record.period_length !== null && (
+            <div>
+              <p className="text-muted-foreground text-xs">Period</p>
+              <p className="text-foreground font-medium">
+                {record.period_length}d
+              </p>
+            </div>
+          )}
+          {record.days_until_next_phase !== null && (
+            <div>
+              <p className="text-muted-foreground text-xs">Next phase</p>
+              <p className="text-foreground font-medium">
+                in {record.days_until_next_phase}d
+              </p>
+            </div>
+          )}
+          {record.fertile_window_start !== null &&
+            record.length_of_fertile_window !== null && (
+              <div>
+                <p className="text-muted-foreground text-xs">Fertile window</p>
+                <p className="text-foreground font-medium">
+                  day {record.fertile_window_start}–
+                  {record.fertile_window_start +
+                    record.length_of_fertile_window -
+                    1}
+                </p>
+              </div>
+            )}
         </div>
 
         {/* Source + delete */}
@@ -172,7 +221,7 @@ export function WomensHealthSection({
             label="Latest phase"
           />
         )}
-        {mostRecent?.cycle_length != null && (
+        {mostRecent?.cycle_length !== null && (
           <MetricCard
             icon={Heart}
             iconColor="text-violet-400"
