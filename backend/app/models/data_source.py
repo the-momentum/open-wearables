@@ -39,7 +39,14 @@ class DataSource(BaseDbModel):
     user_connection_id: Mapped[FKUserConnection]
     device_model: Mapped[str_100 | None]
     software_version: Mapped[str_50 | None]
-    source: Mapped[str_50 | None]
+    # Apple HealthKit tags on-device data with source bundle ids like
+    # "com.apple.health.<UUID>" (53 chars), so 50 is too short and aborts SDK
+    # imports - see migration 264b79d7c541. Populated by ensure_data_source()
+    # in app/repositories/data_source_repository.py. Apple documents no max
+    # length for HKSource.bundleIdentifier (it is an app bundle id or a device
+    # UUID, see https://developer.apple.com/documentation/healthkit/hksource/bundleidentifier);
+    # 100 fits the observed identifiers and matches the other str_100 columns.
+    source: Mapped[str_100 | None]
     device_type: Mapped[str_32 | None]
     original_source_name: Mapped[str_100 | None]
 
