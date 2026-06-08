@@ -174,3 +174,6 @@ CLAUDE.local.md
 
 # Exception: AI tool configs that should be tracked
 !.gemini/settings.json
+
+# Local planning docs / issue drafts (never committed)
+docs/specs/

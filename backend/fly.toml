@@ -1,0 +1,43 @@
+# Fly.io app for Open Wearables (TCP fork)
+# Deploy from this directory: cd backend && flyctl deploy
+
+app = "ow-poc"
+primary_region = "ewr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Three process types share the same image, each runs a different start script.
+# Fly creates one machine per process type by default.
+[processes]
+  app = "bash scripts/start/app.sh"
+  worker = "bash scripts/start/worker.sh"
+  beat = "bash scripts/start/beat.sh"
+
+# Only the `app` process accepts inbound HTTPS.
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "GET"
+    path = "/"
+
+# VM sizing for the API process (larger because it serves requests).
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1024mb"
+  processes = ["app"]
+
+# Smaller VMs for background processes.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["worker", "beat"]

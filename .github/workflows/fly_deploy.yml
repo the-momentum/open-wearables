@@ -1,0 +1,75 @@
+name: Fly Deploy (ow-poc)
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  gate:
+    name: Wait for all checks to pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      checks: read
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RUN_ID: ${{ job.check_run_id }}
+        with:
+          # wait for every check from OTHER workflows on this commit to
+          # succeed or skip before allowing the deploy to proceed. Checks in
+          # our own workflow run (gate/deploy) are excluded by check-suite id
+          # — they are downstream of this job and would otherwise deadlock
+          # the wait.
+          script: |
+            core.info('failed/completed/total:');
+            const runId = parseInt(process.env.RUN_ID);
+            while (true) {
+                const ref = context.sha;
+                const jobs = await github.paginate(
+                    github.rest.checks.listForRef,
+                    { ...context.repo, ref, per_page: 100 }
+                );
+                const thisRun = jobs.filter(j => j.id === runId);
+                if (thisRun.length !== 1) {
+                    const jobsJSON = JSON.stringify(jobs);
+                    core.info(`No match for ${runId} in ${jobsJSON}`);
+                    core.setFailed(`runId lookup failed`);
+                    break;
+                }
+                const suiteId = thisRun[0].check_suite.id;
+                const others = jobs.filter(j => j.check_suite.id !== suiteId);
+
+                const completed = others.filter(j => j.status === 'completed');
+                const failed = completed.filter(j => j.conclusion !== 'success' && j.conclusion !== 'skipped');
+                core.info(`${failed.length}/${completed.length}/${others.length}`)
+
+                if (failed.length) {
+                    for(var j of failed) {
+                        core.setFailed(`${j.name} ${j.conclusion}: ${j.html_url}`);
+                    }
+                    break;
+                } else if (completed.length == others.length) {
+                    break;
+                }
+                await new Promise((r) => setTimeout(r, 5 * 1000));
+            }
+
+  deploy:
+    name: ow-poc app
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+    - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
+    - name: Deploy
+      working-directory: backend
+      run: flyctl deploy -a ow-poc --remote-only
