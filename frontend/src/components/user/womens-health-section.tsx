@@ -221,7 +221,7 @@ export function WomensHealthSection({
             label="Latest phase"
           />
         )}
-        {mostRecent?.cycle_length !== null && (
+        {mostRecent && mostRecent.cycle_length !== null && (
           <MetricCard
             icon={Heart}
             iconColor="text-violet-400"
