@@ -56,9 +56,8 @@ _RECORD_FIELD_MAP: tuple[_FieldMapping, ...] = (
     _FieldMapping(("position_lat",), SeriesType.latitude, _scale(_SEMICIRCLES_TO_DEGREES)),
     _FieldMapping(("position_long",), SeriesType.longitude, _scale(_SEMICIRCLES_TO_DEGREES)),
     _FieldMapping(("temperature",), SeriesType.air_temperature),
-    # FIT stores vertical_ratio as %, scale=100 (raw/100 = physical %)
+    # fitdecode auto-applies scale=100 for these fields; value arrives already in percent
     _FieldMapping(("vertical_ratio",), SeriesType.running_vertical_ratio),
-    # FIT stores stance_time_balance as %, scale=100 (raw/100 = physical %)
     _FieldMapping(("stance_time_balance",), SeriesType.running_stance_time_balance),
 )
 

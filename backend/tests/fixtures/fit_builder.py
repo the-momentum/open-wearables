@@ -119,43 +119,46 @@ def _fit_file(messages: bytes) -> bytes:
 
 def make_running_fit(n_records: int = 20) -> bytes:
     """Synthetic running activity: full sensor set including GPS and running dynamics."""
-    _LAT = int(50.0 * _DEG_TO_SEMICIRCLES)   # 50°N
-    _LON = int(20.0 * _DEG_TO_SEMICIRCLES)   # 20°E
-    _ALT_RAW = int((200.0 + 500) * 5)        # 200 m → raw enhanced_altitude
+    lat = int(50.0 * _DEG_TO_SEMICIRCLES)  # 50°N
+    lon = int(20.0 * _DEG_TO_SEMICIRCLES)  # 20°E
+    alt_raw = int((200.0 + 500) * 5)  # 200 m → raw enhanced_altitude
 
     fields = [
-        _Field(253, _UINT32, 4),   # timestamp
-        _Field(0, _SINT32, 4),     # position_lat (semicircles)
-        _Field(1, _SINT32, 4),     # position_long (semicircles)
-        _Field(3, _UINT8, 1),      # heart_rate
-        _Field(4, _UINT8, 1),      # cadence
-        _Field(6, _UINT16, 2),     # speed (raw = m/s * 1000)
-        _Field(7, _UINT16, 2),     # power
-        _Field(13, _SINT8, 1),     # temperature (°C)
-        _Field(39, _UINT16, 2),    # vertical_oscillation (raw = mm * 10)
-        _Field(41, _UINT16, 2),    # stance_time (raw = ms * 10)
-        _Field(78, _UINT32, 4),    # enhanced_altitude (raw = (m + 500) * 5)
-        _Field(83, _UINT16, 2),    # vertical_ratio (raw = % * 100)
-        _Field(84, _UINT16, 2),    # stance_time_balance (raw = % * 100)
+        _Field(253, _UINT32, 4),  # timestamp
+        _Field(0, _SINT32, 4),  # position_lat (semicircles)
+        _Field(1, _SINT32, 4),  # position_long (semicircles)
+        _Field(3, _UINT8, 1),  # heart_rate
+        _Field(4, _UINT8, 1),  # cadence
+        _Field(6, _UINT16, 2),  # speed (raw = m/s * 1000)
+        _Field(7, _UINT16, 2),  # power
+        _Field(13, _SINT8, 1),  # temperature (°C)
+        _Field(39, _UINT16, 2),  # vertical_oscillation (raw = mm * 10)
+        _Field(41, _UINT16, 2),  # stance_time (raw = ms * 10)
+        _Field(78, _UINT32, 4),  # enhanced_altitude (raw = (m + 500) * 5)
+        _Field(83, _UINT16, 2),  # vertical_ratio (raw = % * 100)
+        _Field(84, _UINT16, 2),  # stance_time_balance (raw = % * 100)
     ]
     start_ts = _fit_ts(datetime(2025, 6, 1, 8, 0, 0, tzinfo=timezone.utc))
     messages = _definition_msg(fields)
     for i in range(n_records):
-        messages += _data_msg(fields, [
-            start_ts + i,
-            _LAT,
-            _LON,
-            150 + i % 10,  # heart_rate: 150-159 bpm
-            85,             # cadence: 85 rpm
-            3200,           # speed: 3.2 m/s
-            250,            # power: 250 W
-            18,             # temperature: 18°C
-            850,            # vertical_oscillation: 8.5 cm
-            2400,           # stance_time: 240 ms
-            _ALT_RAW,       # enhanced_altitude: 200 m
-            850,            # vertical_ratio: 8.5%
-            4950,           # stance_time_balance: 49.5%
-        ])
+        messages += _data_msg(
+            fields,
+            [
+                start_ts + i,
+                lat,
+                lon,
+                150 + i % 10,  # heart_rate: 150-159 bpm
+                85,  # cadence: 85 rpm
+                3200,  # speed: 3.2 m/s
+                250,  # power: 250 W
+                18,  # temperature: 18°C
+                850,  # vertical_oscillation: 8.5 cm
+                2400,  # stance_time: 240 ms
+                alt_raw,  # enhanced_altitude: 200 m
+                850,  # vertical_ratio: 8.5%
+                4950,  # stance_time_balance: 49.5%
+            ],
+        )
     return _fit_file(messages)
 
 

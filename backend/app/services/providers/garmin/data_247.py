@@ -6,8 +6,6 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-import httpx
-
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
@@ -26,9 +24,10 @@ from app.schemas.model_crud.activities import (
 from app.services.event_record_service import event_record_service
 from app.services.fit_parser import parse_fit_file
 from app.services.health_score_service import health_score_service
-from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.api_client import download_binary_content, make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
+from app.services.raw_payload_storage import store_fit_file
 from app.utils.dates import offset_to_iso
 from app.utils.structured_logging import log_structured
 
@@ -44,6 +43,15 @@ _ACTIVITY_SAMPLE_FIELD_MAP: list[tuple[str, SeriesType]] = [
     # Note: Garmin API uses "Celcius" (sic) — matches the actual JSON field name
     ("airTemperatureCelcius", SeriesType.air_temperature),
 ]
+
+# Series types to skip when parsing FIT files — already present from activityDetails.
+# Derived from _ACTIVITY_SAMPLE_FIELD_MAP so additions to the map are automatically
+# excluded. air_temperature is excepted: Garmin omits airTemperatureCelcius from
+# activityDetails JSON even on devices with a temperature sensor, so FIT is the
+# only source for it.
+_ACTIVITY_DETAILS_SERIES_TYPES: frozenset[SeriesType] = frozenset(st for _, st in _ACTIVITY_SAMPLE_FIELD_MAP) - {
+    SeriesType.air_temperature
+}
 
 
 class Garmin247Data(Base247DataTemplate):
@@ -1813,6 +1821,71 @@ class Garmin247Data(Base247DataTemplate):
                                     activity_id=activity_id,
                                     error=str(e),
                                 )
+                    case "activityFiles":
+                        if item.get("fileType") != "FIT":
+                            continue
+                        if not settings.ingest_workout_samples and not settings.store_fit_files:
+                            continue
+                        callback_url = item.get("callbackURL")
+                        if not callback_url:
+                            continue
+                        activity_id = str(item.get("activityId", ""))
+                        try:
+                            fit_bytes = download_binary_content(
+                                db=db,
+                                user_id=user_id,
+                                connection_repo=self.connection_repo,
+                                oauth=self.oauth,
+                                provider_name=self.provider_name,
+                                url=callback_url,
+                            )
+                        except Exception as e:
+                            log_structured(
+                                self.logger,
+                                "warning",
+                                "Failed to download FIT file",
+                                provider="garmin",
+                                task="process_items_batch",
+                                user_id=str(user_id),
+                                activity_id=activity_id,
+                                error=str(e),
+                            )
+                            continue
+                        store_fit_file(
+                            provider=self.provider_name,
+                            fit_bytes=fit_bytes,
+                            user_id=str(user_id),
+                            activity_id=activity_id,
+                        )
+                        if settings.ingest_workout_samples:
+                            try:
+                                fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
+                                fit_samples = [
+                                    s for s in fit_result.samples if s.series_type not in _ACTIVITY_DETAILS_SERIES_TYPES
+                                ]
+                                all_samples.extend(fit_samples)
+                                log_structured(
+                                    self.logger,
+                                    "info",
+                                    "Parsed FIT file",
+                                    provider="garmin",
+                                    task="process_items_batch",
+                                    user_id=str(user_id),
+                                    activity_id=activity_id,
+                                    samples=len(fit_samples),
+                                )
+                            except Exception as e:
+                                log_structured(
+                                    self.logger,
+                                    "warning",
+                                    "Failed to parse FIT file",
+                                    provider="garmin",
+                                    task="process_items_batch",
+                                    user_id=str(user_id),
+                                    activity_id=activity_id,
+                                    error=str(e),
+                                )
+
                     case "moveIQActivities":
                         record = self._build_moveiq_record(user_id, item)
                         if record:
