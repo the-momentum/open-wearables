@@ -894,6 +894,9 @@ class EventRecordService(
         params: EventRecordQueryParams,
     ) -> PaginatedResponse[MenstrualCycleRecord]:
         params.category = "menstrual_cycle"
+        # Cycles can end in the future (predicted end of cycle), so filtering by
+        # end_datetime would exclude current/upcoming cycles. Filter by start_datetime only.
+        params.end_datetime = None
         records, total_count = self._get_records_with_filters(db_session, params, str(user_id))
         total_count = total_count if total_count is not None else 0
 

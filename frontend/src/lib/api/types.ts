@@ -214,6 +214,38 @@ export interface UserDataSummary {
   series_type_counts: Record<string, number>;
   workout_type_counts: Record<string, number>;
   by_provider: ProviderDataCount[];
+  has_womens_health_data: boolean;
+}
+
+export interface MenstrualCycleRecord {
+  id: string;
+  start_time: string;
+  end_time: string;
+  zone_offset: string | null;
+  source: SourceMetadata;
+  current_phase: number | null;
+  current_phase_type: string | null;
+  day_in_cycle: number | null;
+  cycle_length: number | null;
+  predicted_cycle_length: number | null;
+  is_predicted_cycle: boolean | null;
+  period_length: number | null;
+  length_of_current_phase: number | null;
+  days_until_next_phase: number | null;
+  fertile_window_start: number | null;
+  length_of_fertile_window: number | null;
+  last_updated_at: string | null;
+  has_specified_cycle_length: boolean | null;
+  has_specified_period_length: boolean | null;
+  pregnancy_snapshot: Record<string, unknown>[] | null;
+}
+
+export interface MenstrualCyclesParams {
+  start_date: string;
+  end_date: string;
+  cursor?: string;
+  limit?: number;
+  [key: string]: string | number | undefined;
 }
 
 export interface Provider {

@@ -150,12 +150,15 @@ class SystemInfoService:
             provider_data_points[provider] += count
             series_type_totals[code] += count
 
+        has_womens_health_data = False
         for provider, category, event_type, count in event_rows:
             if category == "workout":
                 provider_workouts[provider] += count
                 workout_type_totals[event_type or "unknown"] += count
             elif category == "sleep":
                 provider_sleep[provider] += count
+            elif category == "menstrual_cycle" and count > 0:
+                has_womens_health_data = True
 
         # Build per-provider breakdown
         all_providers = set(provider_series) | set(provider_workouts) | set(provider_sleep)
@@ -182,6 +185,7 @@ class SystemInfoService:
             series_type_counts=dict(sorted(series_type_totals.items(), key=lambda x: x[1], reverse=True)),
             workout_type_counts=dict(sorted(workout_type_totals.items(), key=lambda x: x[1], reverse=True)),
             by_provider=by_provider,
+            has_womens_health_data=has_womens_health_data,
         )
 
 

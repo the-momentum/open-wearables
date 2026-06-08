@@ -92,6 +92,12 @@ export const API_ENDPOINTS = {
   userSleepSessionDetail: (userId: string, sessionId: string) =>
     `/api/v1/users/${userId}/events/sleep/${sessionId}`,
 
+  // Menstrual cycle endpoints
+  userMenstrualCycles: (userId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles`,
+  userMenstrualCycleDetail: (userId: string, cycleId: string) =>
+    `/api/v1/users/${userId}/events/menstrual-cycles/${cycleId}`,
+
   // Health scores endpoint
   userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
 
