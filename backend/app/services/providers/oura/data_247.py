@@ -27,6 +27,7 @@ from app.schemas.providers.oura import (
     OuraDailyActivityJSON,
     OuraDailyReadinessJSON,
     OuraDailySleepJSON,
+    OuraDailyStressJSON,
     OuraSleepJSON,
 )
 from app.schemas.providers.oura.imports import OuraIntervalData, OuraPersonalInfoJSON
@@ -270,6 +271,98 @@ class Oura247Data(Base247DataTemplate):
         if samples or health_scores:
             db.commit()
         return len(samples)
+
+    # -------------------------------------------------------------------------
+    # Daily Stress Data - /v2/usercollection/daily_stress
+    # -------------------------------------------------------------------------
+
+    def get_daily_stress_data(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[dict[str, Any]]:
+        """Fetch daily stress data from Oura API."""
+        params = {
+            "start_date": start_time.strftime("%Y-%m-%d"),
+            "end_date": end_time.strftime("%Y-%m-%d"),
+        }
+        return self._paginate(db, user_id, "/v2/usercollection/daily_stress", params)
+
+    def _stress_score_value(self, stress: OuraDailyStressJSON) -> int | None:
+        """Return a 0-100 stress score, using Oura's score if present.
+
+        Oura's current OpenAPI schema exposes daily stress as category plus
+        seconds spent in high-stress and high-recovery zones. Some docs samples
+        include a score field, so keep support for it when present.
+        """
+        if stress.score is not None:
+            return max(0, min(100, int(stress.score)))
+
+        stress_seconds = stress.stress_high or 0
+        recovery_seconds = stress.recovery_high or 0
+        total_known_seconds = stress_seconds + recovery_seconds
+        if total_known_seconds > 0:
+            return round((stress_seconds / total_known_seconds) * 100)
+
+        return {
+            "restored": 20,
+            "normal": 50,
+            "stressful": 80,
+        }.get(stress.day_summary or "")
+
+    def normalize_daily_stress_scores(
+        self,
+        raw_items: list[dict[str, Any]],
+        user_id: UUID,
+    ) -> list[HealthScoreCreate]:
+        """Normalize Oura daily stress documents to HealthScoreCreate."""
+        result: list[HealthScoreCreate] = []
+
+        for item in raw_items:
+            stress = OuraDailyStressJSON(**item)
+            value = self._stress_score_value(stress)
+            if value is None or not stress.day:
+                continue
+
+            try:
+                recorded_at = datetime.strptime(stress.day, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError):
+                continue
+
+            components: dict[str, ScoreComponent] = {}
+            if stress.stress_high is not None:
+                components["stress_high_seconds"] = ScoreComponent(value=stress.stress_high)
+            if stress.recovery_high is not None:
+                components["recovery_high_seconds"] = ScoreComponent(value=stress.recovery_high)
+
+            result.append(
+                HealthScoreCreate(
+                    id=uuid4(),
+                    user_id=user_id,
+                    category=HealthScoreCategory.STRESS,
+                    value=value,
+                    qualifier=stress.day_summary,
+                    provider=ProviderName.OURA,
+                    recorded_at=recorded_at,
+                    components=components or None,
+                )
+            )
+
+        return result
+
+    def save_daily_stress_scores(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        normalized: list[HealthScoreCreate],
+    ) -> int:
+        """Save Oura daily stress scores via health_score_service."""
+        if normalized:
+            health_score_service.bulk_create(db, normalized)
+            db.commit()
+        return len(normalized)
 
     # -------------------------------------------------------------------------
     # Cardiovascular age - /v2/usercollection/daily_cardiovascular_age
@@ -1192,6 +1285,13 @@ class Oura247Data(Base247DataTemplate):
                 user_id,
                 self.normalize_daily_sleep_scores(
                     self.get_daily_sleep_score_data(db, user_id, start_time, end_time), user_id
+                ),
+            ),
+            "daily_stress": lambda: self.save_daily_stress_scores(
+                db,
+                user_id,
+                self.normalize_daily_stress_scores(
+                    self.get_daily_stress_data(db, user_id, start_time, end_time), user_id
                 ),
             ),
             "spo2": lambda: self.save_spo2_data(db, user_id, self.get_spo2_data(db, user_id, start_time, end_time)),

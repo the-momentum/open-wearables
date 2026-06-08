@@ -247,7 +247,7 @@ Health scores are composite metrics that summarize a specific aspect of health i
 | Activity score | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Recovery score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | Resilience score | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Stress score | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Stress score | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | Body battery | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Strain score | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 
@@ -322,12 +322,13 @@ Key differences and limitations to be aware of when working with each provider:
 <Accordion title="Oura">
   **Integration Method:** OAuth 2.0 + Webhooks
 
-  - Webhooks push real-time notifications for: daily activity, daily readiness, daily sleep, daily SpO2, and workouts
+  - Webhooks push real-time notifications for: daily activity, daily readiness, daily sleep, daily SpO2, daily stress, and workouts
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, efficiency score, stage timestamps, and nap detection
   - Sleep biometrics (average HR, lowest HR, average HRV) are available from the API but not yet persisted per sleep record
   - Continuous 24/7 timeseries: heart rate (5-min intervals), daily SpO2, steps, active calories, walking distance
   - Recovery data from daily readiness: recovery score, skin temperature deviation, and skin temperature trend deviation
   - Fitness metrics: VO2 max (daily estimate) and cardiovascular age — both require the `heart_health` OAuth scope
+  - Daily stress sync uses the `stress` OAuth scope and stores Oura's stress summary plus high-stress/recovery durations as a stress score
   - Personal info sync: height and weight from user profile
   - Oura does **not** expose heart rate data during workouts via API; workout records include only duration, type, calories, and distance
   - `temperature_deviation` and `temperature_trend_deviation` reflect skin temperature relative to baseline (not absolute body temperature)
@@ -446,4 +447,3 @@ curl -X GET "https://api.openwearables.com/api/v1/users/{user_id}/timeseries\
 &end_time=2025-01-07T23:59:59Z" \
   -H "X-Open-Wearables-API-Key: YOUR_API_KEY"
 ```
-

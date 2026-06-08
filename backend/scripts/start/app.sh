@@ -2,8 +2,12 @@
 set -e -x
 
 # Ensure svix database exists (idempotent)
-echo 'Ensuring svix database...'
-uv run python scripts/init/create_svix_db.py
+if [ "${SVIX_ENABLED:-true}" = "false" ]; then
+    echo 'Skipping Svix database bootstrap.'
+else
+    echo 'Ensuring svix database...'
+    uv run python scripts/init/create_svix_db.py
+fi
 
 # Init database
 echo 'Applying migrations...'
@@ -42,17 +46,22 @@ echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
 
 # Register webhook event types with Svix (with retry, non-fatal)
-echo 'Registering webhook event types...'
-for i in 1 2 3; do
-    uv run python scripts/init/seed_webhook_event_types.py && break
-    echo "Svix not ready yet, retrying in 5s... (attempt ${i}/3)"
-    sleep 5
-done || echo "Warning: Could not register webhook event types with Svix. Will retry on next startup."
+if [ "${SKIP_SVIX_EVENT_TYPES:-false}" = "true" ]; then
+    echo 'Skipping Svix webhook event type registration.'
+else
+    echo 'Registering webhook event types...'
+    for i in 1 2 3; do
+        uv run python scripts/init/seed_webhook_event_types.py && break
+        echo "Svix not ready yet, retrying in 5s... (attempt ${i}/3)"
+        sleep 5
+    done || echo "Warning: Could not register webhook event types with Svix. Will retry on next startup."
+fi
 
 # Init app
 echo "Starting the FastAPI application..."
+APP_PORT="${PORT:-${API_PORT:-8000}}"
 if [ "$ENVIRONMENT" = "local" ]; then
-    uv run fastapi dev app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
+    uv run fastapi dev app/main.py --host 0.0.0.0 --port "$APP_PORT"
 else
-    uv run fastapi run app/main.py --host 0.0.0.0 --port "${API_PORT:-8000}"
+    uv run fastapi run app/main.py --host 0.0.0.0 --port "$APP_PORT"
 fi

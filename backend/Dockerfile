@@ -41,3 +41,4 @@ FROM python:3.13-slim
     ENV UV_NO_SYNC=true
 
     EXPOSE 8000
+    CMD ["scripts/start/app.sh"]

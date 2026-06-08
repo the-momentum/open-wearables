@@ -144,7 +144,9 @@ class Settings(BaseSettings):
     oura_client_id: str | None = None
     oura_client_secret: SecretStr | None = None
     oura_redirect_uri: str | None = None  # Deprecated: use API_BASE_URL
-    oura_default_scope: str = "personal daily activity heartrate workout session spo2 ring_configuration heart_health"
+    oura_default_scope: str = (
+        "personal daily activity heartrate workout session spo2 ring_configuration heart_health stress"
+    )
     oura_webhook_verification_token: SecretStr | None = None
 
     # STRAVA OAUTH SETTINGS
@@ -192,6 +194,7 @@ class Settings(BaseSettings):
     raw_payload_s3_endpoint_url: str | None = None  # for S3-compatible storage (e.g. Railway Object Storage)
 
     # SVIX WEBHOOK SETTINGS
+    svix_enabled: bool = True
     svix_server_url: str = "http://svix-server:8071"
     # Signing secret used by the Svix server to verify JWTs.  Must match SVIX_JWT_SECRET in docker-compose.
     svix_jwt_secret: SecretStr | None = None

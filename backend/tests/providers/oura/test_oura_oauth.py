@@ -35,6 +35,7 @@ class TestOuraOAuth:
         creds = oauth.credentials
         assert "personal" in creds.default_scope
         assert "heartrate" in creds.default_scope
+        assert "stress" in creds.default_scope
 
     def test_provider_name(self, oauth: OuraOAuth) -> None:
         assert oauth.provider_name == "oura"

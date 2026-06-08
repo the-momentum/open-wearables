@@ -63,6 +63,7 @@ class TestOuraWebhookNotification:
             "daily_readiness",
             "daily_sleep",
             "daily_spo2",
+            "daily_stress",
             "workout",
             "tag",
         ]
