@@ -30,7 +30,7 @@ from app.utils.structured_logging import log_structured
 
 
 class Whoop247Data(Base247DataTemplate):
-    """Whoop implementation for 247 data (sleep, recovery, activity)."""
+    """Whoop implementation for 247 data (sleep, recovery, cycles, activity)."""
 
     def __init__(
         self,
@@ -982,7 +982,9 @@ class Whoop247Data(Base247DataTemplate):
     ) -> int:
         """Load cycle data from API and save daily strain health scores.
 
-        Returns the number of health scores saved.
+        Returns the number of cycle records normalized into health scores;
+        rows already present in the database are not re-inserted (dedupe via
+        the unique constraint) and are still counted here.
         """
         raw_data = self.get_cycle_data(db, user_id, start_time, end_time)
         health_scores: list[HealthScoreCreate] = []
