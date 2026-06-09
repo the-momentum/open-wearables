@@ -692,7 +692,7 @@ class TestSDKImportUnitConversion:
         self,
         import_service: ImportService,
     ) -> None:
-        """HealthKit reports glucose in mg/dL — stored unchanged."""
+        """HealthKit reports glucose in mg/dL - stored unchanged."""
         user_id = str(uuid4())
         request = self._build_request(
             "apple",
