@@ -87,4 +87,9 @@ def log_structured(
     # IMPORTANT: Celery workers and other services must redirect stderr to stdout
     # in their startup scripts (using `exec 2>&1`) to prevent platforms from
     # converting all logs to level.error. See scripts/start/*.sh for examples.
-    print(json_str, file=sys.stdout, flush=True)
+    try:
+        print(json_str, file=sys.stdout, flush=True)
+    except (BrokenPipeError, OSError):
+        # stdout pipe is closed (e.g. detached launcher, tunnel parent gone).
+        # Swallow silently — a broken pipe must never crash a request handler.
+        pass

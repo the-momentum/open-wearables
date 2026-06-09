@@ -17,6 +17,7 @@ from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
+from app.services.providers.sensorbio.strategy import SensorBioStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 from app.services.providers.ultrahuman.strategy import UltrahumanStrategy
 
@@ -219,6 +220,39 @@ class TestProviderFactory:
         """Should initialize data_247 component for Ultrahuman."""
         # Act
         strategy = factory.get_provider("ultrahuman")
+
+        # Assert
+        assert strategy.data_247 is not None
+
+    def test_get_provider_sensorbio(self, factory: ProviderFactory) -> None:
+        """Should return SensorBioStrategy instance."""
+        # Act
+        strategy = factory.get_provider("sensorbio")
+
+        # Assert
+        assert isinstance(strategy, SensorBioStrategy)
+        assert isinstance(strategy, BaseProviderStrategy)
+        assert strategy.name == "sensorbio"
+
+    def test_provider_sensorbio_has_oauth(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Should initialize OAuth component for Sensor Bio."""
+        # Act
+        strategy = factory.get_provider("sensorbio")
+
+        # Assert
+        assert strategy.oauth is not None
+        assert strategy.has_cloud_api is True
+
+    def test_provider_sensorbio_has_data_247(
+        self,
+        factory: ProviderFactory,
+    ) -> None:
+        """Should initialize data_247 component for Sensor Bio."""
+        # Act
+        strategy = factory.get_provider("sensorbio")
 
         # Assert
         assert strategy.data_247 is not None
