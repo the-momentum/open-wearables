@@ -37,7 +37,7 @@ class Whoop247Data(Base247DataTemplate):
         provider_name: str,
         api_base_url: str,
         oauth: BaseOAuthTemplate,
-    ):
+    ) -> None:
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
         self.data_source_repo = DataSourceRepository(DataSource)
@@ -964,8 +964,12 @@ class Whoop247Data(Base247DataTemplate):
             user_id=user_id,
             provider=ProviderName.WHOOP,
             category=HealthScoreCategory.STRAIN,
+            # Whoop also emits per-workout strain scores (workouts.py); the qualifier
+            # separates the day-level cycle strain from those.
+            qualifier="daily",
             value=strain,
             recorded_at=recorded_at,
+            zone_offset=raw_cycle.get("timezone_offset"),
             components=components or None,
         )
 

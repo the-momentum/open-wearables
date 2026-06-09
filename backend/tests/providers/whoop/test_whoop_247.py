@@ -64,6 +64,8 @@ class TestWhoop247Data:
         assert health_score is not None
         assert health_score.category == HealthScoreCategory.STRAIN
         assert health_score.user_id == user_id
+        assert health_score.qualifier == "daily"
+        assert health_score.zone_offset == "-05:00"
         assert float(health_score.value) == pytest.approx(5.2951527)
         assert health_score.recorded_at == datetime(2024, 1, 15, 2, 25, 44, 774000, tzinfo=timezone.utc)
         assert health_score.components is not None
@@ -86,6 +88,18 @@ class TestWhoop247Data:
     def test_normalize_cycle_missing_strain(self, whoop_247: Whoop247Data, sample_cycle: dict[str, Any]) -> None:
         """Cycle without strain in score is skipped."""
         sample_cycle["score"] = {"kilojoule": 8288.297}
+
+        assert whoop_247.normalize_cycle(sample_cycle, uuid4()) is None
+
+    def test_normalize_cycle_null_score(self, whoop_247: Whoop247Data, sample_cycle: dict[str, Any]) -> None:
+        """SCORED state with a null score object is skipped."""
+        sample_cycle["score"] = None
+
+        assert whoop_247.normalize_cycle(sample_cycle, uuid4()) is None
+
+    def test_normalize_cycle_malformed_start(self, whoop_247: Whoop247Data, sample_cycle: dict[str, Any]) -> None:
+        """Unparseable start timestamp is skipped."""
+        sample_cycle["start"] = "not-a-date"
 
         assert whoop_247.normalize_cycle(sample_cycle, uuid4()) is None
 
@@ -131,3 +145,50 @@ class TestWhoop247Data:
         assert len(saved) == 1
         assert saved[0].category == HealthScoreCategory.STRAIN
         assert float(saved[0].value) == pytest.approx(5.2951527, abs=1e-3)
+
+    def test_load_and_save_cycles_resync_does_not_duplicate(
+        self,
+        db: Session,
+        whoop_247: Whoop247Data,
+        sample_cycle: dict[str, Any],
+    ) -> None:
+        """Re-syncing the same cycle relies on the unique-constraint dedupe."""
+        user = UserFactory()
+        window = (datetime(2024, 1, 1, tzinfo=timezone.utc), datetime(2024, 1, 31, tzinfo=timezone.utc))
+
+        with patch.object(whoop_247, "get_cycle_data", return_value=[sample_cycle]):
+            whoop_247.load_and_save_cycles(db, user.id, *window)
+            whoop_247.load_and_save_cycles(db, user.id, *window)
+
+        assert db.query(HealthScore).filter(HealthScore.user_id == user.id).count() == 1
+
+    def test_get_cycle_data_returns_partial_results_on_later_page_error(
+        self,
+        whoop_247: Whoop247Data,
+        sample_cycle: dict[str, Any],
+    ) -> None:
+        """A failure after the first page returns the records fetched so far."""
+        page_one = {"records": [sample_cycle], "next_token": "token123"}
+
+        with patch.object(whoop_247, "_make_api_request", side_effect=[page_one, RuntimeError("boom")]):
+            records = whoop_247.get_cycle_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 31, tzinfo=timezone.utc),
+            )
+
+        assert len(records) == 1
+
+    def test_get_cycle_data_raises_on_first_page_error(self, whoop_247: Whoop247Data) -> None:
+        """A failure on the first page propagates instead of returning empty data."""
+        with (
+            patch.object(whoop_247, "_make_api_request", side_effect=RuntimeError("boom")),
+            pytest.raises(RuntimeError),
+        ):
+            whoop_247.get_cycle_data(
+                MagicMock(),
+                uuid4(),
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 1, 31, tzinfo=timezone.utc),
+            )
