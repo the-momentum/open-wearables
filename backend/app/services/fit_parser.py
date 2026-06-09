@@ -80,7 +80,7 @@ def parse_fit_file(
 ) -> FitParseResult:
     result = FitParseResult()
     dev_fields_seen: set[str] = set()
-    lap_index = split_index = length_index = 0
+    _seg_counters: dict[str, int] = {k: 0 for k in _SEGMENT_KINDS}
 
     with fitdecode.FitReader(io.BytesIO(data)) as fit:
         for frame in fit:
@@ -109,23 +109,13 @@ def parse_fit_file(
                             )
                         )
 
-            elif frame.name == "lap":
-                seg = _extract_lap(frame, lap_index)
+            elif frame.name in _SEGMENT_KINDS:
+                numeric, enums = _SEGMENT_KINDS[frame.name]
+                idx = _seg_counters[frame.name]
+                seg = _extract_segment(frame, frame.name, idx, numeric, enums)
                 if seg.get("elapsed_seconds") is not None:
                     result.segments.append(seg)
-                lap_index += 1
-
-            elif frame.name == "split":
-                seg = _extract_split(frame, split_index)
-                if seg.get("elapsed_seconds") is not None:
-                    result.segments.append(seg)
-                split_index += 1
-
-            elif frame.name == "length":
-                seg = _extract_length(frame, length_index)
-                if seg.get("elapsed_seconds") is not None:
-                    result.segments.append(seg)
-                length_index += 1
+                _seg_counters[frame.name] = idx + 1
 
     result.developer_fields_found = sorted(dev_fields_seen)
     logger.debug(
@@ -141,11 +131,58 @@ def parse_fit_file(
 # Segment extraction helpers
 # ---------------------------------------------------------------------------
 
+# Field specs for each segment kind:
+#   numeric: (fit_field_name, output_key, scale) — scale applied before rounding
+#   enums:   (fit_field_name, output_key)        — stored as str()
+
+_LAP_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_distance", "distance_meters", 1.0),
+    ("avg_heart_rate", "avg_heart_rate", 1.0),
+    ("max_heart_rate", "max_heart_rate", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+    ("max_speed", "max_speed", 1.0),
+    ("avg_power", "avg_power", 1.0),
+    ("max_power", "max_power", 1.0),
+    ("normalized_power", "normalized_power", 1.0),
+    ("avg_cadence", "avg_cadence", 1.0),
+    ("total_strides", "total_strides", 1.0),
+    ("total_ascent", "total_ascent", 1.0),
+    ("total_descent", "total_descent", 1.0),
+    # FIT stores in mm; output in cm
+    ("avg_vertical_oscillation", "avg_vertical_oscillation", 0.1),
+    ("avg_step_length", "avg_step_length", 0.1),
+    # fitdecode auto-applies scale=100; value already in %
+    ("avg_vertical_ratio", "avg_vertical_ratio", 1.0),
+    ("avg_stance_time", "avg_stance_time", 1.0),
+    ("avg_stance_time_balance", "avg_stance_time_balance", 1.0),
+)
+
+_SPLIT_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_distance", "distance_meters", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+)
+_SPLIT_ENUMS: tuple[tuple[str, str], ...] = (("split_type", "split_type"),)
+
+_LENGTH_NUMERIC: tuple[tuple[str, str, float], ...] = (
+    ("total_strokes", "total_strokes", 1.0),
+    ("avg_speed", "avg_speed", 1.0),
+)
+_LENGTH_ENUMS: tuple[tuple[str, str], ...] = (
+    ("swim_stroke", "swim_stroke"),
+    ("length_type", "length_type"),
+)
+
+# Dispatch map: frame.name → (numeric_fields, enum_fields)
+_SEGMENT_KINDS: dict[str, tuple] = {
+    "lap": (_LAP_NUMERIC, ()),
+    "split": (_SPLIT_NUMERIC, _SPLIT_ENUMS),
+    "length": (_LENGTH_NUMERIC, _LENGTH_ENUMS),
+}
+
 
 def _field_val(frame: fitdecode.FitDataMessage, name: str) -> Any:
     try:
-        v = frame.get_value(name)
-        return v if v is not None else None
+        return frame.get_value(name)
     except KeyError:
         return None
 
@@ -166,71 +203,27 @@ def _iso(v: Any) -> str | None:
     return ts.isoformat()
 
 
-def _copy(seg: dict, frame: fitdecode.FitDataMessage, fit_name: str, out_name: str, scale: float = 1.0) -> None:
-    v = _field_val(frame, fit_name)
-    if v is not None:
-        seg[out_name] = _r2(float(v) * scale)
-
-
-def _extract_lap(frame: fitdecode.FitDataMessage, index: int) -> dict:
+def _extract_segment(
+    frame: fitdecode.FitDataMessage,
+    kind: str,
+    index: int,
+    numeric: tuple[tuple[str, str, float], ...],
+    enums: tuple[tuple[str, str], ...] = (),
+) -> dict:
     seg: dict = {
-        "kind": "lap",
+        "kind": kind,
         "index": index,
         "start_time": _iso(_field_val(frame, "start_time")),
         "elapsed_seconds": _r2(_field_val(frame, "total_elapsed_time")),
     }
-    _copy(seg, frame, "total_distance", "distance_meters")
-    _copy(seg, frame, "avg_heart_rate", "avg_heart_rate")
-    _copy(seg, frame, "max_heart_rate", "max_heart_rate")
-    _copy(seg, frame, "avg_speed", "avg_speed")
-    _copy(seg, frame, "max_speed", "max_speed")
-    _copy(seg, frame, "avg_power", "avg_power")
-    _copy(seg, frame, "max_power", "max_power")
-    _copy(seg, frame, "normalized_power", "normalized_power")
-    _copy(seg, frame, "avg_cadence", "avg_cadence")
-    _copy(seg, frame, "total_strides", "total_strides")
-    _copy(seg, frame, "total_ascent", "total_ascent")
-    _copy(seg, frame, "total_descent", "total_descent")
-    # FIT stores these in mm; store as cm
-    _copy(seg, frame, "avg_vertical_oscillation", "avg_vertical_oscillation", 0.1)
-    _copy(seg, frame, "avg_step_length", "avg_step_length", 0.1)
-    # fitdecode auto-applies scale for these (already in %)
-    _copy(seg, frame, "avg_vertical_ratio", "avg_vertical_ratio")
-    _copy(seg, frame, "avg_stance_time", "avg_stance_time")
-    _copy(seg, frame, "avg_stance_time_balance", "avg_stance_time_balance")
-    return {k: v for k, v in seg.items() if v is not None}
-
-
-def _extract_split(frame: fitdecode.FitDataMessage, index: int) -> dict:
-    seg: dict = {
-        "kind": "split",
-        "index": index,
-        "start_time": _iso(_field_val(frame, "start_time")),
-        "elapsed_seconds": _r2(_field_val(frame, "total_elapsed_time")),
-    }
-    _copy(seg, frame, "total_distance", "distance_meters")
-    _copy(seg, frame, "avg_speed", "avg_speed")
-    split_type = _field_val(frame, "split_type")
-    if split_type is not None:
-        seg["split_type"] = str(split_type)
-    return {k: v for k, v in seg.items() if v is not None}
-
-
-def _extract_length(frame: fitdecode.FitDataMessage, index: int) -> dict:
-    seg: dict = {
-        "kind": "length",
-        "index": index,
-        "start_time": _iso(_field_val(frame, "start_time")),
-        "elapsed_seconds": _r2(_field_val(frame, "total_elapsed_time")),
-    }
-    _copy(seg, frame, "total_strokes", "total_strokes")
-    _copy(seg, frame, "avg_speed", "avg_speed")
-    swim_stroke = _field_val(frame, "swim_stroke")
-    if swim_stroke is not None:
-        seg["swim_stroke"] = str(swim_stroke)
-    length_type = _field_val(frame, "length_type")
-    if length_type is not None:
-        seg["length_type"] = str(length_type)
+    for fit_name, out_name, scale in numeric:
+        v = _field_val(frame, fit_name)
+        if v is not None:
+            seg[out_name] = _r2(v * scale)
+    for fit_name, out_name in enums:
+        v = _field_val(frame, fit_name)
+        if v is not None:
+            seg[out_name] = str(v)
     return {k: v for k, v in seg.items() if v is not None}
 
 

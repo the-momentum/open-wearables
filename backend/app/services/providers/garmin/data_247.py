@@ -9,8 +9,13 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord, WorkoutDetails
-from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
+from app.models import DataPointSeries, EventRecord, EventRecordDetail
+from app.repositories import (
+    DataSourceRepository,
+    EventRecordDetailRepository,
+    EventRecordRepository,
+    UserConnectionRepository,
+)
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
@@ -75,6 +80,7 @@ class Garmin247Data(Base247DataTemplate):
     ):
         super().__init__(provider_name, api_base_url, oauth)
         self.event_record_repo = EventRecordRepository(EventRecord)
+        self.event_record_detail_repo = EventRecordDetailRepository(EventRecordDetail)
         self.data_source_repo = DataSourceRepository()
         self.connection_repo = UserConnectionRepository()
         self.data_point_repo = DataPointSeriesRepository(DataPointSeries)
@@ -1745,9 +1751,7 @@ class Garmin247Data(Base247DataTemplate):
                 activity_id=activity_id,
             )
             return
-        db.query(WorkoutDetails).filter(WorkoutDetails.record_id == record.id).update(
-            {"segments": segments}, synchronize_session=False
-        )
+        self.event_record_detail_repo.update_workout_fields(db, record.id, {"segments": segments})
 
     # -------------------------------------------------------------------------
     # Batch Processing (for webhook handlers)
@@ -1853,6 +1857,9 @@ class Garmin247Data(Base247DataTemplate):
                     case "activityFiles":
                         if item.get("fileType") != "FIT":
                             continue
+                        # FIT is always downloaded: segments (laps/splits/lengths) are core
+                        # workout data, like avg_hr or distance, not a feature flag concern.
+                        # activityDetails is also always processed without a flag.
                         callback_url = item.get("callbackURL")
                         if not callback_url:
                             continue
@@ -1899,7 +1906,19 @@ class Garmin247Data(Base247DataTemplate):
                             )
                             continue
                         if fit_result.segments:
-                            self._save_segments(db, user_id, activity_id, fit_result.segments)
+                            try:
+                                self._save_segments(db, user_id, activity_id, fit_result.segments)
+                            except Exception as e:
+                                log_structured(
+                                    self.logger,
+                                    "warning",
+                                    "Failed to save segments",
+                                    provider="garmin",
+                                    task="process_items_batch",
+                                    user_id=str(user_id),
+                                    activity_id=activity_id,
+                                    error=str(e),
+                                )
                         fit_samples: list[TimeSeriesSampleCreate] = []
                         if settings.ingest_workout_samples:
                             fit_samples = [

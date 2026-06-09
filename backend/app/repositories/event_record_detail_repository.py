@@ -1,7 +1,7 @@
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
-from sqlalchemy import Table
+from sqlalchemy import Table, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -155,3 +155,16 @@ class EventRecordDetailRepository(
         if detail is not None:
             db_session.delete(detail)
             db_session.flush()
+
+    def update_workout_fields(
+        self,
+        db_session: DbSession,
+        record_id: UUID,
+        fields: dict[str, Any],
+    ) -> None:
+        """Patch one or more columns on the workout_details row for the given record.
+
+        Intended for JSONB fields (segments, hr_zones, power_zones) that are
+        written separately from the initial bulk insert.
+        """
+        db_session.execute(update(WorkoutDetails).where(WorkoutDetails.record_id == record_id).values(**fields))
