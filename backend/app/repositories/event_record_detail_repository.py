@@ -166,5 +166,6 @@ class EventRecordDetailRepository(
 
         Intended for JSONB fields (segments, hr_zones, power_zones) that are
         written separately from the initial bulk insert.
+        NOTE: Caller is responsible for committing or flushing the transaction.
         """
         db_session.execute(update(WorkoutDetails).where(WorkoutDetails.record_id == record_id).values(**fields))
