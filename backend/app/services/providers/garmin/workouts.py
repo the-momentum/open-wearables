@@ -154,11 +154,6 @@ class GarminWorkouts(BaseWorkoutsTemplate):
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return int(dt.timestamp())
         except (ValueError, AttributeError):
-            # If parsing fails, return None or raise error.
-            # For now, let's return None to be safe, or we could raise HTTPException here if we want strict validation.
-            # But since this is a helper, maybe just return None.
-            # Actually, the endpoint was raising HTTPException.
-            # Let's assume the caller handles validation or we just ignore invalid values.
             return None
 
     def _extract_dates(self, start_timestamp: int, end_timestamp: int) -> tuple[datetime, datetime]:
@@ -190,7 +185,8 @@ class GarminWorkouts(BaseWorkoutsTemplate):
         average_cadence = Decimal(str(raw_workout.averageCadence)) if raw_workout.averageCadence is not None else None
 
         return {
-            "heart_rate_min": int(heart_rate_avg) if heart_rate_avg is not None else None,
+            # Garmin activity payloads carry only average and max heart rate
+            "heart_rate_min": None,
             "heart_rate_max": int(heart_rate_max) if heart_rate_max is not None else None,
             "heart_rate_avg": heart_rate_avg,
             "steps_count": steps_count,
