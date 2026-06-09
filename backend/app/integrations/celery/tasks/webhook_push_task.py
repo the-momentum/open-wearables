@@ -19,9 +19,8 @@ from app.utils.structured_logging import log_structured
 
 logger = getLogger(__name__)
 
-# Provider upstream returns where retrying is futile (the object/event the webhook
-# refers to is simply not (yet) fetchable). 401 stays out — token refresh can fix
-# that on the next attempt. 429 stays out — that's pure rate limiting, retry helps.
+# Upstream 4xx where retrying can't recover the object. 401 (token refresh) and
+# 429 (rate limit) are excluded — those still benefit from a retry.
 _NONRETRIABLE_UPSTREAM_STATUSES = frozenset({400, 403, 404, 410, 422})
 
 
@@ -60,11 +59,8 @@ def process_webhook_push(
         )
         raise
     except HTTPException as exc:
-        # Upstream provider API errors. 4xx (except 401/429) means the object the
-        # webhook references is not retrievable (deleted, never persisted upstream,
-        # or a race condition between push and the data being queryable). Retrying
-        # for hours via Cloud Tasks won't recover the object — log and ack so the
-        # task drops cleanly. 5xx and 401/429 still go through the retry path.
+        # Non-retriable upstream 4xx (deleted/unqueryable object): ack so the task
+        # drops instead of retrying forever. 5xx and 401/429 fall through to retry.
         if exc.status_code in _NONRETRIABLE_UPSTREAM_STATUSES:
             log_structured(
                 logger,
