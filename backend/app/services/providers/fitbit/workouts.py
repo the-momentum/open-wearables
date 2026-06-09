@@ -138,16 +138,8 @@ class FitbitWorkouts(BaseWorkoutsTemplate):
         return all_activities
 
     @staticmethod
-    def _coerce_to_datetime(value: Any, fallback: datetime) -> datetime:
-        """Accept either a datetime or an ISO 8601 string and return a datetime.
-
-        ``sync_vendor_data`` forwards ``start_date`` / ``end_date`` as raw ISO
-        strings (that's the on-wire format from periodic_sync / sync_data API),
-        but the Fitbit ``get_workouts`` path expects ``datetime`` for
-        ``.strftime``.  Without this coercion the hourly cron task crashes on
-        every Fitbit user with ``AttributeError: 'str' object has no attribute
-        'strftime'``.
-        """
+    def _coerce_to_datetime(value: datetime | str | None, fallback: datetime) -> datetime:
+        """Coerce a datetime or ISO 8601 string to datetime (sync_vendor_data passes ISO strings)."""
         if value is None:
             return fallback
         if isinstance(value, datetime):
