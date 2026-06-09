@@ -343,6 +343,64 @@ class TestAppleSDKImport:
 
         assert result["records_saved"] >= 0
 
+    def test_health_connect_blood_glucose_converted_to_mg_dl(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """Health Connect reports glucose in mmol/L; stored value must be mg/dL."""
+        payload: dict[str, Any] = {
+            "provider": "samsung",
+            "sdkVersion": "1.0.0",
+            "syncTimestamp": "2025-04-10T12:00:00Z",
+            "data": {
+                "records": [
+                    {
+                        "id": "11111111-1111-1111-1111-111111111111",
+                        "type": "BLOOD_GLUCOSE",
+                        "unit": "mmol/L",
+                        "value": 6.111,
+                        "startDate": "2025-04-10T11:00:00Z",
+                        "endDate": "2025-04-10T11:00:00Z",
+                    }
+                ]
+            },
+        }
+        request = SDKSyncRequest(**payload)
+
+        samples = import_service._build_statistic_bundles(request, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.blood_glucose
+        assert float(samples[0].value) == pytest.approx(110.1, abs=0.1)
+
+    def test_healthkit_blood_glucose_stored_unchanged(
+        self,
+        import_service: ImportService,
+    ) -> None:
+        """HealthKit already reports glucose in mg/dL; value must not be scaled."""
+        payload: dict[str, Any] = {
+            **SDK_ENVELOPE,
+            "data": {
+                "records": [
+                    {
+                        "id": "22222222-2222-2222-2222-222222222222",
+                        "type": "HKQuantityTypeIdentifierBloodGlucose",
+                        "unit": "mg/dL",
+                        "value": 105,
+                        "startDate": "2025-04-10T11:00:00Z",
+                        "endDate": "2025-04-10T11:00:00Z",
+                    }
+                ]
+            },
+        }
+        request = SDKSyncRequest(**payload)
+
+        samples = import_service._build_statistic_bundles(request, str(uuid4()))
+
+        assert len(samples) == 1
+        assert samples[0].series_type == SeriesType.blood_glucose
+        assert samples[0].value == Decimal("105")
+
     def test_import_empty_payload(
         self,
         db: Session,

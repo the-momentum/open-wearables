@@ -137,6 +137,10 @@ class ImportService:
             ):
                 value = value * 100
 
+            # Health Connect reports blood glucose in mmol/L; the series unit is mg/dL.
+            if series_type == SeriesType.blood_glucose and (rjson.unit or "").lower().startswith("mmol"):
+                value = value * Decimal("18.0182")
+
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
 
