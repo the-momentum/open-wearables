@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 from app.config import settings
 from app.constants.sleep import SleepStageType
 from app.database import DbSession
-from app.models import DataPointSeries, EventRecord
+from app.models import DataPointSeries, EventRecord, WorkoutDetails
 from app.repositories import DataSourceRepository, EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
@@ -1720,6 +1720,35 @@ class Garmin247Data(Base247DataTemplate):
         # TODO: Implement proper MCT storage if needed
         return 0
 
+    def _save_segments(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        activity_id: str,
+        segments: list[dict],
+    ) -> None:
+        """Update workout_details.segments for the event_record matching activity_id.
+
+        No-op if the event_record doesn't exist yet (activityFiles arrived before
+        activityDetails). activityDetails is always processed first within the same
+        webhook because WELLNESS_TYPES orders it before activityFiles.
+        """
+        record = self.event_record_repo.get_by_external_id(db, user_id, activity_id, source=self.provider_name)
+        if record is None:
+            log_structured(
+                self.logger,
+                "warning",
+                "No event_record found for activityFiles — segments not saved",
+                provider="garmin",
+                task="_save_segments",
+                user_id=str(user_id),
+                activity_id=activity_id,
+            )
+            return
+        db.query(WorkoutDetails).filter(WorkoutDetails.record_id == record.id).update(
+            {"segments": segments}, synchronize_session=False
+        )
+
     # -------------------------------------------------------------------------
     # Batch Processing (for webhook handlers)
     # -------------------------------------------------------------------------
@@ -1824,8 +1853,6 @@ class Garmin247Data(Base247DataTemplate):
                     case "activityFiles":
                         if item.get("fileType") != "FIT":
                             continue
-                        if not settings.ingest_workout_samples and not settings.store_fit_files:
-                            continue
                         callback_url = item.get("callbackURL")
                         if not callback_url:
                             continue
@@ -1857,34 +1884,39 @@ class Garmin247Data(Base247DataTemplate):
                             user_id=str(user_id),
                             activity_id=activity_id,
                         )
+                        try:
+                            fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
+                        except Exception as e:
+                            log_structured(
+                                self.logger,
+                                "warning",
+                                "Failed to parse FIT file",
+                                provider="garmin",
+                                task="process_items_batch",
+                                user_id=str(user_id),
+                                activity_id=activity_id,
+                                error=str(e),
+                            )
+                            continue
+                        if fit_result.segments:
+                            self._save_segments(db, user_id, activity_id, fit_result.segments)
+                        fit_samples: list[TimeSeriesSampleCreate] = []
                         if settings.ingest_workout_samples:
-                            try:
-                                fit_result = parse_fit_file(fit_bytes, user_id, source=self.provider_name)
-                                fit_samples = [
-                                    s for s in fit_result.samples if s.series_type not in _ACTIVITY_DETAILS_SERIES_TYPES
-                                ]
-                                all_samples.extend(fit_samples)
-                                log_structured(
-                                    self.logger,
-                                    "info",
-                                    "Parsed FIT file",
-                                    provider="garmin",
-                                    task="process_items_batch",
-                                    user_id=str(user_id),
-                                    activity_id=activity_id,
-                                    samples=len(fit_samples),
-                                )
-                            except Exception as e:
-                                log_structured(
-                                    self.logger,
-                                    "warning",
-                                    "Failed to parse FIT file",
-                                    provider="garmin",
-                                    task="process_items_batch",
-                                    user_id=str(user_id),
-                                    activity_id=activity_id,
-                                    error=str(e),
-                                )
+                            fit_samples = [
+                                s for s in fit_result.samples if s.series_type not in _ACTIVITY_DETAILS_SERIES_TYPES
+                            ]
+                            all_samples.extend(fit_samples)
+                        log_structured(
+                            self.logger,
+                            "info",
+                            "Parsed FIT file",
+                            provider="garmin",
+                            task="process_items_batch",
+                            user_id=str(user_id),
+                            activity_id=activity_id,
+                            segments=len(fit_result.segments),
+                            samples=len(fit_samples),
+                        )
 
                     case "moveIQActivities":
                         record = self._build_moveiq_record(user_id, item)
