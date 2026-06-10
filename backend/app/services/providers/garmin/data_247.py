@@ -375,10 +375,8 @@ class Garmin247Data(Base247DataTemplate):
             sleep_rem_minutes=stages.get("rem_seconds", 0) // 60,
             sleep_awake_minutes=stages.get("awake_seconds", 0) // 60,
             is_nap=False,
-            heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
-            if normalized_sleep.get("avg_heart_rate_bpm")
-            else None,
-            heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
+            # heart_rate_avg/heart_rate_min are workout-only columns; SleepDetails has
+            # no heart rate fields and rejects them in the ORM constructor (issue #1135).
             sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
 

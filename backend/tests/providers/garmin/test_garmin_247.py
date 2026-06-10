@@ -9,6 +9,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
+from app.models import SleepDetails
+from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
 from app.services.providers.garmin.oauth import GarminOAuth
@@ -577,6 +579,20 @@ class TestGarmin247Data:
         assert record.category == "sleep"
         assert record.type == "sleep_session"
         assert detail.sleep_deep_minutes == 120  # 7200 / 60
+
+    def test_build_sleep_detail_orm_object(self, garmin_247: Garmin247Data, sample_sleep: dict[str, Any]) -> None:
+        """Sleep detail with heart rate present must build a SleepDetails ORM object (issue #1135)."""
+        user_id = uuid4()
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user_id)
+        assert normalized.get("min_heart_rate_bpm") is not None  # fixture carries HR
+
+        result = garmin_247._build_sleep_record(user_id, normalized)
+        assert result is not None
+        _, detail = result
+
+        repo = EventRecordDetailRepository.__new__(EventRecordDetailRepository)
+        orm_detail = repo._build_detail(detail, "sleep")
+        assert isinstance(orm_detail, SleepDetails)
 
     def test_build_activity_record(self, garmin_247: Garmin247Data) -> None:
         """Test _build_activity_record returns record + detail without DB call."""
