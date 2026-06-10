@@ -49,6 +49,12 @@ echo 'Running workout heart_rate_min cleanup...'
 uv run python scripts/data_migrations/null_bogus_workout_heart_rate_min.py \
     || echo "Warning: workout heart_rate_min cleanup failed - will retry on next startup."
 
+# TODO: Remove this after ~2026-08-01 once all deployments have migrated.
+# Multiplies Apple HealthKit walking metrics stored as fractions/meters (issues #1105, #1106); no-op if already corrected.
+echo 'Running Apple walking metrics normalization...'
+uv run python scripts/data_migrations/normalize_apple_walking_metrics.py \
+    || echo "Warning: Apple walking metrics normalization failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
