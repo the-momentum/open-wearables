@@ -858,6 +858,10 @@ class EventRecordService(
                 efficiency_percent=float(details.sleep_efficiency_score)
                 if details and details.sleep_efficiency_score
                 else None,
+                avg_heart_rate_bpm=round(details.heart_rate_avg)
+                if details and details.heart_rate_avg is not None
+                else None,
+                min_heart_rate_bpm=details.heart_rate_min if details else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 sleep_stage_intervals=details.sleep_stages if details else None,  # ty:ignore[invalid-argument-type]
                 stages=SleepStagesSummary(

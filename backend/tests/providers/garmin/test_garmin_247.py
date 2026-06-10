@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import SleepDetails
+from app.models import EventRecord, SleepDetails
 from app.repositories.event_record_detail_repository import EventRecordDetailRepository
 from app.repositories.user_connection_repository import UserConnectionRepository
 from app.services.providers.garmin.data_247 import Garmin247Data
@@ -593,6 +593,30 @@ class TestGarmin247Data:
         repo = EventRecordDetailRepository.__new__(EventRecordDetailRepository)
         orm_detail = repo._build_detail(detail, "sleep")
         assert isinstance(orm_detail, SleepDetails)
+        assert orm_detail.heart_rate_min == 48
+        assert orm_detail.heart_rate_avg == Decimal("58")
+
+    def test_save_sleep_data_persists_heart_rate(
+        self,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """Sleep session with heart rate saves and persists the HR aggregates (issue #1135)."""
+        user = UserFactory()
+        normalized, _ = garmin_247.normalize_sleep(sample_sleep, user.id)
+
+        garmin_247.save_sleep_data(db, user.id, normalized)
+
+        saved = (
+            db.query(SleepDetails)
+            .join(EventRecord, EventRecord.id == SleepDetails.record_id)
+            .filter(EventRecord.category == "sleep")
+            .all()
+        )
+        assert len(saved) == 1
+        assert saved[0].heart_rate_min == 48
+        assert saved[0].heart_rate_avg == Decimal("58.00")
 
     def test_build_activity_record(self, garmin_247: Garmin247Data) -> None:
         """Test _build_activity_record returns record + detail without DB call."""
