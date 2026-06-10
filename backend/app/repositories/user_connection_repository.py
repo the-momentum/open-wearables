@@ -3,7 +3,7 @@ from logging import getLogger
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import CursorResult, and_, func, select, update
+from sqlalchemy import CursorResult, and_, func, select, tuple_, update
 from sqlalchemy.orm.exc import MultipleResultsFound
 
 from app.database import DbSession
@@ -194,6 +194,32 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
                 )
                 .first()
             )
+
+    def get_linked_user_ids(
+        self,
+        db_session: DbSession,
+        exclude_user_id: UUID,
+        provider_pairs: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], list[UUID]]:
+        """For a list of (provider, provider_user_id) pairs, return other active OW users
+        sharing the same external account, grouped by pair."""
+        if not provider_pairs:
+            return {}
+        rows = (
+            db_session.query(self.model.provider, self.model.provider_user_id, self.model.user_id)
+            .filter(
+                and_(
+                    self.model.status == ConnectionStatus.ACTIVE,
+                    self.model.user_id != exclude_user_id,
+                    tuple_(self.model.provider, self.model.provider_user_id).in_(provider_pairs),
+                )
+            )
+            .all()
+        )
+        result: dict[tuple[str, str], list[UUID]] = {}
+        for provider, provider_user_id, linked_user_id in rows:
+            result.setdefault((provider, provider_user_id), []).append(linked_user_id)
+        return result
 
     def get_by_user_id(
         self,
