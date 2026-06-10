@@ -37,6 +37,12 @@ echo 'Running body_fat_percentage normalization...'
 uv run python scripts/data_migrations/normalize_body_fat_percentage.py \
     || echo "Warning: body_fat_percentage normalization failed — will retry on next startup."
 
+# TODO: Remove this after ~2026-07-01 once all deployments have migrated.
+# Multiplies Apple HealthKit walking metrics stored as fractions/meters (issues #1105, #1106); no-op if already corrected.
+echo 'Running Apple walking metrics normalization...'
+uv run python scripts/data_migrations/normalize_apple_walking_metrics.py \
+    || echo "Warning: Apple walking metrics normalization failed — will retry on next startup."
+
 # Initialize archival settings
 echo 'Initializing archival settings...'
 uv run python scripts/init/seed_archival_settings.py
