@@ -12,7 +12,7 @@ keywords: ["wearable api coverage", "health data types by provider", "wearable d
 "twitter:card": "summary_large_image"
 ---
 
-This guide provides a comprehensive overview of data type support across all integrated wearable providers. Use this matrix to understand what data you can expect when integrating with specific devices.
+This guide gives an overview of data type support across the integrated wearable providers. Use this matrix to understand what data you can expect when integrating with specific devices.
 
 ## Quick Overview
 
@@ -47,7 +47,7 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ◐ | ✅ |
+| `heart_rate` | bpm | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | 🔜 | ✅ |
 | `resting_heart_rate` | bpm | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | ❌ | 🔜 | ✅ |
 | `heart_rate_variability_sdnn` | ms | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `heart_rate_variability_rmssd` | ms | ❌ | ✅ | ◐ | ✅ | ❌ | ✅ | ❌ | ❌ | 🔜 | ✅ |
@@ -56,7 +56,7 @@ This guide provides a comprehensive overview of data type support across all int
 
 <Accordion title="Legend">
   - ✅ **Full support** — Available as time series data
-  - ◐ **Partial** — Currently available only within workout/activity context
+  - ◐ **Partial** — Limited data, only within workout/activity context, or with a known unit caveat
   - 🔜 **Coming soon** — Provider API supports this, processing not yet implemented
   - ❌ **Not available** — Provider does not offer this data type
 </Accordion>
@@ -76,13 +76,13 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| `height` | cm | ✅ | ❌ | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| `height` | cm | ✅ | ❌ | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ | 🔜 | ✅ |
 | `weight` | kg | ✅ | ✅ | 🔜 | ❌ | ✅ | ✅ | ❌ | ❌ | 🔜 | ✅ |
 | `body_fat_percentage` | % | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | ✅ |
-| `body_mass_index` | kg/m² | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | ◐ |
+| `body_mass_index` | kg/m² | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | ❌ |
 | `lean_body_mass` | kg | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `body_temperature` | °C | ✅ | ❌ | ◐ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| `skin_temperature` | °C | ❌ | ✅ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `body_temperature` | °C | ✅ | ❌ | ◐ | ❌ | ❌ | ✅ | ✅ | ❌ | 🔜 | ✅ |
+| `skin_temperature` | °C | ❌ | ✅ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
 | `skin_temperature_deviation` | °C | ❌ | ❌ | ◐ | ❌ | ✅ | ❌ | ❌ | ❌ | 🔜 | ❌ |
 | `skin_temperature_trend_deviation` | °C | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
@@ -99,19 +99,20 @@ This guide provides a comprehensive overview of data type support across all int
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| `steps` | count | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ◐ | ✅ |
-| `energy` | kcal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ◐ | ✅ |
+| `steps` | count | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | 🔜 | ✅ |
+| `energy` | kcal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | 🔜 | ✅ |
 | `basal_energy` | kcal | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ◐ |
 | `stand_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `exercise_time` | minutes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `physical_effort` | score | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | ❌ | ❌ | ❌ | ❌ |
 | `flights_climbed` | count | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `hydration` | mL | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 ### Activity - Distance
 
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
-| `distance_walking_running` | meters | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ | ❌ | ◐ | ✅ |
+| `distance_walking_running` | meters | ✅ | ✅ | ✅ | ◐ | ✅ | ❌ | ❌ | ❌ | 🔜 | ✅ |
 | `distance_cycling` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `distance_swimming` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `distance_downhill_snow_sports` | meters | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -143,8 +144,9 @@ This guide provides a comprehensive overview of data type support across all int
 | Data Type | Unit | Apple | Garmin | Polar | Suunto | Oura | Whoop | Ultrahuman | Strava | Fitbit | Health Connect |
 |-----------|------|:-----:|:------:|:-----:|:------:|:----:|:-----:|:----------:|:------:|:------:|:--------------:|
 | `swimming_stroke_count` | count | ✅ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `cadence` | rpm | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `power` | watts | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `cadence` | rpm | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
+| `power` | watts | ❌ | ❌ | ◐ | ◐ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
+| `speed` | m/s | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 |
 
 ### Provider-Specific Metrics
 
@@ -174,7 +176,7 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 | Sleep sessions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
 | Total duration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
 | Time in bed | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
-| Sleep efficiency | 🔜 | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
+| Sleep efficiency | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
 | **Sleep Stages** | | | | | | | | | | |
 | Stage timestamps | ✅ | ✅ | ✅ | ❌ | ✅ | 🔜 | 🔜 | ❌ | 🔜 | ✅ |
 | Deep sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
@@ -182,11 +184,11 @@ Sleep tracking varies significantly across providers. Here's what each provider 
 | REM sleep | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
 | Awake time | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 | ✅ |
 | **Biometrics During Sleep** | | | | | | | | | | |
-| Average heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Min heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ |
-| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Average heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ | 🔜 |
+| Min heart rate | 🔜 | ✅ | ◐ | ✅ | 🔜 | ❌ | ❌ | ❌ | ❌ | 🔜 |
+| Average HRV | 🔜 | 🔜 | ❌ | ✅ | 🔜 | ❌ | ❌ | ❌ | 🔜 | 🔜 |
+| SpO2 | 🔜 | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | 🔜 | 🔜 |
+| Respiration rate | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🔜 | 🔜 |
 | Nap detection | 🔜 | 🔜 | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | 🔜 | ❌ |
 
 <Info>
@@ -207,25 +209,25 @@ All providers that support workouts provide these common fields:
 | Workout type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | Device name | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **Heart Rate** | | | | | | | | | | |
-| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Max heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | 🔜 | ✅ |
-| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Avg heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | 🔜 |
+| Max heart rate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | 🔜 | 🔜 |
+| Min heart rate | ✅ | 🔜 | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | 🔜 | 🔜 |
 | **Activity Metrics** | | | | | | | | | | |
-| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Calories burned | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | 🔜 |
+| Distance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ◐ | 🔜 |
+| Steps | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | 🔜 |
+| Moving time | 🔜 | 🔜 | 🔜 | ✅ | ✅ | ✅ | ❌ | ✅ | 🔜 | ❌ |
 | **Speed & Power** | | | | | | | | | | |
-| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Average speed | ✅ | ✅ | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | 🔜 | 🔜 |
+| Max speed | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | 🔜 |
+| Average watts | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | 🔜 |
+| Max watts | 🔜 | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | 🔜 |
 | **Elevation** | | | | | | | | | | |
-| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| Total elevation gain | ✅ | ✅ | 🔜 | ✅ | ❌ | ✅ | ❌ | ✅ | 🔜 | 🔜 |
+| Elevation high | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Elevation low | ✅ | 🔜 | 🔜 | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | **Other** | | | | | | | | | | |
-| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| GPS route | ❌ | 🔜 | 🔜 | 🔜 | ❌ | ❌ | ❌ | ❌ | 🔜 | 🔜 |
 
 <Accordion title="Apple Workout Data Note">
   Most workout metrics are supported via HealthKit SDK (heart rate, calories, distance, steps, speed, power, elevation). Moving time and max watts are not yet implemented.
@@ -405,7 +407,8 @@ Key differences and limitations to be aware of when working with each provider:
 
   - Data synced via periodic polling only; the Fitbit Subscriptions API (webhooks) is not yet implemented
   - Workout/activity data only today, fetched from the Activities List API with pagination; backfill defaults to 30 days
-  - Workout metrics populated: avg heart rate, calories, distance, steps, and device name; min/max heart rate, speed, power, and elevation are not populated
+  - Workout metrics populated: avg heart rate, calories, distance, steps, and device name; min/max heart rate, speed, and elevation are offered by the API but not yet processed; power is not available
+  - Workout distance is currently stored as the raw kilometer value from the API; conversion to the platform meter unit is pending
   - Sleep, intraday heart rate, HRV, SpO2, breathing rate, skin temperature, and body measurements are available in the Fitbit Web API but processing is not yet implemented
   - Intraday timeseries requires a Fitbit "Personal" app type or Fitbit approval for server applications
   - 14 activity type ID mappings plus 25 name-based fallbacks to the unified taxonomy; unrecognized activities map to "other"
@@ -414,11 +417,13 @@ Key differences and limitations to be aware of when working with each provider:
 <Accordion title="Google Health Connect">
   **Integration Method:** Push-based via Android SDK (no OAuth)
 
-  - 25+ Health Connect record types mapped to unified series: heart rate, resting HR, HRV, SpO2, blood pressure, respiratory rate, body measurements, steps, calories, distance, power, speed, and cadence
+  - 25+ Health Connect record types mapped to unified series: heart rate, resting HR, HRV, SpO2, blood pressure, respiratory rate, body measurements, steps, calories, and distance
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, efficiency score, and stage timestamps
-  - Workout details include calories, distance, avg/max/min heart rate, avg/max speed, and elevation (gain/high/low)
+  - Workout sessions currently carry duration, type, and start/end times only; heart rate, speed, calorie, and elevation gain aggregates are planned
   - HRV is measured as RMSSD; SDNN is not available
-  - Body fat percentage arrives already in percent; blood glucose arrives in mmol/L and conversion to mg/dL is in review (PR #1123)
+  - Body fat percentage arrives already in percent
+  - Blood glucose arrives in mmol/L; values are stored as received until unit conversion ships
+  - Health Connect basal metabolic rate is a kcal/day rate stored into the kcal `basal_energy` series
   - All Health Connect distance is stored as `distance_walking_running` regardless of activity type
   - No health scores; GPS routes and in-workout sample streams are accepted by the SDK payload but not yet processed
 </Accordion>
