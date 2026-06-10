@@ -1,7 +1,7 @@
 """add_heart_rate_to_sleep_details
 
 Revision ID: 0d0b052f3b58
-Revises: 264b79d7c541
+Revises: d8a0bc9afdd9
 
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0d0b052f3b58"
-down_revision: Union[str, None] = "264b79d7c541"
+down_revision: Union[str, None] = "d8a0bc9afdd9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
