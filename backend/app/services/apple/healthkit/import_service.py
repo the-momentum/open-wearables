@@ -110,6 +110,25 @@ class ImportService:
 
             yield record, detail, time_series_samples
 
+    def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+        match series_type:
+            # meters → cm
+            case SeriesType.height | SeriesType.walking_step_length:
+                return value * 100
+            # 0-1 fraction → percent (body_fat only for Apple; Health Connect already reports percent)
+            case SeriesType.body_fat_percentage if provider == "apple":
+                return value * 100
+            # HealthKit walking metrics returned as 0-1 fraction, DB stores percent
+            # apple-only metrics, so no need to check if provider is apple
+            case (
+                SeriesType.walking_double_support_percentage
+                | SeriesType.walking_asymmetry_percentage
+                | SeriesType.walking_steadiness
+            ):
+                return value * 100
+            case _:
+                return value
+
     def _build_statistic_bundles(
         self,
         request: SDKSyncRequest,
@@ -163,25 +182,6 @@ class ImportService:
         max_v = max(values)
         avg_v = sum(values, Decimal("0")) / Decimal(len(values))
         return min_v, max_v, avg_v
-
-    def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
-        match series_type:
-            # meters → cm
-            case SeriesType.height | SeriesType.walking_step_length:
-                return value * 100
-            # 0-1 fraction → percent (body_fat only for Apple; Health Connect already reports percent)
-            case SeriesType.body_fat_percentage if provider == "apple":
-                return value * 100
-            # HealthKit walking metrics returned as 0-1 fraction, DB stores percent
-            # apple-only metrics, so no need to check if provider is apple
-            case (
-                SeriesType.walking_double_support_percentage
-                | SeriesType.walking_asymmetry_percentage
-                | SeriesType.walking_steadiness
-            ):
-                return value * 100
-            case _:
-                return value
 
     def _extract_metrics_from_workout_stats(
         self,
