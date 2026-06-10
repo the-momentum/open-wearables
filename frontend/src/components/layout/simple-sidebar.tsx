@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Webhook,
   RefreshCw,
+  Database,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,11 @@ const menuItems = [
     title: 'Users',
     url: ROUTES.users,
     icon: Users,
+  },
+  {
+    title: 'Data Explorer',
+    url: ROUTES.dataExplorer,
+    icon: Database,
   },
   {
     title: 'Webhooks',

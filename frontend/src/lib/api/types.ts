@@ -135,6 +135,8 @@ export interface TimeSeriesSample {
   type: string;
   value: number;
   unit: string;
+  zone_offset?: string | null;
+  source?: SourceMetadata | null;
 }
 
 export interface TimeSeriesParams {

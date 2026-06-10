@@ -10,6 +10,7 @@ export const ROUTES = {
   dashboard: '/dashboard',
   users: '/users',
   user: '/users/$userId',
+  dataExplorer: '/data-explorer',
   webhooks: '/webhooks',
   syncs: '/syncs',
   settings: '/settings',
