@@ -110,6 +110,25 @@ class ImportService:
 
             yield record, detail, time_series_samples
 
+    def _normalize_unit(self, series_type: SeriesType, value: Decimal, provider: str | None = None) -> Decimal:
+        match series_type:
+            # meters → cm
+            case SeriesType.height | SeriesType.walking_step_length:
+                return value * 100
+            # 0-1 fraction → percent (body_fat only for Apple; Health Connect already reports percent)
+            case SeriesType.body_fat_percentage if provider == "apple":
+                return value * 100
+            # HealthKit walking metrics returned as 0-1 fraction, DB stores percent
+            # apple-only metrics, so no need to check if provider is apple
+            case (
+                SeriesType.walking_double_support_percentage
+                | SeriesType.walking_asymmetry_percentage
+                | SeriesType.walking_steadiness
+            ):
+                return value * 100
+            case _:
+                return value
+
     def _build_statistic_bundles(
         self,
         request: SDKSyncRequest,
@@ -127,15 +146,7 @@ class ImportService:
 
             if not series_type:
                 continue
-            # Convert meters -> centimeters for height (both HealthKit and Health Connect report meters)
-            # and ratio (0..1) -> percent for Apple body_fat_percentage (HealthKit HKUnit.percent()).
-            # Android Health Connect's BodyFatRecord.percentage is already in percent, so only scale
-            # body_fat_percentage for provider == "apple" — otherwise Google/Samsung values are stored
-            # ~100x too large.
-            if series_type == SeriesType.height or (
-                series_type == SeriesType.body_fat_percentage and provider == "apple"
-            ):
-                value = value * 100
+            value = self._normalize_unit(series_type, value, provider)
 
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(rjson.source)
@@ -199,46 +210,43 @@ class ImportService:
             if value is None or stat.type is None:
                 continue
 
-            # series type conversion only happens for metrics that are not in EventRecordMetrics
             series_type = get_series_type_from_workout_statistic_type(stat.type)
-
             if series_type:
-                sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    external_id=None,
-                    user_id=user_uuid,
-                    source=source_name,
-                    device_model=device_model,
-                    software_version=software_version,
-                    provider=provider,
-                    recorded_at=end_date,
-                    zone_offset=zone_offset,
-                    value=value,
-                    series_type=series_type,
+                time_series_samples.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        external_id=None,
+                        user_id=user_uuid,
+                        source=source_name,
+                        device_model=device_model,
+                        software_version=software_version,
+                        provider=provider,
+                        recorded_at=end_date,
+                        zone_offset=zone_offset,
+                        value=value,
+                        series_type=series_type,
+                    )
                 )
-                time_series_samples.append(sample)
                 continue
 
-            # duration is not a part of EventRecordMetrics, however it is sent as a workout statistic
-            if stat.type in (WorkoutStatisticType.DURATION, WorkoutStatisticType.TOTAL_DURATION):
-                duration = float(value) / 1000 if stat.unit == "ms" else float(value)
-                continue
-
-            if stat.type in (
-                WorkoutStatisticType.ACTIVE_ENERGY_BURNED,
-                WorkoutStatisticType.BASAL_ENERGY_BURNED,
-                WorkoutStatisticType.CALORIES,
-                WorkoutStatisticType.TOTAL_CALORIES,
-            ):
-                stats_dict["energy_burned"] += value
-                continue
-
-            detail_field = get_detail_field_from_workout_statistic_type(stat.type)
-            if detail_field:
-                # Apple SDK may send fractional Decimals for integer fields (e.g. stepCount)
-                if detail_field in ("steps_count", "moving_time_seconds"):
-                    value = int(value)
-                stats_dict[detail_field] = value
+            match stat.type:
+                # duration is sent as a workout statistic but stored separately
+                case WorkoutStatisticType.DURATION | WorkoutStatisticType.TOTAL_DURATION:
+                    duration = float(value) / 1000 if stat.unit == "ms" else float(value)
+                case (
+                    WorkoutStatisticType.ACTIVE_ENERGY_BURNED
+                    | WorkoutStatisticType.BASAL_ENERGY_BURNED
+                    | WorkoutStatisticType.CALORIES
+                    | WorkoutStatisticType.TOTAL_CALORIES
+                ):
+                    stats_dict["energy_burned"] += value
+                case _:
+                    detail_field = get_detail_field_from_workout_statistic_type(stat.type)
+                    if detail_field:
+                        # Apple SDK may send fractional Decimals for integer fields (e.g. stepCount)
+                        if detail_field in ("steps_count", "moving_time_seconds"):
+                            value = int(value)
+                        stats_dict[detail_field] = value
 
         return EventRecordMetrics(**stats_dict), time_series_samples, duration
 
