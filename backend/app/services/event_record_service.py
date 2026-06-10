@@ -31,6 +31,7 @@ from app.schemas.model_crud.activities import (
     EventRecordUpdate,
     HealthScoreCreate,
     ScoreComponent,
+    WorkoutSegment,
 )
 from app.schemas.model_crud.activities.sleep import SleepStage
 from app.schemas.responses.activity import SleepSession, SleepStagesSummary, Workout, WorkoutDetailed
@@ -700,6 +701,7 @@ class EventRecordService(
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
+                segments=[WorkoutSegment(**s) for s in details.segments] if details and details.segments else None,
             )
             data.append(workout)
 
@@ -765,6 +767,7 @@ class EventRecordService(
             if details and details.total_elevation_gain
             else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
+            segments=[WorkoutSegment(**s) for s in details.segments] if details and details.segments else None,
         )
 
     @handle_exceptions

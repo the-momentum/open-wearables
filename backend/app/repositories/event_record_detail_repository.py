@@ -32,6 +32,8 @@ class EventRecordDetailRepository(
         """Construct the polymorphic ORM object without touching the session."""
         creation_data = creator.model_dump(exclude_none=True)
         if detail_type == "workout":
+            if creator.segments:
+                creation_data["segments"] = [s.model_dump(mode="json") for s in creator.segments]
             return cast(EventRecordDetail, WorkoutDetails(**creation_data))
         if detail_type == "sleep":
             # sleep_stages contains datetime fields that JSONB cannot serialize directly;
@@ -127,6 +129,8 @@ class EventRecordDetailRepository(
             # Serialize sleep_stages datetimes to ISO strings for JSONB storage
             if detail_type == "sleep" and data.get("sleep_stages"):
                 data["sleep_stages"] = [s.model_dump(mode="json") for s in creator.sleep_stages]  # ty:ignore[not-iterable]
+            if detail_type == "workout" and data.get("segments"):
+                data["segments"] = [s.model_dump(mode="json") for s in creator.segments]  # ty:ignore[not-iterable]
             # Filter to keep only columns present in the target model
             filtered_data = {k: v for k, v in data.items() if k in valid_columns}
             child_values.append(filtered_data)
