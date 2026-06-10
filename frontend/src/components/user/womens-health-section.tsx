@@ -79,11 +79,9 @@ function PhaseBadge({ phaseType }: { phaseType: string | null }) {
 function CycleCard({
   record,
   userId,
-  index,
 }: {
   record: MenstrualCycleRecord;
   userId: string;
-  index: number;
 }) {
   const [showDelete, setShowDelete] = useState(false);
   const deleteRecord = useDeleteMenstrualCycle(userId);
@@ -117,25 +115,33 @@ function CycleCard({
           {record.day_in_cycle !== null && (
             <div>
               <p className="text-xs text-muted-foreground">Cycle day</p>
-              <p className="font-medium text-foreground">{record.day_in_cycle}</p>
+              <p className="font-medium text-foreground">
+                {record.day_in_cycle}
+              </p>
             </div>
           )}
           {record.cycle_length !== null && (
             <div>
               <p className="text-xs text-muted-foreground">Cycle length</p>
-              <p className="font-medium text-foreground">{record.cycle_length}d</p>
+              <p className="font-medium text-foreground">
+                {record.cycle_length}d
+              </p>
             </div>
           )}
           {record.period_length !== null && (
             <div>
               <p className="text-xs text-muted-foreground">Period length</p>
-              <p className="font-medium text-foreground">{record.period_length}d</p>
+              <p className="font-medium text-foreground">
+                {record.period_length}d
+              </p>
             </div>
           )}
           {record.days_until_next_phase !== null && (
             <div>
               <p className="text-xs text-muted-foreground">Next phase</p>
-              <p className="font-medium text-foreground">in {record.days_until_next_phase}d</p>
+              <p className="font-medium text-foreground">
+                in {record.days_until_next_phase}d
+              </p>
             </div>
           )}
           {record.fertile_window_start !== null &&
@@ -144,7 +150,9 @@ function CycleCard({
                 <p className="text-xs text-muted-foreground">Fertile window</p>
                 <p className="font-medium text-foreground">
                   day {record.fertile_window_start}–
-                  {record.fertile_window_start + record.length_of_fertile_window - 1}
+                  {record.fertile_window_start +
+                    record.length_of_fertile_window -
+                    1}
                 </p>
               </div>
             )}
@@ -255,8 +263,8 @@ export function WomensHealthSection({
           </div>
         ) : (
           <div className="divide-y divide-border/40">
-            {records.map((record, i) => (
-              <CycleCard key={record.id} record={record} userId={userId} index={i + 1} />
+            {records.map((record) => (
+              <CycleCard key={record.id} record={record} userId={userId} />
             ))}
           </div>
         )}
