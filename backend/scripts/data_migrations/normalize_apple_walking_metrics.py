@@ -42,7 +42,9 @@ def _count_query(value_filter: str) -> TextClause:
         SELECT COUNT(*)
         FROM data_point_series dps
         JOIN series_type_definition std ON std.id = dps.series_type_definition_id
+        JOIN data_source ds ON ds.id = dps.data_source_id
         WHERE std.code = :code
+          AND ds.provider = 'apple'
           AND {value_filter}
     """)  # noqa: S608
 
@@ -54,6 +56,7 @@ def _sample_query(value_filter: str) -> TextClause:
         JOIN series_type_definition std ON std.id = dps.series_type_definition_id
         JOIN data_source ds ON ds.id = dps.data_source_id
         WHERE std.code = :code
+          AND ds.provider = 'apple'
           AND {value_filter}
         ORDER BY dps.recorded_at DESC
         LIMIT 10
@@ -64,9 +67,11 @@ def _update_query(value_filter: str) -> TextClause:
     return text(f"""
         UPDATE data_point_series dps
         SET value = dps.value * 100
-        FROM series_type_definition std
+        FROM series_type_definition std, data_source ds
         WHERE std.id = dps.series_type_definition_id
+          AND ds.id = dps.data_source_id
           AND std.code = :code
+          AND ds.provider = 'apple'
           AND {value_filter}
     """)  # noqa: S608
 
