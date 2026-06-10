@@ -485,8 +485,13 @@ class TestDeleteUser:
         # Assert
         assert response.status_code == 401
 
-    def test_delete_user_requires_bearer_token(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Test deleting user requires bearer token, not API key."""
+    def test_delete_user_accepts_api_key(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
+        """Bazard patch: deleting a user accepts the admin API key.
+
+        The Bazard API deletes a user server-to-server (GDPR right to
+        erasure) with the admin API key — developer JWT still works too
+        (ApiKeyDep accepts both).
+        """
         # Arrange
         developer = DeveloperFactory(email="test@example.com", password="test123")
         api_key = ApiKeyFactory(developer=developer)
@@ -496,5 +501,5 @@ class TestDeleteUser:
         # Act
         response = client.delete(f"{api_v1_prefix}/users/{user.id}", headers=headers)
 
-        # Assert - API key auth is rejected, requires bearer token
-        assert response.status_code == 401
+        # Assert - API key auth is accepted (Bazard server-to-server erasure)
+        assert response.status_code == 200

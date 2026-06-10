@@ -59,8 +59,12 @@ def create_user(payload: UserCreate, db: DbSession, _api_key: ApiKeyDep):
     return user_service.create(db, payload)
 
 
+# Bazard patch: ApiKeyDep instead of DeveloperDep — the Bazard API deletes a
+# user server-to-server (admin API key) when an athlete exercises their GDPR
+# right to erasure. ApiKeyDep still accepts a developer JWT, so the dashboard
+# flow is unchanged.
 @router.delete("/users/{user_id}", response_model=UserRead)
-def delete_user(user_id: UUID, db: DbSession, _developer: DeveloperDep):
+def delete_user(user_id: UUID, db: DbSession, _api_key: ApiKeyDep):
     return user_service.delete(db, user_id, raise_404=True)
 
 

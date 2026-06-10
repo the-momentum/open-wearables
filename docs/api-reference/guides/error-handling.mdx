@@ -54,7 +54,7 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 **Cause:** Attempting to access an endpoint that requires developer JWT authentication (not just an API key).
 
-**Solution:** Some operations (like deleting users) require logging in via the developer portal. Use JWT authentication for these endpoints.
+**Solution:** Some operations (like updating users) require logging in via the developer portal. Use JWT authentication for these endpoints. Deleting a user accepts either a developer JWT or an admin API key (server-to-server GDPR erasure).
 
 ---
 

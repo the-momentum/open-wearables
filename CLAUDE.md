@@ -70,6 +70,10 @@ Voir : `bazard.run/CLAUDE.md` (landing), `app.bazard.run/CLAUDE.md` et `api.baza
 | `docker-compose.prod.yml` | Service `app` : `expose:` au lieu de `ports:` | Évite tout conflit de port sur l'host Coolify (le port 8000 est déjà pris par `api.bazard.run` sur la même machine). Coolify route `ow.bazard.run` vers le container via son proxy interne (Docker network), pas via le port host. |
 | `docker-compose.prod.yml` | Service `frontend` : `ports: ["100.86.173.65:3000:3000"]` (IP Tailscale du VPS) | Le frontend OW (admin UI) est exposé **uniquement sur le tailnet**, jamais sur Internet. URL d'accès : `http://frontend-ow.bazard.run:3000` (record DNS A public qui pointe vers l'IP Tailscale → seuls les devices Tailscale peuvent l'atteindre). Coolify ne route pas le frontend, c'est le bind IP-specific qui fait la restriction. |
 
+| `backend/app/api/routes/v1/users.py` | `DELETE /users/{id}` : `DeveloperDep` → `ApiKeyDep` | La Bazard API supprime un user en server-to-server (clé admin, effacement RGPD BAZ-341). `ApiKeyDep` accepte aussi le JWT developer : dashboard inchangé. Test upstream `test_delete_user_requires_bearer_token` adapté en conséquence. |
+| `backend/app/services/raw_payload_storage.py` | Ajout `purge_user_payloads(user_id)` | Effacement RGPD : purge les payloads bruts S3/R2 d'un user (scan paginé + delete par batch). Appelé par `user_service.delete`. BAZ-341. |
+| `backend/app/services/user_service.py` | `delete()` appelle `purge_user_payloads` (best-effort + Sentry) | Les payloads archivés portent des données de santé : ils doivent disparaître avec le compte. Un échec storage est loggé/capturé mais ne bloque pas la suppression DB. BAZ-341. |
+
 Tout autre fichier reste **identique à l'upstream**. Si un patch est ajouté ici, **inscrire la ligne dans ce tableau** pour que la sync upstream reste prévisible.
 
 ---

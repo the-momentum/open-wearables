@@ -188,3 +188,66 @@ def _store_to_s3(
         )
     except Exception:
         logger.exception("Failed to store raw payload to S3: s3://%s/%s", _s3_bucket, key)
+
+
+def purge_user_payloads(user_id: str) -> int:
+    """Delete every stored raw payload belonging to user_id (GDPR erasure).
+
+    Keys embed the user as the 5th path segment
+    ({prefix}/{provider}/{source}/{date}/{user_id}/{file}.json), so there is
+    no per-user prefix to list cheaply: we paginate the whole prefix and
+    filter on the "/{user_id}/" segment. Acceptable at current scale; R2
+    listing is free of egress.
+
+    No-op (returns 0) when the S3 backend is not configured. Idempotent:
+    purging an already-empty user yields 0. Errors propagate to the caller
+    (user deletion treats this as best-effort and logs).
+    """
+    if _storage_backend != "s3" or _s3_client is None or _s3_bucket is None:
+        return 0
+
+    marker = f"/{user_id}/"
+    deleted = 0
+    continuation_token: str | None = None
+
+    while True:
+        list_kwargs: dict[str, Any] = {
+            "Bucket": _s3_bucket,
+            "Prefix": f"{_s3_prefix}/",
+            "MaxKeys": 1000,
+        }
+        if continuation_token:
+            list_kwargs["ContinuationToken"] = continuation_token
+        page = _s3_client.list_objects_v2(**list_kwargs)
+
+        keys = [
+            {"Key": obj["Key"]}
+            for obj in page.get("Contents", [])
+            if marker in obj["Key"]
+        ]
+        # delete_objects accepts at most 1000 keys — a page is at most 1000,
+        # so one call per page is always within bounds. Quiet mode returns
+        # only the failures: count them out and log so a partial purge is
+        # never silently reported as complete.
+        if keys:
+            response = _s3_client.delete_objects(
+                Bucket=_s3_bucket,
+                Delete={"Objects": keys, "Quiet": True},
+            )
+            errors = response.get("Errors", [])
+            for err in errors:
+                logger.error(
+                    "Failed to delete raw payload s3://%s/%s: %s",
+                    _s3_bucket,
+                    err.get("Key"),
+                    err.get("Message"),
+                )
+            deleted += len(keys) - len(errors)
+
+        if not page.get("IsTruncated"):
+            break
+        continuation_token = page.get("NextContinuationToken")
+
+    if deleted:
+        logger.info("Purged %d raw payload(s) for user %s", deleted, user_id)
+    return deleted

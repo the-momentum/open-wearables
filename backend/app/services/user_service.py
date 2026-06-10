@@ -16,10 +16,12 @@ from app.schemas.model_crud.user_management import (
     UserUpdateInternal,
 )
 from app.schemas.utils import OldPaginatedResponse
+from app.services import raw_payload_storage
 from app.services.providers.factory import ProviderFactory
 from app.services.services import AppService
 from app.services.user_connection_service import user_connection_service
 from app.utils.exceptions import handle_exceptions
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -80,6 +82,19 @@ class UserService(AppService[UserRepository, User, UserCreateInternal, UserUpdat
                     provider=connection.provider,
                     error=str(e),
                 )
+        # GDPR erasure: raw webhook payloads archived in S3/R2 carry health
+        # data keyed by this user — purge them with the account. Best-effort:
+        # a storage failure must not block the DB deletion (the primary legal
+        # obligation), but it is logged for manual follow-up.
+        try:
+            raw_payload_storage.purge_user_payloads(str(user.id))
+        except Exception as e:
+            log_and_capture_error(
+                e,
+                self.logger,
+                "Failed to purge raw payloads for deleted user",
+                extra={"user_id": str(user.id)},
+            )
         return self.crud.delete(db_session, user)
 
     @handle_exceptions

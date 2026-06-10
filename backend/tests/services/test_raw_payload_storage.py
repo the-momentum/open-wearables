@@ -140,3 +140,91 @@ class TestStoreRawPayload:
 
         call_kwargs = mock_client.put_object.call_args[1]
         assert call_kwargs["Body"] == b'{"pre":"serialized"}'
+
+
+class TestPurgeUserPayloads:
+    def test_disabled_is_noop(self) -> None:
+        raw_payload_storage.configure("disabled", 1024)
+        assert raw_payload_storage.purge_user_payloads("user-1") == 0
+
+    def test_purges_only_matching_user_keys(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": "raw-payloads/garmin/webhook/2026-06-01/user-1/aaa.json"},
+                {"Key": "raw-payloads/strava/webhook/2026-06-02/user-2/bbb.json"},
+                {"Key": "raw-payloads/garmin/api/2026-06-03/user-1/ccc.json"},
+            ],
+            "IsTruncated": False,
+        }
+        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+            raw_payload_storage.configure("s3", 1024, s3_bucket="bucket")
+
+        deleted = raw_payload_storage.purge_user_payloads("user-1")
+
+        assert deleted == 2
+        mock_client.delete_objects.assert_called_once_with(
+            Bucket="bucket",
+            Delete={
+                "Objects": [
+                    {"Key": "raw-payloads/garmin/webhook/2026-06-01/user-1/aaa.json"},
+                    {"Key": "raw-payloads/garmin/api/2026-06-03/user-1/ccc.json"},
+                ],
+                "Quiet": True,
+            },
+        )
+
+    def test_paginates_until_not_truncated(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_objects_v2.side_effect = [
+            {
+                "Contents": [{"Key": "raw-payloads/garmin/webhook/2026-06-01/user-1/aaa.json"}],
+                "IsTruncated": True,
+                "NextContinuationToken": "token-2",
+            },
+            {
+                "Contents": [{"Key": "raw-payloads/garmin/webhook/2026-06-02/user-1/bbb.json"}],
+                "IsTruncated": False,
+            },
+        ]
+        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+            raw_payload_storage.configure("s3", 1024, s3_bucket="bucket")
+
+        deleted = raw_payload_storage.purge_user_payloads("user-1")
+
+        assert deleted == 2
+        assert mock_client.list_objects_v2.call_count == 2
+        assert mock_client.delete_objects.call_count == 2
+        # La pagination doit reprendre avec le token de la première page.
+        second_call_kwargs = mock_client.list_objects_v2.call_args_list[1].kwargs
+        assert second_call_kwargs["ContinuationToken"] == "token-2"
+
+    def test_empty_prefix_is_idempotent(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_objects_v2.return_value = {"IsTruncated": False}
+        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+            raw_payload_storage.configure("s3", 1024, s3_bucket="bucket")
+
+        assert raw_payload_storage.purge_user_payloads("user-1") == 0
+        mock_client.delete_objects.assert_not_called()
+
+    def test_partial_delete_failures_are_not_counted(self) -> None:
+        mock_client = MagicMock()
+        mock_client.list_objects_v2.return_value = {
+            "Contents": [
+                {"Key": "raw-payloads/garmin/webhook/2026-06-01/user-1/aaa.json"},
+                {"Key": "raw-payloads/garmin/webhook/2026-06-02/user-1/bbb.json"},
+            ],
+            "IsTruncated": False,
+        }
+        mock_client.delete_objects.return_value = {
+            "Errors": [
+                {"Key": "raw-payloads/garmin/webhook/2026-06-02/user-1/bbb.json", "Message": "AccessDenied"},
+            ],
+        }
+        with patch.object(raw_payload_storage, "_create_s3_client", return_value=mock_client):
+            raw_payload_storage.configure("s3", 1024, s3_bucket="bucket")
+
+        # Quiet mode renvoie uniquement les échecs : ils ne comptent pas
+        # comme purgés.
+        assert raw_payload_storage.purge_user_payloads("user-1") == 1
