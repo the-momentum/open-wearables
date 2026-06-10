@@ -76,12 +76,14 @@ function PhaseBadge({ phaseType }: { phaseType: string | null }) {
   );
 }
 
-function CycleRow({
+function CycleCard({
   record,
   userId,
+  index,
 }: {
   record: MenstrualCycleRecord;
   userId: string;
+  index: number;
 }) {
   const [showDelete, setShowDelete] = useState(false);
   const deleteRecord = useDeleteMenstrualCycle(userId);
@@ -89,69 +91,60 @@ function CycleRow({
   return (
     <>
       <div className="px-6 py-4 flex items-center gap-4 hover:bg-muted/30 transition-colors group">
-        {/* Date */}
-        <div className="w-28 shrink-0">
-          <p className="text-sm font-medium text-foreground">
-            {format(new Date(record.start_time), 'MMM d, yyyy')}
+        {/* Cycle index + date */}
+        <div className="w-44 shrink-0">
+          <p className="text-sm text-foreground">
+            First day: {format(new Date(record.start_time), 'MMM d, yyyy')}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {format(new Date(record.end_time), 'MMM d')}
+          <p className="text-sm text-foreground">
+            Last day: {format(new Date(record.end_time), 'MMM d, yyyy')}
           </p>
         </div>
 
         {/* Phase */}
         <div className="w-32 shrink-0">
-          <PhaseBadge phaseType={record.current_phase_type} />
-          {record.is_predicted_cycle && (
-            <span className="ml-1.5 text-xs text-muted-foreground">
-              predicted
-            </span>
-          )}
+          <p className="text-xs text-muted-foreground mb-0.5">Cycle phase</p>
+          <div className="flex items-center gap-1.5">
+            <PhaseBadge phaseType={record.current_phase_type} />
+            {record.is_predicted_cycle && (
+              <span className="text-xs text-muted-foreground">predicted</span>
+            )}
+          </div>
         </div>
 
-        {/* Cycle metrics */}
-        <div className="flex gap-6 flex-1 text-sm">
+        {/* Metrics */}
+        <div className="flex gap-40 flex-1 text-sm">
           {record.day_in_cycle !== null && (
             <div>
-              <p className="text-muted-foreground text-xs">Day</p>
-              <p className="text-foreground font-medium">
-                {record.day_in_cycle}
-              </p>
+              <p className="text-xs text-muted-foreground">Cycle day</p>
+              <p className="font-medium text-foreground">{record.day_in_cycle}</p>
             </div>
           )}
           {record.cycle_length !== null && (
             <div>
-              <p className="text-muted-foreground text-xs">Cycle length</p>
-              <p className="text-foreground font-medium">
-                {record.cycle_length}d
-              </p>
+              <p className="text-xs text-muted-foreground">Cycle length</p>
+              <p className="font-medium text-foreground">{record.cycle_length}d</p>
             </div>
           )}
           {record.period_length !== null && (
             <div>
-              <p className="text-muted-foreground text-xs">Period</p>
-              <p className="text-foreground font-medium">
-                {record.period_length}d
-              </p>
+              <p className="text-xs text-muted-foreground">Period length</p>
+              <p className="font-medium text-foreground">{record.period_length}d</p>
             </div>
           )}
           {record.days_until_next_phase !== null && (
             <div>
-              <p className="text-muted-foreground text-xs">Next phase</p>
-              <p className="text-foreground font-medium">
-                in {record.days_until_next_phase}d
-              </p>
+              <p className="text-xs text-muted-foreground">Next phase</p>
+              <p className="font-medium text-foreground">in {record.days_until_next_phase}d</p>
             </div>
           )}
           {record.fertile_window_start !== null &&
             record.length_of_fertile_window !== null && (
               <div>
-                <p className="text-muted-foreground text-xs">Fertile window</p>
-                <p className="text-foreground font-medium">
+                <p className="text-xs text-muted-foreground">Fertile window</p>
+                <p className="font-medium text-foreground">
                   day {record.fertile_window_start}–
-                  {record.fertile_window_start +
-                    record.length_of_fertile_window -
-                    1}
+                  {record.fertile_window_start + record.length_of_fertile_window - 1}
                 </p>
               </div>
             )}
@@ -262,8 +255,8 @@ export function WomensHealthSection({
           </div>
         ) : (
           <div className="divide-y divide-border/40">
-            {records.map((record) => (
-              <CycleRow key={record.id} record={record} userId={userId} />
+            {records.map((record, i) => (
+              <CycleCard key={record.id} record={record} userId={userId} index={i + 1} />
             ))}
           </div>
         )}
