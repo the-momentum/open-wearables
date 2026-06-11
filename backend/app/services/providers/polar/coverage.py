@@ -19,6 +19,7 @@ TIMESERIES: frozenset[SeriesType] = frozenset(
         SeriesType.skin_temperature,  # /v3/users/sleep-skin-temperature + /v3/users/body-temperature (SKIN)
         SeriesType.skin_temperature_deviation,  # /v3/users/sleep-skin-temperature (deviation_from_baseline)
         SeriesType.body_temperature,  # /v3/users/body-temperature (CORE)
+        SeriesType.resting_heart_rate,  # Synaptik: Polar Recharge Nightly Recharge RHR bridge
     }
 )
 

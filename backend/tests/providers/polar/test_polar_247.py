@@ -314,7 +314,7 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_produces_recovery_score(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        scores = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+        scores, _ = data_247.normalize_nightly_recharge([sample_recharge], user_id)
 
         assert len(scores) == 1
         score = scores[0]
@@ -325,7 +325,8 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_components_include_hrv(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
+        scores, _ = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+        score = scores[0]
 
         assert "heart_rate_variability_avg" in score.components
         assert score.components["heart_rate_variability_avg"].value == 48
@@ -334,7 +335,8 @@ class TestPolar247NightlyRechargeNormalization:
 
     def test_ans_charge_status_qualifier(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         user_id = uuid4()
-        score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
+        scores, _ = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+        score = scores[0]
 
         assert "ans_charge_status" in score.components
         assert score.components["ans_charge_status"].qualifier == "usual"
@@ -343,16 +345,26 @@ class TestPolar247NightlyRechargeNormalization:
         user_id = uuid4()
         for status, label in [(1, "very poor"), (2, "poor"), (3, "compromised"), (4, "ok"), (6, "very good")]:
             sample_recharge["nightly_recharge_status"] = status
-            score = data_247.normalize_nightly_recharge([sample_recharge], user_id)[0]
-            assert score.qualifier == label
+            scores, _ = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+            assert scores[0].qualifier == label
 
     def test_missing_status_skipped(self, data_247: Polar247Data, sample_recharge: dict) -> None:
         sample_recharge.pop("nightly_recharge_status")
         user_id = uuid4()
-        assert data_247.normalize_nightly_recharge([sample_recharge], user_id) == []
+        assert data_247.normalize_nightly_recharge([sample_recharge], user_id) == ([], [])
 
     def test_empty_input(self, data_247: Polar247Data) -> None:
-        assert data_247.normalize_nightly_recharge([], uuid4()) == []
+        assert data_247.normalize_nightly_recharge([], uuid4()) == ([], [])
+
+    def test_emits_hrv_and_rhr_samples(self, data_247: Polar247Data, sample_recharge: dict) -> None:
+        user_id = uuid4()
+        _, samples = data_247.normalize_nightly_recharge([sample_recharge], user_id)
+
+        assert len(samples) == 2
+        by_type = {s.series_type: s for s in samples}
+        assert by_type[SeriesType.heart_rate_variability_rmssd].value == 48  # heart_rate_variability_avg, RMSSD ms
+        assert by_type[SeriesType.resting_heart_rate].value == 52  # heart_rate_avg, bpm
+        assert all(s.user_id == user_id for s in samples)
 
 
 # ---------------------------------------------------------------------------
