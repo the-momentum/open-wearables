@@ -954,7 +954,7 @@ class Garmin247Data(Base247DataTemplate):
             category="workout",
             type=activity_type.lower(),
             source_name="Garmin",
-            device_model=raw_activity.get("deviceId"),
+            device_model=raw_activity.get("deviceName"),
             duration_seconds=duration,
             start_datetime=start_dt,
             end_datetime=end_dt,
@@ -1862,22 +1862,11 @@ class Garmin247Data(Base247DataTemplate):
                             all_workout_details.append(detail)
                     case "activityDetails":
                         # activityDetails items nest summary data one level deeper.
-                        # Skip creating an event_record if activities already saved one
-                        # for this activityId — avoids a duplicate when both keys arrive
-                        # in the same webhook payload.
-                        activity_detail_id = str(
-                            item.get("activityId") or item.get("summary", {}).get("activityId", "")
-                        )
-                        if activity_detail_id and self.event_record_repo.get_by_external_id(
-                            db, user_id, activity_detail_id, provider="garmin"
-                        ):
-                            pass  # record already exists from activities handler
-                        else:
-                            result = self._build_activity_record(user_id, item.get("summary", {}))
-                            if result:
-                                record, detail = result
-                                all_records.append(record)
-                                all_workout_details.append(detail)
+                        result = self._build_activity_record(user_id, item.get("summary", {}))
+                        if result:
+                            record, detail = result
+                            all_records.append(record)
+                            all_workout_details.append(detail)
                         if settings.ingest_workout_samples:
                             try:
                                 all_samples.extend(self._build_activity_samples(user_id, item))
