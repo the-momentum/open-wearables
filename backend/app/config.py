@@ -267,8 +267,7 @@ class Settings(BaseSettings):
         auth_part = ""
         if self.redis_username and self.redis_password:
             auth_part = (
-                f"{quote(self.redis_username, safe='')}:"
-                f"{quote(self.redis_password.get_secret_value(), safe='')}@"
+                f"{quote(self.redis_username, safe='')}:{quote(self.redis_password.get_secret_value(), safe='')}@"
             )
         elif self.redis_password:
             auth_part = f":{quote(self.redis_password.get_secret_value(), safe='')}@"
