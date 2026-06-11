@@ -34,7 +34,7 @@ class OuraWorkouts(BaseWorkoutsTemplate):
         next_token: str | None = None
 
         start_str = start_date.strftime("%Y-%m-%d")
-        end_str = end_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%dT23:59:59")
 
         while True:
             params: dict[str, Any] = {
