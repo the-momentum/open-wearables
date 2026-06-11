@@ -264,7 +264,7 @@ class TestVendorWorkoutsEndpoints:
         assert response.status_code == 404
 
     def test_invalid_provider_returns_422(self, client: TestClient, db: Session) -> None:
-        """Test that invalid provider enum value returns 400."""
+        """Test that invalid provider enum value returns 422."""
         # Arrange
         user = UserFactory()
         api_key = ApiKeyFactory()
@@ -276,7 +276,7 @@ class TestVendorWorkoutsEndpoints:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_provider_not_supporting_workouts(self, client: TestClient, db: Session) -> None:
         """Test provider that doesn't support workouts returns 501."""

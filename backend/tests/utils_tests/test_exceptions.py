@@ -16,7 +16,25 @@ from app.utils.exceptions import (
     ResourceNotFoundError,
     handle_exception,
     handle_exceptions,
+    not_found_code,
 )
+
+
+class TestNotFoundCode:
+    """Test suite for the not_found_code helper."""
+
+    def test_lowercase_entity_name(self) -> None:
+        """Test that a lowercase entity name maps to a simple code."""
+        assert not_found_code("user") == "USER_NOT_FOUND"
+
+    def test_camel_case_entity_name_keeps_word_boundaries(self) -> None:
+        """Test that CamelCase boundaries become underscores."""
+        assert not_found_code("ApiKey") == "API_KEY_NOT_FOUND"
+
+    def test_long_dynamic_entity_falls_back_to_resource(self) -> None:
+        """Test that an unbounded dynamic description gets the generic code."""
+        entity = f"backfill window for user {uuid4()} between 2024-01-01 and 2024-02-01"
+        assert not_found_code(entity) == "RESOURCE_NOT_FOUND"
 
 
 class TestResourceNotFoundError:
@@ -83,6 +101,22 @@ class TestResourceNotFoundError:
 
         # Assert
         assert error.detail == "Session not found."
+
+    def test_code_derived_from_entity_name(self) -> None:
+        """Test that the code defaults to the derived not-found code."""
+        # Act
+        error = ResourceNotFoundError("user")
+
+        # Assert
+        assert error.code == "USER_NOT_FOUND"
+
+    def test_explicit_code_overrides_derived_one(self) -> None:
+        """Test that an explicit code wins over the derived one."""
+        # Act
+        error = ResourceNotFoundError("user", code="API_KEY_NOT_FOUND")
+
+        # Assert
+        assert error.code == "API_KEY_NOT_FOUND"
 
 
 class TestHandleExceptionWithSQLAIntegrityError:
@@ -215,65 +249,15 @@ class TestHandleExceptionWithAttributeError:
 class TestHandleExceptionWithRequestValidationError:
     """Test suite for handle_exception with RequestValidationError."""
 
-    def test_handle_request_validation_error_with_msg_and_ctx(self) -> None:
-        """Test handling RequestValidationError with message and context."""
+    def test_request_validation_error_is_reraised(self) -> None:
+        """RequestValidationError propagates to the app-level problem handler."""
         # Arrange
-        error_data = [
-            {
-                "msg": "Invalid email format",
-                "ctx": {"error": "Must be a valid email address"},
-            },
-        ]
-        exc = RequestValidationError(error_data)
+        exc = RequestValidationError([{"msg": "Field required"}])
         entity = "user"
 
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert isinstance(result, HTTPException)
-        assert result.status_code == 400
-        assert "Invalid email format - Must be a valid email address" in result.detail
-
-    def test_handle_request_validation_error_with_msg_only(self) -> None:
-        """Test handling RequestValidationError with message but no context."""
-        # Arrange
-        error_data = [{"msg": "Field required"}]
-        exc = RequestValidationError(error_data)
-        entity = "user"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.status_code == 400
-        assert result.detail == "Field required"
-
-    def test_handle_request_validation_error_with_empty_ctx(self) -> None:
-        """Test handling RequestValidationError with empty context."""
-        # Arrange
-        error_data = [{"msg": "Validation failed", "ctx": {}}]
-        exc = RequestValidationError(error_data)
-        entity = "device"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail == "Validation failed"
-
-    def test_handle_request_validation_error_with_none_ctx(self) -> None:
-        """Test handling RequestValidationError with None context."""
-        # Arrange
-        error_data = [{"msg": "Type error", "ctx": None}]
-        exc = RequestValidationError(error_data)
-        entity = "session"
-
-        # Act
-        result = handle_exception(exc, entity)
-
-        # Assert
-        assert result.detail == "Type error"
+        # Act & Assert
+        with pytest.raises(RequestValidationError):
+            handle_exception(exc, entity)
 
 
 class TestHandleExceptionWithUnknownError:

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
+from fastapi import status
 
 from app.config import settings
 from app.database import DbSession
@@ -18,6 +18,7 @@ from app.schemas.model_crud.user_management import (
     InvitationStatus,
 )
 from app.services.developer_service import developer_service
+from app.utils.exceptions import ApiError
 from app.utils.security import get_password_hash
 from app.utils.structured_logging import log_structured
 
@@ -67,16 +68,18 @@ class InvitationService:
             sort_by=None,
         )
         if existing_developers:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="DEVELOPER_ALREADY_EXISTS",
                 detail="A developer with this email already exists",
             )
 
         # Check for existing pending invitation
         existing_invitation = self.crud.get_by_email(db_session, payload.email)
         if existing_invitation:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVITATION_ALREADY_EXISTS",
                 detail="A pending invitation already exists for this email",
             )
 
@@ -119,21 +122,24 @@ class InvitationService:
         invitation = self.crud.get_by_token(db_session, token)
 
         if not invitation:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_404_NOT_FOUND,
+                code="INVITATION_NOT_FOUND",
                 detail="Invitation not found",
             )
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT):
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVALID_INVITATION_STATUS",
                 detail=f"Invitation is {invitation.status}",
             )
 
         if invitation.expires_at < datetime.now(timezone.utc):
             self.crud.update_status(db_session, invitation, InvitationStatus.EXPIRED)
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVITATION_EXPIRED",
                 detail="Invitation has expired",
             )
 
@@ -158,8 +164,9 @@ class InvitationService:
                 provider="invitation",
                 task="accept_invitation",
             )
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code="INTERNAL_ERROR",
                 detail="Failed to create developer account",
             )
 
@@ -171,14 +178,16 @@ class InvitationService:
         invitation = self.crud.get(db_session, invitation_id)
 
         if not invitation:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_404_NOT_FOUND,
+                code="INVITATION_NOT_FOUND",
                 detail="Invitation not found",
             )
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVALID_INVITATION_STATUS",
                 detail=f"Cannot revoke invitation with status: {invitation.status}",
             )
 
@@ -192,14 +201,16 @@ class InvitationService:
         invitation = self.crud.get(db_session, invitation_id)
 
         if not invitation:
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_404_NOT_FOUND,
+                code="INVITATION_NOT_FOUND",
                 detail="Invitation not found",
             )
 
         if invitation.status not in (InvitationStatus.PENDING, InvitationStatus.SENT, InvitationStatus.FAILED):
-            raise HTTPException(
+            raise ApiError(
                 status_code=status.HTTP_400_BAD_REQUEST,
+                code="INVALID_INVITATION_STATUS",
                 detail=f"Cannot resend invitation with status: {invitation.status}",
             )
 

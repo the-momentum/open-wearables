@@ -231,8 +231,8 @@ class TestGetDashboardStats:
         # Act - test with invalid top_limit (should fail validation)
         response = client.get(f"{api_v1_prefix}/dashboard/stats?top_limit=0", headers=headers)
 
-        # Assert - app maps RequestValidationError to 400
-        assert response.status_code == 400
+        # Assert - validation errors are 422
+        assert response.status_code == 422
 
     def test_get_dashboard_stats_unauthorized(self, client: TestClient, api_v1_prefix: str) -> None:
         """Test getting dashboard stats fails without authentication."""

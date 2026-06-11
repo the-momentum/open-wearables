@@ -73,29 +73,31 @@ class TestCreateUserToken:
         assert "exp" in payload
 
     def test_create_token_missing_app_id(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Missing app_id should return validation error."""
+        """Missing app_id should return 400 MISSING_APP_CREDENTIALS."""
         user = UserFactory()
         response = client.post(
             f"{api_v1_prefix}/users/{user.id}/token",
             json={"app_secret": "secret"},
         )
-        # FastAPI returns 422 for validation errors, but some configs return 400
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        assert response.json()["code"] == "MISSING_APP_CREDENTIALS"
 
     def test_create_token_missing_app_secret(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Missing app_secret should return validation error."""
+        """Missing app_secret should return 400 MISSING_APP_CREDENTIALS."""
         user = UserFactory()
         response = client.post(
             f"{api_v1_prefix}/users/{user.id}/token",
             json={"app_id": "app_123"},
         )
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        assert response.json()["code"] == "MISSING_APP_CREDENTIALS"
 
     def test_create_token_empty_body(self, client: TestClient, db: Session, api_v1_prefix: str) -> None:
-        """Empty body should return validation error."""
+        """No app credentials and no admin auth should return 400 MISSING_APP_CREDENTIALS."""
         user = UserFactory()
         response = client.post(
             f"{api_v1_prefix}/users/{user.id}/token",
             json={},
         )
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        assert response.json()["code"] == "MISSING_APP_CREDENTIALS"

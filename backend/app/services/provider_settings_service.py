@@ -10,6 +10,7 @@ from app.schemas.model_crud.data_priority import (
     ProviderSettingUpdate,
 )
 from app.services.providers.factory import ProviderFactory
+from app.utils.exceptions import UnsupportedProviderError
 
 _REGISTER_WEBHOOKS_TASK = "app.integrations.celery.tasks.register_provider_webhooks_task.register_provider_webhooks"
 
@@ -56,7 +57,7 @@ class ProviderSettingsService:
             raise ValueError(f"Unknown provider: {provider}")
 
         if update.live_sync_mode is not None and not strategy.live_sync_configurable:
-            raise ValueError(f"Provider '{provider}' does not support live sync mode configuration")
+            raise UnsupportedProviderError(provider, "live sync mode configuration")
 
         db_settings_map = self.repo.get_all(db)
         current = db_settings_map.get(provider)

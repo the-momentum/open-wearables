@@ -1,13 +1,14 @@
 import uuid
 from logging import getLogger
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from app.integrations.celery.tasks.process_sdk_upload_task import process_sdk_upload
 from app.schemas.providers.mobile_sdk import SyncRequest
 from app.schemas.responses.upload import UploadDataResponse
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
+from app.utils.exceptions import ApiError
 from app.utils.structured_logging import log_structured
 
 router = APIRouter()
@@ -48,8 +49,9 @@ def sync_sdk_data(
         HTTPException: 403 if token doesn't match user_id, 400 if provider unsupported
     """
     if auth.auth_type == "sdk_token" and (not auth.user_id or str(auth.user_id) != user_id):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
+            code="PERMISSION_DENIED",
             detail="Token does not match user_id",
         )
 
@@ -58,8 +60,9 @@ def sync_sdk_data(
 
     # Validate provider
     if provider not in ("apple", "samsung", "google"):
-        raise HTTPException(
+        raise ApiError(
             status_code=status.HTTP_400_BAD_REQUEST,
+            code="INVALID_PROVIDER",
             detail=f"Unsupported provider: {provider}. Supported: apple, samsung, google",
         )
 

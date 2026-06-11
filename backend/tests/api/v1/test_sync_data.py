@@ -183,7 +183,7 @@ class TestSyncDataEndpoint:
         )
 
         # Assert
-        assert response.status_code == 400
+        assert response.status_code == 422
 
     def test_sync_provider_not_supporting_workouts(
         self,

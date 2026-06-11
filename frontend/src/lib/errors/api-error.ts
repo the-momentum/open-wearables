@@ -9,9 +9,18 @@ export type ApiErrorCode =
   | 'TIMEOUT'
   | 'UNKNOWN';
 
+export interface ApiValidationError {
+  field: string;
+  message: string;
+  type: string;
+}
+
 export class ApiError extends Error {
   code: ApiErrorCode;
   statusCode: number;
+  /** Machine-readable code from the backend, e.g. USER_NOT_FOUND. */
+  serverCode?: string;
+  validationErrors?: ApiValidationError[];
   details?: Record<string, unknown>;
 
   constructor(
@@ -38,18 +47,25 @@ export class ApiError extends Error {
   }
 
   static fromResponse(response: Response, data?: unknown): ApiError {
-    const dataObj = data as Record<string, unknown> | undefined;
+    // Backend errors are RFC 9457 problem json: {title, status, detail, code}
+    // plus an `errors` list on 422 validation failures.
+    const problem = (
+      typeof data === 'object' && data !== null ? data : {}
+    ) as Record<string, unknown>;
     const message =
-      (dataObj?.message as string) ||
-      (dataObj?.detail as string) ||
+      (problem.detail as string) ||
+      (problem.title as string) ||
       response.statusText ||
       'An error occurred';
-    const code = dataObj?.code as ApiErrorCode | undefined;
-    const details =
-      (dataObj?.details as Record<string, unknown>) ||
-      (dataObj?.validation_errors as Record<string, unknown>);
 
-    return new ApiError(message, response.status, code, details);
+    const error = new ApiError(message, response.status);
+    if (typeof problem.code === 'string') {
+      error.serverCode = problem.code;
+    }
+    if (Array.isArray(problem.errors)) {
+      error.validationErrors = problem.errors as ApiValidationError[];
+    }
+    return error;
   }
 
   static networkError(message: string = 'Network error occurred'): ApiError {
@@ -68,8 +84,16 @@ export class ApiError extends Error {
         return 'You do not have permission to perform this action.';
       case 'NOT_FOUND':
         return 'The requested resource was not found.';
-      case 'VALIDATION_ERROR':
-        return this.message || 'Please check your input and try again.';
+      case 'VALIDATION_ERROR': {
+        const fieldErrors = this.validationErrors
+          ?.map((item) => `${item.field}: ${item.message}`)
+          .join('; ');
+        return (
+          fieldErrors ||
+          this.message ||
+          'Please check your input and try again.'
+        );
+      }
       case 'RATE_LIMITED':
         return 'Too many requests. Please wait a moment and try again.';
       case 'SERVER_ERROR':

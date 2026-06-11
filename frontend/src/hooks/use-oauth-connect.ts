@@ -63,11 +63,9 @@ export function useOAuthConnect(
         );
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
+          const problem = await response.json().catch(() => ({}));
           throw new Error(
-            errorData.detail ||
-              errorData.message ||
-              'Failed to get authorization URL'
+            problem.detail || problem.title || 'Failed to get authorization URL'
           );
         }
 

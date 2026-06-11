@@ -1,14 +1,41 @@
 ---
 title: "API Error Handling"
-description: "Reference for Open Wearables API error codes, response formats, and resolution steps. Covers auth failures, validation errors, rate limits, and 404s."
-keywords: ["open wearables api errors", "health api error handling", "wearable api error codes", "open wearables http errors"]
+description: "Reference for Open Wearables API error responses. RFC 9457 problem details format, stable error codes, auth failures, validation errors, and 404s."
+keywords: ["open wearables api errors", "health api error handling", "wearable api error codes", "rfc 9457 problem details", "open wearables http errors"]
 "og:title": "API Error Handling | Open Wearables Reference"
-"og:description": "Open Wearables API error codes, formats, and resolution steps. Auth failures, validation, rate limits, and 404s."
+"og:description": "Open Wearables API error responses in RFC 9457 problem details format. Stable error codes, auth failures, validation, and 404s."
 "og:url": "https://docs.openwearables.io/api-reference/guides/error-handling"
 "og:type": "article"
 "twitter:title": "API Error Handling | Open Wearables Reference"
-"twitter:description": "Open Wearables API error codes, formats, and resolution steps. Auth failures, validation, rate limits, and 404s."
+"twitter:description": "Open Wearables API error responses in RFC 9457 problem details format. Stable error codes, auth failures, validation, and 404s."
 "twitter:card": "summary_large_image"
+---
+
+## Error Response Format
+
+Every error response is an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details object, served with the `application/problem+json` media type:
+
+```json
+{
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 123 not found.",
+  "code": "USER_NOT_FOUND"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | `string` | The HTTP status phrase, e.g. `Not Found`. |
+| `status` | `integer` | The HTTP status code, duplicated in the body. |
+| `detail` | `string` | A human-readable explanation of this specific error. |
+| `code` | `string` | A stable machine-readable error identifier, e.g. `USER_NOT_FOUND`. |
+| `errors` | `array` | Only on validation errors (`422`). One entry per invalid field: `{field, message, type}`. |
+
+<Note>
+  Switch on `code` in client logic. It is the stable contract - `title` and `detail` are for humans and their wording may change. The RFC 9457 `type` member is omitted, which the RFC defines as equivalent to `about:blank`.
+</Note>
+
 ---
 
 ## Authentication Errors
@@ -17,11 +44,14 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "Authentication required: provide JWT token or API key"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Authentication required: provide JWT token or API key",
+  "code": "NOT_AUTHENTICATED"
 }
 ```
 
-**Cause:** No API key provided in the request.
+**Cause:** No credentials were sent at all. API-key endpoints return this when the API key header is missing; endpoints that require a developer JWT return it (with detail `Could not validate credentials`) when no bearer token is sent. If credentials were sent but rejected, the code is `INVALID_API_KEY` or `INVALID_TOKEN` instead.
 
 **Solution:** Include the API key header:
 ```bash
@@ -36,7 +66,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "Invalid or missing API key"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Invalid or missing API key",
+  "code": "INVALID_API_KEY"
 }
 ```
 
@@ -44,17 +77,35 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 **Solution:** Verify your API key is correct and active in the developer portal.
 
-### Protected Endpoint
+### Invalid Token
 
 ```json
 {
-  "detail": "Could not validate credentials"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Could not validate credentials",
+  "code": "INVALID_TOKEN"
 }
 ```
 
-**Cause:** Attempting to access an endpoint that requires developer JWT authentication (not just an API key).
+**Cause:** A bearer token was sent but rejected: it is expired or malformed, it is an SDK-scoped token used on a non-SDK endpoint, or the developer it belongs to no longer exists.
 
-**Solution:** Some operations (like deleting users) require logging in via the developer portal. Use JWT authentication for these endpoints.
+**Solution:** Log in again via the developer portal to get a fresh JWT. SDK tokens are only valid on `/sdk/` endpoints.
+
+### Login Failure
+
+```json
+{
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Incorrect email or password",
+  "code": "INVALID_CREDENTIALS"
+}
+```
+
+**Cause:** Wrong email or password on the developer login endpoint. Login failures always return `401` with this code, even when a field is missing.
+
+**Solution:** Check the credentials and retry.
 
 ---
 
@@ -64,7 +115,10 @@ keywords: ["open wearables api errors", "health api error handling", "wearable a
 
 ```json
 {
-  "detail": "User not connected to garmin"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "User not connected to garmin",
+  "code": "PROVIDER_NOT_CONNECTED"
 }
 ```
 
@@ -79,7 +133,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Token expired and no refresh token available for garmin"
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Token expired and no refresh token available for garmin",
+  "code": "PROVIDER_AUTHORIZATION_EXPIRED"
 }
 ```
 
@@ -87,7 +144,10 @@ Or:
 
 ```json
 {
-  "detail": "Garmin authorization expired. Please re-authorize."
+  "title": "Unauthorized",
+  "status": 401,
+  "detail": "Garmin authorization expired. Please re-authorize.",
+  "code": "PROVIDER_AUTHORIZATION_EXPIRED"
 }
 ```
 
@@ -102,7 +162,10 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Provider 'apple' does not support OAuth"
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Provider 'apple' does not support OAuth",
+  "code": "UNSUPPORTED_PROVIDER_OPERATION"
 }
 ```
 
@@ -114,23 +177,45 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Input should be 'apple', 'garmin', 'polar' or 'suunto'"
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "Request validation failed.",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "path.provider",
+      "message": "Input should be 'apple', 'samsung', 'google', 'garmin', 'polar', 'suunto', 'whoop', 'strava', 'oura', 'fitbit', 'ultrahuman', 'unknown' or 'internal'",
+      "type": "enum"
+    }
+  ]
 }
 ```
 
 **Cause:** Provider name is invalid or has wrong case.
 
-**Solution:** Use lowercase provider names: `garmin`, `polar`, `suunto`, `apple`.
+**Solution:** Use lowercase provider names, e.g. `garmin`, not `Garmin`. The `message` field lists every accepted value.
 
 ---
 
 ## Validation Errors
 
+Request validation failures return `422` with code `VALIDATION_ERROR` and an `errors` array listing every invalid field. `field` is the dot-joined location of the value (`body.email`, `query.start_time`, `path.user_id`), `message` is human-readable, and `type` is the validation rule that failed.
+
 ### Missing Required Field
 
 ```json
 {
-  "detail": "Field required"
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "Request validation failed.",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "query.start_time",
+      "message": "Field required",
+      "type": "missing"
+    }
+  ]
 }
 ```
 
@@ -145,7 +230,17 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1"
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "Request validation failed.",
+  "code": "VALIDATION_ERROR",
+  "errors": [
+    {
+      "field": "path.user_id",
+      "message": "Input should be a valid UUID, invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `n` at 1",
+      "type": "uuid_parsing"
+    }
+  ]
 }
 ```
 
@@ -161,13 +256,35 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 
 ```json
 {
-  "detail": "User with ID: {id} not found."
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID: 176be8de-8452-4eb7-a7ea-147fec925d9d not found.",
+  "code": "USER_NOT_FOUND"
 }
 ```
 
-**Cause:** The requested resource (user, connection, etc.) doesn't exist.
+**Cause:** The requested resource (user, workout, etc.) doesn't exist. The code names the resource: `USER_NOT_FOUND`, `WORKOUT_NOT_FOUND`, `SLEEP_SESSION_NOT_FOUND`, and so on.
 
 **Solution:** Verify the ID is correct and the resource was created.
+
+---
+
+## Server Errors
+
+### Unexpected Error
+
+```json
+{
+  "title": "Internal Server Error",
+  "status": 500,
+  "detail": "An unexpected error occurred.",
+  "code": "INTERNAL_ERROR"
+}
+```
+
+**Cause:** An unhandled error on the server. The response carries no internals; the full traceback is logged server-side.
+
+**Solution:** Retry the request. If it persists, report it with the request details.
 
 ---
 
@@ -177,8 +294,8 @@ GET /api/v1/oauth/garmin/authorize?user_id={user_id}
 |--------|---------|---------------|
 | 200 | Success | Request completed successfully |
 | 201 | Created | Resource created successfully |
-| 400 | Bad Request | Invalid parameters, validation errors |
-| 401 | Unauthorized | Missing or invalid authentication |
+| 400 | Bad Request | Invalid parameters, unsupported provider operations |
+| 401 | Unauthorized | Missing or invalid authentication, expired provider tokens |
 | 404 | Not Found | Resource doesn't exist |
-| 422 | Unprocessable | Request body validation failed |
-| 500 | Server Error | Internal error (please report) |
+| 422 | Unprocessable | Request validation failed (`VALIDATION_ERROR`) |
+| 500 | Server Error | Internal error (`INTERNAL_ERROR`, please report) |
