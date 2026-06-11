@@ -42,6 +42,7 @@ import {
 } from '@/lib/utils/workout';
 import type { EventRecordResponse } from '@/lib/api/types';
 import { EventDeleteDialog } from '@/components/common/event-delete-dialog';
+import { WorkoutRouteMap } from '@/components/user/workout-route-map';
 
 interface WorkoutSectionProps {
   userId: string;
@@ -105,8 +106,14 @@ function WorkoutRow({
         <div className="flex-1 min-w-0 flex items-center">
           {/* Type & Date */}
           <div className="w-32 flex-shrink-0">
-            <p className="text-sm font-medium text-foreground">{style.label}</p>
+            <p
+              className="text-sm font-medium text-foreground truncate"
+              title={workout.name || style.label}
+            >
+              {workout.name || style.label}
+            </p>
             <p className="text-xs text-muted-foreground">
+              {workout.name ? `${style.label} · ` : ''}
               {workoutDate ? format(new Date(workoutDate), 'MMM d, yyyy') : '-'}
             </p>
             {workout.source?.provider && (
@@ -169,6 +176,16 @@ function WorkoutRow({
       {/* Expanded details */}
       {isExpanded && (
         <div className="px-4 pb-4 pt-2 border-t border-border/60 space-y-4">
+          {/* GPS Route */}
+          {workout.route_polyline && (
+            <div>
+              <h4 className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">
+                Route
+              </h4>
+              <WorkoutRouteMap polyline={workout.route_polyline} />
+            </div>
+          )}
+
           {/* Heart Rate During Workout Chart */}
           <div>
             <h4 className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wider">

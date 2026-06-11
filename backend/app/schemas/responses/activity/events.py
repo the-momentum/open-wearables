@@ -20,12 +20,18 @@ class Workout(BaseModel):
     zone_offset: str | None = None
     duration_seconds: int | None = None
     source: SourceMetadata
+    external_id: str | None = Field(
+        None, description="The workout's id on the source provider (e.g. Strava activity id)"
+    )
     calories_kcal: float | None = None
     distance_meters: float | None = None
     avg_heart_rate_bpm: int | None = None
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
+    route_polyline: str | None = Field(
+        None, description="GPS route encoded with the Google Encoded Polyline Algorithm (precision 5)"
+    )
 
 
 class WorkoutDetailed(Workout):

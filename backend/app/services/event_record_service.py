@@ -711,12 +711,13 @@ class EventRecordService(
             workout = Workout(
                 id=record.id,
                 type=record.type or "unknown",
-                name=None,  # Not in EventRecord currently
+                name=record.name,
                 start_time=record.start_datetime,
                 end_time=record.end_datetime,
                 zone_offset=record.zone_offset,
                 duration_seconds=record.duration_seconds,
                 source=self._map_source(data_source),
+                external_id=record.external_id,
                 calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
                 distance_meters=float(details.distance) if details and details.distance else None,
                 avg_heart_rate_bpm=computed_hr.get(record.id),
@@ -725,6 +726,7 @@ class EventRecordService(
                 elevation_gain_meters=float(details.total_elevation_gain)
                 if details and details.total_elevation_gain
                 else None,
+                route_polyline=details.route_polyline if details else None,
             )
             data.append(workout)
 
@@ -775,12 +777,13 @@ class EventRecordService(
         return WorkoutDetailed(
             id=record.id,
             type=record.type or "unknown",
-            name=None,
+            name=record.name,
             start_time=record.start_datetime,
             end_time=record.end_datetime,
             zone_offset=record.zone_offset,
             duration_seconds=record.duration_seconds,
             source=self._map_source(data_source),
+            external_id=record.external_id,
             calories_kcal=float(details.energy_burned) if details and details.energy_burned else None,
             distance_meters=float(details.distance) if details and details.distance else None,
             avg_heart_rate_bpm=self._resolve_avg_hr(db_session, [record]).get(record.id),
@@ -789,6 +792,7 @@ class EventRecordService(
             elevation_gain_meters=float(details.total_elevation_gain)
             if details and details.total_elevation_gain
             else None,
+            route_polyline=details.route_polyline if details else None,
             heart_rate_samples=[],  # TODO: Fetch from DataPointSeries if needed
         )
 

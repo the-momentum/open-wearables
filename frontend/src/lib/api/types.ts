@@ -601,6 +601,10 @@ export interface EventRecordResponse {
   // Elevation and pace
   elevation_gain_meters?: number | null;
   avg_pace_sec_per_km?: number | null;
+  // GPS route encoded with the Google Encoded Polyline Algorithm (precision 5)
+  route_polyline?: string | null;
+  // The workout's id on the source provider (e.g. Strava activity id)
+  external_id?: string | null;
 
   // Legacy fields (keeping for compatibility if needed, but marked optional)
   user_id?: string;

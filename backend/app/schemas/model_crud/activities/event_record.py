@@ -26,6 +26,7 @@ class EventRecordMetrics(TypedDict, total=False):
     average_watts: Decimal | None
     elev_high: Decimal | None
     elev_low: Decimal | None
+    route_polyline: str | None
     sleep_total_duration_minutes: int | None
     sleep_time_in_bed_minutes: int | None
     sleep_efficiency_score: Decimal | None
@@ -40,6 +41,7 @@ class EventRecordBase(BaseModel):
 
     category: str = Field("workout", description="High-level category such as workout or sleep")
     type: str | None = Field(None, description="Provider-specific subtype, e.g. running")
+    name: str | None = Field(None, description="Provider-supplied display title, e.g. a Strava activity name")
 
     source_name: str = Field(description="Source/app name")
     device_model: str | None = Field(

@@ -180,6 +180,13 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         if raw_workout.moving_time is not None:
             metrics["moving_time_seconds"] = raw_workout.moving_time
 
+        # GPS route — prefer the full-resolution polyline (DetailedActivity),
+        # fall back to summary_polyline (present on list/webhook payloads).
+        if raw_workout.map is not None:
+            polyline = raw_workout.map.polyline or raw_workout.map.summary_polyline
+            if polyline:
+                metrics["route_polyline"] = polyline
+
         return metrics
 
     def _normalize_workout(
@@ -210,6 +217,7 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         record = EventRecordCreate(
             category="workout",
             type=workout_type.value,
+            name=raw_workout.name[:255] if raw_workout.name else None,
             source_name=source_name,
             device_model=device_model,
             duration_seconds=duration_seconds,
