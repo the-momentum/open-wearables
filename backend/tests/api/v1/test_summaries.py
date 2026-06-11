@@ -52,6 +52,59 @@ class TestSleepSummaryEndpoint:
         assert data["data"][0]["end_time"] == "2025-12-26T05:00:00Z"
         assert data["data"][0]["duration_minutes"] == 420  # 7 hours
 
+    def test_get_sleep_summary_early_wake_uses_zone_offset_for_local_date(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """Wake at 02:56 local (+03:00) is stored as 23:56 UTC — zone_offset must key May 5."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        sleep_start = datetime(2026, 5, 4, 22, 13, 0, tzinfo=timezone.utc)
+        sleep_end = datetime(2026, 5, 4, 23, 56, 0, tzinfo=timezone.utc)
+        EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            source_name="Oura",
+            start_datetime=sleep_start,
+            end_datetime=sleep_end,
+            zone_offset="+03:00",
+            duration_seconds=90 * 60,
+        )
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/sleep",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2026-05-05T00:00:00Z", "end_date": "2026-05-06T00:00:00Z"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == 1
+        assert data["data"][0]["date"] == "2026-05-05"
+
+    def test_get_sleep_summary_early_wake_without_zone_offset_misses_local_date(
+        self, client: TestClient, db: Session
+    ) -> None:
+        """Same session without zone_offset keys to May 4 and is invisible to a May 5 query."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        sleep_start = datetime(2026, 5, 4, 22, 13, 0, tzinfo=timezone.utc)
+        sleep_end = datetime(2026, 5, 4, 23, 56, 0, tzinfo=timezone.utc)
+        EventRecordFactory(
+            mapping=mapping,
+            category="sleep",
+            source_name="Oura",
+            start_datetime=sleep_start,
+            end_datetime=sleep_end,
+            duration_seconds=90 * 60,
+        )
+        api_key = ApiKeyFactory()
+        response = client.get(
+            f"/api/v1/users/{user.id}/summaries/sleep",
+            headers=api_key_headers(api_key.id),
+            params={"start_date": "2026-05-05T00:00:00Z", "end_date": "2026-05-06T00:00:00Z"},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
     def test_get_sleep_summary_with_details(self, client: TestClient, db: Session) -> None:
         """Test sleep summary returns sleep stage details and efficiency."""
         user = UserFactory()

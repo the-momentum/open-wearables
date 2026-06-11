@@ -32,7 +32,7 @@ from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.timeseries_service import timeseries_service
-from app.utils.dates import parse_datetime_or_default, parse_iso_datetime
+from app.utils.dates import iso_zone_offset, parse_datetime_or_default, parse_iso_datetime
 from app.utils.structured_logging import log_structured
 
 # ---------------------------------------------------------------------------
@@ -208,6 +208,7 @@ class Suunto247Data(Base247DataTemplate):
             "timestamp": timestamp,
             "start_time": bedtime_start,
             "end_time": bedtime_end,
+            "zone_offset": iso_zone_offset(bedtime_end, bedtime_start),
             "duration_seconds": duration_seconds,
             "efficiency_percent": entry_data.get("SleepQualityScore"),
             "is_nap": entry_data.get("IsNap", False),
@@ -257,6 +258,7 @@ class Suunto247Data(Base247DataTemplate):
             duration_seconds=normalized_sleep.get("duration_seconds"),
             start_datetime=start_dt,
             end_datetime=end_dt,
+            zone_offset=normalized_sleep.get("zone_offset"),
             external_id=str(normalized_sleep["suunto_sleep_id"]) if normalized_sleep.get("suunto_sleep_id") else None,
             source=self.provider_name,
             user_id=user_id,

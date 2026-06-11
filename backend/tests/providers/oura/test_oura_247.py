@@ -67,6 +67,19 @@ class TestOura247SleepNormalization:
 
         assert result["start_time"] == "2024-01-15T23:00:00+00:00"
         assert result["end_time"] == "2024-01-15T07:00:00+00:00"
+        assert result["zone_offset"] == "+00:00"
+
+    def test_normalize_sleep_zone_offset_from_local_bedtime(self, data_247: Oura247Data) -> None:
+        user_id = uuid4()
+        raw = {
+            "id": "sleep-early-wake",
+            "bedtime_start": "2026-05-05T01:13:00+03:00",
+            "bedtime_end": "2026-05-05T02:56:00+03:00",
+            "time_in_bed": 5400,
+            "type": "long_sleep",
+        }
+        result = data_247.normalize_sleeps([raw], user_id)[0]
+        assert result["zone_offset"] == "+03:00"
 
     def test_normalize_sleep_not_nap(self, data_247: Oura247Data, sample_oura_sleep: dict) -> None:
         user_id = uuid4()

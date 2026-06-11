@@ -63,6 +63,19 @@ class TestSuuntoSleepNormalization:
         assert result["avg_heart_rate_bpm"] == 67.0
         assert result["min_heart_rate_bpm"] == 52.0
         assert result["is_nap"] is False
+        assert result["zone_offset"] == "+02:00"
+
+    def test_normalize_sleep_zone_offset_none_for_naive_timestamps(self, data_247: Suunto247Data) -> None:
+        raw = {
+            "entryData": {
+                "BedtimeStart": "2026-05-17T02:13:00",
+                "BedtimeEnd": "2026-05-17T09:19:00",
+                "Duration": 25560.0,
+                "SleepId": 1,
+            },
+        }
+        result = data_247.normalize_sleep(raw, uuid4())
+        assert result["zone_offset"] is None
 
 
 class TestSuuntoRestingHeartRatePersistence:

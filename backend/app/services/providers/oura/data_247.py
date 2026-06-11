@@ -37,6 +37,7 @@ from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 from app.services.raw_payload_storage import store_raw_payload
 from app.services.timeseries_service import timeseries_service
+from app.utils.dates import iso_zone_offset
 from app.utils.structured_logging import log_structured
 
 
@@ -576,6 +577,7 @@ class Oura247Data(Base247DataTemplate):
                     "timestamp": start_time or end_time,
                     "start_time": start_time,
                     "end_time": end_time,
+                    "zone_offset": iso_zone_offset(end_time, start_time),
                     "duration_seconds": duration_seconds,
                     "efficiency_percent": float(sleep.efficiency) if sleep.efficiency is not None else None,
                     "is_nap": sleep.type == "rest",
@@ -645,6 +647,7 @@ class Oura247Data(Base247DataTemplate):
                 duration_seconds=normalized_sleep.get("duration_seconds"),
                 start_datetime=start_dt,
                 end_datetime=end_dt,
+                zone_offset=normalized_sleep.get("zone_offset"),
                 external_id=str(normalized_sleep.get("oura_sleep_id"))
                 if normalized_sleep.get("oura_sleep_id")
                 else None,
