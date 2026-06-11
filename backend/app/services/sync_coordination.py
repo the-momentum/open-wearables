@@ -184,3 +184,18 @@ def clear_secondaries(
 ) -> None:
     """Delete the secondaries set after fan-out is complete."""
     get_redis_client().delete(_secondaries_key(provider, provider_user_id, scope))
+
+
+def release_stale_primary(
+    provider: str,
+    provider_user_id: str,
+    *,
+    scope: str = "pull",
+) -> bool:
+    """Unconditionally delete the primary lock.
+
+    Use ONLY when the lock holder is confirmed gone (e.g. user deleted, connection
+    revoked) so the lock would never be released naturally before TTL expiry.
+    Returns True when the key was deleted.
+    """
+    return bool(get_redis_client().delete(_primary_key(provider, provider_user_id, scope)))

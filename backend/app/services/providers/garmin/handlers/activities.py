@@ -106,13 +106,13 @@ def process_activity_notification(
             is_primary=is_primary,
         )
         try:
-            with db.begin_nested():
-                created_ids = garmin_workouts.process_push_activities(
-                    db=db,
-                    activities=[activity],
-                    user_id=internal_user_id,
-                )
+            created_ids = garmin_workouts.process_push_activities(
+                db=db,
+                activities=[activity],
+                user_id=internal_user_id,
+            )
         except IntegrityError:
+            db.rollback()
             log_structured(
                 logger,
                 "info",

@@ -151,6 +151,18 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
         <div className="flex flex-col min-w-0 gap-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{sourceLabel}</span>
+            {run.source === 'linked_account' && run.primary_user_id && (
+              <>
+                <span>·</span>
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: run.primary_user_id }}
+                  className="font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+                >
+                  {run.primary_user_id.slice(0, 8)}…
+                </Link>
+              </>
+            )}
             <span>·</span>
             <span>{formatRelative(run.last_update)}</span>
             {run.started_at && run.ended_at && (

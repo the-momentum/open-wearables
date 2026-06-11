@@ -13,7 +13,7 @@ from app.schemas.auth import LiveSyncMode
 from app.schemas.responses.upload import ProviderSyncResult, SyncVendorDataResult
 from app.schemas.sync_status import SyncSource, SyncStage, SyncStatus
 from app.services.providers.factory import ProviderFactory
-from app.services.sync_coordination import release_primary, try_become_primary
+from app.services.sync_coordination import release_primary, release_stale_primary, try_become_primary
 from app.services.sync_status_service import completed, failed, new_run_id, progress, started
 from app.utils.context import trace_id_var
 from app.utils.sentry_helpers import log_and_capture_error
@@ -56,6 +56,7 @@ def sync_vendor_data(
     providers: list[str] | None = None,
     is_historical: bool = False,
     _skip_linked_fan_out: bool = False,
+    _linked_primary_user_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Synchronize workout/exercise/activity data from all providers the user is connected to.
@@ -166,7 +167,15 @@ def sync_vendor_data(
                 )
 
                 run_id = new_run_id(prefix="pull")
-                sync_source = SyncSource.BACKFILL if is_historical else SyncSource.PULL
+                primary_uuid: UUID | None = None
+                if _linked_primary_user_id:
+                    with suppress(ValueError):
+                        primary_uuid = UUID(_linked_primary_user_id)
+                sync_source = (
+                    SyncSource.LINKED_ACCOUNT
+                    if _linked_primary_user_id
+                    else (SyncSource.BACKFILL if is_historical else SyncSource.PULL)
+                )
 
                 # If this provider account is shared across OW profiles, only one
                 # should make the API call at a time.  The first to acquire the lock
@@ -177,6 +186,26 @@ def sync_vendor_data(
                     is_pull_primary, shared_token, existing_primary = try_become_primary(
                         provider_name, connection.provider_user_id, user_uuid, scope="pull"
                     )
+                    if not is_pull_primary and existing_primary:
+                        # If the lock holder no longer has an active connection (e.g. user
+                        # deleted), the lock is stale and will never be released naturally.
+                        # Steal it so this profile can become primary.
+                        active = user_connection_repo.get_active_connection(db, existing_primary, provider_name)
+                        if not active:
+                            log_structured(
+                                logger,
+                                "info",
+                                f"Stealing stale {provider_name} primary lock — holder has no active connection",
+                                provider=provider_name,
+                                task="sync_vendor_data",
+                                user_id=user_id,
+                                stale_primary_user_id=str(existing_primary),
+                            )
+                            release_stale_primary(provider_name, connection.provider_user_id, scope="pull")
+                            is_pull_primary, shared_token, existing_primary = try_become_primary(
+                                provider_name, connection.provider_user_id, user_uuid, scope="pull"
+                            )
+
                     if not is_pull_primary:
                         log_structured(
                             logger,
@@ -187,17 +216,10 @@ def sync_vendor_data(
                             user_id=user_id,
                             primary_user_id=str(existing_primary) if existing_primary else None,
                         )
-                        _emit_sync_status(
-                            completed,
-                            user_uuid,
-                            provider_name,
-                            SyncSource.LINKED_ACCOUNT,
-                            run_id=run_id,
-                            status=SyncStatus.SUCCESS,
-                            message=f"Sync handled by linked {provider_name} profile",
-                            primary_user_id=existing_primary,
-                            metadata={"trace_id": trace_id, "is_historical": is_historical},
-                        )
+                        # No sync status event here — the primary will trigger a fan-out
+                        # task for this profile that emits a LINKED_ACCOUNT completed event
+                        # once the actual data delivery is done.  A pre-emptive event here
+                        # would show up as a duplicate in the sync log.
                         if not is_historical:
                             user_connection_repo.update_last_synced_at(db, connection)
                         result.providers_synced[provider_name] = ProviderSyncResult(
@@ -216,6 +238,7 @@ def sync_vendor_data(
                         if is_historical
                         else f"Live sync from {provider_name} started"
                     ),
+                    primary_user_id=primary_uuid,
                     metadata={
                         "trace_id": trace_id,
                         "is_historical": is_historical,
@@ -383,6 +406,7 @@ def sync_vendor_data(
                                     "providers": [provider_name],
                                     "is_historical": is_historical,
                                     "_skip_linked_fan_out": True,
+                                    "_linked_primary_user_id": user_id,
                                 }
                             )
 
@@ -417,6 +441,7 @@ def sync_vendor_data(
                             run_id=run_id,
                             error="All sync sub-tasks failed",
                             message=f"Sync from {provider_name} failed",
+                            primary_user_id=primary_uuid,
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
                     else:
@@ -432,6 +457,7 @@ def sync_vendor_data(
                                 if not any_failed
                                 else f"Sync from {provider_name} completed with errors"
                             ),
+                            primary_user_id=primary_uuid,
                             metadata={"is_historical": is_historical, "params": provider_result.params},
                         )
 
