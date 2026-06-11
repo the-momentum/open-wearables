@@ -269,6 +269,8 @@ class StravaWebhookHandler(BaseWebhookHandler):
 
         user_id: UUID = connection.user_id
 
+        self.connection_repo.update_last_synced_at(db, connection)
+
         if aspect_type == "delete":
             return self._handle_activity_delete(db, user_id, object_id, trace_id)
 
