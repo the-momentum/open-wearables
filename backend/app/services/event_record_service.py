@@ -322,6 +322,27 @@ class EventRecordService(
             if eff_denominator > 0:
                 merged_efficiency = Decimal(str(round(eff_numerator / eff_denominator, 2)))
 
+            # Weighted heart rate average, same inclusion rule as efficiency;
+            # minimum heart rate is the min over the sessions that have one.
+            merged_hr_avg: Decimal | None = None
+            hr_numerator = 0.0
+            hr_denominator = 0
+            if adj_detail and adj_detail.heart_rate_avg and adj_in_bed > 0:
+                hr_numerator += float(adj_detail.heart_rate_avg) * adj_in_bed
+                hr_denominator += adj_in_bed
+            if detail.heart_rate_avg and new_in_bed > 0:
+                hr_numerator += float(detail.heart_rate_avg) * new_in_bed
+                hr_denominator += new_in_bed
+            if hr_denominator > 0:
+                merged_hr_avg = Decimal(str(round(hr_numerator / hr_denominator, 2)))
+
+            hr_mins = [
+                value
+                for value in ((adj_detail.heart_rate_min if adj_detail else None), detail.heart_rate_min)
+                if value is not None
+            ]
+            merged_hr_min = min(hr_mins) if hr_mins else None
+
             # Merge sleep_stages: convert DB dicts back to SleepStage, concatenate, sort
             adj_stages_raw = (adj_detail.sleep_stages if adj_detail else None) or []
             adj_stages = [SleepStage.model_validate(s) for s in adj_stages_raw]
@@ -397,6 +418,8 @@ class EventRecordService(
                 "sleep_total_duration_minutes": merged_total,
                 "sleep_time_in_bed_minutes": merged_in_bed,
                 "sleep_efficiency_score": merged_efficiency,
+                "heart_rate_min": merged_hr_min,
+                "heart_rate_avg": merged_hr_avg,
                 "is_nap": bool(adj_detail.is_nap if adj_detail else False) and bool(detail.is_nap or False),
                 "sleep_stages": merged_stages,
             }
@@ -858,6 +881,10 @@ class EventRecordService(
                 efficiency_percent=float(details.sleep_efficiency_score)
                 if details and details.sleep_efficiency_score
                 else None,
+                avg_heart_rate_bpm=round(details.heart_rate_avg)
+                if details and details.heart_rate_avg is not None
+                else None,
+                min_heart_rate_bpm=details.heart_rate_min if details else None,
                 is_nap=details.is_nap if (details and details.is_nap is not None) else False,
                 sleep_stage_intervals=details.sleep_stages if details else None,  # ty:ignore[invalid-argument-type]
                 stages=SleepStagesSummary(

@@ -378,7 +378,8 @@ class Garmin247Data(Base247DataTemplate):
             heart_rate_avg=Decimal(str(normalized_sleep["avg_heart_rate_bpm"]))
             if normalized_sleep.get("avg_heart_rate_bpm")
             else None,
-            heart_rate_min=normalized_sleep.get("min_heart_rate_bpm"),
+            # 0 bpm is not a valid minimum; treat it like the absent-avg case above
+            heart_rate_min=normalized_sleep.get("min_heart_rate_bpm") or None,
             sleep_stages=normalized_sleep.get("stage_timestamps"),
         )
 

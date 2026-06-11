@@ -69,6 +69,8 @@ class SleepSession(BaseModel):
     efficiency_percent: float | None = None
     stages: SleepStagesSummary | None = None
     sleep_stage_intervals: list[SleepStage] | None = None
+    avg_heart_rate_bpm: int | None = None
+    min_heart_rate_bpm: int | None = None
     is_nap: bool = False
 
 
