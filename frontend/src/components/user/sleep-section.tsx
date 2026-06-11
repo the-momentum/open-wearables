@@ -45,6 +45,7 @@ import {
   formatDuration,
   formatMinutes,
   formatBedtime,
+  parseApiDate,
 } from '@/lib/utils/format';
 import {
   calculateSleepStats,
@@ -556,9 +557,12 @@ export function SleepSection({
     if (summaries.length === 0) return [];
 
     return [...summaries]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .sort(
+        (a, b) =>
+          parseApiDate(a.date).getTime() - parseApiDate(b.date).getTime()
+      )
       .map((s) => ({
-        date: format(new Date(s.date), 'MMM d'),
+        date: format(parseApiDate(s.date), 'MMM d'),
         value: currentMetric.getChartValue(s),
       }));
   }, [sleepSummaries, currentMetric]);
