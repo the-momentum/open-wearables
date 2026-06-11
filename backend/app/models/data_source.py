@@ -5,8 +5,8 @@ from sqlalchemy import Index, text
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32, str_50, str_100
-from app.schemas.enums import ProviderName
+from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_50, str_100
+from app.schemas.enums import DeviceType, ProviderName
 
 if TYPE_CHECKING:
     from app.models.data_point_series import DataPointSeries
@@ -47,7 +47,7 @@ class DataSource(BaseDbModel):
     # UUID, see https://developer.apple.com/documentation/healthkit/hksource/bundleidentifier);
     # 100 fits the observed identifiers and matches the other str_100 columns.
     source: Mapped[str_100 | None]
-    device_type: Mapped[str_32 | None]
+    device_type: Mapped[DeviceType | None]
     original_source_name: Mapped[str_100 | None]
 
     event_records: Mapped[OneToMany["EventRecord"]]
