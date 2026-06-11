@@ -119,13 +119,22 @@ class UserConnectionRepository(CrudRepository[UserConnection, UserConnectionCrea
     def _active_by_provider_external_id(
         self, db_session: DbSession, provider: str, provider_user_id: str
     ) -> Query[UserConnection]:
-        """Base query: active connections for a given (provider, provider_user_id) pair."""
-        return db_session.query(self.model).filter(
-            and_(
-                self.model.provider == provider,
-                self.model.provider_user_id == provider_user_id,
-                self.model.status == ConnectionStatus.ACTIVE,
+        """Base query: active connections for a given (provider, provider_user_id) pair.
+
+        Ordered by created_at asc, id asc so the oldest connection is always
+        index 0 — stable primary attribution in webhook fan-out across query
+        plans and restarts.
+        """
+        return (
+            db_session.query(self.model)
+            .filter(
+                and_(
+                    self.model.provider == provider,
+                    self.model.provider_user_id == provider_user_id,
+                    self.model.status == ConnectionStatus.ACTIVE,
+                )
             )
+            .order_by(self.model.created_at.asc(), self.model.id.asc())
         )
 
     def get_all_by_provider_user_id(

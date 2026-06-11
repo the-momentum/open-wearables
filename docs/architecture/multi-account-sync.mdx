@@ -35,15 +35,20 @@ Revoked connections never show the chip — the lookup filters on `status = acti
 
 ## Data Flow by Sync Type
 
+The key distinction between sync types is **who initiates the data transfer**:
+
+- **Webhook** — the provider pushes data to us. The payload arrives once regardless of how many OW profiles share the account, so there is nothing to deduplicate at the API level. We fan out the single payload to all profiles internally.
+- **Pull / Backfill** — we call the provider's API. If N profiles triggered the call concurrently we would make N identical API requests, waste quota, and risk rate-limiting. A distributed lock ensures only one profile makes the call; the others receive the data via fan-out after it completes.
+
 ### Webhook push (Garmin live data)
 
-Garmin sends a single webhook payload for one `userId` (their internal account ID). The platform fans out unconditionally:
+Garmin pushes a single webhook payload for one `userId` (their internal account ID). The platform fans out unconditionally:
 
-1. `get_all_by_provider_user_id("garmin", garmin_user_id)` returns all active OW connections sharing that Garmin account.
-2. The activity or wellness data is **parsed once**, then saved independently for every connected profile.
-3. The **first** connection in the result set is treated as *primary* and receives a `WEBHOOK` sync status event. All others receive a `LINKED_ACCOUNT` event with `primary_user_id` pointing at the primary profile.
+1. `get_all_by_provider_user_id("garmin", garmin_user_id)` returns all active OW connections sharing that Garmin account, ordered by `created_at asc` so the oldest profile is always index 0.
+2. The activity or wellness data is **parsed once**, then saved independently for every connected profile within the same DB transaction (each profile's insert is wrapped in a savepoint so a duplicate on one profile does not roll back the others).
+3. The **first** connection (index 0) is treated as *primary* and receives a `WEBHOOK` sync status event. All others receive a `LINKED_ACCOUNT` event with `primary_user_id` pointing at the primary profile.
 
-No distributed lock is needed here — Garmin sends the webhook exactly once, and saving the same record under N user IDs is idempotent (duplicate protection is handled at the DB layer via `IntegrityError` detection).
+No distributed lock is needed here — Garmin sends the webhook exactly once and saving the same record under N user IDs is idempotent (duplicate protection is handled at the DB layer via savepoint + `IntegrityError` detection).
 
 ### Historical backfill (Garmin webhook-chain)
 
@@ -63,14 +68,14 @@ When `start_full_backfill` is triggered for a profile:
    - **Lost** → releases the per-user lock, registers as secondary (`SADD` to a Redis set), emits a `LINKED_ACCOUNT / STARTED` event, and returns early.
 3. When the primary's backfill completes (`trigger_next_pending_type` → `complete_backfill`), it calls `release_primary_for_user` and `clear_secondaries` to clean up.
 
-Secondary profiles receive their data through the **webhook fan-out** described above — every webhook the primary triggers delivers data to all linked profiles.
+Secondary profiles receive their data through the **webhook fan-out** described above — every Garmin webhook the primary triggers is processed by the platform for all linked profiles automatically.
 
 ### REST pull sync (`sync_vendor_data`)
 
 For providers polled periodically (Whoop, Oura, Suunto — those in `PULL` live sync mode), `sync_vendor_data` runs per-user. When a connection has a `provider_user_id`:
 
 1. `try_become_primary(provider, provider_user_id, user_id, scope="pull")` is called.
-   - **Won** → performs the API call normally; releases the lock after completion (or on error).
+   - **Won** → performs the API call normally; after completion triggers `sync_vendor_data` for all other linked profiles with `_skip_linked_fan_out=True` so they receive the same date range without making their own API call; releases the lock.
    - **Lost** → emits a `LINKED_ACCOUNT / SUCCESS` event, updates `last_synced_at`, and skips the API call for this connection.
 
 The lock TTL is 4 hours. Because `sync_vendor_data` tasks for different profiles may run in any order, the "primary" role is simply the first task to acquire the lock in a given polling cycle. If the primary completes before a competing task runs, that task acquires a fresh lock and does its own pull — which is acceptable (one extra API call per cycle, no data corruption).

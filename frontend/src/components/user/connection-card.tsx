@@ -385,7 +385,9 @@ export function ConnectionCard({
                       </TooltipContent>
                     </Tooltip>
                   )}
-                  {connection.linked_user_ids &&
+                  {connection.status === 'active' &&
+                    connection.provider_user_id &&
+                    connection.linked_user_ids &&
                     connection.linked_user_ids.length > 0 && (
                       <Tooltip>
                         <TooltipTrigger asChild>

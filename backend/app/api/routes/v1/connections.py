@@ -6,7 +6,6 @@ from fastapi import APIRouter, Response, status
 from app.database import DbSession
 from app.models import ProviderSetting
 from app.repositories.provider_settings_repository import ProviderSettingsRepository
-from app.repositories.user_connection_repository import UserConnectionRepository
 from app.schemas.auth import ConnectionStatus
 from app.schemas.enums import ProviderName
 from app.schemas.model_crud.user_management import UserConnectionWithCapabilities
@@ -16,7 +15,6 @@ from app.services.providers.factory import ProviderFactory
 router = APIRouter()
 factory = ProviderFactory()
 provider_settings_repo = ProviderSettingsRepository()
-connection_repo = UserConnectionRepository()
 
 
 def _with_capabilities(
@@ -58,7 +56,7 @@ def get_connections_endpoint(
         for c in connections
         if c.provider_user_id and c.status == ConnectionStatus.ACTIVE
     ]
-    linked_map = connection_repo.get_linked_user_ids(db, user_id, provider_pairs)
+    linked_map = user_connection_service.get_linked_user_ids(db, user_id, provider_pairs)
     return [
         _with_capabilities(
             conn,
