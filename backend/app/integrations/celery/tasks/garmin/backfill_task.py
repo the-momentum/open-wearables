@@ -53,6 +53,7 @@ from app.services.providers.garmin.backfill_state import (
 )
 from app.services.sync_coordination import (
     clear_secondaries,
+    get_secondary_user_ids,
     register_secondary,
     release_primary_for_user,
     store_primary_token,
@@ -64,12 +65,42 @@ from app.utils.structured_logging import log_structured
 logger = getLogger(__name__)
 
 
-def _release_shared_backfill_primary(user_id: str) -> None:
-    """Release the shared primary lock and clear secondaries when backfill ends."""
+def _release_shared_backfill_primary(user_id: str, *, overall_status: SyncStatus = SyncStatus.SUCCESS) -> None:
+    """Release the shared primary lock, notify secondaries, and clear state when backfill ends."""
     raw = get_redis_client().get(_get_key(user_id, "shared_provider_user_id"))
     if not raw:
         return
     provider_user_id = raw if isinstance(raw, str) else raw.decode()
+
+    # Emit completed to every secondary before clearing them.
+    # Wrapped in try/except so a notification failure never blocks lock release.
+    try:
+        secondary_ids = get_secondary_user_ids("garmin", provider_user_id, scope="backfill")
+        for secondary_id in secondary_ids:
+            secondary_trace_id = get_trace_id(str(secondary_id))
+            sec_run_id = (
+                f"garmin_backfill_{secondary_id}_{secondary_trace_id}"
+                if secondary_trace_id
+                else f"garmin_backfill_{secondary_id}"
+            )
+            completed(
+                secondary_id,
+                "garmin",
+                SyncSource.LINKED_ACCOUNT,
+                run_id=sec_run_id,
+                status=overall_status,
+                message="Garmin backfill complete (data synced via linked profile)",
+                primary_user_id=UUID(user_id),
+            )
+    except Exception as exc:
+        log_structured(
+            logger,
+            "error",
+            f"Failed to notify backfill secondaries: {exc}; proceeding with lock release",
+            provider="garmin",
+            user_id=user_id,
+        )
+
     release_primary_for_user("garmin", provider_user_id, UUID(user_id), scope="backfill")
     clear_secondaries("garmin", provider_user_id, scope="backfill")
     get_redis_client().delete(_get_key(user_id, "shared_provider_user_id"))
@@ -187,6 +218,55 @@ def start_full_backfill(user_id: str) -> dict[str, Any]:
         store_primary_token("garmin", connection.provider_user_id, UUID(user_id), shared_token, scope="backfill")
         get_redis_client().setex(_get_key(user_id, "shared_provider_user_id"), REDIS_TTL, connection.provider_user_id)
 
+        # Proactively emit started(LINKED_ACCOUNT) for every other OW profile sharing this
+        # Garmin account so they show sync activity without needing to trigger manually.
+        # Only notify profiles that haven't already self-registered (they'll have a trace_id
+        # from their own start_full_backfill call in that case).
+        # Wrapped in try/except so a failure here never aborts the primary backfill.
+        try:
+            with SessionLocal() as db:
+                other_connections = UserConnectionRepository().get_all_by_provider_user_id(
+                    db, "garmin", connection.provider_user_id
+                )
+            for conn in other_connections:
+                if conn.user_id == UUID(user_id):
+                    continue
+                existing_trace = get_trace_id(str(conn.user_id))
+                if existing_trace:
+                    # Secondary already self-registered; skip to avoid creating a stale run.
+                    continue
+                sec_trace_id = set_trace_id(str(conn.user_id))
+                register_secondary("garmin", connection.provider_user_id, conn.user_id, scope="backfill")
+                started(
+                    conn.user_id,
+                    "garmin",
+                    SyncSource.LINKED_ACCOUNT,
+                    run_id=f"garmin_backfill_{conn.user_id}_{sec_trace_id}",
+                    message="Garmin backfill in progress via linked OW profile",
+                    primary_user_id=UUID(user_id),
+                    metadata={
+                        "trace_id": sec_trace_id,
+                        "primary_user_id": user_id,
+                    },
+                )
+                log_structured(
+                    logger,
+                    "info",
+                    "Notified linked profile of backfill start",
+                    provider="garmin",
+                    trace_id=trace_id,
+                    user_id=user_id,
+                    secondary_user_id=str(conn.user_id),
+                )
+        except Exception as exc:
+            log_structured(
+                logger,
+                "error",
+                f"Failed to notify linked profiles of backfill start: {exc}; continuing",
+                provider="garmin",
+                user_id=user_id,
+            )
+
     # Check for existing state (resume detection)
     current_window = get_current_window(user_id)
     cancel_flag = is_cancelled(user_id)
@@ -298,11 +378,12 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             trace_id=trace_id,
             user_id=user_id,
         )
+        _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
         cancelled(
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
-            run_id=f"garmin_backfill_{user_id}",
+            run_id=_run_id,
             message="Garmin backfill cancelled",
             metadata={"trace_id": trace_id, "current_window": current_window},
         )
@@ -347,7 +428,8 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
 
             clear_retry_state(user_id)
             complete_backfill(user_id)
-            _release_shared_backfill_primary(user_id)
+            _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
+            _release_shared_backfill_primary(user_id, overall_status=SyncStatus.SUCCESS)
             log_structured(
                 logger,
                 "info",
@@ -360,7 +442,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 UUID(user_id),
                 "garmin",
                 SyncSource.BACKFILL,
-                run_id=f"garmin_backfill_{user_id}",
+                run_id=_run_id,
                 status=SyncStatus.SUCCESS,
                 message="Garmin backfill complete (retry phase finalized)",
                 metadata={"trace_id": trace_id, "via": "retry_phase"},
@@ -381,11 +463,12 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
                 total_windows=get_total_windows(user_id),
             )
             total_windows = get_total_windows(user_id)
+            _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
             progress(
                 UUID(user_id),
                 "garmin",
                 SyncSource.BACKFILL,
-                run_id=f"garmin_backfill_{user_id}",
+                run_id=_run_id,
                 message=f"Garmin backfill: window {current_window + 1}/{total_windows}",
                 progress_value=(current_window / total_windows) if total_windows else None,
                 items_processed=current_window,
@@ -426,7 +509,8 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
 
         clear_retry_state(user_id)
         complete_backfill(user_id)
-        _release_shared_backfill_primary(user_id)
+        _run_id = f"garmin_backfill_{user_id}_{trace_id}" if trace_id else f"garmin_backfill_{user_id}"
+        _release_shared_backfill_primary(user_id, overall_status=SyncStatus.SUCCESS)
         completed_windows = get_current_window(user_id)
         log_structured(
             logger,
@@ -441,7 +525,7 @@ def trigger_next_pending_type(user_id: str) -> dict[str, Any]:
             UUID(user_id),
             "garmin",
             SyncSource.BACKFILL,
-            run_id=f"garmin_backfill_{user_id}",
+            run_id=_run_id,
             status=SyncStatus.SUCCESS,
             message="Garmin backfill complete",
             items_processed=completed_windows,
