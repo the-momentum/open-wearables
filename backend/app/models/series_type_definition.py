@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
-from app.mappings import PrimaryKey, Unique, str_10, str_64
+from app.mappings import PrimaryKey, Unique, str_10
+from app.schemas.enums import SeriesType
 
 
 class SeriesTypeDefinition(BaseDbModel):
@@ -10,5 +11,5 @@ class SeriesTypeDefinition(BaseDbModel):
     __tablename__ = "series_type_definition"
 
     id: Mapped[PrimaryKey[int]]
-    code: Mapped[Unique[str_64]]
+    code: Mapped[Unique[SeriesType]]
     unit: Mapped[str_10]

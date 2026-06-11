@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Index, text
-from sqlalchemy.orm import Mapped
+from sqlalchemy import Index, String, text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_32, str_50, str_100
-from app.schemas.enums import ProviderName
+from app.mappings import FKUser, FKUserConnection, OneToMany, PrimaryKey, str_50, str_100
+from app.schemas.enums import DeviceType, ProviderName
 
 if TYPE_CHECKING:
     from app.models.data_point_series import DataPointSeries
@@ -47,7 +47,10 @@ class DataSource(BaseDbModel):
     # UUID, see https://developer.apple.com/documentation/healthkit/hksource/bundleidentifier);
     # 100 fits the observed identifiers and matches the other str_100 columns.
     source: Mapped[str_100 | None]
-    device_type: Mapped[str_32 | None]
+    # Explicit String(32) instead of a type_annotation_map entry: DeviceType
+    # must stay unmapped there because device_type_priority.device_type is a
+    # native Postgres enum, which is what unmapped enum annotations render as.
+    device_type: Mapped[DeviceType | None] = mapped_column(String(32))
     original_source_name: Mapped[str_100 | None]
 
     event_records: Mapped[OneToMany["EventRecord"]]

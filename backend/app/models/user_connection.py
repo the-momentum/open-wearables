@@ -1,16 +1,17 @@
 from uuid import UUID
 from datetime import datetime
 
-from sqlalchemy import Index
-from sqlalchemy.orm import Mapped
+from sqlalchemy import Index, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import BaseDbModel
-from app.mappings import FKUser, PrimaryKey, str_64
+from app.mappings import FKUser, PrimaryKey
 from app.schemas.auth import ConnectionStatus
+from app.schemas.enums import ProviderName
 
 
 class UserConnection(BaseDbModel):
-    """OAuth connections to external cloud providers (Suunto, Garmin, Polar, Coros)"""
+    """OAuth connections to external cloud providers."""
 
     __table_args__ = (
         Index(
@@ -25,7 +26,9 @@ class UserConnection(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    provider: Mapped[str_64]  # 'suunto', 'garmin', 'polar', 'coros'
+    # Explicit String(64): the column predates the ProviderName entry in
+    # type_annotation_map, which maps to String(50).
+    provider: Mapped[ProviderName] = mapped_column(String(64))
 
     # Provider user data
     provider_user_id: Mapped[str | None]
