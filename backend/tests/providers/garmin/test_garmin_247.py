@@ -688,6 +688,90 @@ class TestGarmin247Data:
         mock_bulk_details.assert_called_once()
         assert count == 2
 
+    def test_normalize_sleep_includes_naps(self, garmin_247: Garmin247Data) -> None:
+        """normalize_sleep passes through the naps list and sets is_nap=False."""
+        user_id = uuid4()
+        raw = {
+            "summaryId": "sleep_with_nap",
+            "startTimeInSeconds": 1705273200,
+            "durationInSeconds": 28800,
+            "naps": [
+                {
+                    "napDurationInSeconds": 600,
+                    "napStartTimeInSeconds": 1690916700,
+                    "napValidation": "DEVICE",
+                    "napOffsetInSeconds": -18000,
+                }
+            ],
+        }
+        normalized, _ = garmin_247.normalize_sleep(raw, user_id)
+        assert normalized["is_nap"] is False
+        assert len(normalized["naps"]) == 1
+
+    def test_normalize_nap(self, garmin_247: Garmin247Data) -> None:
+        """_normalize_nap produces a normalized dict with is_nap=True."""
+        user_id = uuid4()
+        nap = {
+            "napDurationInSeconds": 600,
+            "napStartTimeInSeconds": 1690916700,
+            "napValidation": "DEVICE",
+            "napOffsetInSeconds": -18000,
+        }
+        normalized = garmin_247._normalize_nap(nap, user_id, parent_summary_id="sleep_123")
+        assert normalized["is_nap"] is True
+        assert normalized["duration_seconds"] == 600
+        assert normalized["garmin_summary_id"] == "sleep_123"
+        assert normalized["validation"] == "DEVICE"
+        assert normalized["stages"] == {}
+        assert normalized["stage_timestamps"] is None
+
+    def test_build_sleep_record_nap(self, garmin_247: Garmin247Data) -> None:
+        """_build_sleep_record respects is_nap from normalized dict."""
+        user_id = uuid4()
+        nap = {
+            "napDurationInSeconds": 600,
+            "napStartTimeInSeconds": 1690916700,
+            "napValidation": "DEVICE",
+            "napOffsetInSeconds": -18000,
+        }
+        nap_normalized = garmin_247._normalize_nap(nap, user_id, parent_summary_id="sleep_123")
+        result = garmin_247._build_sleep_record(user_id, nap_normalized)
+        assert result is not None
+        _, detail = result
+        assert detail.is_nap is True
+
+    @patch("app.services.event_record_service.event_record_service.bulk_create")
+    @patch("app.services.event_record_service.event_record_service.bulk_create_details")
+    def test_process_items_batch_sleeps_with_naps(
+        self,
+        mock_bulk_details: MagicMock,
+        mock_bulk_create: MagicMock,
+        garmin_247: Garmin247Data,
+        db: Session,
+        sample_sleep: dict[str, Any],
+    ) -> None:
+        """Naps embedded in a sleep summary are saved as separate is_nap=True records."""
+        user = UserFactory()
+        sleep_with_nap = {
+            **sample_sleep,
+            "naps": [
+                {
+                    "napDurationInSeconds": 600,
+                    "napStartTimeInSeconds": 1690916700,
+                    "napValidation": "DEVICE",
+                    "napOffsetInSeconds": -18000,
+                }
+            ],
+        }
+        mock_bulk_create.side_effect = lambda db_session, records: [r.id for r in records]
+
+        count = garmin_247.process_items_batch(db, user.id, "sleeps", [sleep_with_nap])
+
+        # 1 main sleep + 1 nap
+        assert count == 2
+        all_records = mock_bulk_create.call_args[0][1]
+        assert len(all_records) == 2
+
     def test_process_items_batch_empty(self, garmin_247: Garmin247Data, db: Session) -> None:
         """Test batch processing empty items returns 0."""
         user = UserFactory()

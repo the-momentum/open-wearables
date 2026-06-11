@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # Time between sleep phases to conclude end of sleep session
     sleep_end_gap_minutes: int = 120  # 2 hours
 
+    # Sessions shorter than this are treated as naps (Apple HealthKit inference).
+    # Consistent with Oura's long_sleep threshold (>3h = main sleep, ≤3h = nap).
+    nap_duration_threshold_seconds: int = 3 * 60 * 60
+
     # SYNC SETTINGS
     sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)
     sleep_sync_interval_seconds: int = 3600  # Default: 1 hour (3600 seconds)

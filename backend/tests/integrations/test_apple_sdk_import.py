@@ -5,6 +5,7 @@ Tests the full import flow for Apple HealthKit data via SDK.
 """
 
 import logging
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -13,10 +14,13 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import EventRecord, WorkoutDetails
+from app.models import EventRecord, SleepDetails, WorkoutDetails
 from app.schemas.enums import SeriesType
 from app.schemas.providers.mobile_sdk import SyncRequest as SDKSyncRequest
+from app.schemas.providers.mobile_sdk.sleep_state import SleepState, SleepStateStage
 from app.services.apple.healthkit.import_service import ImportService
+from app.services.apple.healthkit.sleep_service import finish_sleep
+from app.constants.sleep import SleepStageType
 from tests.factories import UserFactory
 
 SDK_ENVELOPE: dict[str, str] = {
@@ -660,3 +664,63 @@ class TestSDKImportUnitConversion:
         assert len(samples) == 1
         assert samples[0].series_type == SeriesType.height
         assert samples[0].value == Decimal("175.2600")
+
+
+class TestAppleSleepNapDetection:
+    """Tests for Apple HealthKit nap detection via duration threshold."""
+
+    def _make_state(self, start: datetime, end: datetime) -> SleepState:
+        stage = SleepStateStage(stage=SleepStageType.LIGHT, start_time=start, end_time=end)
+        return SleepState(
+            uuid=str(uuid4()),
+            source_name="Test",
+            start_time=start,
+            end_time=end,
+            last_start_timestamp=start,
+            last_end_timestamp=end,
+            light_seconds=(end - start).total_seconds(),
+            stages=[stage],
+        )
+
+    def _get_detail(self, db: Session) -> SleepDetails:
+        record = db.query(EventRecord).filter(EventRecord.category == "sleep").first()
+        assert record is not None
+        detail = db.query(SleepDetails).filter(SleepDetails.record_id == record.id).first()
+        assert detail is not None
+        return detail
+
+    def test_short_session_is_nap(self, db: Session) -> None:
+        user = UserFactory()
+        start = datetime(2026, 4, 18, 13, 48, 16, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 18, 14, 4, 16, tzinfo=timezone.utc)  # 16 minutes
+
+        finish_sleep(db, str(user.id), self._make_state(start, end))
+
+        assert self._get_detail(db).is_nap is True
+
+    def test_long_session_is_not_nap(self, db: Session) -> None:
+        user = UserFactory()
+        start = datetime(2026, 4, 17, 22, 22, 22, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 18, 4, 35, 21, tzinfo=timezone.utc)  # ~6h 12m
+
+        finish_sleep(db, str(user.id), self._make_state(start, end))
+
+        assert self._get_detail(db).is_nap is False
+
+    def test_session_exactly_at_threshold_is_nap(self, db: Session) -> None:
+        user = UserFactory()
+        start = datetime(2026, 4, 18, 14, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 18, 17, 0, 0, tzinfo=timezone.utc)  # exactly 3 hours
+
+        finish_sleep(db, str(user.id), self._make_state(start, end))
+
+        assert self._get_detail(db).is_nap is False  # exactly at threshold: not < threshold
+
+    def test_session_just_over_threshold_is_not_nap(self, db: Session) -> None:
+        user = UserFactory()
+        start = datetime(2026, 4, 18, 14, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 4, 18, 17, 0, 1, tzinfo=timezone.utc)  # 3h + 1s
+
+        finish_sleep(db, str(user.id), self._make_state(start, end))
+
+        assert self._get_detail(db).is_nap is False

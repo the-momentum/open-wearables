@@ -293,8 +293,12 @@ class OuraWebhookHandler(BaseWebhookHandler):
         docs = [raw]
 
         match data_type:
-            case "sleep" | "daily_sleep":
+            case "sleep":
                 return self.data_247.save_sleep_data(db, user_id, self.data_247.normalize_sleeps(docs, user_id))
+            case "daily_sleep":
+                return self.data_247.save_daily_sleep_scores(
+                    db, user_id, self.data_247.normalize_daily_sleep_scores(docs, user_id)
+                )
             case "daily_readiness":
                 return self.data_247.save_readiness_data(db, user_id, self.data_247.normalize_readiness(docs, user_id))
             case "daily_activity":
