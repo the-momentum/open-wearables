@@ -1,21 +1,30 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any
 from uuid import UUID, uuid4
 
 from app.config import settings
+from app.constants.series_types.strava import STREAM_KEY_SERIES_TYPE, STREAM_KEYS_PARAM
 from app.constants.workout_types import get_unified_strava_workout_type
 from app.database import DbSession
-from app.schemas.enums import WorkoutType
+from app.schemas.enums import SeriesType, WorkoutType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
     EventRecordMetrics,
+    TimeSeriesSampleCreate,
 )
-from app.schemas.providers.strava import ActivityJSON as StravaActivityJSON
+from app.schemas.providers.strava import (
+    ActivityJSON as StravaActivityJSON,
+)
+from app.schemas.providers.strava import (
+    StravaStreamSet,
+)
 from app.services.event_record_service import event_record_service
 from app.services.providers.templates.base_workouts import BaseWorkoutsTemplate
+from app.services.timeseries_service import timeseries_service
 from app.utils.dates import offset_to_iso
+from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
 
 
@@ -229,14 +238,112 @@ class StravaWorkouts(BaseWorkoutsTemplate):
 
         return record, detail
 
-    def _build_bundles(
+    def _build_workout_samples(
         self,
-        raw: list[StravaActivityJSON],
+        db: DbSession,
         user_id: UUID,
-    ) -> Iterable[tuple[EventRecordCreate, EventRecordDetailCreate]]:
-        """Build event record payloads for Strava activities."""
-        for raw_workout in raw:
-            yield self._normalize_workout(raw_workout, user_id)
+        strava_activity_id: int | str,
+        start_dt: datetime,
+        zone_offset: str | None,
+        device_model: str | None,
+    ) -> list[TimeSeriesSampleCreate]:
+        """Fetch full-fidelity Strava streams and normalize to TimeSeriesSampleCreate rows."""
+        raw = self._make_api_request(
+            db,
+            user_id,
+            f"/api/v3/activities/{strava_activity_id}/streams",
+            params={"keys": STREAM_KEYS_PARAM, "key_by_type": "true"},
+        )
+
+        # key_by_type=true returns an object keyed by stream type, not a list.
+        if not isinstance(raw, dict):
+            return []
+
+        streams = StravaStreamSet.model_validate(raw)
+
+        time_data = streams.time.data if streams.time else []
+        if not time_data:
+            return []
+
+        mapped: list[tuple[list[Any], SeriesType]] = []
+        for key, series_type in STREAM_KEY_SERIES_TYPE.items():
+            stream = getattr(streams, key)
+            if stream and stream.data:
+                mapped.append((stream.data, series_type))
+
+        if not mapped:
+            return []
+
+        result: list[TimeSeriesSampleCreate] = []
+        for i, offset in enumerate(time_data):
+            if offset is None:
+                continue
+            recorded_at = start_dt + timedelta(seconds=int(offset))
+            for data, series_type in mapped:
+                if i >= len(data):
+                    continue
+                value = data[i]
+                if value is None:
+                    continue
+                result.append(
+                    TimeSeriesSampleCreate(
+                        id=uuid4(),
+                        user_id=user_id,
+                        source="strava",
+                        device_model=device_model,
+                        recorded_at=recorded_at,
+                        zone_offset=zone_offset,
+                        value=Decimal(str(value)),
+                        series_type=series_type,
+                    )
+                )
+        return result
+
+    def _ingest_workout_streams(
+        self,
+        db: DbSession,
+        activity: StravaActivityJSON,
+        user_id: UUID,
+        record: EventRecordCreate,
+    ) -> int:
+        """Fetch + persist per-sample streams on workout arrival, flag-gated and failure-isolated."""
+        if not settings.ingest_workout_samples:
+            return 0
+        try:
+            samples = self._build_workout_samples(
+                db,
+                user_id,
+                activity.id,
+                record.start_datetime,
+                record.zone_offset,
+                activity.device_name or "",
+            )
+        except Exception as exc:
+            log_and_capture_error(
+                exc,
+                self.logger,
+                "Failed to fetch Strava workout streams, skipping samples",
+                extra={"activity_id": activity.id},
+            )
+            return 0
+        if not samples:
+            return 0
+        # Savepoint so a failed bulk insert rolls back only the samples and
+        # leaves the workout's outer transaction usable (no PendingRollbackError).
+        nested = db.begin_nested()
+        try:
+            timeseries_service.bulk_create_samples(db, samples)
+            nested.commit()
+            return len(samples)
+        except Exception as exc:
+            nested.rollback()
+            log_and_capture_error(
+                exc,
+                self.logger,
+                "Strava workout sample ingestion failed; continuing",
+                extra={"activity_id": activity.id, "sample_count": len(samples)},
+            )
+            return 0
 
     def load_data(
         self,
@@ -292,11 +399,13 @@ class StravaWorkouts(BaseWorkoutsTemplate):
                 )
 
         count = 0
-        for record, detail in self._build_bundles(parsed_activities, user_id):
+        for activity in parsed_activities:
+            record, detail = self._normalize_workout(activity, user_id)
             created_record = event_record_service.create(db, record)
             detail_for_record = detail.model_copy(update={"record_id": created_record.id})
             event_record_service.create_detail(db, detail_for_record)
             count += 1
+            self._ingest_workout_streams(db, activity, user_id, record)
 
         return count
 
@@ -323,5 +432,6 @@ class StravaWorkouts(BaseWorkoutsTemplate):
         detail_for_record = detail.model_copy(update={"record_id": created_record.id})
         event_record_service.create_detail(db, detail_for_record)
         created_ids.append(created_record.id)
+        self._ingest_workout_streams(db, activity, user_id, record)
 
         return created_ids
