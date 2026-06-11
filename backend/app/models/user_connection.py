@@ -1,8 +1,8 @@
 from uuid import UUID
 from datetime import datetime
 
-from sqlalchemy import Index, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Index
+from sqlalchemy.orm import Mapped
 
 from app.database import BaseDbModel
 from app.mappings import FKUser, PrimaryKey
@@ -26,9 +26,7 @@ class UserConnection(BaseDbModel):
 
     id: Mapped[PrimaryKey[UUID]]
     user_id: Mapped[FKUser]
-    # Explicit String(64): the column predates the ProviderName entry in
-    # type_annotation_map, which maps to String(50).
-    provider: Mapped[ProviderName] = mapped_column(String(64))
+    provider: Mapped[ProviderName]
 
     # Provider user data
     provider_user_id: Mapped[str | None]
