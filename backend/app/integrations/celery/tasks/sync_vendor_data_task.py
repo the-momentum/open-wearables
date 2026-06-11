@@ -174,6 +174,15 @@ def sync_vendor_data(
                         provider_name, connection.provider_user_id, user_uuid, scope="pull"
                     )
                     if not is_pull_primary:
+                        log_structured(
+                            logger,
+                            "info",
+                            f"Skipping {provider_name} pull — another linked profile is syncing",
+                            provider=provider_name,
+                            task="sync_vendor_data",
+                            user_id=user_id,
+                            primary_user_id=str(existing_primary) if existing_primary else None,
+                        )
                         _emit_sync_status(
                             completed,
                             user_uuid,

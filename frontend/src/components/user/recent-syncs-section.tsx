@@ -16,6 +16,7 @@ const SOURCE_LABELS: Record<string, string> = {
   sdk: 'SDK Upload',
   backfill: 'Historical Backfill',
   xml_import: 'XML Import',
+  linked_account: 'Linked Account',
 };
 
 const STATUS_BADGE: Record<string, string> = {
